@@ -34,6 +34,11 @@ can be tested in `AgentWatchCoreTests` without launching an application.
   a file that did not exist.
 - When Xcode is installed but `xcode-select -p` still points at the Command Line Tools:
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer task verify`.
+- **Updating is tested end to end with `task e2e-update`**, which runs a throwaway copy beside
+  yours and presses the dialogs itself. Two things it relies on: a debug build takes its state
+  directory from `AGENT_WATCH_SUPPORT_DIR` and its release address from
+  `AGENT_WATCH_RELEASE_URL` (neither exists in a release build), and the terminal needs
+  Accessibility permission, which macOS asks for once.
 
 ## Documentation
 

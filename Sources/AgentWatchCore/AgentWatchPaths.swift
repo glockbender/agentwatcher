@@ -18,8 +18,21 @@ public enum AgentWatchPaths {
     }
 
     /// The user's own Application Support folder, or `nil` when the system will not name one.
+    ///
+    /// A debug build takes `AGENT_WATCH_SUPPORT_DIR` instead when it is set. That is what lets
+    /// a test copy run beside the real one: everything the app keeps hangs off this folder —
+    /// the socket, the lock beside it, the settings, the remembered sessions — so one
+    /// substitution moves all of it, and the two copies never compete for the same socket.
+    /// A release build ignores the variable entirely: a stray value in somebody's environment
+    /// would hide their settings with no way to tell why.
     public static func applicationSupportDirectory(fileManager: FileManager = .default) -> URL? {
-        fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        #if DEBUG
+            let sandbox = ProcessInfo.processInfo.environment["AGENT_WATCH_SUPPORT_DIR"]
+            if let sandbox, !sandbox.isEmpty {
+                return URL(fileURLWithPath: sandbox, isDirectory: true)
+            }
+        #endif
+        return fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
     }
 
     /// The socket the running instance listens on and a hook expects to find. One name,

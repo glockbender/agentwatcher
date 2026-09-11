@@ -47,8 +47,18 @@ public enum AppUpdate {
     /// That is the behaviour wanted rather than a limitation worked around. A build marked
     /// pre-release is one being tried out, and it has no business installing itself on the
     /// machine of somebody who chose a finished version.
+    ///
+    /// A debug build takes `AGENT_WATCH_RELEASE_URL` instead when it is set — a test points it
+    /// at one release by tag (`…/releases/tags/v0.1.0`), which is the only way to exercise
+    /// updating before a finished release exists. A release build ignores it.
     public static func latestReleaseURL() -> URL? {
-        URL(string: "https://api.github.com/repos/glockbender/agentwatcher/releases/latest")
+        #if DEBUG
+            let chosen = ProcessInfo.processInfo.environment["AGENT_WATCH_RELEASE_URL"]
+            if let chosen, !chosen.isEmpty {
+                return URL(string: chosen)
+            }
+        #endif
+        return URL(string: "https://api.github.com/repos/glockbender/agentwatcher/releases/latest")
     }
 
     /// The release in an API answer, or nothing when the answer holds none.

@@ -54,6 +54,14 @@ tasks:
       # nothing to anybody who downloads the result.
       - ./scripts/release.sh
 
+  e2e-update:
+    desc: Update a throwaway copy of the app end to end, dialogs included
+    cmds:
+      # Builds an older version in a temporary folder, starts it against a published release,
+      # presses the buttons through the accessibility tree, and checks what landed on disk.
+      # Needs the terminal to have Accessibility permission — macOS asks once.
+      - ./scripts/e2e-update.sh {{.CLI_ARGS}}
+
   plugin:
     desc: Build the JetBrains IDE plugin (Kotlin, its own Gradle, not part of task verify)
     dir: ide-plugin
