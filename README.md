@@ -45,7 +45,12 @@ nothing — the agent never waits on it.
 
 Everything the app remembers sits in `~/Library/Application Support/AgentWatch/`: the widget's
 settings as a plain `settings.json` you can edit, and the sessions of the last launch so a restart
-does not leave the widget empty. Nothing leaves the machine.
+does not leave the widget empty.
+
+Nothing about your work leaves the machine. The one request the app makes is to GitHub's public API,
+at launch, to see whether a newer build exists — no parameters, nothing about you, not even the
+version you run, because the comparison happens here. It offers to download and install the update
+itself, and the whole check can be turned off in the `Updates` menu.
 
 ## JetBrains IDE plugin
 

@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lockPositionMenuItem: NSMenuItem?
     private var lockSizeMenuItem: NSMenuItem?
     private var sessionTopicMenuItem: NSMenuItem?
+    private var updateOnLaunchMenuItem: NSMenuItem?
     private var closedSessionMenuItems: [NSMenuItem] = []
     private var transcriptMenuItems: [NSMenuItem] = []
     private let installer = ToolingInstaller()
@@ -32,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let frameStore: HUDFrameStore
     private let lampSchemes: LampSchemeStore
     private let preferences: PreferenceFile
+    private let updater: AppUpdater
     private let heard = AgentHeardStore()
     private let history = SessionHistoryStore()
     private lazy var toolingController = ToolingWindowController(
@@ -92,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     ) {
         self.singleInstanceCoordinator = singleInstanceCoordinator
         self.preferences = preferences
+        self.updater = AppUpdater(preferences: preferences)
         backgroundStore = WidgetBackgroundStore(preferences: preferences)
         settings = WidgetSettingsStore(preferences: preferences)
         frameStore = HUDFrameStore(preferences: preferences)
@@ -112,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // Before anything reads a setting: a fresh install gets the whole configuration
         // written out, and a version that adds one fills in that key alone.
-        let owners: [PreferenceDefaults] = [backgroundStore, settings, frameStore, lampSchemes]
+        let owners: [PreferenceDefaults] = [backgroundStore, settings, frameStore, lampSchemes, updater]
         var everyDefault: [String: JSONValue] = [:]
         for owner in owners {
             everyDefault.merge(owner.defaultValues) { existing, _ in existing }
@@ -132,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // and a memory never overwrites it — but it would come in as a brand new session.
         supervisor.start()
         startIngress()
+        updater.checkAfterLaunch()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -252,6 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         debugMenuItem = debugItem
         menu.addItem(makeToolingMenuItem())
         menu.addItem(makeTranscriptMenuItem())
+        menu.addItem(makeUpdateMenuItem())
         #if AGENT_WATCH_DEBUG_CAPTURE
             let rawCaptureItem = NSMenuItem(
                 title: "Record Raw Hook Payloads for 30 Minutes",
@@ -294,6 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lockPositionMenuItem?.state = settings.locksPosition ? .on : .off
         lockSizeMenuItem?.state = settings.locksSize ? .on : .off
         sessionTopicMenuItem?.state = settings.showsSessionTopic ? .on : .off
+        updateOnLaunchMenuItem?.state = updater.checksOnLaunch ? .on : .off
         updateClosedSessionMenuSelection()
         updateTranscriptMenu()
         // The files belong to other programs and other people, so what the widget complains
@@ -376,6 +382,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showTooling() {
         toolingController.present()
+    }
+
+    /// The version this copy is, and the two decisions about newer ones.
+    ///
+    /// A submenu rather than a line, because the version belongs in the interface somewhere:
+    /// it is the first thing anybody reporting a problem is asked for, and an app with no
+    /// window of its own has nowhere else to put it.
+    private func makeUpdateMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Updates", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        let version = NSMenuItem(
+            title: updater.ownVersion.map { "Agent Watch \($0)" } ?? "Agent Watch (development build)",
+            action: nil,
+            keyEquivalent: ""
+        )
+        version.isEnabled = false
+        submenu.addItem(version)
+        submenu.addItem(.separator())
+        let check = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        check.target = self
+        submenu.addItem(check)
+        let onLaunch = NSMenuItem(
+            title: "Check on Launch",
+            action: #selector(toggleUpdateCheckOnLaunch),
+            keyEquivalent: ""
+        )
+        onLaunch.target = self
+        submenu.addItem(onLaunch)
+        updateOnLaunchMenuItem = onLaunch
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func checkForUpdates() {
+        updater.checkNow()
+    }
+
+    @objc private func toggleUpdateCheckOnLaunch() {
+        updater.checksOnLaunch.toggle()
     }
 
     /// Keeps the widget's own complaint in step with what is actually installed.
