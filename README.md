@@ -52,10 +52,11 @@ does not leave the widget empty. Nothing leaves the machine.
 Optional, and it changes one thing: `↗` lands on the terminal **tab** a session runs in rather than
 on the IDE window.
 
-Download `agent-watch-ide-<version>.zip` from the same release, then in the IDE:
-Settings → Plugins → the gear → Install Plugin from Disk. The Tooling window lists the JetBrains
-IDEs it finds, opens that page for the one you pick with the file's path already copied, and can
-ask an IDE whether the plugin answers there now.
+Download `agent-watch-ide-<version>.zip` from the same release — the plugin carries its own
+version number, which is not the app's — then in the IDE: Settings → Plugins → the gear →
+Install Plugin from Disk. The Tooling window lists the JetBrains IDEs it finds, opens that page
+for the one you pick with the file's path already copied, and can ask an IDE whether the plugin
+answers there now.
 
 ## Build from source
 
