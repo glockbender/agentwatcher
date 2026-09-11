@@ -68,7 +68,7 @@ if command -v codesign >/dev/null 2>&1; then
     if [[ -z "$signing_identity" ]]; then
         signing_identity="-"
         echo "warning: no '$default_signing_identity' certificate; signing ad-hoc," \
-            "so macOS permissions will be lost on the next build — see README" >&2
+            "so macOS permissions will be lost on the next build — see AGENTS.md" >&2
     fi
     # The nested executable is signed before the bundle that seals it.
     codesign --force --sign "$signing_identity" "$contents_path/MacOS/AgentWatchSend" >/dev/null
