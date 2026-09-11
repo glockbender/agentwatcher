@@ -4,23 +4,20 @@
     <vendor email="glockbender@gmail.com" url="https://github.com/glockbender/agentwatcher">glockbender</vendor>
 
     <description><![CDATA[
-        Brings you to the terminal tab where a Claude Code or Codex session is running, when the
-        <a href="https://github.com/glockbender/agentwatcher">Agent Watch</a> widget asks for it.
-        On its own this plugin does nothing: Agent Watch is a small macOS app that shows what your
-        agent sessions are doing, and this is the piece of it that lives inside the IDE.
+        Companion to <a href="https://github.com/glockbender/agentwatcher">Agent Watch</a>, a macOS
+        app that shows what your Claude Code and Codex sessions are doing. On its own this plugin
+        does nothing.
         <br/><br/>
-        When you press a session's focus button in the widget, it opens a <code>jetbrains://</code>
-        link naming the agent's process. The plugin finds the terminal tab whose shell started that
-        process and selects it, in both the classic and the reworked terminal, so you land on the
-        session itself rather than on the IDE window.
+        When you press a session's focus button in Agent Watch, this plugin selects the terminal tab
+        where that session is running, in both the classic and the reworked terminal. The app
+        reaches it through a <code>jetbrains://</code> link that names the agent's process.
         <br/><br/>
-        It talks to nothing over the network and opens no port. The only thing it writes is a small
-        file in Agent Watch's own folder under <code>~/Library/Application Support/AgentWatch/</code>,
-        so the widget can confirm the plugin is installed: the token it was just given, the plugin
-        version and the IDE build. Nothing about you or your projects is in it.
+        No network, no ports. The plugin writes one small file into Agent Watch's own folder so the
+        app can confirm the plugin is installed: the token it was asked with, the plugin version and
+        the IDE build.
         <br/><br/>
-        Agent Watch itself is installed from its
-        <a href="https://github.com/glockbender/agentwatcher/releases">releases page</a>.
+        Get Agent Watch:
+        <a href="https://github.com/glockbender/agentwatcher">github.com/glockbender/agentwatcher</a>
     ]]></description>
 
     <change-notes><![CDATA[
