@@ -103,19 +103,16 @@ System Settings → Privacy & Security → Open Anyway, и для приложе
 `agent-watch-ide-<версия>.zip`. Его разбирает `IDEPluginInstallation.stagedPlugin`, когда решает,
 какой файл предлагать IDE, и по нему же сравнивает версии.
 
-Релизный workflow его не собирает: сборка идёт против IDE, установленной на машине (`local(ideHome)`
-в `ide-plugin/build.gradle.kts`), а качать дистрибутив IDE в CI — гигабайт ради файла, который
-собирается локально одной командой:
+Релизный workflow приложения его не собирает. В релиз идёт тот же файл, что ушёл на Marketplace:
+`publish-plugin.yml` (раздел ниже) подписывает его и оставляет артефактом запуска уже под именем
+из контракта, так что в релиз он кладётся как есть:
 
 ```sh
-task plugin
-gh release upload vX.Y.Z ide-plugin/build/distributions/agent-watch-ide-<версия>.zip
+gh run download --name agent-watch-ide --dir ide-plugin/build/signed
+gh release upload vX.Y.Z ide-plugin/build/signed/agent-watch-ide-<версия>.zip
 ```
 
-Файл берётся из каталога сборки, а не из staging-каталога приложения: в релиз должен уехать тот
-файл, который только что собран, а не тот, что там лежал. Подписанный файл из `publish-plugin.yml`
-называется `agent-watch-ide-<версия>-signed.zip` — перед выкладкой в релиз его надо переименовать
-под контракт выше.
+Локальная сборка `task plugin` — для проверки на этой машине, не для релиза: подписи в ней нет.
 
 ## Плагин IDE в Marketplace
 
@@ -131,8 +128,9 @@ Marketplace — основной путь установки плагина (п�
 `./gradlew verifyPlugin` проверяет это до загрузки, и на 0.1.4 отвечает `Compatible`.
 
 **Подпись.** Gradle-плагин сам читает три переменные окружения — `CERTIFICATE_CHAIN`, `PRIVATE_KEY`,
-`PRIVATE_KEY_PASSWORD` — и когда они заданы, `signPlugin` срабатывает перед `publishPlugin` без
-настройки в `build.gradle.kts`. Ключ принимается в любом виде, который выдаёт OpenSSL 3:
+`PRIVATE_KEY_PASSWORD` — и когда они заданы, `signPlugin` срабатывает перед `publishPlugin`.
+Единственная настройка в `build.gradle.kts` — куда и под каким именем ложится подписанный файл:
+`build/signed/agent-watch-ide-<версия>.zip`, то же имя, что в контракте релиза. Ключ принимается в любом виде, который выдаёт OpenSSL 3:
 зашифрованный PKCS#8 с паролем, PKCS#8 и PKCS#1 без пароля — проверено одноразовым ключом.
 `verifyPluginSignature` той же версии Gradle-плагина (2.18.1) подставляет содержимое цепочки туда,
 где утилита ждёт путь к файлу, и падает; подпись всё равно проверяет Marketplace при загрузке.
@@ -160,11 +158,11 @@ openssl req -key private.pem -new -x509 -days 3650 -subj "/CN=glockbender" -out 
 лицензия, ссылка на исходники и теги и создаётся профиль вендора, а `publishPlugin` требует, чтобы
 плагин уже существовал. Порядок:
 
-1. Подписать. Проще всего там, где секреты уже лежат: `gh workflow run publish-plugin.yml`
-   запускает тот же workflow без тега, и он только собирает, проверяет и подписывает, а
-   подписанный файл оставляет артефактом запуска (`gh run download`). Локально то же делает
-   `./gradlew signPlugin` в `ide-plugin/` с тремя переменными в окружении, взятыми из менеджера
-   паролей; файл — `build/distributions/agent-watch-ide-<версия>-signed.zip`.
+1. Подписать в CI, где лежит ключ: `gh workflow run publish-plugin.yml` запускает тот же
+   workflow без тега, и он только собирает, проверяет и подписывает, а подписанный файл
+   оставляет артефактом запуска — `gh run download --name agent-watch-ide`. Ключа на ноутбуке при
+   этом нет. Локальный `./gradlew signPlugin` с тремя переменными в окружении — запасной путь, не
+   основной.
 2. На plugins.jetbrains.com войти под аккаунтом JetBrains, в профиле — Add new plugin. Профиль
    вендора создаётся там же: публичное имя, почта и сайт — те же, что в `<vendor>`; идентификатор
    вендора потом не меняется. Там же — декларация trader или non-trader: по документации trader —

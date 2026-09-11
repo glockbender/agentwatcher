@@ -104,6 +104,14 @@ kotlin {
     }
 }
 
+// The signed file keeps the name the application reads — `agent-watch-ide-<version>.zip` — so
+// what CI hands to Marketplace and what goes into a release are one file under one name. A
+// directory of its own, because `buildPlugin` writes the unsigned file under that same name in
+// `build/distributions/`.
+tasks.signPlugin {
+    signedArchiveFile = layout.buildDirectory.file("signed/agent-watch-ide-$version.zip")
+}
+
 // Where Agent Watch looks for a plugin file to hand to an IDE. The application knows only this
 // folder, never this repository: a release downloaded there later and a build put there now are
 // the same fact to it.

@@ -60,4 +60,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: agent-watch-ide
-          path: ide-plugin/build/distributions/*-signed.zip
+          path: ide-plugin/build/signed/*.zip
