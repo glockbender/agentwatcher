@@ -112,6 +112,17 @@ final class AgentProcessLocatorTests: XCTestCase {
         XCTAssertNil(AgentProcessLocator.startTime(of: 999_999))
     }
 
+    /// The argument probe, read against a process that certainly exists: this one. The
+    /// kernel's answer is the test runner's own command line, and it has to come back whole
+    /// — the count, the skipped executable path and the NUL-separated words are all parsed
+    /// by hand, and a mistake in any of them would make a session look like a helper.
+    func testAProcessesOwnArgumentsAreReadWholeAndADeadPIDHasNone() throws {
+        let arguments = try XCTUnwrap(AgentProcessLocator.commandArguments(of: getpid()))
+
+        XCTAssertEqual(arguments, CommandLine.arguments)
+        XCTAssertNil(AgentProcessLocator.commandArguments(of: 999_999))
+    }
+
     // MARK: - Helpers of the agent, which are not sessions
 
     /// Measured on a running machine: Claude Code keeps several long-lived processes of its

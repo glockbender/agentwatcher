@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchTestSupport
 import AppKit
 import XCTest
 
@@ -63,13 +64,7 @@ final class LampSchemeTests: XCTestCase {
     }
 
     private func session(in phase: SessionPhase) -> SessionSnapshot {
-        SessionSnapshot(
-            id: "claude:one",
-            source: .claude,
-            arrivalIndex: 0,
-            phase: phase,
-            lastObservedAt: Date(timeIntervalSince1970: 1_000)
-        )
+        testSession(phase: phase, lastObservedAt: Date(timeIntervalSince1970: 1_000))
     }
 }
 

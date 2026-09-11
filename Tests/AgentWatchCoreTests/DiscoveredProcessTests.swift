@@ -1,3 +1,4 @@
+import AgentWatchTestSupport
 import Foundation
 import XCTest
 
@@ -212,12 +213,6 @@ final class DiscoveredProcessTests: XCTestCase {
     }
 
     private func event(sessionLabel: String, agentProcessID: Int32?) -> EventEnvelope {
-        EventEnvelope(
-            source: .claude,
-            sessionID: sessionLabel,
-            observedAt: now,
-            kind: .sessionStarted,
-            agentProcessID: agentProcessID
-        )
+        testEvent(sessionLabel: sessionLabel, observedAt: now, agentProcessID: agentProcessID)
     }
 }

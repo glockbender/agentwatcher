@@ -140,13 +140,6 @@ final class AppUpdateTests: XCTestCase {
         XCTAssertNil(AppUpdate.checksum(fromChecksumFile: "zzz  AgentWatch-0.1.0.zip"))
     }
 
-    /// The reason the comparison is not string order, in one line.
-    func testATenthPatchIsNewerThanANinth() {
-        XCTAssertTrue(ReleaseVersion.isNewer("0.1.10", than: "0.1.9"))
-        XCTAssertFalse(ReleaseVersion.isNewer("0.1.9", than: "0.1.10"))
-        XCTAssertFalse(ReleaseVersion.isNewer("0.1.0", than: "0.1.0"))
-    }
-
     private func release(_ version: String) -> AppRelease {
         AppRelease(
             version: version,

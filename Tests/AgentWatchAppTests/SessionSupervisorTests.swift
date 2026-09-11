@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchTestSupport
 import XCTest
 
 @testable import AgentWatchApp
@@ -53,8 +54,8 @@ final class SessionSupervisorTests: XCTestCase {
         let supervisor = try makeSupervisor()
         XCTAssertFalse(supervisor.isPolling, "a supervisor with no sessions polls nothing")
 
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha"))
         XCTAssertTrue(supervisor.isPolling, "a working session is worth sweeping for")
 
         let session = try XCTUnwrap(supervisor.sessions.first)
@@ -67,7 +68,7 @@ final class SessionSupervisorTests: XCTestCase {
         var published: [[SessionSnapshot]] = []
         let supervisor = try makeSupervisor(onChange: { sessions, _ in published.append(sessions) })
 
-        let event = supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
+        let event = supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
 
         XCTAssertNotNil(event)
         XCTAssertEqual(supervisor.sessions.count, 1)
@@ -81,7 +82,7 @@ final class SessionSupervisorTests: XCTestCase {
         var publishes = 0
         let supervisor = try makeSupervisor(onChange: { _, _ in publishes += 1 })
 
-        let event = supervisor.ingest(request(event: "NotAnEventThisAgentSends", sessionID: "alpha"))
+        let event = supervisor.ingest(testRequest(event: "NotAnEventThisAgentSends", sessionID: "alpha"))
 
         XCTAssertNil(event)
         XCTAssertTrue(supervisor.sessions.isEmpty)
@@ -92,8 +93,8 @@ final class SessionSupervisorTests: XCTestCase {
     func testTheSweepRetiresAClosedSessionOnceItsTimeIsUp() throws {
         var clock = start
         let supervisor = try makeSupervisor(retention: .after(120), now: { clock })
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
-        supervisor.ingest(request(event: "SessionEnd", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionEnd", sessionID: "alpha"))
         XCTAssertEqual(supervisor.sessions.first?.phase, .sessionClosed)
 
         clock = start.addingTimeInterval(60)
@@ -118,17 +119,17 @@ final class SessionSupervisorTests: XCTestCase {
         var clock = start
         var logged: [String] = []
         let supervisor = try makeSupervisor(now: { clock }, onNotableEvent: { logged.append($0) })
-        supervisor.ingest(request(event: "SessionStart", sessionID: "unwatched"))
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "unwatched"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "unwatched"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "unwatched"))
         // A live process is watched, and its exit will be reported the moment it happens.
         supervisor.ingest(
-            request(
+            testRequest(
                 event: "SessionStart",
                 sessionID: "watched",
                 agentProcessID: ProcessInfo.processInfo.processIdentifier
             )
         )
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "watched"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "watched"))
         XCTAssertEqual(Set(supervisor.sessions.map(\.phase)), [.executing])
 
         clock = start.addingTimeInterval(SessionFreshnessEvaluator.defaultDisconnectAfter - 1)
@@ -164,7 +165,7 @@ final class SessionSupervisorTests: XCTestCase {
         let supervisor = try makeSupervisor(onNotableEvent: { logged.append($0) })
 
         // Refused by the redactor's allowlist, before anything is parsed.
-        supervisor.ingest(request(event: "SomethingNobodyRegistered", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SomethingNobodyRegistered", sessionID: "alpha"))
         XCTAssertTrue(supervisor.sessions.isEmpty, "an event that was refused starts no session")
         XCTAssertEqual(logged.count, 1)
         let refusal = try XCTUnwrap(logged.last)
@@ -190,8 +191,8 @@ final class SessionSupervisorTests: XCTestCase {
     func testTheTranscriptClosesACallTheHooksLeftOpen() throws {
         var logged: [String] = []
         let supervisor = try makeSupervisor(onNotableEvent: { logged.append($0) })
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha"))
         supervisor.ingest(toolCall(sessionID: "alpha", toolUseID: "tool-1"))
         let session = try XCTUnwrap(supervisor.sessions.first)
         let activityID = try XCTUnwrap(session.activities.first?.id)
@@ -219,8 +220,8 @@ final class SessionSupervisorTests: XCTestCase {
     func testATranscriptLineNamesTheSessionItBelongsTo() throws {
         var logged: [String] = []
         let supervisor = try makeSupervisor(onNotableEvent: { logged.append($0) })
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha"))
         supervisor.ingest(toolCall(sessionID: "alpha", toolUseID: "tool-1"))
         let session = try XCTUnwrap(supervisor.sessions.first)
         let activityID = try XCTUnwrap(session.activities.first?.id)
@@ -264,8 +265,8 @@ final class SessionSupervisorTests: XCTestCase {
     func testAnEndingBothSourcesReportIsNotLoggedTwice() throws {
         var logged: [String] = []
         let supervisor = try makeSupervisor(onNotableEvent: { logged.append($0) })
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha"))
         let session = try XCTUnwrap(supervisor.sessions.first)
 
         supervisor.applyTranscript([
@@ -285,8 +286,8 @@ final class SessionSupervisorTests: XCTestCase {
     /// judged stale by the very lines it arrived with.
     func testAnInterruptionIsNotOutrankedByTheLinesItArrivedWith() throws {
         let supervisor = try makeSupervisor()
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha"))
         let session = try XCTUnwrap(supervisor.sessions.first)
 
         supervisor.applyTranscript([
@@ -305,8 +306,8 @@ final class SessionSupervisorTests: XCTestCase {
     func testAFaultIsCarriedOntoTheSessionAndSaidOutLoudOnce() throws {
         var logged: [String] = []
         let supervisor = try makeSupervisor(onNotableEvent: { logged.append($0) })
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha"))
         let session = try XCTUnwrap(supervisor.sessions.first)
         let faulted = TranscriptUpdate(sessionID: session.id, facts: [], fault: .transcriptNotFound)
 
@@ -330,8 +331,8 @@ final class SessionSupervisorTests: XCTestCase {
     func testAFaultLineNamesTheSessionItBelongsTo() throws {
         var logged: [String] = []
         let supervisor = try makeSupervisor(onNotableEvent: { logged.append($0) })
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha"))
         let session = try XCTUnwrap(supervisor.sessions.first)
 
         supervisor.applyTranscript([
@@ -353,8 +354,8 @@ final class SessionSupervisorTests: XCTestCase {
     func testAHookMovesTheReadToJustAfterItself() throws {
         var clock = start
         let supervisor = try makeSupervisor(now: { clock })
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha"))
-        supervisor.ingest(request(event: "UserPromptSubmit", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha"))
         XCTAssertEqual(supervisor.nextTranscriptReadAt, start.addingTimeInterval(5))
 
         clock = start.addingTimeInterval(6)
@@ -412,8 +413,8 @@ final class SessionSupervisorTests: XCTestCase {
             history: SessionHistoryStore(directoryURL: directory),
             settings: settings
         )
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: "alpha", agentProcessID: getpid()))
-        firstLaunch.ingest(request(event: "UserPromptSubmit", sessionID: "alpha", agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha", agentProcessID: getpid()))
         let working = try XCTUnwrap(firstLaunch.sessions.first)
         XCTAssertTrue(working.phase.claimsWork)
         firstLaunch.stop()
@@ -433,7 +434,7 @@ final class SessionSupervisorTests: XCTestCase {
         XCTAssertEqual(secondLaunch.sessions.first?.arrivalIndex, working.arrivalIndex)
         XCTAssertEqual(published.count, 1, "a restored session is a change the widget has to be told about")
 
-        secondLaunch.ingest(request(event: "UserPromptSubmit", sessionID: "alpha", agentProcessID: getpid()))
+        secondLaunch.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha", agentProcessID: getpid()))
 
         XCTAssertEqual(secondLaunch.sessions.count, 1, "the hook lands on the row that came back")
         XCTAssertTrue(try XCTUnwrap(secondLaunch.sessions.first).phase.claimsWork)
@@ -452,8 +453,8 @@ final class SessionSupervisorTests: XCTestCase {
             settings: settings
         )
         // A PID above the system maximum belongs to nobody and never will.
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: "alpha", agentProcessID: 999_999))
-        firstLaunch.ingest(request(event: "UserPromptSubmit", sessionID: "alpha", agentProcessID: 999_999))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 999_999))
+        firstLaunch.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha", agentProcessID: 999_999))
         XCTAssertEqual(firstLaunch.sessions.count, 1)
         firstLaunch.stop()
 
@@ -493,7 +494,7 @@ final class SessionSupervisorTests: XCTestCase {
             settings: settings,
             home: home
         )
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: sessionID, agentProcessID: getpid()))
         firstLaunch.stop()
 
         // The session went on working while the app was not running, and its transcript is the
@@ -550,7 +551,7 @@ final class SessionSupervisorTests: XCTestCase {
             home: home
         )
         firstLaunch.ingest(
-            request(
+            testRequest(
                 event: "SessionStart",
                 sessionID: sessionID,
                 agentProcessID: getpid(),
@@ -624,7 +625,7 @@ final class SessionSupervisorTests: XCTestCase {
             liveAgentProcesses: { [running] },
             agentProcessStartedAt: { _ in startedAt }
         )
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: sessionID, agentProcessID: agentProcessID))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: sessionID, agentProcessID: agentProcessID))
         let session = try XCTUnwrap(firstLaunch.sessions.first)
         firstLaunch.remove(session)
         XCTAssertEqual(firstLaunch.sessions, [], "the row is gone, and so is its record")
@@ -693,7 +694,7 @@ final class SessionSupervisorTests: XCTestCase {
             liveAgentProcesses: { [running] },
             agentProcessStartedAt: { _ in startedAt }
         )
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: sessionID, agentProcessID: agentProcessID))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: sessionID, agentProcessID: agentProcessID))
         firstLaunch.remove(try XCTUnwrap(firstLaunch.sessions.first))
         firstLaunch.stop()
         try Data(
@@ -750,10 +751,10 @@ final class SessionSupervisorTests: XCTestCase {
             settings: settings,
             home: home
         )
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: sessionID, agentProcessID: getpid()))
-        firstLaunch.ingest(request(event: "UserPromptSubmit", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "UserPromptSubmit", sessionID: sessionID, agentProcessID: getpid()))
         firstLaunch.ingest(toolCall(sessionID: sessionID, toolUseID: try senderSideToolUseID("toolu_01")))
-        firstLaunch.ingest(request(event: "PermissionRequest", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "PermissionRequest", sessionID: sessionID, agentProcessID: getpid()))
         XCTAssertEqual(firstLaunch.sessions.first?.phase, .waitingForUser)
         let awaited = try XCTUnwrap(firstLaunch.sessions.first?.awaitedActivityID)
         firstLaunch.stop()
@@ -809,10 +810,10 @@ final class SessionSupervisorTests: XCTestCase {
             settings: settings,
             home: home
         )
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: sessionID, agentProcessID: getpid()))
-        firstLaunch.ingest(request(event: "UserPromptSubmit", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "UserPromptSubmit", sessionID: sessionID, agentProcessID: getpid()))
         firstLaunch.ingest(toolCall(sessionID: sessionID, toolUseID: try senderSideToolUseID("toolu_01")))
-        firstLaunch.ingest(request(event: "PermissionRequest", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "PermissionRequest", sessionID: sessionID, agentProcessID: getpid()))
         let awaited = try XCTUnwrap(firstLaunch.sessions.first?.awaitedActivityID)
         firstLaunch.stop()
 
@@ -847,10 +848,10 @@ final class SessionSupervisorTests: XCTestCase {
             settings: settings,
             home: home
         )
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: sessionID, agentProcessID: getpid()))
-        firstLaunch.ingest(request(event: "UserPromptSubmit", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "UserPromptSubmit", sessionID: sessionID, agentProcessID: getpid()))
         firstLaunch.ingest(toolCall(sessionID: sessionID, toolUseID: try senderSideToolUseID("toolu_01")))
-        firstLaunch.ingest(request(event: "PermissionRequest", sessionID: sessionID, agentProcessID: getpid()))
+        firstLaunch.ingest(testRequest(event: "PermissionRequest", sessionID: sessionID, agentProcessID: getpid()))
         firstLaunch.stop()
 
         // The call the session was waiting on reported back a minute later, which the
@@ -963,9 +964,9 @@ final class SessionSupervisorTests: XCTestCase {
         var notable: [String] = []
         let supervisor = try makeSupervisor(onNotableEvent: { notable.append($0) })
 
-        supervisor.ingest(request(event: "SessionStart", sessionID: "throwaway", agentProcessID: 501))
-        supervisor.ingest(request(event: "SessionEnd", sessionID: "throwaway", agentProcessID: 501))
-        let resumed = supervisor.ingest(request(event: "SessionStart", sessionID: "resumed", agentProcessID: 501))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "throwaway", agentProcessID: 501))
+        supervisor.ingest(testRequest(event: "SessionEnd", sessionID: "throwaway", agentProcessID: 501))
+        let resumed = supervisor.ingest(testRequest(event: "SessionStart", sessionID: "resumed", agentProcessID: 501))
 
         // Asked of the event rather than written out: the identifier a session is filed
         // under is its own put through the redaction.
@@ -1034,21 +1035,6 @@ final class SessionSupervisorTests: XCTestCase {
                 "tool_name": .string("Bash"),
                 "tool_use_id": .string(toolUseID),
             ])
-        )
-    }
-
-    private func request(
-        event: String,
-        sessionID: String,
-        agentProcessID: Int32? = nil,
-        description: SessionDescription? = nil
-    ) -> HookIngressRequest {
-        HookIngressRequest(
-            source: .claude,
-            declaredEvent: event,
-            payload: .object(["session_id": .string(sessionID)]),
-            agentProcessID: agentProcessID,
-            description: description
         )
     }
 

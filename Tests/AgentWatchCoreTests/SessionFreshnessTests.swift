@@ -1,3 +1,4 @@
+import AgentWatchTestSupport
 import XCTest
 
 @testable import AgentWatchCore
@@ -35,13 +36,6 @@ final class SessionFreshnessTests: XCTestCase {
     }
 
     private func snapshot(phase: SessionPhase) -> SessionSnapshot {
-        SessionSnapshot(
-            id: "session",
-            source: .claude,
-            arrivalIndex: 0,
-            title: "Claude Code",
-            phase: phase,
-            lastObservedAt: start
-        )
+        testSession(phase: phase, lastObservedAt: start)
     }
 }

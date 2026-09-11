@@ -1,3 +1,4 @@
+import AgentWatchTestSupport
 import XCTest
 
 @testable import AgentWatchCore
@@ -569,19 +570,8 @@ final class SessionReducerTests: XCTestCase {
         SessionActivity(id: id, kind: .advisor, startedAt: start)
     }
 
-    private func snapshot(
-        mode: SessionMode = .unknown,
-        phase: SessionPhase = .idle,
-    ) -> SessionSnapshot {
-        SessionSnapshot(
-            id: "session-1",
-            source: .codex,
-            arrivalIndex: 0,
-            title: "Agent Watch",
-            mode: mode,
-            phase: phase,
-            lastObservedAt: start.addingTimeInterval(-1)
-        )
+    private func snapshot(mode: SessionMode = .unknown, phase: SessionPhase = .idle) -> SessionSnapshot {
+        testSession(source: .codex, mode: mode, phase: phase, lastObservedAt: start.addingTimeInterval(-1))
     }
 
     private func activity(id: String) -> SessionActivity {

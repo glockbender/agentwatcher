@@ -34,19 +34,17 @@ final class AppUpdateProbe: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: executables.appendingPathComponent("AgentWatchSend").path))
 
         // The other half of installing: putting the new bundle where the old one is. Done
-        // here over a copy, because the real target is the running application.
+        // here over two copies of what was just unpacked — the real target is the running
+        // application, and one download is enough.
         let target = directory.appendingPathComponent("Target.app")
-        try? FileManager.default.removeItem(at: target)
-        try FileManager.default.copyItem(at: bundle, to: target)
-        let staged2 = await AppUpdater.stage(
-            downloadURL: try XCTUnwrap(newest.downloadURL),
-            checksumURL: try XCTUnwrap(newest.checksumURL),
-            expectedVersion: newest.version,
-            beside: target
-        )
+        let replacement = directory.appendingPathComponent("Replacement.app")
+        for copy in [target, replacement] {
+            try? FileManager.default.removeItem(at: copy)
+            try FileManager.default.copyItem(at: bundle, to: copy)
+        }
         try FileManager.default.replaceItem(
             at: target,
-            withItemAt: try XCTUnwrap(staged2),
+            withItemAt: replacement,
             backupItemName: nil,
             options: [],
             resultingItemURL: nil
@@ -71,7 +69,7 @@ final class AppUpdateProbe: XCTestCase {
         let list = try XCTUnwrap(
             URL(string: "https://api.github.com/repos/glockbender/agentwatcher/releases")
         )
-        let (data, _) = try await URLSession.shared.data(for: request(for: list))
+        let (data, _) = try await URLSession.shared.data(for: AppUpdate.request(for: list))
         let entries = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [Any])
         let first = try XCTUnwrap(entries.first, "the repository has published nothing")
         print("no finished release yet — falling back to the newest pre-release")
@@ -79,16 +77,10 @@ final class AppUpdateProbe: XCTestCase {
     }
 
     private func release(at url: URL) async throws -> AppRelease? {
-        let (data, response) = try await URLSession.shared.data(for: request(for: url))
+        let (data, response) = try await URLSession.shared.data(for: AppUpdate.request(for: url))
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             return nil
         }
         return AppUpdate.release(from: data)
-    }
-
-    private func request(for url: URL) -> URLRequest {
-        var request = URLRequest(url: url)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        return request
     }
 }

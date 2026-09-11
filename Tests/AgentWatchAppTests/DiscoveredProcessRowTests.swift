@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchTestSupport
 import XCTest
 
 @testable import AgentWatchApp
@@ -55,7 +56,7 @@ final class DiscoveredProcessRowTests: XCTestCase {
         )
         supervisor.start()
         defer { supervisor.stop() }
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
         let session = try XCTUnwrap(supervisor.sessions.first)
         XCTAssertNil(session.discoveredProcess, "this is a session that spoke, not a row built from a process")
 
@@ -90,7 +91,7 @@ final class DiscoveredProcessRowTests: XCTestCase {
         defer { supervisor.stop() }
         let discovered = try XCTUnwrap(supervisor.sessions.first)
 
-        supervisor.ingest(request(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
 
         let session = try XCTUnwrap(supervisor.sessions.first)
         XCTAssertEqual(supervisor.sessions.count, 1)
@@ -139,7 +140,7 @@ final class DiscoveredProcessRowTests: XCTestCase {
             agentProcessStartedAt: { [started] _ in started }
         )
         firstLaunch.start()
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
         let session = try XCTUnwrap(firstLaunch.sessions.first)
         firstLaunch.remove(session)
         firstLaunch.stop()
@@ -160,7 +161,7 @@ final class DiscoveredProcessRowTests: XCTestCase {
         )
 
         // And the moment it does speak, it is a session like any other — one the file keeps.
-        secondLaunch.ingest(request(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
+        secondLaunch.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
 
         XCTAssertNil(secondLaunch.sessions.first?.discoveredProcess)
         XCTAssertEqual(SessionHistoryStore(directoryURL: directory).remembered.map(\.id), [session.id])
@@ -178,7 +179,7 @@ final class DiscoveredProcessRowTests: XCTestCase {
             agentProcessStartedAt: { [started] _ in started }
         )
         firstLaunch.start()
-        firstLaunch.ingest(request(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
+        firstLaunch.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 4_242))
         firstLaunch.remove(try XCTUnwrap(firstLaunch.sessions.first))
         firstLaunch.stop()
         XCTAssertEqual(SessionHistoryStore(directoryURL: directory).rememberedAgentProcesses.count, 1)
@@ -296,15 +297,6 @@ final class DiscoveredProcessRowTests: XCTestCase {
             in: .userDomainMask,
             appropriateFor: FileManager.default.temporaryDirectory,
             create: true
-        )
-    }
-
-    private func request(event: String, sessionID: String, agentProcessID: Int32) -> HookIngressRequest {
-        HookIngressRequest(
-            source: .claude,
-            declaredEvent: event,
-            payload: .object(["session_id": .string(sessionID)]),
-            agentProcessID: agentProcessID
         )
     }
 }

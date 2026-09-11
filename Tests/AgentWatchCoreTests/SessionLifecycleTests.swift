@@ -1,3 +1,4 @@
+import AgentWatchTestSupport
 import Foundation
 import XCTest
 
@@ -680,17 +681,15 @@ final class SessionLifecycleTests: XCTestCase {
         description: SessionDescription? = nil,
         contextTelemetry: SessionContextTelemetry? = nil
     ) -> EventEnvelope {
-        EventEnvelope(
+        testEvent(
             source: source,
-            sessionID: id,
-            description: description,
-            activityID: kind == .activityCompleted ? "activity-1" : nil,
-            observedAt: observedAt,
+            sessionLabel: id,
             kind: kind,
+            observedAt: observedAt,
             mode: .standard,
-            userInputRequestKind: kind == .userInputRequired ? .approval : nil,
             agentProcessID: agentProcessID,
             clientKind: clientKind,
+            description: description,
             contextTelemetry: contextTelemetry
         )
     }

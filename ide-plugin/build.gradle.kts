@@ -47,8 +47,9 @@ dependencies {
         // No IDE installed — a fresh machine, a continuous integration runner — and Gradle
         // fetches one instead of the build failing. It costs a gigabyte once and is cached
         // afterwards, which is a price worth paying only where the alternative is not
-        // building at all. Community Edition: it is free to download and carries the terminal
-        // tool window, which is the only part of a product this plugin touches.
+        // building at all. GoLand rather than IntelliJ IDEA Community, which would be the
+        // smaller download: Community has no 2026.1 to fetch, and 2026.1 is where the
+        // terminal classes this plugin compiles against first appeared.
         if (ideHome != null) {
             local(ideHome)
         } else {

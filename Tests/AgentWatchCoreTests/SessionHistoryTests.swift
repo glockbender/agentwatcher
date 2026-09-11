@@ -1,3 +1,4 @@
+import AgentWatchTestSupport
 import Foundation
 import XCTest
 
@@ -104,11 +105,6 @@ final class SessionHistoryTests: XCTestCase {
     }
 
     private func event(sessionLabel: String) -> EventEnvelope {
-        EventEnvelope(
-            source: .claude,
-            sessionID: sessionLabel,
-            observedAt: now,
-            kind: .sessionStarted
-        )
+        testEvent(sessionLabel: sessionLabel, observedAt: now)
     }
 }

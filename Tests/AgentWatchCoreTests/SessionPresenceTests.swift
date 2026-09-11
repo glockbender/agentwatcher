@@ -1,3 +1,4 @@
+import AgentWatchTestSupport
 import Foundation
 import XCTest
 
@@ -71,13 +72,6 @@ final class SessionPresenceTests: XCTestCase {
     }
 
     private func snapshot(phase: SessionPhase) -> SessionSnapshot {
-        SessionSnapshot(
-            id: "session-1",
-            source: .claude,
-            arrivalIndex: 0,
-            mode: .standard,
-            phase: phase,
-            lastObservedAt: now
-        )
+        testSession(mode: .standard, phase: phase, lastObservedAt: now)
     }
 }

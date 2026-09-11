@@ -145,7 +145,7 @@ NSApp.terminate(nil)
 
 ## Как это проверялось
 
-Решение — обычная функция, и её покрывают тринадцать тестов. Они проверяют всё, что можно перепутать:
+Решение — обычная функция, и её покрывают юнит-тесты. Они проверяют всё, что можно перепутать:
 своя версия новее, старее или равна; черновик релиза; отложенная версия и следующая за ней; мусор
 вместо JSON; релизов нет вовсе. Сеть в этих тестах не нужна.
 
@@ -155,7 +155,7 @@ NSApp.terminate(nil)
 
 ```console
 $ UPDATE_PROBE_DIR=/tmp/update swift test --filter AppUpdateProbe
-latest release: 0.1.0 — https://github.com/.../AgentWatch-0.1.0.zip
+release under test: 0.1.0 — https://github.com/.../AgentWatch-0.1.0.zip
 unpacked: /var/folders/.../AgentWatch.app
 replaced in place: /tmp/update/Target.app is now 0.1.0
 ```

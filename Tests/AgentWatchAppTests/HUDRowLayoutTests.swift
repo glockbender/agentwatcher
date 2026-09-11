@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchTestSupport
 import AppKit
 import XCTest
 
@@ -669,7 +670,7 @@ final class HUDRowLayoutTests: XCTestCase {
             now: now,
             background: .graphite,
             lampScheme: LampScheme(),
-            onFocus: SessionPresence.canBeBroughtForward(snapshot) ? {} : nil,
+            onFocus: {},
             onRemove: SessionPresence.isDismissible(snapshot, now: now) ? {} : nil
         )
     }
@@ -684,7 +685,7 @@ final class HUDRowLayoutTests: XCTestCase {
             now: now,
             background: .graphite,
             lampScheme: LampScheme(),
-            onFocus: SessionPresence.canBeBroughtForward(snapshot ?? self.snapshot()) ? {} : nil,
+            onFocus: {},
             onRemove: onRemove
         )
         view.setTitle((snapshot ?? self.snapshot()).title, display: titleDisplay)

@@ -35,9 +35,17 @@ let package = Package(
             name: "AgentWatchIngress",
             dependencies: ["AgentWatchCore"]
         ),
+        // Fixtures both test targets build their sessions from. A library rather than a file
+        // in each, because a test target cannot see another's sources and two copies of a
+        // fixture drift apart the first time one of them grows a parameter.
+        .target(
+            name: "AgentWatchTestSupport",
+            dependencies: ["AgentWatchCore"],
+            path: "Tests/AgentWatchTestSupport"
+        ),
         .testTarget(
             name: "AgentWatchCoreTests",
-            dependencies: ["AgentWatchCore"]
+            dependencies: ["AgentWatchCore", "AgentWatchTestSupport"]
         ),
         .testTarget(
             name: "AgentWatchIngressTests",
@@ -45,7 +53,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AgentWatchAppTests",
-            dependencies: ["AgentWatchApp"]
+            dependencies: ["AgentWatchApp", "AgentWatchTestSupport"]
         ),
     ],
     swiftLanguageModes: [.v6]

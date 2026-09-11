@@ -285,7 +285,7 @@ private func idePluginUpdateStep(installedVersion: String?, staged: StagedIDEPlu
     guard
         let staged,
         let installedVersion,
-        IDEPluginInstallation.isVersion(staged.version, newerThan: installedVersion)
+        ReleaseVersion.isNewer(staged.version, than: installedVersion)
     else {
         return nil
     }

@@ -61,12 +61,44 @@ public enum AppUpdate {
         return URL(string: "https://api.github.com/repos/glockbender/agentwatcher/releases/latest")
     }
 
+    /// A request GitHub's API answers with the JSON `release(from:)` reads.
+    ///
+    /// Written once because two callers send it — the app's check and the probe that
+    /// downloads a real release — and the idle timeout is a decision, not a default: a check
+    /// that hangs would hold the "one check at a time" flag for as long as the system's
+    /// own limit, which is a minute.
+    public static func request(for url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        return request
+    }
+
     /// The release in an API answer, or nothing when the answer holds none.
     public static func release(from data: Data) -> AppRelease? {
-        guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard
+            let entry = try? JSONDecoder().decode(ReleaseEntry.self, from: data),
+            entry.draft != true,
+            let pageURL = URL(string: entry.htmlURL)
+        else {
             return nil
         }
-        return release(from: parsed)
+        let version = entry.tagName.hasPrefix("v") ? String(entry.tagName.dropFirst()) : entry.tagName
+        guard !version.isEmpty else {
+            return nil
+        }
+        // The file named after the version rather than the first zip in the release: a
+        // release carries the IDE plugin too, and that one is versioned on its own.
+        let assets = entry.assets ?? []
+        func asset(named name: String) -> URL? {
+            assets.first { $0.name == name }?.browserDownloadURL.flatMap(URL.init(string:))
+        }
+        return AppRelease(
+            version: version,
+            pageURL: pageURL,
+            downloadURL: asset(named: "AgentWatch-\(version).zip"),
+            checksumURL: asset(named: "AgentWatch-\(version).zip.sha256")
+        )
     }
 
     /// What to do about the release found, given what is running and what was set aside.
@@ -100,36 +132,32 @@ public enum AppUpdate {
         return String(hash).lowercased()
     }
 
-    private static func release(from entry: [String: Any]) -> AppRelease? {
-        guard
-            (entry["draft"] as? Bool) != true,
-            let tag = entry["tag_name"] as? String,
-            let pageAddress = entry["html_url"] as? String,
-            let pageURL = URL(string: pageAddress)
-        else {
-            return nil
-        }
-        let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-        guard !version.isEmpty else {
-            return nil
-        }
-        let assets = (entry["assets"] as? [[String: Any]]) ?? []
-        return AppRelease(
-            version: version,
-            pageURL: pageURL,
-            downloadURL: assetURL(in: assets, named: "AgentWatch-\(version).zip"),
-            checksumURL: assetURL(in: assets, named: "AgentWatch-\(version).zip.sha256")
-        )
-    }
+    /// The fields of GitHub's release object this reads, and none of the other seventy.
+    ///
+    /// Every field a release may lack is optional, so an answer missing one still reads —
+    /// the one exception is the page address, without which there is nowhere to send a
+    /// person when the rest goes wrong.
+    private struct ReleaseEntry: Decodable {
+        struct Asset: Decodable {
+            let name: String
+            let browserDownloadURL: String?
 
-    /// The file named after the version rather than the first zip in the release: a release
-    /// carries the IDE plugin too, and that one is versioned on its own.
-    private static func assetURL(in assets: [[String: Any]], named name: String) -> URL? {
-        for asset in assets where (asset["name"] as? String) == name {
-            if let address = asset["browser_download_url"] as? String {
-                return URL(string: address)
+            enum CodingKeys: String, CodingKey {
+                case name
+                case browserDownloadURL = "browser_download_url"
             }
         }
-        return nil
+
+        let tagName: String
+        let draft: Bool?
+        let htmlURL: String
+        let assets: [Asset]?
+
+        enum CodingKeys: String, CodingKey {
+            case tagName = "tag_name"
+            case draft
+            case htmlURL = "html_url"
+            case assets
+        }
     }
 }

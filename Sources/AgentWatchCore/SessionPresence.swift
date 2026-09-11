@@ -2,14 +2,22 @@ import Foundation
 
 /// What a person can still do about a session, and when.
 ///
-/// A statement about sessions rather than about views. It lived as a static on the row
-/// that drew it, where the only way to reach it was through the AppKit target.
-///
-/// Its companion `canFocusHost` used to grey the row's `↗` from a host resolution that
-/// could fail for a moment and was then kept for the life of the row. That question is gone;
-/// `canBeBroughtForward` below is not it returning. It asks nothing about the running system
-/// — only what kind of place the session itself said it is in.
+/// A statement about sessions rather than about views, which is why it is in this target
+/// and not beside the row that draws the buttons: `AGENTS.md` wants rules like these
+/// checkable without an application.
 public enum SessionPresence {
+    /// Whether `↗` can ever reach this session.
+    ///
+    /// Asks nothing about the running system — only what kind of place the session itself
+    /// said it is in. A background session is the one row where the answer is no and cannot
+    /// change: the agent runs it in a pty of its own, and its process tree ends at `launchd`
+    /// with no application above it. Every other row has a host that may be running, may
+    /// have quit, or may not have been found this second, and none of that is predicted
+    /// here: a button greyed on a guess about the host is wrong whenever the guess is.
+    public static func canBeBroughtForward(_ snapshot: SessionSnapshot) -> Bool {
+        snapshot.clientKind != .background
+    }
+
     /// A session the app will never revisit on its own needs a way out by hand.
     ///
     /// `closed` is terminal. `no signal` is reversible in principle, but nothing sweeps it:
@@ -25,17 +33,6 @@ public enum SessionPresence {
     /// threshold because the app still believes what the row says; a fault is the app saying
     /// it does not, and a person should not have to wait half an hour to clear a row that has
     /// already announced it may be wrong.
-    /// Whether `↗` can ever reach this session.
-    ///
-    /// A background session is the one row where the answer is no and cannot change: the
-    /// agent runs it in a pty of its own, and its process tree ends at `launchd` with no
-    /// application above it. Every other row has a host that may be running, may have quit,
-    /// or may not have been found this second — none of which this rule tries to predict,
-    /// because that is what made the old grey button wrong.
-    public static func canBeBroughtForward(_ snapshot: SessionSnapshot) -> Bool {
-        snapshot.clientKind != .background
-    }
-
     public static func isDismissible(_ snapshot: SessionSnapshot, now: Date) -> Bool {
         if snapshot.phase == .sessionClosed || snapshot.phase == .disconnected {
             return true

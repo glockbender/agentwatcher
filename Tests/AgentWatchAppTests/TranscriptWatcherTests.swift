@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchTestSupport
 import XCTest
 
 @testable import AgentWatchApp

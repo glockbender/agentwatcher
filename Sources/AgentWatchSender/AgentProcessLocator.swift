@@ -174,22 +174,11 @@ public enum AgentProcessLocator {
 
     /// When a process started, or `nil` when there is no such process.
     ///
-    /// One call answers both questions, which is why it is one call. A PID nobody holds makes
-    /// `sysctl` succeed and fill in nothing, so the returned size is what tells "started then"
-    /// apart from "no such process" — checking only the result would read a zeroed struct as a
-    /// process that started in 1970.
-    ///
     /// Public because the app needs it for a question the sender never asks: a session
     /// remembered from a previous launch names a PID, and macOS reuses those. A process that
     /// started after the session's last event is somebody else's.
     public static func startTime(of processID: Int32) -> Date? {
-        var process = kinfo_proc()
-        var managementInformationBase: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, processID]
-        var size = MemoryLayout<kinfo_proc>.size
-        guard
-            sysctl(&managementInformationBase, u_int(managementInformationBase.count), &process, &size, nil, 0) == 0,
-            size > 0
-        else {
+        guard let process = kernelRecord(of: processID) else {
             return nil
         }
         let startedAt = process.kp_proc.p_starttime
@@ -198,14 +187,21 @@ public enum AgentProcessLocator {
         )
     }
 
-    /// The parent of a process, or `nil` when the kernel will not say.
+    /// The parent of a process, or `nil` when there is no such process.
     ///
     /// Public because the app walks the same tree to find the window a session belongs to,
     /// and two copies of a `sysctl` call is two places to get the struct layout wrong.
-    /// The `size` check is the same one `startTime` explains and for the same reason: a PID
-    /// nobody holds makes `sysctl` succeed and write nothing, so without it a dead process
-    /// answers "parent 0" — a number, where the caller asked a question that has no answer.
     public static func parentProcessID(of processID: Int32) -> Int32? {
+        kernelRecord(of: processID)?.kp_eproc.e_ppid
+    }
+
+    /// The kernel's record of a process, or `nil` when there is no such process.
+    ///
+    /// One call answers both questions, which is why it is one call. A PID nobody holds makes
+    /// `sysctl` succeed and fill in nothing, so the returned size is what tells a record apart
+    /// from "no such process" — checking only the result would read a zeroed struct as a
+    /// process that started in 1970 with parent 0.
+    private static func kernelRecord(of processID: Int32) -> kinfo_proc? {
         var process = kinfo_proc()
         var managementInformationBase: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, processID]
         var size = MemoryLayout<kinfo_proc>.size
@@ -215,7 +211,7 @@ public enum AgentProcessLocator {
         else {
             return nil
         }
-        return process.kp_eproc.e_ppid
+        return process
     }
 
     /// The directory a process is working in.

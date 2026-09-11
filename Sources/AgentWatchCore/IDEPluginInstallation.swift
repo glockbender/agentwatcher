@@ -191,12 +191,7 @@ public enum IDEPluginInstallation {
                 let version = String(name.dropFirst(filePrefix.count).dropLast(fileSuffix.count))
                 return version.isEmpty ? nil : StagedIDEPlugin(fileName: name, version: version)
             }
-            .max { isVersion($1.version, newerThan: $0.version) }
-    }
-
-    /// Whether one version string names a later release than the other. See `ReleaseVersion`.
-    public static func isVersion(_ version: String, newerThan other: String) -> Bool {
-        ReleaseVersion.isNewer(version, than: other)
+            .max { ReleaseVersion.isNewer($1.version, than: $0.version) }
     }
 
     /// A token for one `ping`.

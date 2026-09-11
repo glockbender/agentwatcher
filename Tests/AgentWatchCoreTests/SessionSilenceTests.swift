@@ -1,3 +1,4 @@
+import AgentWatchTestSupport
 import Foundation
 import XCTest
 
@@ -65,14 +66,7 @@ final class SessionSilenceTests: XCTestCase {
     // MARK: - Helpers
 
     private func snapshot(phase: SessionPhase, activities: [SessionActivity] = []) -> SessionSnapshot {
-        SessionSnapshot(
-            id: "claude:alpha",
-            source: .claude,
-            arrivalIndex: 0,
-            phase: phase,
-            activities: activities,
-            lastObservedAt: start
-        )
+        testSession(phase: phase, activities: activities, lastObservedAt: start)
     }
 
     private func call(id: String) -> SessionActivity {

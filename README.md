@@ -48,9 +48,10 @@ settings as a plain `settings.json` you can edit, and the sessions of the last l
 does not leave the widget empty.
 
 Nothing about your work leaves the machine. The one request the app makes is to GitHub's public API,
-at launch, to see whether a newer build exists — no parameters, nothing about you, not even the
-version you run, because the comparison happens here. It offers to download and install the update
-itself, and the whole check can be turned off in the `Updates` menu.
+to see whether a newer build exists — at launch, and when you ask from the `Updates` menu. It carries
+no parameters and nothing about you, not even the version you run, because the comparison happens
+here. The app offers to download and install the update itself, and the launch check can be turned
+off in the same menu.
 
 ## JetBrains IDE plugin
 
