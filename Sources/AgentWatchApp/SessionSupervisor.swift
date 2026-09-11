@@ -96,6 +96,14 @@ final class SessionSupervisor {
         orderedSnapshots()
     }
 
+    /// What each agent's account has left, as the widget shows it under the divider.
+    ///
+    /// Read directly as well as published, so a redraw that no event asked for — a tooling
+    /// change, say — can assemble the widget's whole state without waiting for one.
+    var usageLimits: [AgentUsageLimits] {
+        Array(engine.usageLimitsBySource.values)
+    }
+
     /// Whether the maintenance timer is currently running.
     ///
     /// Exposed because `AGENTS.md` forbids polling while there is nothing to poll for, and
@@ -671,7 +679,7 @@ final class SessionSupervisor {
             agentProcesses: sessionsByAgentProcess.values.sorted { $0.processID < $1.processID },
             at: now()
         )
-        onChange(snapshots, Array(engine.usageLimitsBySource.values))
+        onChange(snapshots, usageLimits)
         updateMaintenanceTimer()
         transcripts.update(sessions: snapshots)
     }

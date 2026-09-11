@@ -15,9 +15,9 @@ final class HUDSelfSizingTests: XCTestCase {
     func testTheHeightFollowsTheSessionCount() throws {
         let (controller, _) = try makeController()
 
-        controller.update(sessions: sessions(1), usageLimits: [])
+        controller.render(WidgetState(sessions: sessions(1)))
         let withOne = try height(of: controller)
-        controller.update(sessions: sessions(5), usageLimits: [])
+        controller.render(WidgetState(sessions: sessions(5)))
         let withFive = try height(of: controller)
 
         XCTAssertGreaterThan(withFive, withOne, "five rows need more room than one")
@@ -25,13 +25,13 @@ final class HUDSelfSizingTests: XCTestCase {
 
     func testASizeChosenByHandStopsTheHeightFromMoving() throws {
         let (controller, frameStore) = try makeController()
-        controller.update(sessions: sessions(5), usageLimits: [])
+        controller.render(WidgetState(sessions: sessions(5)))
 
         // The order a finished drag happens in: the window is already the new size, and the
         // store is told about it afterwards. `save` records a size, it does not apply one.
         try XCTUnwrap(controller.window).setContentSize(NSSize(width: 380, height: 300))
         frameStore.save(NSSize(width: 380, height: 300))
-        controller.update(sessions: sessions(1), usageLimits: [])
+        controller.render(WidgetState(sessions: sessions(1)))
 
         XCTAssertEqual(try height(of: controller), 300, accuracy: 0.5)
     }
@@ -42,11 +42,11 @@ final class HUDSelfSizingTests: XCTestCase {
         let (controller, frameStore) = try makeController()
         try XCTUnwrap(controller.window).setContentSize(NSSize(width: 380, height: 300))
         frameStore.save(NSSize(width: 380, height: 300))
-        controller.update(sessions: sessions(1), usageLimits: [])
+        controller.render(WidgetState(sessions: sessions(1)))
 
         controller.resetSize()
         let withOne = try height(of: controller)
-        controller.update(sessions: sessions(6), usageLimits: [])
+        controller.render(WidgetState(sessions: sessions(6)))
 
         XCTAssertLessThan(withOne, 300, "the reset drops the size that was chosen by hand")
         XCTAssertGreaterThan(try height(of: controller), withOne, "and the height follows again")

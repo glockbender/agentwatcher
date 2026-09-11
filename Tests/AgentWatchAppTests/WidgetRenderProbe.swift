@@ -238,6 +238,12 @@ final class WidgetRenderProbe: XCTestCase {
             )
         ]
 
+        // An agent with no window of its own. Its `↗` is greyed rather than hidden, and this
+        // is the only place that can be looked at: a disabled button beside enabled ones has
+        // to read as unavailable without reading as broken.
+        var headless = session(10, "Ночная проверка по расписанию", .executing, secondsAgo: 12)
+        headless.clientKind = .background
+
         var codex = session(2, "Мониторинг AI-сессий", .completed, secondsAgo: 400)
         codex.clientKind = .desktop
         // The only agent that says what its count is a fraction of, so the only row that can
@@ -266,8 +272,8 @@ final class WidgetRenderProbe: XCTestCase {
         ).row(arrivalIndex: 9)
 
         return [
-            working, waiting, compacting, consulting, background, unnamed, codex, lost,
-            session(4, "Старая сессия", .sessionClosed, secondsAgo: 30), discovered,
+            working, waiting, compacting, consulting, background, headless, unnamed, codex,
+            lost, session(4, "Старая сессия", .sessionClosed, secondsAgo: 30), discovered,
         ]
     }
 
@@ -282,11 +288,10 @@ final class WidgetRenderProbe: XCTestCase {
 
     private func listView(width: CGFloat) -> HUDSessionListView {
         let list = HUDSessionListView(
-            sessions: sessions(),
+            models: rowModels(sessions(), now: now),
             usageLimits: [AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 17), observedAt: now)],
             now: now,
             availableWidth: width,
-            showsSessionTopic: true,
             focus: { _ in },
             remove: { _ in },
             background: .graphite,

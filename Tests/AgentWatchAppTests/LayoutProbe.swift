@@ -15,8 +15,8 @@ final class LayoutProbe: XCTestCase {
                 clientKind: .cli, lastObservedAt: now)
         }
         let list = HUDSessionListView(
-            sessions: sessions, usageLimits: [], now: now, availableWidth: 300,
-            showsSessionTopic: true, focus: { _ in }, remove: { _ in },
+            models: rowModels(sessions, now: now), usageLimits: [], now: now, availableWidth: 300,
+            focus: { _ in }, remove: { _ in },
             background: .graphite, lampScheme: LampScheme(), backgroundOpacity: 1,
             restoredScrollOffset: nil, onScroll: { _ in })
         let window = NSWindow(

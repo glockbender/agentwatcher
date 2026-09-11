@@ -102,7 +102,7 @@ final class HoverCardFreshnessTests: XCTestCase {
         )
         session.contextTelemetry = nil
         controller.show()
-        controller.update(sessions: [session])
+        controller.render(WidgetState(sessions: [session]))
 
         let row = try XCTUnwrap(controller.currentRow(for: session.id))
         controller.hoverChanged(row, isInside: true)

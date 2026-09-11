@@ -225,11 +225,10 @@ final class HUDOverflowTests: XCTestCase {
     /// This drives the count up and down repeatedly and counts the layout passes it costs.
     func testChangingTheCountDoesNotSetOffAnotherLayoutPass() {
         let list = CountingListView(
-            sessions: (0..<6).map { session(index: $0) },
+            models: rowModels((0..<6).map { session(index: $0) }, now: now),
             usageLimits: [],
             now: now,
             availableWidth: 300,
-            showsSessionTopic: true,
             focus: { _ in },
             remove: { _ in },
             background: .graphite,
@@ -265,11 +264,10 @@ final class HUDOverflowTests: XCTestCase {
 
     private func listView(sessionCount: Int, title: String? = nil) -> HUDSessionListView {
         HUDSessionListView(
-            sessions: (0..<sessionCount).map { session(index: $0, title: title) },
+            models: rowModels((0..<sessionCount).map { session(index: $0, title: title) }, now: now),
             usageLimits: [],
             now: now,
             availableWidth: 400,
-            showsSessionTopic: true,
             focus: { _ in },
             remove: { _ in },
             background: .graphite,

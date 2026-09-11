@@ -15,11 +15,15 @@ class HUDSessionListView: NSView {
     /// height as well, which is why there is one of these and not one per reader.
     static let verticalPadding: CGFloat = 6
 
-    private let sessions: [SessionSnapshot]
+    /// What each row is currently showing, in the order the rows are in. Kept so the next
+    /// report can be compared against it and only the rows that differ rebuilt.
+    private var models: [HUDRowModel]
     private let usageLimits: [AgentUsageLimits]
-    private let now: Date
+    /// The moment the rows currently on screen were built against, which a row reads for the
+    /// age it prints. Moved on by `apply`: a list outlives many events now, and a row rebuilt
+    /// against the moment the list was created would state an age nobody asked about.
+    private var now: Date
     private let availableWidth: CGFloat
-    private let showsSessionTopic: Bool
     private let focus: (SessionSnapshot) -> Void
     private let remove: (SessionSnapshot) -> Void
     private let background: WidgetBackground
@@ -37,11 +41,10 @@ class HUDSessionListView: NSView {
     private var hasRestoredScrollOffset = false
 
     init(
-        sessions: [SessionSnapshot],
+        models: [HUDRowModel],
         usageLimits: [AgentUsageLimits],
         now: Date,
         availableWidth: CGFloat,
-        showsSessionTopic: Bool,
         focus: @escaping (SessionSnapshot) -> Void,
         remove: @escaping (SessionSnapshot) -> Void,
         background: WidgetBackground,
@@ -51,11 +54,10 @@ class HUDSessionListView: NSView {
         onScroll: @escaping (NSPoint) -> Void,
         onHoverChanged: @escaping (HUDSessionRowView, Bool) -> Void = { _, _ in }
     ) {
-        self.sessions = sessions
+        self.models = models
         self.usageLimits = usageLimits
         self.now = now
         self.availableWidth = availableWidth
-        self.showsSessionTopic = showsSessionTopic
         self.focus = focus
         self.remove = remove
         self.background = background
@@ -82,7 +84,6 @@ class HUDSessionListView: NSView {
         // superview and no window can only lay out itself, so this cannot reach the enclosing
         // pass whatever calls `init`.
         let rows = makeRows()
-        let rowWidths = rows.map { max(availableWidth - 2 * Self.horizontalInset, $0.fittingSize.width) }
         let rowStack = FlippedStackView(views: rows)
         rowStack.orientation = .vertical
         rowStack.alignment = .leading
@@ -139,9 +140,10 @@ class HUDSessionListView: NSView {
         // button of the rows that did fit landed at 180…204, just past the visible 178. The
         // row's own intrinsic width is no defence there — the flexible gap inside it barely
         // resists growing, which is exactly what makes the right edge work.
-        constraints += zip(rows, rowWidths).map { row, width in
-            row.widthAnchor.constraint(equalToConstant: width)
-        }
+        //
+        // A row built later — by the diff, for a session that has just arrived — is given the
+        // same width the same way, in `pinWidth(of:)`.
+        constraints += rows.map(widthConstraint(for:))
 
         let usageStack = makeUsageStack()
         if let usageStack {
@@ -177,6 +179,102 @@ class HUDSessionListView: NSView {
         addSubview(container)
         container.pinToEdges(of: self)
         NSLayoutConstraint.activate(constraints)
+    }
+
+    /// Whether this list can go on being used, or has to give way to one built afresh.
+    ///
+    /// What it cannot change once built: the width every row was measured against, the usage
+    /// block under the divider, which is not made of rows, and the look — a lamp reads its
+    /// colours once when it is built, so a recoloured phase reaches the screen only through a
+    /// row built again. That last one is not reasoning but a measurement: `LampSchemeReachesTheWidgetTests`
+    /// caught the diff leaving a repainted lamp on screen in its old colour.
+    func canShow(
+        usageLimits: [AgentUsageLimits],
+        atWidth width: CGFloat,
+        background: WidgetBackground,
+        lampScheme: LampScheme,
+        backgroundOpacity: CGFloat
+    ) -> Bool {
+        abs(width - availableWidth) < 0.5
+            && usageLimits == self.usageLimits
+            && background == self.background
+            && lampScheme == self.lampScheme
+            && backgroundOpacity == self.backgroundOpacity
+    }
+
+    /// Shows a new set of models, rebuilding only the rows that differ.
+    ///
+    /// Answers whether anything changed, so the widget can skip the resize and the layout
+    /// that would follow a report that changed nothing.
+    ///
+    /// The rows that stay are the same objects they were, which is the point: the pointer
+    /// keeps the row it was resting on, the tooltip that was counting down survives, and the
+    /// scroll position is never touched because the scroll view itself is never replaced.
+    @discardableResult
+    func apply(models newModels: [HUDRowModel], now: Date) -> Bool {
+        guard let rowStack = scrollView?.documentView as? NSStackView else {
+            return false
+        }
+        let update = rowListUpdate(from: models, to: newModels)
+        guard !update.changesNothing else {
+            return false
+        }
+        // Before any row is built, because that is what a row reads its age from.
+        self.now = now
+
+        let rebuilt = Set(update.rebuilt)
+        var rowsByID = Dictionary(
+            rowStack.arrangedSubviews.compactMap { $0 as? HUDSessionRowView }.map { ($0.snapshot.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for id in update.removed + update.rebuilt {
+            guard let row = rowsByID.removeValue(forKey: id) else {
+                continue
+            }
+            rowStack.removeArrangedSubview(row)
+            row.removeFromSuperview()
+        }
+
+        var constraints: [NSLayoutConstraint] = []
+        let rows = newModels.map { model -> HUDSessionRowView in
+            if !rebuilt.contains(model.id), let existing = rowsByID[model.id] {
+                return existing
+            }
+            let row = makeRow(for: model)
+            constraints.append(widthConstraint(for: row))
+            return row
+        }
+        NSLayoutConstraint.activate(constraints)
+
+        // Placed one by one rather than emptied and refilled: `insertArrangedSubview` moves a
+        // view that is already arranged, and a row that keeps its place is never touched at
+        // all. Emptying the stack first would take every surviving row out of the window and
+        // put it back, which is exactly the disturbance this method exists to avoid.
+        for (index, row) in rows.enumerated()
+        where rowStack.arrangedSubviews.indices.contains(index)
+            ? rowStack.arrangedSubviews[index] !== row : true
+        {
+            rowStack.insertArrangedSubview(row, at: index)
+        }
+
+        models = newModels
+        return true
+    }
+
+    /// Each row is as wide as the visible area — see the note in `buildContent` for what a
+    /// constraint against the clip view did instead.
+    private func widthConstraint(for row: HUDSessionRowView) -> NSLayoutConstraint {
+        row.widthAnchor.constraint(
+            equalToConstant: max(availableWidth - 2 * Self.horizontalInset, row.fittingSize.width)
+        )
+    }
+
+    /// Every row on screen, in the order they are shown.
+    var rows: [HUDSessionRowView] {
+        guard let rowStack = scrollView?.documentView as? NSStackView else {
+            return []
+        }
+        return rowStack.arrangedSubviews.compactMap { $0 as? HUDSessionRowView }
     }
 
     /// The row currently showing this session, if it is on screen at all.
@@ -252,22 +350,27 @@ class HUDSessionListView: NSView {
     }
 
     private func makeRows() -> [HUDSessionRowView] {
-        orderedForDisplay(sessions)
-            .map { snapshot in
-                let row = HUDSessionRowView(
-                    snapshot: snapshot,
-                    now: now,
-                    background: background,
-                    lampScheme: lampScheme,
-                    onFocus: { [focus] in focus(snapshot) },
-                    onRemove: SessionPresence.isDismissible(snapshot, now: now)
-                        ? { [remove] in remove(snapshot) } : nil,
-                    onHoverChanged: onHoverChanged
-                )
-                let name = rowName(for: snapshot, showsSessionTopic: showsSessionTopic)
-                row.setTitle(name, display: titleDisplay(name, in: row))
-                return row
-            }
+        models.map(makeRow(for:))
+    }
+
+    /// One row, built to show exactly what its model says.
+    ///
+    /// Every question the row used to answer from the clock — whether it offers a `×`, what
+    /// name it carries — is already settled in the model, so two rows built from equal models
+    /// are the same row and the diff is allowed to keep the one already on screen.
+    private func makeRow(for model: HUDRowModel) -> HUDSessionRowView {
+        let snapshot = model.snapshot
+        let row = HUDSessionRowView(
+            snapshot: snapshot,
+            now: now,
+            background: background,
+            lampScheme: lampScheme,
+            onFocus: { [focus] in focus(snapshot) },
+            onRemove: model.isDismissible ? { [remove] in remove(snapshot) } : nil,
+            onHoverChanged: onHoverChanged
+        )
+        row.setTitle(model.name, display: titleDisplay(model.name, in: row))
+        return row
     }
 
     /// Measures this row's own counts rather than a shared worst case, so a quiet row can

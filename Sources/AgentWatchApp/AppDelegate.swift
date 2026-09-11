@@ -19,6 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var closedSessionMenuItems: [NSMenuItem] = []
     private var transcriptMenuItems: [NSMenuItem] = []
     private let installer = ToolingInstaller()
+    /// What the widget says instead of "No active sessions", as last read from the agents'
+    /// own configuration files. Read at four moments, shown on every redraw.
+    private var widgetComplaint: String?
     /// What this sitting has asked of each IDE, by its settings directory name. Never read
     /// from disk and never remembered past a launch: it is the difference between "the file
     /// says the plugin was here" and "it answered me a moment ago".
@@ -36,12 +39,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let updater: AppUpdater
     private let heard = AgentHeardStore()
     private let history = SessionHistoryStore()
+    private lazy var tooling: ToolingCoordinator = {
+        let coordinator = ToolingCoordinator(installer: installer, heard: heard)
+        coordinator.onLog = { [weak self] message in
+            self?.recordDebug(message)
+        }
+        // One change, everything that shows it. The widget's complaint and the window that
+        // describes the same installation used to be refreshed by whoever remembered to.
+        coordinator.onChange = { [weak self] in
+            self?.refreshToolingComplaint()
+            self?.toolingController.rebuild()
+        }
+        return coordinator
+    }()
     private lazy var toolingController = ToolingWindowController(
         facts: { [weak self] in
-            self?.toolingFacts() ?? ToolingWindowFacts.unavailable
+            self?.tooling.facts ?? ToolingWindowFacts.unavailable
         },
         act: { [weak self] press in
-            self?.performPress(press)
+            self?.tooling.press(press)
         }
     )
 
@@ -50,13 +66,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         heard: heard,
         history: history,
         onChange: { [weak self] sessions, usageLimits in
-            self?.hudController.update(sessions: sessions, usageLimits: usageLimits)
-            // Only with no rows, which is the only time the complaint is on screen — and the
-            // one time it can be stale, because `unheard` becomes `arrived` the moment an
-            // event lands and nothing else here would notice.
+            // Re-read before the widget is told, not after: the complaint travels with the
+            // sessions now, so reading it afterwards would draw this report with the previous
+            // answer. Only with no rows, which is the only time the complaint is on screen —
+            // and the one time it can be stale, because `unheard` becomes `arrived` the
+            // moment an event lands and nothing else here would notice.
             if sessions.isEmpty {
-                self?.refreshToolingComplaint()
+                self?.readToolingComplaint()
             }
+            self?.renderWidget(sessions: sessions, usageLimits: usageLimits)
         },
         onNotableEvent: { [weak self] message in
             self?.recordDebug(message)
@@ -84,7 +102,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     )
     private let debugLog = EventDebugLog()
     private lazy var debugController = EventDebugWindowController(initialEntries: debugLog.recentEntries())
-    private var ingress: UnixSocketIngress?
+    private lazy var ingress = HookIngressController(
+        socketURL: { [singleInstanceCoordinator] in singleInstanceCoordinator.socketURL() },
+        ingest: { [weak self] request in self?.supervisor.ingest(request) },
+        reveal: { [weak self] in self?.revealExistingInstance() },
+        log: { [weak self] message in self?.recordDebug(message) }
+    )
 
     /// - Parameter preferences: the one settings file, shared by every store that reads it.
     ///   Two of these over one file would each keep a copy the other's writes never reach.
@@ -125,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Claimed at every launch, not only at install time. Hooks name the link, so the link
         // has to name a file that exists — and the copy that just started is the one that
         // certainly does, however the previous holder's build directory ended up.
-        refreshSenderLink()
+        tooling.refreshSenderLink()
         // Before the widget is shown, so a first launch with nothing installed explains
         // itself in its first frame rather than after the first menu is opened.
         refreshToolingComplaint()
@@ -134,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // and the project names they had. An event that arrives first is still the live truth
         // and a memory never overwrites it — but it would come in as a brand new session.
         supervisor.start()
-        startIngress()
+        ingress.start()
         updater.checkAfterLaunch()
     }
 
@@ -147,8 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        ingress?.stop()
-        ingress = nil
+        ingress.stop()
         supervisor.stop()
         debugController.close()
         hudController.shutdown()
@@ -429,221 +451,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// on a timer, so the message cannot outlive the problem that produced it: at launch, when
     /// the tooling menu opens, after a tooling change, and whenever the widget empties, which
     /// is when this message is the thing a person is looking at.
+    ///
+    /// Reading and showing are two steps because they happen at different rates: the files
+    /// are read at those four moments, while the widget is drawn on every event. What is read
+    /// here is kept in `toolingComplaint` and travels with the next state.
     private func refreshToolingComplaint() {
-        hudController.toolingComplaint = toolingComplaint(
-            states: AgentSource.allCases.map(hookState(for:))
+        readToolingComplaint()
+        renderWidget()
+    }
+
+    private func readToolingComplaint() {
+        widgetComplaint = tooling.complaint()
+    }
+
+    /// Hands the widget everything it shows, in one value.
+    ///
+    /// Sessions come from the supervisor unless a report is being passed through — during
+    /// that report the supervisor is mid-publish, and asking it again would re-derive the
+    /// same list it is already handing over.
+    private func renderWidget(
+        sessions: [SessionSnapshot]? = nil,
+        usageLimits: [AgentUsageLimits]? = nil
+    ) {
+        hudController.render(
+            WidgetState(
+                sessions: sessions ?? supervisor.sessions,
+                usageLimits: usageLimits ?? supervisor.usageLimits,
+                complaint: widgetComplaint
+            )
         )
     }
 
     /// Everything the tooling window shows, read in one go. See `ToolingWindowFacts`.
-    private func toolingFacts() -> ToolingWindowFacts {
-        let sender = senderLink()
-        let staged = IDEPluginFiles.staged()
-        return ToolingWindowFacts(
-            hookState: hookState(for:),
-            statusLineState: installer.statusLineState(),
-            hooksPath: { [installer] in installer.hooksPath(for: $0).path },
-            statusLinePath: installer.statusLinePath.path,
-            senderPath: sender.path,
-            senderIsTiedToThisBuild: { if case .tiedToThisBuild = sender { true } else { false } }(),
-            idePlugins: idePluginReadings(),
-            stagedPlugin: staged?.plugin,
-            idePluginDirectoryPath: IDEPluginFiles.pluginDirectory()?.path ?? ""
-        )
-    }
-
-    /// Every JetBrains IDE on this machine and where the plugin stands in each.
-    ///
-    /// Found again on every reading rather than kept: an IDE updated between two openings of
-    /// the window keeps its settings in a different directory, so a remembered answer would
-    /// describe a plugin the new version never loaded.
-    private func idePluginReadings() -> [IDEPluginReading] {
-        let isDaemonInstalled = JetBrainsInstallation.isDaemonInstalled()
-        return JetBrainsIDEs.installed().map { ide in
-            IDEPluginReading(
-                ide: ide,
-                presence: IDEPluginInstallation.presence(
-                    productScheme: ide.productScheme,
-                    isDaemonInstalled: isDaemonInstalled,
-                    reply: IDEPluginFiles.reply(forDataDirectoryName: ide.product.dataDirectoryName),
-                    check: ideChecks[ide.product.dataDirectoryName] ?? .notAsked
-                )
-            )
-        }
-    }
-
-    private func performPress(_ press: ToolingPress) {
-        switch press {
-        case .integration(let integration): toggleIntegration(integration)
-        case .idePluginsPage(let dataDirectoryName): openIDEPluginsPage(dataDirectoryName: dataDirectoryName)
-        case .idePluginCheck(let dataDirectoryName): checkIDEPlugin(dataDirectoryName: dataDirectoryName)
-        }
-    }
-
-    /// Hands the plugin file to an IDE the only way another program can: by putting its path
-    /// where a paste will find it, and opening the page whose own dialog does the installing.
-    ///
-    /// There is no protocol command for installing a plugin — the platform has three, and
-    /// this is not one of them — so this is as far as an address carries a person. What
-    /// happens next happens in the IDE, which is also why the first install needs no restart:
-    /// the IDE does it, and our plugin's one extension point is declared dynamic.
-    private func openIDEPluginsPage(dataDirectoryName: String) {
-        guard
-            let ide = installedIDE(dataDirectoryName: dataDirectoryName),
-            let productScheme = ide.productScheme,
-            let staged = IDEPluginFiles.staged(),
-            let url = IDEPluginInstallation.pluginsPageURL(productScheme: productScheme)
-        else {
-            recordDebug("Nothing to install into \(dataDirectoryName): no plugin file, or no address for that IDE")
-            return
-        }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(staged.path, forType: .string)
-        _ = NSWorkspace.shared.open(url)
-        recordDebug("\(staged.plugin.fileName) copied — opened the Plugins page in \(ide.product.name)")
-    }
-
-    /// Asks one IDE whether the plugin is loaded in it, now.
-    ///
-    /// The only honest answer to that question: a directory on disk proves a file was copied,
-    /// not that this IDE read it. So the token goes out in an address and the plugin writes it
-    /// back into a file this app owns, and nothing but that file arriving says yes.
-    private func checkIDEPlugin(dataDirectoryName: String) {
-        guard
-            let ide = installedIDE(dataDirectoryName: dataDirectoryName),
-            let productScheme = ide.productScheme
-        else {
-            return
-        }
-        let token = IDEPluginInstallation.newToken()
-        guard let url = IDEPluginInstallation.pingURL(productScheme: productScheme, token: token) else {
-            return
-        }
-        ideChecks[dataDirectoryName] = .waiting(token: token)
-        _ = NSWorkspace.shared.open(url)
-        Task { [weak self] in
-            await self?.awaitIDEPluginReply(dataDirectoryName: dataDirectoryName, token: token)
-        }
-    }
-
-    /// Waits for the reply, and stops waiting.
-    ///
-    /// Polling rather than watching the directory, because the wait is bounded and short and a
-    /// file-system watch for a file that usually appears in under a second is machinery with
-    /// nothing to do the rest of the time. The window is rebuilt either way: an answer that
-    /// never came is the result the section exists to show.
-    private func awaitIDEPluginReply(dataDirectoryName: String, token: String) async {
-        for _ in 0..<Self.idePluginReplyAttempts {
-            try? await Task.sleep(for: .milliseconds(250))
-            if IDEPluginFiles.reply(forDataDirectoryName: dataDirectoryName)?.token == token {
-                break
-            }
-        }
-        ideChecks[dataDirectoryName] = .done(token: token)
-        toolingController.rebuild()
-    }
-
-    private func installedIDE(dataDirectoryName: String) -> InstalledJetBrainsIDE? {
-        JetBrainsIDEs.installed().first { $0.product.dataDirectoryName == dataDirectoryName }
-    }
-
-    private func toggleIntegration(_ integration: ToolingIntegration) {
-        switch integration.kind {
-        case .hooks: toggleHooks(for: integration.source)
-        case .statusLine: toggleStatusLine()
-        }
-    }
-
-    private func toggleHooks(for source: AgentSource) {
-        perform {
-            let state = hookState(for: source)
-            guard state != .unreadable else {
-                throw ToolingInstallerError.unreadable(installer.hooksPath(for: source))
-            }
-            if state.wantsInstalling {
-                try installer.installHooks(
-                    for: source,
-                    senderPath: refreshSenderLink(),
-                    hooks: ToolingHooks.hooks(for: source)
-                )
-                // After the write, so a failed install claims nothing. From here silence from
-                // this agent is a fact about records this app put there, which is the only
-                // silence it is entitled to report.
-                heard.recordInstall(source)
-                recordDebug(hooksInstalledMessage(for: source))
-            } else {
-                try installer.removeHooks(for: source)
-                heard.forgetInstall(source)
-                recordDebug("\(AgentIcon.name(for: source)) hooks removed")
-            }
-        }
-    }
-
-    private func toggleStatusLine() {
-        perform {
-            if case .connected = installer.statusLineState() {
-                try installer.disconnectStatusLine()
-                recordDebug("Status line disconnected — your own command is back")
-            } else {
-                try installer.connectStatusLine(senderPath: refreshSenderLink())
-                recordDebug("Status line connected — your own command still runs")
-            }
-        }
-    }
-
-    /// How far Agent Watch got into one agent, including the half no configuration can state:
-    /// whether anything has ever arrived from it.
-    private func hookState(for source: AgentSource) -> ToolingInstallationState {
-        installer.hookState(for: source, delivery: heard.delivery(for: source))
-    }
-
-    /// Points the stable link at this build's sender and answers with the path another
-    /// program should be given. Called at launch as well as at install time, so the link
-    /// names a file that exists: whichever copy is running is the one that just claimed it.
-    @discardableResult
-    private func refreshSenderLink() -> String {
-        let sender = senderLink()
-        if case let .tiedToThisBuild(path) = sender {
-            // Said out loud for the same reason a refused event is: the fallback works today
-            // and stops working when this build goes away, and it would be written into
-            // another program's configuration with nothing anywhere to explain it later.
-            recordDebug("Stable sender link unavailable — registering this build directly: \(path)")
-        }
-        return sender.path
-    }
-
-    /// The same question without the announcement, for the window that shows the answer
-    /// rather than acting on it. A line in the debug log every time a window is redrawn would
-    /// bury the one that means something: a link that could not be made while installing.
-    private func senderLink() -> SenderPath {
-        // From the bundle rather than from `argv[0]`: this decides what ends up in another
-        // program's configuration, and what a launcher put in `argv[0]` is up to the launcher.
-        let executable =
-            Bundle.main.executableURL
-            ?? URL(fileURLWithPath: CommandLine.arguments[0])
-        // `current` and not `refresh`: this is the reporting path. The link is claimed at
-        // launch and by `refreshSenderLink()`, and a window that describes what was written
-        // must not be one of the things that writes it.
-        return SenderLink().current(forExecutableAt: executable.resolvingSymlinksInPath())
-    }
-
-    /// Runs one tooling change, and says so either way.
-    ///
-    /// Failures are announced rather than thrown away: this writes into other programs'
-    /// files, and a change that silently did nothing is the one outcome a person cannot
-    /// diagnose.
-    private func perform(_ change: () throws -> Void) {
-        do {
-            try change()
-        } catch {
-            recordDebug("Tooling change failed: \(error)")
-        }
-        // After both outcomes. A change that failed still changes what the widget should say —
-        // a refused write leaves a fault standing — and refreshing only on success left the
-        // empty state describing the setup as it was before the attempt.
-        refreshToolingComplaint()
-    }
-
     private func makeTranscriptMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Read Session Transcripts", action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: "Read Session Transcripts")
@@ -787,70 +626,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // widget would reappear on the next launch.
             hudController.setBackgroundOpacity(backgroundStore.opacity)
         }
-    }
-
-    private func startIngress() {
-        do {
-            let socketURL = try socketURL()
-            let ingress = UnixSocketIngress(socketPath: socketURL.path) { [weak self] result in
-                // `DispatchQueue.main.async` and not `Task { @MainActor }`: the listener hands
-                // events over in the order they arrived, and separately created tasks have no
-                // order between them, so the hop was giving back the guarantee the listener
-                // had just established. The main queue is first-in first-out.
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        self?.handleIngress(result)
-                    }
-                }
-            }
-            try ingress.start()
-            self.ingress = ingress
-            recordDebug("Listening for local hook events")
-        } catch {
-            recordDebug("Local hook listener is unavailable")
-        }
-    }
-
-    private func socketURL() throws -> URL {
-        guard let socketURL = singleInstanceCoordinator.socketURL() else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-        return socketURL
-    }
-
-    private func handleIngress(_ result: Result<HookIngressRequest, UnixSocketIngressError>) {
-        guard case let .success(request) = result else {
-            recordDebug("Rejected malformed local hook event")
-            return
-        }
-
-        if LocalAgentWatchControl.isRevealExistingInstance(request) {
-            revealExistingInstance()
-            return
-        }
-
-        guard let event = supervisor.ingest(request) else {
-            recordDebug("Rejected unsupported local hook event")
-            return
-        }
-        recordDebug(describe(event))
-    }
-
-    /// One log line per accepted event, naming the session it belongs to.
-    ///
-    /// Without the identifier the log answers "what happened" but never "to which session",
-    /// which is exactly the question when the list shows a row more than expected. Both
-    /// identifiers here are the hashed labels that crossed the wire, not raw ones — the
-    /// sender replaced them before sending, and this log is on disk.
-    private func describe(_ event: EventEnvelope) -> String {
-        var parts = [event.source.rawValue.capitalized, event.sessionID, event.kind.rawValue]
-        if let activityKind = event.activityKind {
-            parts[2] += " \(activityKind.rawValue)"
-        }
-        if let activityID = event.activityID {
-            parts.append(activityID)
-        }
-        return parts.joined(separator: " · ")
     }
 
     private func recordDebug(_ message: String) {

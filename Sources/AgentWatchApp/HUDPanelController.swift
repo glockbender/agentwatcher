@@ -3,18 +3,13 @@ import AppKit
 
 @MainActor
 final class HUDPanelController: NSWindowController, NSWindowDelegate {
-    private var sessions: [SessionSnapshot] = []
-    private var usageLimits: [AgentUsageLimits] = []
+    /// Everything the widget is currently showing. Replaced whole, by `render`, and by
+    /// nothing else — see `WidgetState`.
+    private var state = WidgetState()
     private var freshnessTimer: Timer?
     private let locator: (SessionSnapshot) -> SessionLocator
     private let focus: (SessionSnapshot) -> Void
     private let remove: (SessionSnapshot) -> Void
-    /// What the widget says instead of "No active sessions" when nothing can report to it.
-    ///
-    /// Set from outside because the answer lives in other programs' configuration files, and
-    /// reading those is not the panel's business. `nil` is the ordinary case and the only one
-    /// the widget had before.
-    var toolingComplaint: String?
     private var background: WidgetBackground
     private var lampScheme: LampScheme
     private var backgroundOpacity: CGFloat
@@ -84,7 +79,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             HUDEmptyStateView(
                 background: background,
                 backgroundOpacity: backgroundOpacity,
-                complaint: toolingComplaint
+                complaint: state.complaint
             )
         )
         panel.titleVisibility = .hidden
@@ -119,7 +114,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
 
     func show() {
         window?.orderFrontRegardless()
-        if !sessions.isEmpty {
+        if !state.sessions.isEmpty {
             refreshContent()
         }
     }
@@ -139,14 +134,14 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    func update(sessions: [SessionSnapshot], usageLimits: [AgentUsageLimits] = []) {
+    /// The widget's one input: everything it shows, whole, every time.
+    func render(_ state: WidgetState) {
         // A sweep that changed nothing still reports the whole set, and rebuilding for it
         // would throw away the row under the pointer for no reason.
-        guard sessions != self.sessions || usageLimits != self.usageLimits else {
+        guard state != self.state else {
             return
         }
-        self.sessions = sessions
-        self.usageLimits = usageLimits
+        self.state = state
         refreshContent()
     }
 
@@ -189,21 +184,59 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         // and assigning a content view *controller* would resize the window to the new
         // view's fitting size — which for a scroll view with no intrinsic height is the
         // window minimum, and collapsed the widget on every refresh.
-        if sessions.isEmpty {
+        if state.sessions.isEmpty {
             container.setBody(
                 HUDEmptyStateView(
                     background: background,
                     backgroundOpacity: backgroundOpacity,
-                    complaint: toolingComplaint
+                    complaint: state.complaint
                 )
             )
         } else {
-            let listView = HUDSessionListView(
-                sessions: sessions,
-                usageLimits: usageLimits,
-                now: .now,
-                availableWidth: panel.contentLayoutRect.width,
-                showsSessionTopic: settings.showsSessionTopic,
+            showRows(in: panel)
+        }
+
+        resizeIfSelfSizing(panel)
+        panel.updateHighlightOverlay()
+        updateFreshnessTimer()
+        refreshHoverCard()
+    }
+
+    /// Hands the list what every row should show, and lets it rebuild only the rows that
+    /// differ.
+    ///
+    /// A list already on screen is kept unless something it cannot change by itself has
+    /// moved: the width decides how much of each name fits, and the usage block under the
+    /// divider is not made of rows. Either of those is rare — a resize, a new reading of the
+    /// account's limits — and rebuilding the list for them costs nothing anybody sees.
+    private func showRows(in panel: HUDPanel) {
+        let width = panel.contentLayoutRect.width
+        // One moment for the models and for the rows built from them: two readings of the
+        // clock would let a row's age disagree with the thresholds decided beside it.
+        let moment = Date.now
+        let models = orderedForDisplay(state.sessions).map { snapshot in
+            HUDRowModel(snapshot: snapshot, now: moment, showsSessionTopic: settings.showsSessionTopic)
+        }
+
+        if let listView = container.body as? HUDSessionListView,
+            listView.canShow(
+                usageLimits: state.usageLimits,
+                atWidth: width,
+                background: background,
+                lampScheme: lampScheme,
+                backgroundOpacity: backgroundOpacity
+            )
+        {
+            listView.apply(models: models, now: moment)
+            return
+        }
+
+        container.setBody(
+            HUDSessionListView(
+                models: models,
+                usageLimits: state.usageLimits,
+                now: moment,
+                availableWidth: width,
                 focus: focus,
                 remove: remove,
                 background: background,
@@ -217,13 +250,13 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                     self?.hoverChanged(row, isInside: isInside)
                 }
             )
-            container.setBody(listView)
-        }
+        )
+    }
 
-        resizeIfSelfSizing(panel)
-        panel.updateHighlightOverlay()
-        updateFreshnessTimer()
-        refreshHoverCard()
+    /// Every row the widget is showing, in order. The one way a test can see what the list
+    /// did with a report rather than what it was told.
+    var visibleRows: [HUDSessionRowView] {
+        (container.body as? HUDSessionListView)?.rows ?? []
     }
 
     /// Keyed by session, not by row view: an event rebuilds the list, and a card tied to the
@@ -314,7 +347,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
 
     /// Keeps an open card truthful across a rebuild, and closes it when its session leaves.
     private func refreshHoverCard() {
-        apply(hover.sessionsChanged(to: sessions.lazy.map(\.id)))
+        apply(hover.sessionsChanged(to: state.sessions.lazy.map(\.id)))
     }
 
     /// The card carries the same age the row's timer does — "Last event 12s ago". Refreshed
@@ -324,7 +357,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         guard
             hoverCard.isVisible,
             let hoveredSessionID = hover.hoveredSessionID,
-            let snapshot = sessions.first(where: { $0.id == hoveredSessionID })
+            let snapshot = state.sessions.first(where: { $0.id == hoveredSessionID })
         else {
             return
         }
@@ -347,15 +380,15 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         // Asked of the view that does the laying out, rather than re-derived from its
         // constants here. Two copies of one geometry drift the moment either is touched.
         let listHeight = HUDSessionListView.selfSizedHeight(
-            sessionCount: min(sessions.count, Self.maximumAutoSizedRowCount),
-            usageLimits: usageLimits,
+            sessionCount: min(state.sessions.count, Self.maximumAutoSizedRowCount),
+            usageLimits: state.usageLimits,
             background: background
         )
         // Never shorter than the widget's own minimum, which is the height the empty state
         // needs: a one-row list that came out shorter would leave the widget below the size
         // a person is allowed to drag it to.
         let floor = HUDFrameStore.minimumSize.height
-        let height = sessions.isEmpty ? floor : max(floor, listHeight)
+        let height = state.sessions.isEmpty ? floor : max(floor, listHeight)
         // Only when it actually changes. Resizing and repositioning a window are requests to
         // the window server, and this runs on every event — asking it to make the window the
         // size it already is, twice a second, is work nobody sees.
@@ -375,7 +408,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     private func updateFreshnessTimer() {
         guard
             window?.isVisible == true,
-            sessions.contains(where: { SessionFreshnessEvaluator.tracksFreshness(for: $0.phase) })
+            state.sessions.contains(where: { SessionFreshnessEvaluator.tracksFreshness(for: $0.phase) })
         else {
             freshnessTimer?.invalidate()
             freshnessTimer = nil
@@ -437,7 +470,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
 
     /// Applies a settings change that only the content knows about.
     ///
-    /// `update(sessions:)` returns early when nothing about the sessions changed, which is
+    /// `render(_:)` returns early when nothing about the state changed, which is
     /// what keeps the row under the pointer alive — so a setting toggled between two events
     /// would otherwise sit unapplied until the next one arrived, and the menu item would
     /// look broken and then fix itself minutes later.

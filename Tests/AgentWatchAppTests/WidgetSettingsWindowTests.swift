@@ -142,11 +142,12 @@ final class LampSchemeReachesTheWidgetTests: XCTestCase {
             settings: WidgetSettingsStore(preferences: preferences)
         )
         controller.showWindow(nil)
-        controller.update(
-            sessions: [
-                testSession(index: 0, title: "one", phase: .executing, lastObservedAt: Date())
-            ],
-            usageLimits: []
+        controller.render(
+            WidgetState(
+                sessions: [
+                    testSession(index: 0, title: "one", phase: .executing, lastObservedAt: Date())
+                ]
+            )
         )
         XCTAssertEqual(
             Self.lamp(in: controller)?.paintedColor?.srgbHex,

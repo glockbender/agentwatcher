@@ -106,11 +106,11 @@ final class HUDRowEdgeTests: XCTestCase {
         busy.contextTelemetry = SessionContextTelemetry(totalInputTokens: 333_000)
 
         return HUDSessionListView(
-            sessions: [busy, snapshot(index: 1, title: "Старая сессия", phase: .sessionClosed)],
+            models: rowModels(
+                [busy, snapshot(index: 1, title: "Старая сессия", phase: .sessionClosed)], now: now),
             usageLimits: [],
             now: now,
             availableWidth: width,
-            showsSessionTopic: true,
             focus: { _ in },
             remove: { _ in },
             background: .graphite,
