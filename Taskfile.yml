@@ -67,7 +67,8 @@ tasks:
           || [ -d "$HOME/Applications/IntelliJ IDEA.app" ] || [ -d "/Applications/IntelliJ IDEA.app" ]; then
           task plugin
         else
-          echo "skipped: the IDE plugin needs a JetBrains IDE installed here"
+          echo "skipped: no JetBrains IDE installed here — 'task plugin-download' builds against"
+          echo "         one Gradle fetches, which costs about two gigabytes the first time"
         fi
       - |
         if [ -n "${CI:-}" ]; then
@@ -103,6 +104,13 @@ tasks:
       # rather than a copy here, so the file comes from the packaging task itself instead of
       # from the newest name in a directory that keeps every version ever built.
       - ./gradlew test buildPlugin stagePlugin
+
+  plugin-download:
+    desc: Build the IDE plugin against an IDE Gradle fetches, rather than one installed here
+    dir: ide-plugin
+    cmds:
+      # For a machine with no IDE, and for checking that path on a machine that has one.
+      - ./gradlew test buildPlugin stagePlugin -Pagentwatch.ide.download=true
 
   build-sender:
     desc: Build the fail-open local hook sender

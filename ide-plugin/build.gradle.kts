@@ -1,3 +1,4 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 plugins {
@@ -15,25 +16,44 @@ repositories {
     }
 }
 
-// Built against an IDE that is already on the machine rather than one Gradle downloads: the
-// distribution is a gigabyte and a person building this plugin has the IDE by definition.
-// `-Pagentwatch.ide.path=…` overrides, which is also how another product — PyCharm, IDEA —
-// gets built against.
-val ideHome: String =
-    (findProperty("agentwatch.ide.path") as String?)
-        ?: listOf(
-            "${System.getProperty("user.home")}/Applications/GoLand.app",
-            "/Applications/GoLand.app",
-            "${System.getProperty("user.home")}/Applications/IntelliJ IDEA.app",
-            "/Applications/IntelliJ IDEA.app",
-        ).firstOrNull { file(it).isDirectory }
-        ?: error(
-            "No JetBrains IDE found to build against. Pass -Pagentwatch.ide.path=/path/to/Your.app"
-        )
+// Built against an IDE already on the machine when there is one: the distribution is about a
+// gigabyte, and whoever writes this plugin has an IDE by definition. `-Pagentwatch.ide.path=…`
+// names another one — that is how a build against PyCharm or IDEA is done.
+// `-Pagentwatch.ide.download=true` ignores whatever is installed and builds against a fetched
+// IDE. That is how the fallback below gets exercised on a machine that has an IDE.
+val ideHome: String? =
+    if (findProperty("agentwatch.ide.download") == "true") {
+        null
+    } else {
+        (findProperty("agentwatch.ide.path") as String?)
+            ?: listOf(
+                "${System.getProperty("user.home")}/Applications/GoLand.app",
+                "/Applications/GoLand.app",
+                "${System.getProperty("user.home")}/Applications/IntelliJ IDEA.app",
+                "/Applications/IntelliJ IDEA.app",
+            ).firstOrNull { file(it).isDirectory }
+    }
+
+// Which IDE the downloaded fallback uses, and the one the verifier checks against.
+//
+// Not the `sinceBuild` below, and that is measured: against 2025.1 the build fails on
+// `ReworkedTerminalTabs.kt` with `Unresolved reference 'toolwindow'`. The plugin compiles
+// against a platform new enough to hold the reworked terminal's classes and declares
+// compatibility with older ones, where that code is never reached — the file says how.
+val fallbackIdeVersion = "2026.1.4"
 
 dependencies {
     intellijPlatform {
-        local(ideHome)
+        // No IDE installed — a fresh machine, a continuous integration runner — and Gradle
+        // fetches one instead of the build failing. It costs a gigabyte once and is cached
+        // afterwards, which is a price worth paying only where the alternative is not
+        // building at all. Community Edition: it is free to download and carries the terminal
+        // tool window, which is the only part of a product this plugin touches.
+        if (ideHome != null) {
+            local(ideHome)
+        } else {
+            create(IntelliJPlatformType.GoLand, fallbackIdeVersion)
+        }
         // The terminal tool window is where the sessions are. Bundled with every IDE, so it
         // is a dependency and not a download.
         bundledPlugin("org.jetbrains.plugins.terminal")
@@ -64,7 +84,11 @@ intellijPlatform {
             // at runtime — which is exactly what a dependency on a bundled plugin's module
             // decides. `task plugin` leaves it out; run `./gradlew verifyPlugin` when the set of
             // platform classes used changes, and before publishing.
-            local(ideHome)
+            if (ideHome != null) {
+                local(ideHome)
+            } else {
+                create(IntelliJPlatformType.GoLand, fallbackIdeVersion)
+            }
         }
     }
 }

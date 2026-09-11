@@ -22,7 +22,10 @@ Two gates, both installed by `task setup`:
   and answers them.
 
 The IDE plugin needs nothing installed for itself: its Gradle wrapper fetches Gradle and its own
-JDK.
+JDK. It compiles against a JetBrains IDE, taken from this machine when one is here and downloaded
+when none is — `task plugin-download` forces the downloaded path. That has to be GoLand 2026.1 or
+newer: the reworked terminal's classes appeared there, and against 2025.1 the build fails on
+`ReworkedTerminalTabs.kt`.
 
 Add or update tests for every domain-state transition. Keep UI thin enough that important behaviour
 can be tested in `AgentWatchCoreTests` without launching an application.
