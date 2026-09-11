@@ -1,0 +1,20 @@
+<idea-plugin>
+    <id>com.glockbender.agentwatch.ide</id>
+    <name>Agent Watch</name>
+    <vendor>glockbender</vendor>
+
+    <description><![CDATA[
+        Lets the Agent Watch widget bring you back to the terminal tab a Claude or Codex
+        session is running in. The widget opens a <code>jetbrains://</code> link, this plugin
+        finds the tab whose shell started that agent, and raises it.
+        <br/><br/>
+        It talks to nothing over the network, opens no port and stores nothing.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <jbProtocolCommand implementation="com.glockbender.agentwatch.ide.FocusSessionCommand"/>
+    </extensions>
+</idea-plugin>

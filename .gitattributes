@@ -1,0 +1,2 @@
+# A Windows batch file keeps Windows line endings, whoever checks it out.
+*.bat text eol=crlf

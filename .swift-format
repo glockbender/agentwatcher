@@ -1,0 +1,23 @@
+{
+  "indentation": {
+    "spaces": 4
+  },
+  "lineLength": 120,
+  "maximumBlankLines": 1,
+  "multiElementCollectionTrailingCommas": true,
+  "respectsExistingLineBreaks": true,
+  "rules": {
+    "AlwaysUseLowerCamelCase": true,
+    "AvoidRetroactiveConformances": true,
+    "DoNotUseSemicolons": true,
+    "FileScopedDeclarationPrivacy": true,
+    "NeverForceUnwrap": true,
+    "NeverUseImplicitlyUnwrappedOptionals": true,
+    "NoAssignmentInExpressions": true,
+    "OneVariableDeclarationPerLine": true,
+    "OrderedImports": true,
+    "UseShorthandTypeNames": true,
+    "UseTripleSlashForDocumentationComments": true
+  },
+  "version": 1
+}

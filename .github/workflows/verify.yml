@@ -1,0 +1,31 @@
+name: verify
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Show the toolchain
+        run: |
+          swift --version
+          xcode-select -p
+          swift format --version
+
+      # The repository gate is `task verify`, so CI runs that one command rather
+      # than a second list of steps that can drift away from it.
+      - name: Install Task
+        run: brew install go-task
+
+      - name: Verify
+        run: task verify

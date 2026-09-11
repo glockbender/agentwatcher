@@ -1,0 +1,90 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build all targets with warnings treated as errors
+    cmds:
+      - swift build -Xswiftc -warnings-as-errors
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - swift build --product AgentWatchSend -Xswiftc -warnings-as-errors
+      - swift test --parallel -Xswiftc -warnings-as-errors
+
+  lint:
+    desc: Check Swift formatting and style
+    cmds:
+      - swift format lint --configuration .swift-format --recursive --parallel --strict Sources Tests
+      - swift format lint --configuration .swift-format --strict Package.swift
+
+  format:
+    desc: Format Swift sources
+    cmds:
+      - swift format --configuration .swift-format --in-place --recursive --parallel Sources Tests
+      - swift format --configuration .swift-format --in-place Package.swift
+
+  verify:
+    desc: Run all local quality gates
+    cmds:
+      - task: lint
+      - task: test
+      - task: build
+      - task: build-release
+      - task: build-app
+
+  build-release:
+    desc: Build release targets with warnings treated as errors
+    cmds:
+      - swift build -c release -Xswiftc -warnings-as-errors
+
+  build-app:
+    desc: Assemble the local app bundle, signed with the local development certificate
+    cmds:
+      # Release, because this bundle is the one a person installs and runs, and the debug
+      # configuration defines AGENT_WATCH_DEBUG_CAPTURE — the menu items that write raw hook
+      # payloads to disk. For a bundle that has them: ./scripts/build-app.sh debug
+      - ./scripts/build-app.sh release
+
+  release:
+    desc: Package the release zip and its checksum from the app bundle
+    cmds:
+      # Signs with AGENT_WATCH_RELEASE_IDENTITY when it names a Developer ID certificate and
+      # ad-hoc when it does not — never with the local development certificate, which means
+      # nothing to anybody who downloads the result.
+      - ./scripts/release.sh
+
+  plugin:
+    desc: Build the JetBrains IDE plugin (Kotlin, its own Gradle, not part of task verify)
+    dir: ide-plugin
+    cmds:
+      # Built against an IDE already installed on this machine. Another product:
+      # ./gradlew buildPlugin -Pagentwatch.ide.path=/Applications/PyCharm.app
+      - ./gradlew test buildPlugin
+      # Where Agent Watch looks for a plugin file to hand to an IDE. The application knows
+      # only this folder, never this repository: a release downloaded there later and a build
+      # put there now are the same fact to it. Newest by time, which is the one just built.
+      - mkdir -p "$HOME/Library/Application Support/AgentWatch/ide-plugin"
+      - cp "$(ls -t build/distributions/agent-watch-ide-*.zip | head -1)" "$HOME/Library/Application Support/AgentWatch/ide-plugin/"
+
+  build-sender:
+    desc: Build the fail-open local hook sender
+    cmds:
+      - swift build --product AgentWatchSend -Xswiftc -warnings-as-errors
+
+  run:
+    desc: Run Agent Watch from Swift Package Manager
+    cmds:
+      - swift run AgentWatch
+
+  setup:
+    desc: Configure repository-local Git hooks
+    cmds:
+      - git config core.hooksPath .githooks
+
+  doctor:
+    desc: Show the local Swift and Apple developer toolchain
+    cmds:
+      - swift --version
+      - xcode-select -p
+      - swift format --version

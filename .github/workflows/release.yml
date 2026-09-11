@@ -1,0 +1,75 @@
+name: release
+
+# A release is cut by pushing a tag, and the tag is the only thing that decides which version
+# is built: the bundle's own `CFBundleShortVersionString` has to agree with it, or the job
+# stops before it has built anything. A release whose file name and About box disagree is the
+# kind of mistake that is only found by the person who downloaded it.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check that the tag and the bundle agree on the version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          bundle_version="$(plutil -extract CFBundleShortVersionString raw -o - Resources/Info.plist)"
+          if [[ "$tag_version" != "$bundle_version" ]]; then
+            echo "tag $GITHUB_REF_NAME says $tag_version, Resources/Info.plist says $bundle_version" >&2
+            exit 1
+          fi
+
+      - name: Install Task
+        run: brew install go-task
+
+      # The same gate as every push, run again here: a tag can point at any commit, including
+      # one that never went through a pull request.
+      - name: Verify
+        run: task verify
+
+      - name: Package
+        run: task release
+
+      # A draft, not a published release. What is in the notes and whether the world sees it
+      # are decisions for a person, and a draft is the only way this job can leave them one.
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          checksum="$(cut -d' ' -f1 "dist/AgentWatch-$version.zip.sha256")"
+          cat > dist/notes.md <<NOTES
+          ## Install
+
+          1. Download \`AgentWatch-$version.zip\` and unzip it into \`/Applications\`.
+          2. Remove the quarantine flag macOS puts on anything downloaded:
+
+          \`\`\`sh
+          xattr -dr com.apple.quarantine /Applications/AgentWatch.app
+          \`\`\`
+
+          The second step is needed because this build is signed ad-hoc rather than with an
+          Apple Developer ID certificate, so macOS cannot check who made it. Without the step
+          it refuses to open the app.
+
+          \`\`\`
+          sha256  $checksum
+          \`\`\`
+          NOTES
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --title "Agent Watch $version" \
+            --notes-file dist/notes.md \
+            "dist/AgentWatch-$version.zip" \
+            "dist/AgentWatch-$version.zip.sha256"

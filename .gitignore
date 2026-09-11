@@ -1,0 +1,22 @@
+.DS_Store
+.build/
+# Everything Xcode keeps for the package is local, except the shared scheme: it is what
+# builds AgentWatchSend alongside the app, and Xcode builds only the products a scheme names.
+.swiftpm/*
+!.swiftpm/xcode/
+.swiftpm/xcode/*
+!.swiftpm/xcode/xcshareddata/
+DerivedData/
+dist/
+artifacts/captures/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.moved-aside
+.idea/
+
+# The IDE plugin builds with its own Gradle, out of tree. `.intellijPlatform` is where the
+# plugin's Gradle keeps its sandbox IDE and the artifacts it resolved from the local install.
+ide-plugin/build/
+ide-plugin/.gradle/
+ide-plugin/.intellijPlatform/
