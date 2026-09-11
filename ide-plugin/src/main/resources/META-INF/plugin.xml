@@ -1,15 +1,32 @@
 <idea-plugin>
-    <id>com.glockbender.agentwatch.ide</id>
+    <id>com.glockbender.agentwatch.plugin.jetbrains</id>
     <name>Agent Watch</name>
-    <vendor>glockbender</vendor>
+    <vendor email="glockbender@gmail.com" url="https://github.com/glockbender/agentwatcher">glockbender</vendor>
 
     <description><![CDATA[
-        Lets the Agent Watch widget bring you back to the terminal tab a Claude or Codex
-        session is running in. The widget opens a <code>jetbrains://</code> link, this plugin
-        finds the tab whose shell started that agent, and raises it.
+        Brings you to the terminal tab where a Claude Code or Codex session is running, when the
+        <a href="https://github.com/glockbender/agentwatcher">Agent Watch</a> widget asks for it.
+        On its own this plugin does nothing: Agent Watch is a small macOS app that shows what your
+        agent sessions are doing, and this is the piece of it that lives inside the IDE.
         <br/><br/>
-        It talks to nothing over the network, opens no port and stores nothing.
+        When you press a session's focus button in the widget, it opens a <code>jetbrains://</code>
+        link naming the agent's process. The plugin finds the terminal tab whose shell started that
+        process and selects it, in both the classic and the reworked terminal, so you land on the
+        session itself rather than on the IDE window.
+        <br/><br/>
+        It talks to nothing over the network and opens no port. The only thing it writes is a small
+        file in Agent Watch's own folder under <code>~/Library/Application Support/AgentWatch/</code>,
+        so the widget can confirm the plugin is installed: the token it was just given, the plugin
+        version and the IDE build. Nothing about you or your projects is in it.
+        <br/><br/>
+        Agent Watch itself is installed from its
+        <a href="https://github.com/glockbender/agentwatcher/releases">releases page</a>.
     ]]></description>
+
+    <change-notes><![CDATA[
+        First version on JetBrains Marketplace. Finds the tab in both the classic and the reworked
+        terminal, and answers the widget's installation check.
+    ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.terminal</depends>

@@ -25,11 +25,6 @@ import java.time.Instant
  * routes the address here and runs this command, so the plugin needs no socket, no port, no
  * discovery and no authorisation of its own.
  *
- * **Nothing opens either address yet.** Agent Watch raises the host application and says
- * where the session is in words; the step that would open these URLs is not written, so today
- * they run only when a person follows the link by hand. Wiring them up is a change on the
- * Swift side — see `docs/implementation-plan.md`, which holds both as work still to do.
- *
  * The process number is the join for focus, and it is the strongest one available: it does
  * not depend on what the tab is called, on the "Show application title in tab name" setting,
  * or on two sessions happening to have the same name. See `docs/session-focus-research.md`.
@@ -147,7 +142,7 @@ class FocusSessionCommand : JBProtocolCommand(COMMAND) {
         const val PING: String = "ping"
         const val PID: String = "pid"
         const val TOKEN: String = "token"
-        const val PLUGIN_ID: String = "com.glockbender.agentwatch.ide"
+        const val PLUGIN_ID: String = "com.glockbender.agentwatch.plugin.jetbrains"
 
         /** `JBProtocolCommandResult`'s second argument: whether the platform should bring
          * an IDE window forward once the command returns. */
