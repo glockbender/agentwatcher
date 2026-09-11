@@ -815,3 +815,9 @@ let updateNoVersionBody = """
     It was started from a build directory rather than from an application bundle, so there is \
     nothing to compare against a release.
     """
+
+let updateRelaunchFailedTitle = "Update installed, but the restart failed"
+let updateRelaunchFailedBody = """
+    The new version is in place. This window belongs to the old one, still running — quit it and \
+    open Agent Watch again.
+    """

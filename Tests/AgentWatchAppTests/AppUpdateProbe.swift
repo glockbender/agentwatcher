@@ -17,14 +17,8 @@ final class AppUpdateProbe: XCTestCase {
         let directory = URL(fileURLWithPath: try XCTUnwrap(requested), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        var request = URLRequest(url: try XCTUnwrap(AppUpdate.latestReleaseURL()))
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let newest = try XCTUnwrap(
-            AppUpdate.release(from: data),
-            "no finished release yet — everything published so far is marked pre-release"
-        )
-        print("latest release: \(newest.version) — \(newest.downloadURL?.absoluteString ?? "no file")")
+        let newest = try await anyPublishedRelease()
+        print("release under test: \(newest.version) — \(newest.downloadURL?.absoluteString ?? "no file")")
 
         let staged = await AppUpdater.stage(
             downloadURL: try XCTUnwrap(newest.downloadURL),
@@ -63,5 +57,38 @@ final class AppUpdateProbe: XCTestCase {
         )
         XCTAssertEqual(installed["CFBundleShortVersionString"] as? String, newest.version)
         print("replaced in place: \(target.path) is now \(newest.version)")
+    }
+
+    /// The release this probe downloads: the latest finished one, or the newest of any kind.
+    ///
+    /// The app only ever offers a finished release. This probe checks the downloading rather
+    /// than the choosing, and it must keep working while a project publishes nothing but
+    /// pre-releases — otherwise the one path no unit test covers is covered by nothing at all.
+    private func anyPublishedRelease() async throws -> AppRelease {
+        if let finished = try await release(at: try XCTUnwrap(AppUpdate.latestReleaseURL())) {
+            return finished
+        }
+        let list = try XCTUnwrap(
+            URL(string: "https://api.github.com/repos/glockbender/agentwatcher/releases")
+        )
+        let (data, _) = try await URLSession.shared.data(for: request(for: list))
+        let entries = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [Any])
+        let first = try XCTUnwrap(entries.first, "the repository has published nothing")
+        print("no finished release yet — falling back to the newest pre-release")
+        return try XCTUnwrap(AppUpdate.release(from: JSONSerialization.data(withJSONObject: first)))
+    }
+
+    private func release(at url: URL) async throws -> AppRelease? {
+        let (data, response) = try await URLSession.shared.data(for: request(for: url))
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            return nil
+        }
+        return AppUpdate.release(from: data)
+    }
+
+    private func request(for url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        return request
     }
 }

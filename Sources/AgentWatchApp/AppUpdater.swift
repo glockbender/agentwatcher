@@ -221,11 +221,11 @@ final class AppUpdater: PreferenceDefaults {
         }
     }
 
-    /// Downloads the build, proves it arrived whole, and unpacks it next to the copy it will
-    /// replace. Returns the unpacked bundle, or nothing if any step failed.
+    /// Downloads the build, proves it arrived whole, and unpacks it. Returns the unpacked
+    /// bundle, or nothing if any step failed.
     ///
-    /// Next to, rather than in the system's temporary folder, for a plain reason: the bundle
-    /// is put in place by an atomic replace, and that works only within one volume.
+    /// The unpacking happens in a temporary folder the system picks **on the same volume as
+    /// the copy being replaced**, because an atomic replace works only within one volume.
     ///
     /// The checksum is the release's own `.sha256` file. Over HTTPS it adds little against an
     /// attacker — both files come from the same place — and everything against the ordinary
@@ -240,8 +240,8 @@ final class AppUpdater: PreferenceDefaults {
     ) async -> URL? {
         let fileManager = FileManager.default
         guard
-            let (archive, _) = try? await URLSession.shared.data(from: downloadURL),
-            let (checksumData, _) = try? await URLSession.shared.data(from: checksumURL),
+            let archive = await fetch(downloadURL),
+            let checksumData = await fetch(checksumURL),
             let expected = AppUpdate.checksum(fromChecksumFile: String(decoding: checksumData, as: UTF8.self)),
             expected == SHA256.hash(data: archive).map({ String(format: "%02x", $0) }).joined(),
             let workingDirectory = try? fileManager.url(
@@ -270,6 +270,19 @@ final class AppUpdater: PreferenceDefaults {
             return nil
         }
         return unpacked
+    }
+
+    /// The bytes of one file, or nothing unless the server actually sent it. `data(from:)`
+    /// hands back an error page as happily as a file, and a checksum that then fails to match
+    /// says "the download is broken" where the truth is "there is no such file".
+    private nonisolated static func fetch(_ url: URL) async -> Data? {
+        guard
+            let (data, response) = try? await URLSession.shared.data(from: url),
+            (response as? HTTPURLResponse)?.statusCode == 200
+        else {
+            return nil
+        }
+        return data
     }
 
     /// `ditto`, because it is the one unpacker that keeps a bundle's symbolic links and
@@ -328,6 +341,8 @@ final class AppUpdater: PreferenceDefaults {
             inform(title: updateCannotReplaceTitle, body: updateCannotReplaceBody, openPageFor: release)
             return
         }
+        // The archive is still beside the bundle that was just moved into place.
+        try? FileManager.default.removeItem(at: staged.deletingLastPathComponent())
         relaunch(at: destination)
     }
 
@@ -340,7 +355,12 @@ final class AppUpdater: PreferenceDefaults {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = ["-c", "sleep 2; open \(ShellWord.quoted(bundleURL.path))"]
-        try? task.run()
+        guard (try? task.run()) != nil else {
+            // Quitting now would take the app off the screen with nothing to bring it back,
+            // right after an update that otherwise worked.
+            inform(title: updateRelaunchFailedTitle, body: updateRelaunchFailedBody, openPageFor: nil)
+            return
+        }
         NSApp.terminate(nil)
     }
 }
