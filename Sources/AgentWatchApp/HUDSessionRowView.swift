@@ -112,7 +112,7 @@ final class HUDSessionRowView: NSStackView {
         now: Date,
         background: WidgetBackground,
         lampScheme: LampScheme,
-        onFocus: @escaping () -> Void,
+        onFocus: (() -> Void)?,
         onRemove: (() -> Void)?,
         onHoverChanged: @escaping (HUDSessionRowView, Bool) -> Void = { _, _ in }
     ) {
@@ -238,17 +238,24 @@ final class HUDSessionRowView: NSStackView {
         return spacer
     }
 
-    /// Always pressable, and that is a decision rather than an omission.
+    /// Pressable unless the session is one that has no window at all.
     ///
-    /// A grey control would say "this session cannot be reached", which is nearly never
-    /// true — the host is usually running, and when it is not, the row's card says so in a
-    /// sentence a person can act on. Greying it also needs an answer settled in advance,
-    /// and where the session is only holds while nothing moves.
+    /// The default is pressable, and that is a decision rather than an omission: a grey
+    /// control would say "this session cannot be reached", which is nearly never true — the
+    /// host is usually running, and when it is not, the row's card says so in a sentence a
+    /// person can act on. Where the session is only holds while nothing moves, so greying on
+    /// that answer greys rows that are perfectly reachable a second later.
     ///
-    /// No tooltip: the card is the one thing that explains a row, and it now says what this
-    /// button will actually reach.
-    private static func makeFocusButton(onFocus: @escaping () -> Void) -> NSButton {
-        let button = RowActionButton(.focus, perform: onFocus)
+    /// A background session is the exception, and the only one: the agent runs it in a pty
+    /// of its own, so there is no window now and there will not be one later. That answer is
+    /// settled in advance, which is exactly what the rule above asks for. The button stays in
+    /// place rather than disappearing — the row would otherwise lose its first column and
+    /// stop lining up with every other row — and the card says why it is grey.
+    ///
+    /// No tooltip: the card is the one thing that explains a row.
+    private static func makeFocusButton(onFocus: (() -> Void)?) -> NSButton {
+        let button = RowActionButton(.focus, perform: onFocus ?? {})
+        button.isEnabled = onFocus != nil
         button.pinSize(to: buttonSize)
         return button
     }

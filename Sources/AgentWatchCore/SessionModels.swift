@@ -10,6 +10,16 @@ public enum AgentSource: String, Codable, CaseIterable, Sendable {
 public enum SessionClientKind: String, Codable, Sendable {
     case desktop
     case cli
+    /// A session the agent runs for itself, in a pty of its own rather than in a terminal:
+    /// Claude Code's background sessions, hosted by `claude bg-pty-host`.
+    ///
+    /// A third place rather than a flavour of `cli`, because it answers the widget's `↗`
+    /// differently from both others. A terminal session and a desktop one have a window to
+    /// bring forward; this one never had and never will — its process tree ends at `launchd`,
+    /// measured, with no application anywhere above it. It is also the only kind whose answer
+    /// cannot change later, which is what makes greying that button honest here and nowhere
+    /// else.
+    case background
 }
 
 /// How much of the context window a session is carrying.

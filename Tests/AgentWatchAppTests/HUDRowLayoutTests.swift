@@ -466,6 +466,32 @@ final class HUDRowLayoutTests: XCTestCase {
         }
     }
 
+    /// The one row whose button is grey, and it stays in place: the columns after it line up
+    /// down the whole list, and a row missing its first one would break that everywhere.
+    func testABackgroundSessionsFocusButtonIsGreyAndStaysWhereItIs() throws {
+        var background = snapshot()
+        background.phase = .executing
+        background.clientKind = .background
+
+        let button = try XCTUnwrap(row(snapshot: background).arrangedSubviews.first as? RowActionButton)
+
+        XCTAssertEqual(button.rowAction, .focus)
+        XCTAssertFalse(button.isEnabled)
+        XCTAssertEqual(placed(button).width, HUDSessionRowView.buttonWidth, accuracy: 0.5)
+    }
+
+    /// Grey with no explanation is the thing this app must never do.
+    func testTheCardSaysWhyABackgroundSessionCannotBeReached() {
+        var background = snapshot()
+        background.phase = .executing
+        background.clientKind = .background
+
+        let card = hoverCardText(for: background, now: now, locator: .nowhere)
+
+        XCTAssertTrue(card.contains("a background session runs in the agent's own pty"), card)
+        XCTAssertTrue(card.contains("Background"), "the identity line names the place too")
+    }
+
     /// The columns after the focus button line up down the list, so the button itself may
     /// not change width with the phase — and the dismiss button, which does come and go,
     /// has to stay out of the way at the far end.
@@ -643,7 +669,7 @@ final class HUDRowLayoutTests: XCTestCase {
             now: now,
             background: .graphite,
             lampScheme: LampScheme(),
-            onFocus: {},
+            onFocus: SessionPresence.canBeBroughtForward(snapshot) ? {} : nil,
             onRemove: SessionPresence.isDismissible(snapshot, now: now) ? {} : nil
         )
     }
@@ -658,7 +684,7 @@ final class HUDRowLayoutTests: XCTestCase {
             now: now,
             background: .graphite,
             lampScheme: LampScheme(),
-            onFocus: {},
+            onFocus: SessionPresence.canBeBroughtForward(snapshot ?? self.snapshot()) ? {} : nil,
             onRemove: onRemove
         )
         view.setTitle((snapshot ?? self.snapshot()).title, display: titleDisplay)

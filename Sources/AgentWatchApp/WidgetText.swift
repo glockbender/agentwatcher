@@ -562,10 +562,14 @@ func hoverCardText(
     // keep exactly the promise the rows had just stopped keeping.
     let name = showsSessionTopic ? snapshot.title?.nonEmpty : nil
 
-    // Said here rather than on the button, which carries no tooltip of its own. The button
-    // is always pressable, so this line is what tells a person how far one press gets them —
-    // and, at the two finer levels, where to look for the rest of the way.
-    let focus = focusHint(locator, namesTheSessionAbove: name != nil)
+    // Said here rather than on the button, which carries no tooltip of its own: the line
+    // tells a person how far one press gets them, and at the two finer levels where to look
+    // for the rest of the way. For the one row whose button is grey it says why instead.
+    let focus = focusHint(
+        locator,
+        namesTheSessionAbove: name != nil,
+        runsWithoutAWindow: snapshot.clientKind == .background
+    )
 
     return [
         name,
@@ -592,12 +596,21 @@ func hoverCardText(
 /// plugin may not be installed, and a tab may be named after two sessions at once. So the
 /// line promises the part that always happens and names the rest, which is what a person
 /// needs to finish the trip with their own eyes when the tab step declines.
-func focusHint(_ locator: SessionLocator?, namesTheSessionAbove: Bool) -> String? {
+func focusHint(
+    _ locator: SessionLocator?,
+    namesTheSessionAbove: Bool,
+    runsWithoutAWindow: Bool = false
+) -> String? {
     guard let locator else {
         return nil
     }
     guard let application = locator.applicationName else {
-        return "No window to bring forward"
+        // Two different absences, and the difference is what a person does next. A host that
+        // is gone may come back; a background session never had a window at all, which is
+        // also why its button is grey rather than pressable.
+        return runsWithoutAWindow
+            ? "No window to bring forward — a background session runs in the agent's own pty"
+            : "No window to bring forward"
     }
     let brings = "↗ brings \(application) forward"
     // Pointed at the card's own first line rather than repeated here, and only when that

@@ -37,13 +37,29 @@ public enum AgentProcessLocator {
         for source: AgentSource,
         in ancestors: [ProcessSnapshot]
     ) -> SessionClientKind? {
+        clientKind(for: source, in: ancestors, argumentsOfProcess: commandArguments(of:))
+    }
+
+    /// The same question with the process probe handed in, so a test can state what a
+    /// process was started with instead of needing one that really was.
+    static func clientKind(
+        for source: AgentSource,
+        in ancestors: [ProcessSnapshot],
+        argumentsOfProcess: (Int32) -> [String]?
+    ) -> SessionClientKind? {
         if source == .codex, ancestors.contains(where: isCodexDesktopProcess) {
             return .desktop
         }
 
         switch source {
         case .claude:
-            return ancestors.contains(where: isClaudeProcess) ? .cli : nil
+            guard let agent = ancestors.first(where: isClaudeProcess) else {
+                return nil
+            }
+            // The same process this hook will report as the session's, asked what it is. A
+            // background session runs inside `claude bg-spare`, which the agent started for
+            // itself: no terminal above it, and so no window the widget could ever raise.
+            return isHelperCommand(argumentsOfProcess(agent.processID) ?? []) ? .background : .cli
         case .codex:
             return ancestors.contains(where: isCodexCLIProcess) ? .cli : nil
         }

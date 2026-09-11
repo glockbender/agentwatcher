@@ -75,14 +75,25 @@ enum SessionClientIcon {
     static func image(for clientKind: SessionClientKind) -> NSImage? {
         // Solid against a frame. Both were outlined rectangles before, and at 11 points the
         // `>_` inside one of them was too small to be the whole difference.
-        let symbolName = clientKind == .desktop ? "macwindow" : "terminal.fill"
+        let symbolName =
+            switch clientKind {
+            case .desktop: "macwindow"
+            case .cli: "terminal.fill"
+            // A window crossed out, beside the two icons that are windows: the one thing a
+            // person needs from this row is that there is nowhere to be sent.
+            case .background: "rectangle.slash"
+            }
         let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: name(for: clientKind))
         image?.isTemplate = true
         return image
     }
 
     static func name(for clientKind: SessionClientKind) -> String {
-        clientKind == .desktop ? "Desktop" : "CLI"
+        switch clientKind {
+        case .desktop: "Desktop"
+        case .cli: "CLI"
+        case .background: "Background"
+        }
     }
 }
 

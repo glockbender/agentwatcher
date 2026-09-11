@@ -64,7 +64,9 @@ enum WidgetBackground: String, CaseIterable, Hashable {
     /// light, and `systemYellow` all but vanishes on sand.
     func clientColor(for kind: SessionClientKind) -> NSColor {
         switch kind {
-        case .cli:
+        // The same grey as a terminal session: a background one is a session in a place a
+        // person cannot look at, not a session of a different importance.
+        case .cli, .background:
             secondaryForegroundColor
         case .desktop:
             isLight

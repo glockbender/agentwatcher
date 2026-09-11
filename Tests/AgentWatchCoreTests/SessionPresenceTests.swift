@@ -49,6 +49,27 @@ final class SessionPresenceTests: XCTestCase {
         ]
     }
 
+    /// The one row `↗` can never reach. Every other kind keeps a pressable button, because
+    /// where its host is can change between two presses and a grey button cannot.
+    func testOnlyABackgroundSessionCanNeverBeBroughtForward() {
+        var session = snapshot(phase: .executing)
+
+        session.clientKind = .background
+        XCTAssertFalse(SessionPresence.canBeBroughtForward(session))
+
+        session.clientKind = .cli
+        XCTAssertTrue(SessionPresence.canBeBroughtForward(session))
+
+        session.clientKind = .desktop
+        XCTAssertTrue(SessionPresence.canBeBroughtForward(session))
+
+        session.clientKind = nil
+        XCTAssertTrue(
+            SessionPresence.canBeBroughtForward(session),
+            "a session that never said where it runs is not a session known to be unreachable"
+        )
+    }
+
     private func snapshot(phase: SessionPhase) -> SessionSnapshot {
         SessionSnapshot(
             id: "session-1",

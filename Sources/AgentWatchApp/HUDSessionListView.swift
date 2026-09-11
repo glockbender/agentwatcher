@@ -259,7 +259,8 @@ class HUDSessionListView: NSView {
                     now: now,
                     background: background,
                     lampScheme: lampScheme,
-                    onFocus: { [focus] in focus(snapshot) },
+                    onFocus: SessionPresence.canBeBroughtForward(snapshot)
+                        ? { [focus] in focus(snapshot) } : nil,
                     onRemove: SessionPresence.isDismissible(snapshot, now: now)
                         ? { [remove] in remove(snapshot) } : nil,
                     onHoverChanged: onHoverChanged

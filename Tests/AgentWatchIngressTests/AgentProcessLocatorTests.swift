@@ -147,4 +147,35 @@ final class AgentProcessLocatorTests: XCTestCase {
         )
         XCTAssertFalse(AgentProcessLocator.isHelperCommand([]))
     }
+
+    /// Claude Code runs a background session inside a helper of its own, and the widget has
+    /// to know: a session there has no window, now or later.
+    func testASessionInTheAgentsOwnPtyIsReportedAsBackground() {
+        let ancestors = [
+            ProcessSnapshot(processID: 500, executableName: "zsh"),
+            ProcessSnapshot(
+                processID: 400,
+                executableName: "claude",
+                executablePath: "/private/opaque/claude/versions/2.1.268"
+            ),
+        ]
+
+        XCTAssertEqual(
+            AgentProcessLocator.clientKind(
+                for: .claude,
+                in: ancestors,
+                argumentsOfProcess: { _ in ["claude bg-spare", "--bg-spare", "/private/opaque/claim.sock"] }
+            ),
+            .background
+        )
+        XCTAssertEqual(
+            AgentProcessLocator.clientKind(for: .claude, in: ancestors, argumentsOfProcess: { _ in ["claude"] }),
+            .cli
+        )
+        XCTAssertEqual(
+            AgentProcessLocator.clientKind(for: .claude, in: ancestors, argumentsOfProcess: { _ in nil }),
+            .cli,
+            "a kernel that will not say what the process was started with leaves the ordinary answer standing"
+        )
+    }
 }
