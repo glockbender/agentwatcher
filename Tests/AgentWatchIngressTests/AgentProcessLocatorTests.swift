@@ -1,5 +1,6 @@
-import AgentWatchSender
 import XCTest
+
+@testable import AgentWatchSender
 
 final class AgentProcessLocatorTests: XCTestCase {
     func testFindsClaudeProcessAmongHookShellAncestors() {
@@ -109,5 +110,41 @@ final class AgentProcessLocatorTests: XCTestCase {
         XCTAssertLessThanOrEqual(startedAt, Date())
         XCTAssertGreaterThan(startedAt, Date(timeIntervalSince1970: 1_000_000_000))
         XCTAssertNil(AgentProcessLocator.startTime(of: 999_999))
+    }
+
+    // MARK: - Helpers of the agent, which are not sessions
+
+    /// Measured on a running machine: Claude Code keeps several long-lived processes of its
+    /// own, all from the executable a session runs. Each one became a row with no name, no
+    /// window to focus and no hook ever coming.
+    func testTheAgentsOwnHelpersAreNotSessions() {
+        XCTAssertTrue(
+            AgentProcessLocator.isHelperCommand([
+                "/private/opaque/.local/bin/claude", "daemon", "run", "--origin", "transient",
+            ])
+        )
+        XCTAssertTrue(
+            AgentProcessLocator.isHelperCommand([
+                "claude bg-pty-host", "--bg-pty-host", "/private/opaque/spare.pty.sock", "200", "50",
+            ]),
+            "a helper renames itself, so its job is written into the first argument rather than the second"
+        )
+        XCTAssertTrue(
+            AgentProcessLocator.isHelperCommand(["claude bg-spare", "--bg-spare", "/private/opaque/claim.sock"])
+        )
+    }
+
+    func testASessionIsNotMistakenForAHelper() {
+        XCTAssertFalse(AgentProcessLocator.isHelperCommand(["claude"]))
+        XCTAssertFalse(AgentProcessLocator.isHelperCommand(["claude", "--resume"]))
+        XCTAssertFalse(
+            AgentProcessLocator.isHelperCommand(["claude", "attach", "7f3a"]),
+            "attaching to a background session opens it in this terminal: a session, in a window somebody can be sent to"
+        )
+        XCTAssertFalse(
+            AgentProcessLocator.isHelperCommand(["claude", "daemon of the lamp, explain yourself"]),
+            "a prompt is one argument, and the word it starts with is not a subcommand"
+        )
+        XCTAssertFalse(AgentProcessLocator.isHelperCommand([]))
     }
 }

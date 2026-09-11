@@ -10,7 +10,8 @@ import Foundation
 /// process" and the `sysctl` calls behind it are written once.
 ///
 /// **Claude only, and that is a measured limit rather than an omission.** One `claude`
-/// process is one session, and a Claude hook carries its process number — which is what
+/// process a person started is one session — the agent's own helpers are dropped in
+/// `claudeProcessIDs` — and a Claude hook carries its process number — which is what
 /// lets a discovered row hand itself over to the session when the first hook finally
 /// arrives. Codex has neither property: its desktop application hosts many threads in one
 /// process, and its hooks report no process number at all, so a discovered Codex row could
@@ -52,6 +53,10 @@ public enum AgentProcessScanner {
 
     /// A helper an agent started for itself is not a second session.
     ///
+    /// The other half of the same rule is `AgentProcessLocator.isHelperCommand`, which
+    /// catches the helpers this one cannot: a helper whose parent has gone is reparented to
+    /// `launchd` and has no agent above it any more.
+    ///
     /// Only removes rows, never adds one, which is what makes it safe to apply before the
     /// case has been seen in the wild: an agent that turns out never to spawn another agent
     /// loses nothing to this check.
@@ -81,9 +86,17 @@ public enum AgentProcessScanner {
                 executableName: URL(fileURLWithPath: executablePath).lastPathComponent,
                 executablePath: executablePath
             )
-            if AgentProcessLocator.isClaudeProcess(snapshot) {
-                found.insert(processID)
+            guard AgentProcessLocator.isClaudeProcess(snapshot) else {
+                continue
             }
+            // Dropped here rather than from the finished list, and the order is the rule: a
+            // helper left among the candidates would hide a real session running under it,
+            // because the ancestry check below removes anything with an agent above it.
+            guard !AgentProcessLocator.isHelperCommand(AgentProcessLocator.commandArguments(of: processID) ?? [])
+            else {
+                continue
+            }
+            found.insert(processID)
         }
         return found
     }

@@ -69,6 +69,35 @@ public enum AgentProcessLocator {
             && components[versionDirectoryIndex - 1] == "claude"
     }
 
+    /// Whether a process running the Claude executable is one of the agent's own helpers
+    /// rather than a session.
+    ///
+    /// Claude Code runs several long-lived processes from the same executable — measured on
+    /// this machine: `claude daemon run …`, `claude bg-pty-host …` and `claude bg-spare …`.
+    /// They are indistinguishable from a session by executable path, and each one became a
+    /// row nobody could focus and nothing could ever name: a helper sends no hooks, and it
+    /// has no terminal window to bring forward.
+    ///
+    /// The list is what was observed rather than every subcommand Claude Code has. The rule
+    /// only ever removes a row, so a helper it does not know yet is today's behaviour and
+    /// nothing worse.
+    ///
+    /// Asked of a process's arguments and nothing else, so the whole rule can be exercised
+    /// without a machine that happens to be running one.
+    static func isHelperCommand(_ arguments: [String]) -> Bool {
+        // A helper renames itself: `claude bg-pty-host` arrives as one argument, with the
+        // job written into the name. A subcommand typed by a person is the next argument
+        // instead, so both shapes are read as the same list of words.
+        let programWords = (arguments.first ?? "").split(separator: " ").map(String.init)
+        let words = Array(programWords.dropFirst()) + arguments.dropFirst()
+        guard let subcommand = words.first else {
+            return false
+        }
+        return helperCommands.contains(subcommand)
+    }
+
+    private static let helperCommands: Set<String> = ["daemon", "bg-pty-host", "bg-spare"]
+
     private static func isCodexDesktopProcess(_ snapshot: ProcessSnapshot) -> Bool {
         guard let executablePath = snapshot.executablePath?.lowercased() else {
             return false
@@ -196,5 +225,54 @@ public enum AgentProcessLocator {
             }
         }
         return path.isEmpty ? nil : path
+    }
+
+    /// The words a process was started with, or `nil` when the kernel will not say.
+    ///
+    /// The executable path cannot answer what `isHelperCommand` asks: every Claude process
+    /// on the machine runs the same binary, and only the arguments say whether this one is a
+    /// session or one of the agent's own helpers.
+    ///
+    /// The buffer is laid out as a count, the path the process was executed from, then that
+    /// many NUL-separated arguments. The path is skipped rather than returned — it is the
+    /// one part of the answer that must not leave this module, the same rule
+    /// `ProcessSnapshot` states.
+    static func commandArguments(of processID: Int32) -> [String]? {
+        var managementInformationBase: [Int32] = [CTL_KERN, KERN_PROCARGS2, processID]
+        var size = 0
+        guard
+            sysctl(&managementInformationBase, u_int(managementInformationBase.count), nil, &size, nil, 0) == 0,
+            size > MemoryLayout<Int32>.size
+        else {
+            return nil
+        }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard
+            sysctl(&managementInformationBase, u_int(managementInformationBase.count), &buffer, &size, nil, 0) == 0,
+            size > MemoryLayout<Int32>.size
+        else {
+            return nil
+        }
+        let argumentCount = Int(buffer.withUnsafeBytes { $0.load(as: Int32.self) })
+        var index = MemoryLayout<Int32>.size
+        while index < size, buffer[index] != 0 {
+            index += 1
+        }
+        while index < size, buffer[index] == 0 {
+            index += 1
+        }
+
+        var arguments: [String] = []
+        var current: [UInt8] = []
+        while index < size, arguments.count < argumentCount {
+            if buffer[index] == 0 {
+                arguments.append(String(decoding: current, as: UTF8.self))
+                current = []
+            } else {
+                current.append(buffer[index])
+            }
+            index += 1
+        }
+        return arguments
     }
 }
