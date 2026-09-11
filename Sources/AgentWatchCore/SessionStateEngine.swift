@@ -564,6 +564,42 @@ public struct SessionStateEngine: Sendable {
         return row
     }
 
+    /// Drops a closed session whose process has moved on to another one.
+    ///
+    /// `/resume` is the case this exists for, and it was measured: starting `claude` and
+    /// resuming an earlier conversation is two sessions in one process. The first lives for
+    /// about two seconds — long enough to send a start and an end — and then the resumed
+    /// session starts under its own identifier on the same process. The row left behind has
+    /// no name, no turn and nothing to say, and it sat on the widget for the whole retention
+    /// period, or for good where a person has chosen to retire closed rows by hand.
+    ///
+    /// Only a closed row is dropped, and that is what makes the rule safe against events
+    /// arriving out of order: a late start from an old session cannot take away the row of a
+    /// live one that now holds its process number.
+    ///
+    /// The caller gets the rows rather than their identifiers because it holds what the
+    /// engine does not — the watcher on each row's process.
+    @discardableResult
+    public mutating func retireSessionsSuperseded(by event: EventEnvelope) -> [SessionSnapshot] {
+        guard let processID = event.agentProcessID else {
+            return []
+        }
+        let arrivingID = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
+        let superseded = snapshots.values
+            .filter { snapshot in
+                snapshot.id != arrivingID
+                    && snapshot.source == event.source
+                    && snapshot.phase == .sessionClosed
+                    && snapshot.agentProcessID == processID
+            }
+            .sorted { $0.id < $1.id }
+        for snapshot in superseded {
+            rememberedWaits.removeValue(forKey: snapshot.id)
+            snapshots.removeValue(forKey: snapshot.id)
+        }
+        return superseded
+    }
+
     /// Closes every Codex session running in the desktop app. Quitting the app is an
     /// observed fact, unlike a PID check: helper processes outlive the app itself.
     @discardableResult

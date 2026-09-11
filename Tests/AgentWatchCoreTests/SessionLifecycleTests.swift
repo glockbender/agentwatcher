@@ -563,6 +563,86 @@ final class SessionLifecycleTests: XCTestCase {
         XCTAssertEqual(HookIngressRequest.sanitizedText(family, limit: cap)?.count, 1)
     }
 
+    // MARK: - A process that moved on to another session
+
+    /// Measured on a real machine: starting `claude` and then resuming an earlier
+    /// conversation is two sessions in one process. The first one lives about two seconds —
+    /// long enough to send a start and an end — and the row it left behind sat on the widget
+    /// with no name and nothing to say until the retention ran out.
+    func testAClosedSessionLeavesWhenItsProcessTurnsOutToRunAnother() throws {
+        var engine = SessionStateEngine()
+        try engine.ingest(envelope(id: "throwaway", kind: .sessionStarted, at: start, agentProcessID: 501))
+        try engine.ingest(
+            envelope(id: "throwaway", kind: .sessionEnded, at: start.addingTimeInterval(2), agentProcessID: 501)
+        )
+
+        let resumed = envelope(
+            id: "resumed",
+            kind: .sessionStarted,
+            at: start.addingTimeInterval(2),
+            agentProcessID: 501
+        )
+        let retired = engine.retireSessionsSuperseded(by: resumed)
+        try engine.ingest(resumed)
+
+        XCTAssertEqual(retired.map(\.id), ["claude:throwaway"])
+        XCTAssertNil(engine.snapshots["claude:throwaway"])
+        XCTAssertNotNil(engine.snapshots["claude:resumed"])
+    }
+
+    /// The resumed session keeps its own identifier, so the row it comes back to is its own
+    /// — the one thing this rule must never take away.
+    func testAResumedSessionKeepsTheRowItIsComingBackTo() throws {
+        var engine = SessionStateEngine()
+        try engine.ingest(envelope(id: "alpha", kind: .sessionStarted, at: start, agentProcessID: 501))
+        try engine.ingest(
+            envelope(id: "alpha", kind: .sessionEnded, at: start.addingTimeInterval(60), agentProcessID: 501)
+        )
+
+        let resumed = envelope(
+            id: "alpha",
+            kind: .sessionStarted,
+            at: start.addingTimeInterval(120),
+            agentProcessID: 502
+        )
+        XCTAssertEqual(engine.retireSessionsSuperseded(by: resumed), [])
+        let revived = try engine.ingest(resumed)
+
+        XCTAssertEqual(revived.phase, .idle)
+        XCTAssertEqual(revived.arrivalIndex, 0, "the row a person was looking at stays where it was")
+    }
+
+    /// Events arrive out of order, and a late start from a session that once held this
+    /// process number must not take away the row of the session running on it now.
+    func testALiveSessionIsNeverRetiredByAnotherOnItsProcess() throws {
+        var engine = SessionStateEngine()
+        try engine.ingest(envelope(id: "alpha", kind: .sessionStarted, at: start, agentProcessID: 501))
+
+        let other = envelope(
+            id: "beta",
+            kind: .sessionStarted,
+            at: start.addingTimeInterval(1),
+            agentProcessID: 501
+        )
+
+        XCTAssertEqual(engine.retireSessionsSuperseded(by: other), [])
+        XCTAssertNotNil(engine.snapshots["claude:alpha"])
+    }
+
+    /// Codex reports no process number at all, so nothing it sends can retire anything.
+    func testAnEventWithNoProcessNumberRetiresNothing() throws {
+        var engine = SessionStateEngine()
+        try engine.ingest(envelope(id: "alpha", kind: .sessionStarted, at: start, agentProcessID: 501))
+        try engine.ingest(
+            envelope(id: "alpha", kind: .sessionEnded, at: start.addingTimeInterval(2), agentProcessID: 501)
+        )
+
+        let anonymous = envelope(id: "beta", kind: .sessionStarted, at: start.addingTimeInterval(3))
+
+        XCTAssertEqual(engine.retireSessionsSuperseded(by: anonymous), [])
+        XCTAssertNotNil(engine.snapshots["claude:alpha"])
+    }
+
     // MARK: - Helpers
 
     private func sessionStart(

@@ -954,6 +954,29 @@ final class SessionSupervisorTests: XCTestCase {
         )
     }
 
+    // MARK: - A process that moved on to another session
+
+    /// The whole path `/resume` takes through the app: `claude` starts a session of its own,
+    /// ends it two seconds later when the conversation is resumed, and the resumed session
+    /// starts in the same process. Only the resumed one is a row.
+    func testResumingLeavesNoRowForTheSessionItReplaced() throws {
+        var notable: [String] = []
+        let supervisor = try makeSupervisor(onNotableEvent: { notable.append($0) })
+
+        supervisor.ingest(request(event: "SessionStart", sessionID: "throwaway", agentProcessID: 501))
+        supervisor.ingest(request(event: "SessionEnd", sessionID: "throwaway", agentProcessID: 501))
+        let resumed = supervisor.ingest(request(event: "SessionStart", sessionID: "resumed", agentProcessID: 501))
+
+        // Asked of the event rather than written out: the identifier a session is filed
+        // under is its own put through the redaction.
+        let resumedID = SessionSnapshot.id(source: .claude, sessionLabel: try XCTUnwrap(resumed).sessionID)
+        XCTAssertEqual(supervisor.sessions.map(\.id), [resumedID])
+        XCTAssertTrue(
+            notable.contains { $0.contains("closed session dropped") },
+            "a row that leaves has to be in the log; \(notable)"
+        )
+    }
+
     private func makeSupervisor(
         retention: ClosedSessionRetention = .manual,
         now: @escaping () -> Date = { Date(timeIntervalSince1970: 4_000) },

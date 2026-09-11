@@ -234,6 +234,14 @@ final class SessionSupervisor {
             if let claimed = engine.claimDiscoveredRow(for: event) {
                 hostRegistry.forget(claimed)
             }
+            // Before the session is created too, and for a reason of its own: the row this
+            // retires is a closed session whose process now runs this one — the two-second
+            // session `/resume` leaves behind. Its watcher goes with it; the watcher this
+            // session gets is installed by `associate` below, keyed on its own identifier.
+            for retired in engine.retireSessionsSuperseded(by: event) {
+                hostRegistry.forget(retired)
+                onNotableEvent("\(Self.label(retired)) · closed session dropped; its process now runs another")
+            }
             snapshot = try engine.ingest(event)
         } catch {
             // Said out loud rather than dropped. This app's whole job is to notice things,
@@ -326,6 +334,10 @@ final class SessionSupervisor {
         if !change.isEmpty || sessionsByAgentProcess != pairingsBefore {
             for id in change.removedIDs {
                 hostRegistry.forgetSession(id: id)
+                // Said out loud, like the arrival above. A row that leaves silently is the
+                // one thing a person cannot check against: "it came back" and "it never
+                // left" look identical on the widget.
+                onNotableEvent("\(id) · agent gone; row withdrawn")
             }
             for snapshot in change.added {
                 // The same watch a session gets from its first hook. It is what will take
