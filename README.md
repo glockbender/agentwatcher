@@ -1,7 +1,7 @@
 # Agent Watch
 
 [![Verify](https://github.com/glockbender/agentwatcher/actions/workflows/verify.yml/badge.svg)](https://github.com/glockbender/agentwatcher/actions/workflows/verify.yml)
-[![Release](https://img.shields.io/github/v/release/glockbender/agentwatcher?style=flat-square)](https://github.com/glockbender/agentwatcher/releases)
+[![Release](https://img.shields.io/github/v/release/glockbender/agentwatcher?include_prereleases&style=flat-square)](https://github.com/glockbender/agentwatcher/releases)
 [![Platform](https://img.shields.io/badge/Platform-macOS%2014%2B-blue?style=flat-square)](#build-from-source)
 
 A small macOS app that watches the Claude Code and Codex sessions you have running, so you can see
