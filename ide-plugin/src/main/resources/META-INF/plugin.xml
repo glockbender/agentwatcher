@@ -8,9 +8,10 @@
         app that shows what your Claude Code and Codex sessions are doing. On its own this plugin
         does nothing.
         <br/><br/>
-        When you press a session's focus button in Agent Watch, this plugin selects the terminal tab
-        where that session is running, in both the classic and the reworked terminal. The app
-        reaches it through a <code>jetbrains://</code> link that names the agent's process.
+        It covers sessions started in the IDE's terminal. When you jump to such a session from
+        Agent Watch, the plugin selects the terminal tab where it is running, in both the classic
+        and the reworked terminal, instead of leaving you at the IDE window. The app reaches the
+        plugin through a <code>jetbrains://</code> link that names the agent's process.
         <br/><br/>
         No network, no ports. The plugin writes one small file into Agent Watch's own folder so the
         app can confirm the plugin is installed: the token it was asked with, the plugin version and
