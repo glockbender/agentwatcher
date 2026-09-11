@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Everything the machine can check, before anything leaves it. Slower than the commit gate on
+# purpose: a push is rare, and this is the last moment a broken release script or a broken
+# update path costs nothing to find.
+#
+# The end-to-end update opens the app's own dialogs and answers them, so windows will flash on
+# screen for half a minute. To push without it: SKIP_E2E=1 git push
+
+set -euo pipefail
+
+task verify-all

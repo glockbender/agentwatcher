@@ -11,9 +11,18 @@
 
 ## Required checks
 
-Run `task verify` before committing; `task setup` puts it in a pre-commit hook. It does not cover
-`ide-plugin/` — run `task plugin` when you change the IDE plugin, and install nothing for it: its
-Gradle wrapper fetches Gradle and its own JDK.
+Two gates, both installed by `task setup`:
+
+- **commit** — `task verify`: format, tests, debug and release builds, app bundle. Does not cover
+  `ide-plugin/`.
+- **push** — `task verify-all`: the above plus the IDE plugin (`task plugin`), the network probe
+  that downloads a published release (`task probe-update`), and the end-to-end update
+  (`task e2e-update`). About a minute. The plugin is skipped where no JetBrains IDE is installed,
+  and the end-to-end part is skipped under `CI` or with `SKIP_E2E=1` — it opens dialogs on screen
+  and answers them.
+
+The IDE plugin needs nothing installed for itself: its Gradle wrapper fetches Gradle and its own
+JDK.
 
 Add or update tests for every domain-state transition. Keep UI thin enough that important behaviour
 can be tested in `AgentWatchCoreTests` without launching an application.
@@ -34,11 +43,10 @@ can be tested in `AgentWatchCoreTests` without launching an application.
   a file that did not exist.
 - When Xcode is installed but `xcode-select -p` still points at the Command Line Tools:
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer task verify`.
-- **Updating is tested end to end with `task e2e-update`**, which runs a throwaway copy beside
-  yours and presses the dialogs itself. Two things it relies on: a debug build takes its state
-  directory from `AGENT_WATCH_SUPPORT_DIR` and its release address from
-  `AGENT_WATCH_RELEASE_URL` (neither exists in a release build), and the terminal needs
-  Accessibility permission, which macOS asks for once.
+- **`task e2e-update` runs a throwaway copy beside yours and presses its dialogs itself.** It
+  relies on two overrides a debug build has and a release build does not: the state directory
+  from `AGENT_WATCH_SUPPORT_DIR` and the release address from `AGENT_WATCH_RELEASE_URL`. The
+  terminal needs Accessibility permission, which macOS asks for once.
 
 ## Documentation
 

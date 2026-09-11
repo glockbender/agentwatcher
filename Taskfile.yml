@@ -54,6 +54,37 @@ tasks:
       # nothing to anybody who downloads the result.
       - ./scripts/release.sh
 
+  verify-all:
+    desc: Every check this machine can run, including the ones that need the network and a screen
+    cmds:
+      - task: verify
+      - task: probe-update
+      # The IDE plugin builds against an IDE installed here, and the end-to-end update needs a
+      # screen and Accessibility permission. Neither is true of every machine that clones this
+      # repository, so each says why it is skipped rather than failing the run.
+      - |
+        if [ -d "$HOME/Applications/GoLand.app" ] || [ -d "/Applications/GoLand.app" ] \
+          || [ -d "$HOME/Applications/IntelliJ IDEA.app" ] || [ -d "/Applications/IntelliJ IDEA.app" ]; then
+          task plugin
+        else
+          echo "skipped: the IDE plugin needs a JetBrains IDE installed here"
+        fi
+      - |
+        if [ -n "${CI:-}" ]; then
+          echo "skipped: the end-to-end update needs a screen and Accessibility permission"
+        elif [ -n "${SKIP_E2E:-}" ]; then
+          echo "skipped: SKIP_E2E is set"
+        else
+          task e2e-update
+        fi
+
+  probe-update:
+    desc: Download the published release and unpack it, to check the half no unit test reaches
+    cmds:
+      # Talks to GitHub, so it is not part of `task verify`: that gate must pass on a machine
+      # with no network.
+      - UPDATE_PROBE_DIR="$(mktemp -d)" swift test --filter AppUpdateProbe
+
   e2e-update:
     desc: Update a throwaway copy of the app end to end, dialogs included
     cmds:
