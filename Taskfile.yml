@@ -60,12 +60,10 @@ tasks:
     cmds:
       # Built against an IDE already installed on this machine. Another product:
       # ./gradlew buildPlugin -Pagentwatch.ide.path=/Applications/PyCharm.app
-      - ./gradlew test buildPlugin
-      # Where Agent Watch looks for a plugin file to hand to an IDE. The application knows
-      # only this folder, never this repository: a release downloaded there later and a build
-      # put there now are the same fact to it. Newest by time, which is the one just built.
-      - mkdir -p "$HOME/Library/Application Support/AgentWatch/ide-plugin"
-      - cp "$(ls -t build/distributions/agent-watch-ide-*.zip | head -1)" "$HOME/Library/Application Support/AgentWatch/ide-plugin/"
+      # `stagePlugin` puts the built file where Agent Watch looks for it. It is a Gradle task
+      # rather than a copy here, so the file comes from the packaging task itself instead of
+      # from the newest name in a directory that keeps every version ever built.
+      - ./gradlew test buildPlugin stagePlugin
 
   build-sender:
     desc: Build the fail-open local hook sender

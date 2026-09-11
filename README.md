@@ -50,9 +50,9 @@ its own JDK 21 — both into Gradle's cache, not onto the machine. It is not par
 `task verify` and the Swift build never looks at it. It compiles against a JetBrains IDE
 already installed on the machine rather than one Gradle downloads.
 
-`task plugin` builds and tests it, and copies the built zip into
-`~/Library/Application Support/AgentWatch/ide-plugin/` — the folder the app offers to the IDEs it
-finds, in the Tooling window's IDE integrations section. The app knows only that folder: a release
+`task plugin` builds and tests it, and its `stagePlugin` step copies the zip the packaging task
+produced into `~/Library/Application Support/AgentWatch/ide-plugin/` — the folder the app offers to
+the IDEs it finds, in the Tooling window's IDE integrations section. The app knows only that folder: a release
 downloaded there later looks the same to it as a build put there now.
 
 `cd ide-plugin && ./gradlew verifyPlugin` additionally runs the

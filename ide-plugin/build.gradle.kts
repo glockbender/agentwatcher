@@ -78,3 +78,18 @@ kotlin {
         apiVersion = KotlinVersion.KOTLIN_2_2
     }
 }
+
+// Where Agent Watch looks for a plugin file to hand to an IDE. The application knows only this
+// folder, never this repository: a release downloaded there later and a build put there now are
+// the same fact to it.
+//
+// The file comes from the packaging task itself rather than from the newest name in
+// `build/distributions/`. That directory keeps every version ever built, so picking by time
+// staged whichever build ran last — rebuild an older version and the older file would quietly
+// become the one offered to every IDE.
+tasks.register<Copy>("stagePlugin") {
+    description = "Copies the built plugin where Agent Watch looks for it"
+    group = "distribution"
+    from(tasks.named("buildPlugin"))
+    into(File(System.getProperty("user.home"), "Library/Application Support/AgentWatch/ide-plugin"))
+}

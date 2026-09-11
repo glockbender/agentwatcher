@@ -108,8 +108,11 @@ CI его не собирает: сборка идёт против IDE, уст�
 
 ```sh
 task plugin
-gh release upload vX.Y.Z "$HOME/Library/Application Support/AgentWatch/ide-plugin/agent-watch-ide-<версия>.zip"
+gh release upload vX.Y.Z ide-plugin/build/distributions/agent-watch-ide-<версия>.zip
 ```
+
+Файл берётся из каталога сборки, а не из staging-каталога приложения: в релиз должен уехать тот
+файл, который только что собран, а не тот, что там лежал.
 
 ## Чего ещё нет
 
