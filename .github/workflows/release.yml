@@ -8,6 +8,8 @@ on:
   push:
     tags: ["v*"]
 
+# Enough to create the release, and measured: the repository's default token is read-only,
+# and this block still grants the write — the repository setting is the default, not a ceiling.
 permissions:
   contents: write
 
@@ -66,6 +68,17 @@ jobs:
           \`\`\`
           sha256  $checksum
           \`\`\`
+
+          Then open the app's Tooling window and install the hooks for whichever agents you
+          use. Nothing is written to any agent's configuration until you press install there.
+
+          ## JetBrains IDE plugin
+
+          The \`agent-watch-ide-*.zip\` attached here, when one is, is optional: it makes the
+          ↗ press land on the terminal tab a session runs in rather than on the IDE window.
+          Install it inside the IDE — Settings → Plugins → the gear → Install Plugin from Disk.
+          The Tooling window lists every JetBrains IDE it finds and opens that page for the one
+          you pick, with the file's path already copied.
           NOTES
           gh release create "$GITHUB_REF_NAME" \
             --draft \
