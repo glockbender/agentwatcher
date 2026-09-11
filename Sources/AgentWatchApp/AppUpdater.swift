@@ -102,10 +102,10 @@ final class AppUpdater: PreferenceDefaults {
         ownVersion: String?,
         skippedVersion: String?
     ) async -> AppUpdateDecision? {
-        guard let releasesURL = AppUpdate.releasesURL() else {
+        guard let latestReleaseURL = AppUpdate.latestReleaseURL() else {
             return nil
         }
-        var request = URLRequest(url: releasesURL)
+        var request = URLRequest(url: latestReleaseURL)
         request.timeoutInterval = 10
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         guard
@@ -116,7 +116,7 @@ final class AppUpdater: PreferenceDefaults {
         }
         return AppUpdate.decide(
             ownVersion: ownVersion,
-            releases: AppUpdate.releases(from: data),
+            release: AppUpdate.release(from: data),
             skippedVersion: skippedVersion
         )
     }

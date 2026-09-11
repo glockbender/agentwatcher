@@ -4,14 +4,12 @@ import XCTest
 
 final class AppUpdateTests: XCTestCase {
     /// Trimmed from the real answer of
-    /// `https://api.github.com/repos/glockbender/agentwatcher/releases`, keeping every field
-    /// this reads and the plugin asset that must not be mistaken for the app.
+    /// `https://api.github.com/repos/glockbender/agentwatcher/releases/latest`, keeping every
+    /// field this reads and the plugin asset that must not be mistaken for the app.
     private let apiAnswer = """
-        [
-          {
+        {
             "tag_name": "v0.1.0",
             "draft": false,
-            "prerelease": true,
             "html_url": "https://github.com/glockbender/agentwatcher/releases/tag/v0.1.0",
             "assets": [
               {
@@ -27,53 +25,45 @@ final class AppUpdateTests: XCTestCase {
                 "browser_download_url": "https://github.com/glockbender/agentwatcher/releases/download/v0.1.0/AgentWatch-0.1.0.zip.sha256"
               }
             ]
-          }
-        ]
+        }
         """
 
     func testAReleaseIsReadWithBothOfItsFiles() {
-        let releases = AppUpdate.releases(from: Data(apiAnswer.utf8))
+        let release = AppUpdate.release(from: Data(apiAnswer.utf8))
 
-        XCTAssertEqual(releases.count, 1)
-        XCTAssertEqual(releases.first?.version, "0.1.0")
+        XCTAssertEqual(release?.version, "0.1.0")
         XCTAssertEqual(
-            releases.first?.pageURL.absoluteString,
+            release?.pageURL.absoluteString,
             "https://github.com/glockbender/agentwatcher/releases/tag/v0.1.0"
         )
-        XCTAssertEqual(
-            releases.first?.downloadURL?.lastPathComponent,
-            "AgentWatch-0.1.0.zip"
-        )
-        XCTAssertEqual(
-            releases.first?.checksumURL?.lastPathComponent,
-            "AgentWatch-0.1.0.zip.sha256"
-        )
+        XCTAssertEqual(release?.downloadURL?.lastPathComponent, "AgentWatch-0.1.0.zip")
+        XCTAssertEqual(release?.checksumURL?.lastPathComponent, "AgentWatch-0.1.0.zip.sha256")
     }
 
     /// The plugin ships in the same release and carries its own version, so a rule like "the
     /// first zip" would hand the app a plugin to install over itself.
     func testThePluginInTheSameReleaseIsNotTakenForTheApp() {
-        let releases = AppUpdate.releases(from: Data(apiAnswer.utf8))
+        let release = AppUpdate.release(from: Data(apiAnswer.utf8))
 
-        XCTAssertFalse(releases.first?.downloadURL?.lastPathComponent.contains("ide") ?? true)
+        XCTAssertFalse(release?.downloadURL?.lastPathComponent.contains("ide") ?? true)
     }
 
     func testADraftIsNotOffered() {
         let answer = """
-            [{"tag_name": "v0.3.0", "draft": true, "html_url": "https://example.com/r", "assets": []}]
+            {"tag_name": "v0.3.0", "draft": true, "html_url": "https://example.com/r", "assets": []}
             """
 
-        XCTAssertTrue(AppUpdate.releases(from: Data(answer.utf8)).isEmpty)
+        XCTAssertNil(AppUpdate.release(from: Data(answer.utf8)))
     }
 
     func testAnAnswerThatIsNotJSONLeavesNothingRatherThanFailing() {
-        XCTAssertTrue(AppUpdate.releases(from: Data("not json at all".utf8)).isEmpty)
+        XCTAssertNil(AppUpdate.release(from: Data("not json at all".utf8)))
     }
 
     func testARunningBuildWithNoVersionIsNeverToldToUpdate() {
         let decision = AppUpdate.decide(
             ownVersion: nil,
-            releases: [release("9.9.9")],
+            release: release("9.9.9"),
             skippedVersion: nil
         )
 
@@ -83,7 +73,7 @@ final class AppUpdateTests: XCTestCase {
     func testTheSameVersionIsUpToDate() {
         let decision = AppUpdate.decide(
             ownVersion: "0.1.0",
-            releases: [release("0.1.0")],
+            release: release("0.1.0"),
             skippedVersion: nil
         )
 
@@ -93,7 +83,7 @@ final class AppUpdateTests: XCTestCase {
     func testAnOlderPublishedBuildIsNotAnUpdate() {
         let decision = AppUpdate.decide(
             ownVersion: "0.2.0",
-            releases: [release("0.1.0")],
+            release: release("0.1.0"),
             skippedVersion: nil
         )
 
@@ -103,7 +93,7 @@ final class AppUpdateTests: XCTestCase {
     func testANewerBuildIsOffered() {
         let decision = AppUpdate.decide(
             ownVersion: "0.1.0",
-            releases: [release("0.2.0")],
+            release: release("0.2.0"),
             skippedVersion: nil
         )
 
@@ -114,12 +104,12 @@ final class AppUpdateTests: XCTestCase {
     func testAVersionSetAsideIsNotOfferedAndTheNextOneStillIs() {
         let setAside = AppUpdate.decide(
             ownVersion: "0.1.0",
-            releases: [release("0.2.0")],
+            release: release("0.2.0"),
             skippedVersion: "0.2.0"
         )
         let theOneAfter = AppUpdate.decide(
             ownVersion: "0.1.0",
-            releases: [release("0.3.0")],
+            release: release("0.3.0"),
             skippedVersion: "0.2.0"
         )
 
@@ -127,20 +117,10 @@ final class AppUpdateTests: XCTestCase {
         XCTAssertEqual(theOneAfter, .available(release("0.3.0")))
     }
 
-    /// GitHub returns releases by creation time, and the newest one created is not always the
-    /// highest version — a fix published for an older line is created last and is older.
-    func testTheHighestVersionWinsRatherThanTheFirstInTheList() {
-        let decision = AppUpdate.decide(
-            ownVersion: "0.1.0",
-            releases: [release("0.1.1"), release("0.3.0"), release("0.2.0")],
-            skippedVersion: nil
-        )
-
-        XCTAssertEqual(decision, .available(release("0.3.0")))
-    }
-
-    func testNoReleasesAtAllIsUpToDateRatherThanAnError() {
-        let decision = AppUpdate.decide(ownVersion: "0.1.0", releases: [], skippedVersion: nil)
+    /// Nothing finished has been published yet — every build so far is a pre-release, which
+    /// this endpoint does not return. Not an error, and not something to tell a person about.
+    func testNoFinishedReleaseYetIsUpToDateRatherThanAnError() {
+        let decision = AppUpdate.decide(ownVersion: "0.1.0", release: nil, skippedVersion: nil)
 
         XCTAssertEqual(decision, .upToDate)
     }

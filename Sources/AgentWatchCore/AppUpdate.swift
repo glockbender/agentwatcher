@@ -42,48 +42,39 @@ public enum AppUpdateDecision: Equatable, Sendable {
 /// release is newest, whether it is newer than this one, whether the person asked not to be
 /// told about it — is here, where a test can hold a real API answer in a string.
 public enum AppUpdate {
-    /// Not `/releases/latest`, and that is measured rather than preferred: `/latest` skips
-    /// anything marked pre-release, and this project's releases are marked exactly that while
-    /// it is an alpha. The address answered 404 for the only release that exists. The list
-    /// endpoint answers with everything, newest first, and the choice is made here.
-    public static func releasesURL() -> URL? {
-        URL(string: "https://api.github.com/repos/glockbender/agentwatcher/releases")
-    }
-
-    /// The releases in an API answer, drafts left out.
+    /// The latest release GitHub considers finished: drafts and pre-releases are not in it.
     ///
-    /// A draft is a release nobody has published yet. It needs a token to be visible at all,
-    /// so this rarely has anything to do — but a draft is exactly the release whose files are
-    /// half uploaded, and offering one to a person would be offering a broken download.
-    public static func releases(from data: Data) -> [AppRelease] {
-        guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            return []
-        }
-        return parsed.compactMap(release(from:))
+    /// That is the behaviour wanted rather than a limitation worked around. A build marked
+    /// pre-release is one being tried out, and it has no business installing itself on the
+    /// machine of somebody who chose a finished version.
+    public static func latestReleaseURL() -> URL? {
+        URL(string: "https://api.github.com/repos/glockbender/agentwatcher/releases/latest")
     }
 
-    /// What to do about the releases found, given what is running and what was set aside.
+    /// The release in an API answer, or nothing when the answer holds none.
+    public static func release(from data: Data) -> AppRelease? {
+        guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return release(from: parsed)
+    }
+
+    /// What to do about the release found, given what is running and what was set aside.
     public static func decide(
         ownVersion: String?,
-        releases: [AppRelease],
+        release: AppRelease?,
         skippedVersion: String?
     ) -> AppUpdateDecision {
         guard let ownVersion, !ownVersion.isEmpty else {
             return .ownVersionUnknown
         }
-        // The newest by version rather than the first in the list: the order GitHub returns is
-        // by creation time, and a release created later can carry an earlier version — a fix
-        // published for an older line, or a tag pushed twice.
-        guard
-            let newest = releases.max(by: { ReleaseVersion.isNewer($1.version, than: $0.version) }),
-            ReleaseVersion.isNewer(newest.version, than: ownVersion)
-        else {
+        guard let release, ReleaseVersion.isNewer(release.version, than: ownVersion) else {
             return .upToDate
         }
-        if newest.version == skippedVersion {
-            return .skipped(newest)
+        if release.version == skippedVersion {
+            return .skipped(release)
         }
-        return .available(newest)
+        return .available(release)
     }
 
     /// The hash out of a `shasum -a 256` line, which is the hash, two spaces and the file name.

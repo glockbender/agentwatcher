@@ -17,12 +17,14 @@ final class AppUpdateProbe: XCTestCase {
         let directory = URL(fileURLWithPath: try XCTUnwrap(requested), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
-        var request = URLRequest(url: try XCTUnwrap(AppUpdate.releasesURL()))
+        var request = URLRequest(url: try XCTUnwrap(AppUpdate.latestReleaseURL()))
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, _) = try await URLSession.shared.data(for: request)
-        let releases = AppUpdate.releases(from: data)
-        let newest = try XCTUnwrap(releases.max { ReleaseVersion.isNewer($1.version, than: $0.version) })
-        print("newest release: \(newest.version) — \(newest.downloadURL?.absoluteString ?? "no file")")
+        let newest = try XCTUnwrap(
+            AppUpdate.release(from: data),
+            "no finished release yet — everything published so far is marked pre-release"
+        )
+        print("latest release: \(newest.version) — \(newest.downloadURL?.absoluteString ?? "no file")")
 
         let staged = await AppUpdater.stage(
             downloadURL: try XCTUnwrap(newest.downloadURL),
