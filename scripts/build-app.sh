@@ -6,7 +6,7 @@ configuration="${1:-debug}"
 case "$configuration" in
     debug | release) ;;
     *)
-        echo "usage: $0 [debug|release]" >&2
+        echo "usage: $0 [debug|release] [output .app path]" >&2
         exit 2
         ;;
 esac
@@ -15,7 +15,15 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The certificate this project signs with when it is in the keychain. A name rather than a
 # fingerprint, so the same line works for whoever created their own.
 default_signing_identity="Agent Watch Developer"
-app_path="$project_root/dist/AgentWatch.app"
+# `dist/AgentWatch.app` is the bundle a person copies to /Applications, so a build made for
+# something else — the end-to-end update builds a debug copy to be thrown away — names its own
+# destination rather than overwriting that one.
+app_path="${2:-$project_root/dist/AgentWatch.app}"
+# The path is removed and rebuilt below, so only something that names a bundle is accepted.
+if [[ "$app_path" != *.app ]]; then
+    echo "the output path has to name an .app bundle: $app_path" >&2
+    exit 2
+fi
 contents_path="$app_path/Contents"
 
 cd "$project_root"

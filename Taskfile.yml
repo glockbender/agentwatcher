@@ -59,13 +59,14 @@ tasks:
     cmds:
       - task: verify
       - task: probe-update
-      # The IDE plugin builds against an IDE installed here, and the end-to-end update needs a
-      # screen and Accessibility permission. Neither is true of every machine that clones this
-      # repository, so each says why it is skipped rather than failing the run.
+      # Without an IDE installed here the plugin build would download one, and the end-to-end
+      # update needs a screen and Accessibility permission. Neither is right for every machine
+      # that clones this repository, so each says why it is skipped rather than failing the run.
+      # The same four paths `build.gradle.kts` looks at, kept in step by hand.
       - |
         if [ -d "$HOME/Applications/GoLand.app" ] || [ -d "/Applications/GoLand.app" ] \
           || [ -d "$HOME/Applications/IntelliJ IDEA.app" ] || [ -d "/Applications/IntelliJ IDEA.app" ]; then
-          task plugin
+          task plugin-check
         else
           echo "skipped: no JetBrains IDE installed here — 'task plugin-download' builds against"
           echo "         one Gradle fetches, which costs about two gigabytes the first time"
@@ -94,15 +95,23 @@ tasks:
       # Needs the terminal to have Accessibility permission — macOS asks once.
       - ./scripts/e2e-update.sh {{.CLI_ARGS}}
 
-  plugin:
-    desc: Build the JetBrains IDE plugin (Kotlin, its own Gradle, not part of task verify)
+  plugin-check:
+    desc: Build and test the JetBrains IDE plugin without staging it (the push gate's half)
     dir: ide-plugin
     cmds:
       # Built against an IDE already installed on this machine. Another product:
       # ./gradlew buildPlugin -Pagentwatch.ide.path=/Applications/PyCharm.app
+      - ./gradlew test buildPlugin
+
+  plugin:
+    desc: Build the JetBrains IDE plugin and put it where Agent Watch offers it to IDEs
+    dir: ide-plugin
+    cmds:
       # `stagePlugin` puts the built file where Agent Watch looks for it. It is a Gradle task
       # rather than a copy here, so the file comes from the packaging task itself instead of
-      # from the newest name in a directory that keeps every version ever built.
+      # from the newest name in a directory that keeps every version ever built. Not part of
+      # the push gate: the staged file may be a signed release, and the gate must not replace
+      # it with an unsigned local build under the same name.
       - ./gradlew test buildPlugin stagePlugin
 
   plugin-download:

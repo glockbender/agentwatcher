@@ -42,6 +42,27 @@ val ideHome: String? =
 // compatibility with older ones, where that code is never reached — the file says how.
 val fallbackIdeVersion = "2026.1.4"
 
+// The same fact, checked on an installed IDE before the compiler finds it: `product-info.json`
+// carries the build number, whose first three digits name the release — 261 is 2026.1. An IDE
+// that is too old is refused here with the way out, not two minutes later with an unresolved
+// reference and no hint.
+val minimumIdeRelease = 261
+ideHome?.let { home ->
+    val productInfo = file("$home/Contents/Resources/product-info.json")
+    val release = if (productInfo.isFile) {
+        Regex(""""buildNumber"\s*:\s*"(\d{3})""").find(productInfo.readText())?.groupValues?.get(1)?.toIntOrNull()
+    } else {
+        null
+    }
+    if (release != null && release < minimumIdeRelease) {
+        error(
+            "$home is build $release; this plugin needs 2026.1 (build 261) or newer. " +
+                "Name another IDE with -Pagentwatch.ide.path=…, or build against one Gradle " +
+                "fetches with -Pagentwatch.ide.download=true."
+        )
+    }
+}
+
 dependencies {
     intellijPlatform {
         // No IDE installed — a fresh machine, a continuous integration runner — and Gradle

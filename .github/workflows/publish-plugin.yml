@@ -13,6 +13,11 @@ on:
     tags: ["plugin-v*"]
   workflow_dispatch:
 
+# Nothing here writes to the repository: the checkout reads it, and the results go to
+# Marketplace and to the run's own artifact.
+permissions:
+  contents: read
+
 concurrency:
   group: publish-plugin-${{ github.ref }}
   cancel-in-progress: false
@@ -41,6 +46,29 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Before Gradle, because Gradle would not stop: with the signing variables empty it skips
+      # `signPlugin` and publishes the unsigned file, and a manual run ends green with nothing
+      # to download. The names are printed, never the values.
+      - name: Check that the secrets are set
+        env:
+          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: |
+          missing=0
+          for name in CERTIFICATE_CHAIN PRIVATE_KEY PRIVATE_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "secret $name is not set" >&2
+              missing=1
+            fi
+          done
+          if [[ "$GITHUB_EVENT_NAME" == "push" && -z "$PUBLISH_TOKEN" ]]; then
+            echo "secret PUBLISH_TOKEN is not set, and a tag push publishes" >&2
+            missing=1
+          fi
+          exit "$missing"
+
       # No IDE on a runner, so Gradle fetches one — the path `task plugin-download` exercises
       # locally. `verifyPlugin` is the check `build.gradle.kts` asks for before publishing.
       # `signPlugin` runs by itself in front of `publishPlugin` once the three signing secrets
@@ -61,3 +89,4 @@ jobs:
         with:
           name: agent-watch-ide
           path: ide-plugin/build/signed/*.zip
+          if-no-files-found: error

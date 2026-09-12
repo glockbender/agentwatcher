@@ -9,4 +9,21 @@
 
 set -euo pipefail
 
+# Git names what is being pushed on stdin, one line per ref:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# A deletion (local sha all zeros) and a tag change no code on any branch — and a tag push is
+# how a release and the plugin are published, with CI running its own checks on it — so the
+# gate runs only when a branch is going out.
+branches=0
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    if [[ "$local_sha" =~ ^0+$ ]] || [[ "$remote_ref" == refs/tags/* ]]; then
+        continue
+    fi
+    branches=$((branches + 1))
+done
+if [[ "$branches" -eq 0 ]]; then
+    echo "pre-push: only tags or deletions are going out; the gate is for branches"
+    exit 0
+fi
+
 task verify-all

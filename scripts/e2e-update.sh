@@ -12,6 +12,9 @@
 # One thing to expect: after installing, the app opens the new copy with `open`, which passes
 # no environment. That copy therefore looks in the real directory, finds your running Agent
 # Watch and exits after asking it to show itself — so your widget may flash on screen once.
+# That is also why your own Agent Watch has to be running: with none there, the installed
+# copy — a release build, with no override to point elsewhere — would take the real lock and
+# run against your real state until this script killed it.
 
 set -euo pipefail
 
@@ -28,6 +31,9 @@ mkdir -p "$support"
 say() { printf '\n== %s\n' "$1"; }
 fail() {
     printf '\nFAILED: %s\n' "$1" >&2
+    # The files stay for inspection; the process does not — a copy left running with a modal
+    # alert on screen is what every retry would add one more of.
+    pkill -f "$sandbox_name" 2>/dev/null || true
     printf 'the sandbox is left for inspection: %s\n' "$sandbox" >&2
     exit 1
 }
@@ -69,9 +75,11 @@ version_of() {
     plutil -extract CFBundleShortVersionString raw -o - "$1/Contents/Info.plist" 2>/dev/null || true
 }
 
+# Your own copy is matched by executable name and never by path: it may be installed anywhere.
+pgrep -x AgentWatch >/dev/null || fail "start your own Agent Watch first — see the header of this script"
+
 say "Building the copy to be updated ($old_version)"
-"$project_root/scripts/build-app.sh" debug >/dev/null
-cp -R "$project_root/dist/AgentWatch.app" "$app"
+"$project_root/scripts/build-app.sh" debug "$app" >/dev/null
 plutil -replace CFBundleShortVersionString -string "$old_version" "$app/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$old_version" "$app/Contents/Info.plist"
 # Editing `Info.plist` breaks the seal on the bundle, so it is signed again. Ad-hoc is enough:

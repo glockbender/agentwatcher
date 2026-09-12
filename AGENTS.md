@@ -15,17 +15,18 @@ Two gates, both installed by `task setup`:
 
 - **commit** — `task verify`: format, tests, debug and release builds, app bundle. Does not cover
   `ide-plugin/`.
-- **push** — `task verify-all`: the above plus the IDE plugin (`task plugin`), the network probe
-  that downloads a published release (`task probe-update`), and the end-to-end update
+- **push** — `task verify-all`: the above plus the IDE plugin (`task plugin-check`: build and
+  tests, without staging — the staged file may be a signed release), the network probe that
+  downloads a published release (`task probe-update`), and the end-to-end update
   (`task e2e-update`). About a minute. The plugin is skipped where no JetBrains IDE is installed,
   and the end-to-end part is skipped under `CI` or with `SKIP_E2E=1` — it opens dialogs on screen
-  and answers them.
+  and answers them. The hook runs the gate only when a branch is pushed; a tag or a deletion goes
+  through without it.
 
 The IDE plugin needs nothing installed for itself: its Gradle wrapper fetches Gradle and its own
-JDK. It compiles against a JetBrains IDE, taken from this machine when one is here and downloaded
-when none is — `task plugin-download` forces the downloaded path. That has to be GoLand 2026.1 or
-newer: the reworked terminal's classes appeared there, and against 2025.1 the build fails on
-`ReworkedTerminalTabs.kt`.
+JDK. It compiles against a JetBrains IDE, taken from this machine when one is here (GoLand or
+IntelliJ IDEA, 2026.1 or newer — an older one is refused with the reason) and downloaded when none
+is — `task plugin-download` forces the downloaded path.
 
 Add or update tests for every domain-state transition. Keep UI thin enough that important behaviour
 can be tested in `AgentWatchCoreTests` without launching an application.
@@ -48,7 +49,9 @@ can be tested in `AgentWatchCoreTests` without launching an application.
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer task verify`.
 - **`task e2e-update` runs a throwaway copy beside yours and presses its dialogs itself.** It
   relies on two overrides a debug build has and a release build does not: the state directory
-  from `AGENT_WATCH_SUPPORT_DIR` and the release address from `AGENT_WATCH_RELEASE_URL`. The
+  from `AGENT_WATCH_SUPPORT_DIR` and the release address from `AGENT_WATCH_RELEASE_URL`. Your own
+  Agent Watch has to be running — the copy it installs is a release build, and with nothing to
+  find it would run against your real state — so the script refuses to start without it. The
   terminal needs Accessibility permission, which macOS asks for once.
 
 ## Documentation

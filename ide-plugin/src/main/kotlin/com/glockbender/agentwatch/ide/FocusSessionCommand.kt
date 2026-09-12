@@ -142,7 +142,7 @@ class FocusSessionCommand : JBProtocolCommand(COMMAND) {
         const val PING: String = "ping"
         const val PID: String = "pid"
         const val TOKEN: String = "token"
-        const val PLUGIN_ID: String = "com.glockbender.agentwatch.plugin.jetbrains"
+        const val PLUGIN_ID: String = "com.glockbender.agentwatch"
 
         /** `JBProtocolCommandResult`'s second argument: whether the platform should bring
          * an IDE window forward once the command returns. */

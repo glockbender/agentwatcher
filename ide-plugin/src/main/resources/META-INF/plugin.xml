@@ -1,5 +1,5 @@
 <idea-plugin>
-    <id>com.glockbender.agentwatch.plugin.jetbrains</id>
+    <id>com.glockbender.agentwatch</id>
     <name>Agent Watch</name>
     <vendor email="glockbender@gmail.com" url="https://github.com/glockbender/agentwatcher">glockbender</vendor>
 
@@ -14,8 +14,8 @@
         plugin through a <code>jetbrains://</code> link that names the agent's process.
         <br/><br/>
         No network, no ports. The plugin writes one small file into Agent Watch's own folder so the
-        app can confirm the plugin is installed: the token it was asked with, the plugin version and
-        the IDE build.
+        app can confirm the plugin is installed: the token it was asked with, the plugin version,
+        the IDE build and when it answered.
         <br/><br/>
         Get Agent Watch:
         <a href="https://github.com/glockbender/agentwatcher">github.com/glockbender/agentwatcher</a>
