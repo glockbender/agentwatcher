@@ -42,8 +42,9 @@ public enum BackgroundSessionAttach {
     }
 
     /// Letters, digits, `_` and `-`, and nothing else — a shell reads none of those specially.
+    /// Not starting with `-`, because `claude` would read that as an option rather than a job.
     public static func isAddressableJobID(_ id: String) -> Bool {
-        guard !id.isEmpty, id.count <= 64 else {
+        guard !id.isEmpty, id.count <= 64, !id.hasPrefix("-") else {
             return false
         }
         return id.unicodeScalars.allSatisfy { scalar in
@@ -69,10 +70,13 @@ public enum BackgroundSessionAttach {
     /// tab after the command it runs — measured as `claude attach 3345bfdf` — so a tab named
     /// exactly that, while such a process exists, is the session on screen already. Two such
     /// tabs are both right, unlike two tabs sharing a session's *name* (`GhosttyFocus` refuses
-    /// those): the title carries the job id, so the first by identifier is taken rather than a
-    /// third one opened. A title with no process behind it is not trusted — a title outlives
-    /// the program that set it, and a tab whose shell had sat idle for a day still carried a
-    /// session's name.
+    /// those): the title carries the job id, so the one Ghostty lists first is taken rather
+    /// than a third one opened — its list is in the order the tabs were opened, where a
+    /// terminal's identifier is a UUID and orders nothing. A title with no process behind it
+    /// is not trusted: a title outlives the program that set it, and a tab whose shell had sat
+    /// idle for a day still carried a session's name. The promise reaches as far as Ghostty's
+    /// tabs: a viewer somebody started in another terminal application is not seen from here,
+    /// and a press opens a Ghostty one beside it.
     public static func decision(
         among terminals: [GhosttyTerminal],
         jobID: String,
@@ -81,11 +85,10 @@ public enum BackgroundSessionAttach {
         guard let line = command(attaching: jobID) else {
             return .decline
         }
-        if viewerIsRunning {
-            let viewers = terminals.filter { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == line }
-            if let viewer = viewers.min(by: { $0.id < $1.id }) {
-                return .focus(terminalID: viewer.id)
-            }
+        if viewerIsRunning,
+            let viewer = terminals.first(where: { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == line })
+        {
+            return .focus(terminalID: viewer.id)
         }
         return .openTab(typing: line)
     }

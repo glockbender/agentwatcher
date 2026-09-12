@@ -591,6 +591,28 @@ final class SessionLifecycleTests: XCTestCase {
         XCTAssertNotNil(engine.snapshots["claude:resumed"])
     }
 
+    /// macOS hands process numbers out again. A row closed long ago that happens to share its
+    /// number with a session starting now is not that session's tail: under "remove closed
+    /// sessions by hand" it is a row the person chose to keep, and this rule must not take it.
+    /// The tail of a resume closes a second or two before the resumed session starts.
+    func testAClosedRowFromLongAgoIsNotTakenForTheTailOfAResume() throws {
+        var engine = SessionStateEngine()
+        try engine.ingest(envelope(id: "kept", kind: .sessionStarted, at: start, agentProcessID: 501))
+        try engine.ingest(
+            envelope(id: "kept", kind: .sessionEnded, at: start.addingTimeInterval(600), agentProcessID: 501)
+        )
+
+        let newcomer = envelope(
+            id: "newcomer",
+            kind: .sessionStarted,
+            at: start.addingTimeInterval(4_200),
+            agentProcessID: 501
+        )
+
+        XCTAssertEqual(engine.retireSessionsSuperseded(by: newcomer), [])
+        XCTAssertNotNil(engine.snapshots["claude:kept"])
+    }
+
     /// The resumed session keeps its own identifier, so the row it comes back to is its own
     /// — the one thing this rule must never take away.
     func testAResumedSessionKeepsTheRowItIsComingBackTo() throws {

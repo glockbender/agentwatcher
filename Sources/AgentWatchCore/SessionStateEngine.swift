@@ -573,9 +573,12 @@ public struct SessionStateEngine: Sendable {
     /// no name, no turn and nothing to say, and it sat on the widget for the whole retention
     /// period, or for good where a person has chosen to retire closed rows by hand.
     ///
-    /// Only a closed row is dropped, and that is what makes the rule safe against events
-    /// arriving out of order: a late start from an old session cannot take away the row of a
-    /// live one that now holds its process number.
+    /// Only a closed row is dropped, and only one closed moments ago. The first makes the
+    /// rule safe against events arriving out of order: a late start from an old session
+    /// cannot take away the row of a live one that now holds its process number. The second
+    /// keeps it from reaching rows it was never about: macOS hands process numbers out again,
+    /// and under "remove closed sessions by hand" a row closed this morning still holds the
+    /// number it had — a session starting on that number tonight is a stranger, not a resume.
     ///
     /// The caller gets the rows rather than their identifiers because it holds what the
     /// engine does not — the watcher on each row's process.
@@ -591,14 +594,19 @@ public struct SessionStateEngine: Sendable {
                     && snapshot.source == event.source
                     && snapshot.phase == .sessionClosed
                     && snapshot.agentProcessID == processID
+                    && event.observedAt.timeIntervalSince(snapshot.lastObservedAt) <= Self.resumeHandoverWindow
             }
             .sorted { $0.id < $1.id }
         for snapshot in superseded {
-            rememberedWaits.removeValue(forKey: snapshot.id)
-            snapshots.removeValue(forKey: snapshot.id)
+            removeSession(id: snapshot.id)
         }
         return superseded
     }
+
+    /// How long after a closed row's last word a session starting on its process number is
+    /// still that row's resume. Measured at a second or two; a minute leaves room for a slow
+    /// machine without reaching a row that was closed on purpose earlier in the day.
+    public static let resumeHandoverWindow: TimeInterval = 60
 
     /// Closes every Codex session running in the desktop app. Quitting the app is an
     /// observed fact, unlike a PID check: helper processes outlive the app itself.

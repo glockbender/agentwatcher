@@ -74,14 +74,23 @@ final class BackgroundSessionAttachTests: XCTestCase {
     }
 
     /// Two viewers of the same job are both right, unlike two tabs sharing a session's *name*
-    /// — the title here is the command with the job id in it — so the first is taken rather
-    /// than a third one opened.
-    func testTwoViewersOfTheSameJobAreBothRightAndTheFirstIsTaken() {
+    /// — the title here is the command with the job id in it — so one is taken rather than a
+    /// third opened: the one Ghostty lists first, which is its own order, the order the tabs
+    /// were opened in. Not the smaller identifier, which is a UUID and therefore no order at all.
+    func testTwoViewersOfTheSameJobAreBothRightAndTheFirstListedIsTaken() {
         let second = GhosttyTerminal(id: "0A60FB95-14FB-4B57-8848-751B1AD3EC7C", name: "claude attach 3345bfdf")
         XCTAssertEqual(
             BackgroundSessionAttach.decision(among: [viewerTab, second], jobID: "3345bfdf", viewerIsRunning: true),
-            .focus(terminalID: second.id)
+            .focus(terminalID: viewerTab.id)
         )
+    }
+
+    /// `claude attach -x` is an option, not a job. The shell reads nothing special in a dash,
+    /// but the program does, and the guard's promise is a shape that cannot carry anything.
+    func testAnIdentifierShapedLikeAnOptionIsRefused() {
+        XCTAssertFalse(BackgroundSessionAttach.isAddressableJobID("-x"))
+        XCTAssertNil(BackgroundSessionAttach.command(attaching: "--help"))
+        XCTAssertTrue(BackgroundSessionAttach.isAddressableJobID("job-1"))
     }
 
     func testAnIdentifierThatMayNotBeTypedIsRefusedBeforeAnyTabIsTouched() {

@@ -352,7 +352,7 @@ final class SessionSupervisor {
                 // Said out loud, like the arrival above. A row that leaves silently is the
                 // one thing a person cannot check against: "it came back" and "it never
                 // left" look identical on the widget.
-                onNotableEvent("\(id) · agent gone; row withdrawn")
+                onNotableEvent("\(Self.label(sessionID: id)) · agent gone; row withdrawn")
             }
             for snapshot in change.added {
                 // The same watch a session gets from its first hook. It is what will take
@@ -662,7 +662,14 @@ final class SessionSupervisor {
     /// were about no session in particular, and with two sessions running that is the only
     /// question worth asking. The identifier is the hashed label that crossed the wire.
     private static func label(_ snapshot: SessionSnapshot) -> String {
-        "\(snapshot.source.rawValue.capitalized) · \(snapshot.id)"
+        label(sessionID: snapshot.id)
+    }
+
+    /// The same prefix from the identifier alone, for a row that is already gone. The
+    /// identifier carries its source in front of the colon — `SessionSnapshot.id(source:sessionLabel:)`.
+    private static func label(sessionID id: String) -> String {
+        let source = id.prefix { $0 != ":" }
+        return "\(source.capitalized) · \(id)"
     }
 
     private static func name(of fact: TranscriptFact) -> String {

@@ -122,8 +122,13 @@ public enum AgentProcessLocator {
     /// one of the agent's helpers, and whether a viewer of one particular job is running — and
     /// one reading keeps them from drifting apart.
     static func commandWords(_ arguments: [String]) -> [String] {
-        let programWords = (arguments.first ?? "").split(separator: " ").map(String.init)
-        return Array(programWords.dropFirst()) + arguments.dropFirst()
+        guard let program = arguments.first else {
+            return []
+        }
+        // A program named by its path carries no words in the first argument, whatever spaces
+        // the path has in it; only a renamed process does, and it renames itself to a bare name.
+        let renamedWords = program.contains("/") ? [] : program.split(separator: " ").dropFirst().map(String.init)
+        return renamedWords + arguments.dropFirst()
     }
 
     private static let helperCommands: Set<String> = ["daemon", "bg-pty-host", "bg-spare", "attach"]

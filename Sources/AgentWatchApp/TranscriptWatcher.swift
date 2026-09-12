@@ -176,8 +176,16 @@ final class TranscriptWatcher {
     /// polling in the resting state, which is exactly what the architecture forbids. The rule
     /// is `SessionSilence.mayEndWithoutAHook`; whether quiet is a *fault* is a different
     /// question, and `merge(_:withSilenceAt:)` still asks that one of `SessionSilence.fault`.
-    static func watchableSessions(_ sessions: some Collection<SessionSnapshot>) -> [SessionSnapshot] {
-        sessions.filter { SessionSilence.mayEndWithoutAHook($0) }
+    ///
+    /// A wait has an end of its own: once the row has been silent long enough to offer its
+    /// `×`, reading stops. A dialog left open overnight would otherwise be a file read every
+    /// ten seconds all night for a row the person can already clear. A working session gets
+    /// no such bound, because its quiet is the fault being watched for.
+    static func watchableSessions(_ sessions: some Collection<SessionSnapshot>, now: Date) -> [SessionSnapshot] {
+        sessions.filter { snapshot in
+            SessionSilence.mayEndWithoutAHook(snapshot)
+                && !(snapshot.phase == .waitingForUser && SessionPresence.isDismissible(snapshot, now: now))
+        }
     }
 
     func update(sessions: [SessionSnapshot]) {
@@ -313,7 +321,7 @@ final class TranscriptWatcher {
     }
 
     private func makeJobs(at moment: Date) -> [ReadJob] {
-        Self.watchableSessions(sessions).compactMap { snapshot in
+        Self.watchableSessions(sessions, now: now()).compactMap { snapshot in
             var watch =
                 watches[snapshot.id]
                 ?? Watch(firstSeenAt: moment, nextLocateAttemptAt: moment)
@@ -394,7 +402,7 @@ final class TranscriptWatcher {
     /// question; supplying the two facts it cannot know is this one's.
     private func merge(_ updates: [TranscriptUpdate], withSilenceAt moment: Date) -> [TranscriptUpdate] {
         var byID = Dictionary(uniqueKeysWithValues: updates.map { ($0.sessionID, $0) })
-        for snapshot in Self.watchableSessions(sessions) {
+        for snapshot in Self.watchableSessions(sessions, now: now()) {
             let existing = byID[snapshot.id]
             // The rule itself lives in Core, where it can be exercised without an
             // application. What this file contributes is the two facts only it holds: what
@@ -666,7 +674,7 @@ final class TranscriptWatcher {
     private func rescheduleReads() {
         guard
             let floor = settings.transcriptPollInterval,
-            !Self.watchableSessions(sessions).isEmpty
+            !Self.watchableSessions(sessions, now: now()).isEmpty
         else {
             timer?.invalidate()
             timer = nil

@@ -283,17 +283,38 @@ final class TranscriptWatcherTests: XCTestCase {
     /// writes `[Request interrupted by user for tool use]` into the transcript and fires no
     /// hook, so a row nobody read stayed at "waiting for approval" for a dialog long gone.
     func testASessionThatClaimsWorkOrWaitsForAPersonIsWorthReading() {
-        let watchable = TranscriptWatcher.watchableSessions([
-            testSession(index: 0, phase: .executing, lastObservedAt: start),
-            testSession(index: 1, phase: .planning, lastObservedAt: start),
-            testSession(index: 2, phase: .waitingForChildren, lastObservedAt: start),
-            testSession(index: 3, phase: .idle, lastObservedAt: start),
-            testSession(index: 4, phase: .waitingForUser, lastObservedAt: start),
-            testSession(index: 5, phase: .completed, lastObservedAt: start),
-            testSession(index: 6, phase: .sessionClosed, lastObservedAt: start),
-        ])
+        let watchable = TranscriptWatcher.watchableSessions(
+            [
+                testSession(index: 0, phase: .executing, lastObservedAt: start),
+                testSession(index: 1, phase: .planning, lastObservedAt: start),
+                testSession(index: 2, phase: .waitingForChildren, lastObservedAt: start),
+                testSession(index: 3, phase: .idle, lastObservedAt: start),
+                testSession(index: 4, phase: .waitingForUser, lastObservedAt: start),
+                testSession(index: 5, phase: .completed, lastObservedAt: start),
+                testSession(index: 6, phase: .sessionClosed, lastObservedAt: start),
+            ],
+            now: start
+        )
 
         XCTAssertEqual(watchable.map(\.arrivalIndex), [0, 1, 2, 4])
+    }
+
+    /// A wait has an end of its own: once the row has been silent long enough to offer its
+    /// `×`, the reader stops. Otherwise a dialog left open overnight is a file read every ten
+    /// seconds all night, for a row the person can already clear — and a working session has
+    /// no such bound, because its quiet is the fault being watched for.
+    func testAWaitSilentPastTheDismissThresholdIsNoLongerRead() {
+        let threshold = SessionFreshnessEvaluator.defaultDisconnectAfter
+        let watchable = TranscriptWatcher.watchableSessions(
+            [
+                testSession(index: 0, phase: .waitingForUser, lastObservedAt: start),
+                testSession(index: 1, phase: .waitingForUser, lastObservedAt: start - threshold),
+                testSession(index: 2, phase: .executing, lastObservedAt: start - threshold),
+            ],
+            now: start + 1
+        )
+
+        XCTAssertEqual(watchable.map(\.arrivalIndex), [0, 2])
     }
 
     /// The case that was missed: a permission dialog dismissed with Esc. The hooks say

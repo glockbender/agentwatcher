@@ -131,6 +131,13 @@ final class SessionHostRegistry {
             return FocusOutcome(
                 raised: false, tab: .missing("Claude Code's record of the process names no job to attach to"))
         }
+        // Asked before Ghostty is: an Apple event to an application that is not installed fails
+        // the same way one refused by the Automation setting does, and the two need different
+        // words from the person.
+        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: GhosttyScripting.bundleIdentifier) != nil
+        else {
+            return FocusOutcome(raised: false, tab: .missing("Ghostty is not installed, and the attach opens there"))
+        }
         // A viewer already on screen is brought forward rather than doubled. Ghostty answers
         // nothing when it is not running or not allowed to be asked, and an empty list then
         // leads to the tab being opened — which is also what launches Ghostty.
@@ -151,7 +158,7 @@ final class SessionHostRegistry {
             _ = GhosttyScripting.focus(terminalID: terminalID)
         case .decline:
             return FocusOutcome(
-                raised: false, tab: .missing("Claude Code's record of the process names no job to attach to"))
+                raised: false, tab: .missing("the job identifier in Claude Code's record is not one that may be typed"))
         }
         _ = NSRunningApplication.runningApplications(withBundleIdentifier: GhosttyScripting.bundleIdentifier)
             .first?.activate(options: [.activateAllWindows])

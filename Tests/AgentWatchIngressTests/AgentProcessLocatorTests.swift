@@ -164,6 +164,11 @@ final class AgentProcessLocatorTests: XCTestCase {
         XCTAssertEqual(AgentProcessLocator.commandWords(["claude attach 3345bfdf"]), ["attach", "3345bfdf"])
         XCTAssertEqual(AgentProcessLocator.commandWords(["/private/opaque/.local/bin/claude"]), [])
         XCTAssertEqual(AgentProcessLocator.commandWords([]), [])
+        XCTAssertEqual(
+            AgentProcessLocator.commandWords(["/Volumes/My Disk/.local/bin/claude", "daemon", "run"]),
+            ["daemon", "run"],
+            "a path is one word however many spaces it has; only a renamed process carries words in the program's place"
+        )
     }
 
     func testASessionIsNotMistakenForAHelper() {
