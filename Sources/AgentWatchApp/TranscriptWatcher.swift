@@ -170,11 +170,14 @@ final class TranscriptWatcher {
 
     /// The sessions worth reading a transcript for, and the only ones the timer runs for.
     ///
-    /// A session whose phase accounts for its own quiet has nothing left to find: it is at
-    /// rest, or waiting for a person, or over. Reading it would be polling in the resting
-    /// state, which is exactly what the architecture forbids.
+    /// Those whose quiet might end without a hook: a session claiming work, and one waiting
+    /// for a person — whose dialog can be dismissed with Esc, which the transcript records and
+    /// no hook does. A session at rest or over changes only by a hook, and reading it would be
+    /// polling in the resting state, which is exactly what the architecture forbids. The rule
+    /// is `SessionSilence.mayEndWithoutAHook`; whether quiet is a *fault* is a different
+    /// question, and `merge(_:withSilenceAt:)` still asks that one of `SessionSilence.fault`.
     static func watchableSessions(_ sessions: some Collection<SessionSnapshot>) -> [SessionSnapshot] {
-        sessions.filter { !SessionSilence.isExpected($0) }
+        sessions.filter { SessionSilence.mayEndWithoutAHook($0) }
     }
 
     func update(sessions: [SessionSnapshot]) {

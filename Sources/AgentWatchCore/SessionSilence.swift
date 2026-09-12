@@ -6,21 +6,37 @@ import Foundation
 /// or it has lost track. Until the transcript could be read there was no way to tell them
 /// apart, so both looked the same — a row that simply stopped moving.
 ///
-/// This is the rule that separates them, and it is also what decides when there is any point
-/// reading a transcript: a session whose quiet is already explained has nothing left to find.
+/// This is the rule that separates them. A second rule beside it, `mayEndWithoutAHook`,
+/// decides when there is any point reading a transcript — and the two are not the same
+/// question, which took a stuck row to learn.
 public enum SessionSilence {
     /// True when the phase itself says why nothing is happening.
     ///
     /// The turn ended, a person is being waited for, the session is closed or lost, or it is
-    /// at rest between turns. Nothing more will arrive until that changes, so a reader has
-    /// nothing to look for and a timer has nothing to wake for.
+    /// at rest between turns. Quiet there is nobody's fault, and a timer has nothing to wake
+    /// for on its account.
     ///
     /// The unexplained cases are the ones where the session claims to be busy — planning,
     /// executing, waiting on subtasks. Quiet there is normal for minutes at a time and is not
-    /// a fault by itself, but it is the only quiet whose ending might never be reported, which
-    /// is precisely what the transcript is read to find.
+    /// a fault by itself, but two minutes of it with nothing running is.
     public static func isExpected(_ snapshot: SessionSnapshot) -> Bool {
         !snapshot.phase.claimsWork
+    }
+
+    /// True when the quiet might end with no hook announcing it — the reason a transcript is
+    /// read at all.
+    ///
+    /// A session claiming work can be interrupted, and a call of its can succeed, with no
+    /// registered hook saying so. A session waiting for a person can lose its dialog the same
+    /// way: measured, Esc on a permission prompt writes `[Request interrupted by user for tool
+    /// use]` into the transcript and fires nothing — not `Stop`, not `PermissionDenied`. The
+    /// row read nothing while it waited, so it kept asking for an approval that had long been
+    /// withdrawn. Its quiet is still no fault (`isExpected`), and still worth a look.
+    ///
+    /// Everything else — at rest, completed, failed, lost, closed — changes only by a hook, and
+    /// reading its file would be polling in the resting state.
+    public static func mayEndWithoutAHook(_ snapshot: SessionSnapshot) -> Bool {
+        snapshot.phase.claimsWork || snapshot.phase == .waitingForUser
     }
 
     /// Two minutes. A turn spent thinking rather than calling anything is real and can run

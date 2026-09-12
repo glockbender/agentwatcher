@@ -277,7 +277,12 @@ final class TranscriptWatcherTests: XCTestCase {
 
     // MARK: - When it runs at all
 
-    func testOnlyASessionThatClaimsToBeWorkingIsWorthReading() {
+    /// The sessions whose quiet might end without a hook: those claiming work, and the one
+    /// waiting for a person. The wait used to be left out as quiet that explains itself — and
+    /// it does, right up to the moment the person presses Esc on the dialog: measured, that
+    /// writes `[Request interrupted by user for tool use]` into the transcript and fires no
+    /// hook, so a row nobody read stayed at "waiting for approval" for a dialog long gone.
+    func testASessionThatClaimsWorkOrWaitsForAPersonIsWorthReading() {
         let watchable = TranscriptWatcher.watchableSessions([
             testSession(index: 0, phase: .executing, lastObservedAt: start),
             testSession(index: 1, phase: .planning, lastObservedAt: start),
@@ -288,7 +293,30 @@ final class TranscriptWatcherTests: XCTestCase {
             testSession(index: 6, phase: .sessionClosed, lastObservedAt: start),
         ])
 
-        XCTAssertEqual(watchable.map(\.arrivalIndex), [0, 1, 2])
+        XCTAssertEqual(watchable.map(\.arrivalIndex), [0, 1, 2, 4])
+    }
+
+    /// The case that was missed: a permission dialog dismissed with Esc. The hooks say
+    /// nothing, the transcript says everything, and only a reader that looks at a waiting
+    /// session ever sees it.
+    func testADialogDismissedWithEscIsNoticedWhileTheRowWaitsForAnAnswer() async throws {
+        try write(toolResult(id: "call-old"))
+        let watcher = try makeWatcher()
+        var waiting = working()
+        waiting.phase = .waitingForUser
+        waiting.userInputRequestKind = .approval
+        watcher.update(sessions: [waiting])
+        _ = try await poll(watcher)
+
+        try append(
+            """
+            {"type":"user","timestamp":"2026-09-05T02:09:56Z","message":{"role":"user","content":\
+            [{"type":"text","text":"[Request interrupted by user for tool use]"}]}}
+            """
+        )
+
+        let facts = try await poll(watcher).flatMap(\.facts)
+        XCTAssertEqual(facts, [.turnInterrupted(at: Date(timeIntervalSince1970: 1_788_574_196))])
     }
 
     /// `AGENTS.md` forbids polling while there is nothing to poll for, and a widget full of

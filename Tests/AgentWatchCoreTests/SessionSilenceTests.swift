@@ -20,6 +20,25 @@ final class SessionSilenceTests: XCTestCase {
         }
     }
 
+    /// Two questions that used to be one. Whether quiet is a fault has not changed: a person
+    /// answering a dialog takes as long as they take. Whether quiet is worth reading has — a
+    /// dialog dismissed with Esc writes `[Request interrupted by user for tool use]` into the
+    /// transcript and fires no hook, so the wait can end with nobody announcing it, and a
+    /// reader that skipped the waiting row left it asking for an approval long withdrawn.
+    func testAWaitForAPersonIsWorthReadingThoughItsQuietIsNoFault() {
+        let waiting = snapshot(phase: .waitingForUser)
+
+        XCTAssertTrue(SessionSilence.isExpected(waiting), "nothing to blame the session for")
+        XCTAssertTrue(SessionSilence.mayEndWithoutAHook(waiting), "and yet something to look for")
+
+        for phase in [SessionPhase.planning, .executing, .waitingForChildren] {
+            XCTAssertTrue(SessionSilence.mayEndWithoutAHook(snapshot(phase: phase)), "\(phase)")
+        }
+        for phase in [SessionPhase.idle, .completed, .failed, .disconnected, .sessionClosed] {
+            XCTAssertFalse(SessionSilence.mayEndWithoutAHook(snapshot(phase: phase)), "\(phase) ends only by a hook")
+        }
+    }
+
     /// The whole point of the open-activity condition. A build running for an hour is silent
     /// and completely explained: the call is right there in the session's list. Reporting it
     /// would fire the warning on healthy sessions, which is how a warning gets ignored.
