@@ -86,6 +86,23 @@ final class HUDOverflowTests: XCTestCase {
         XCTAssertEqual(list.hiddenSessionCount, 0, "every row fits again, so nothing is hidden")
     }
 
+    /// Rows the diff inserts and removes have to move the counter the way a rebuild did. The
+    /// count is taken from real frames after layout, and a row `apply` has just inserted has
+    /// none until the pass that follows.
+    func testTheCounterFollowsRowsTheDiffAddsAndRemoves() {
+        let list = listView(sessionCount: 3)
+        place(list, height: 300)
+        XCTAssertEqual(list.hiddenSessionCount, 0)
+
+        list.apply(models: rowModels((0..<30).map { session(index: $0) }, now: now), now: now)
+        list.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(list.hiddenSessionCount, 0, "thirty rows do not fit in 300 points")
+
+        list.apply(models: rowModels((0..<3).map { session(index: $0) }, now: now), now: now)
+        list.layoutSubtreeIfNeeded()
+        XCTAssertEqual(list.hiddenSessionCount, 0, "every row fits again, so nothing is hidden")
+    }
+
     /// Widening changes no vertical fact, so it must not change the count — and the rows
     /// here are deliberately far wider than the narrow widget, which is the situation that
     /// used to make the counter claim sessions were missing while all of them were visible.

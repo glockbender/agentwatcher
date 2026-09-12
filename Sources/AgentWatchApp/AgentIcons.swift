@@ -79,8 +79,8 @@ enum SessionClientIcon {
             switch clientKind {
             case .desktop: "macwindow"
             case .cli: "terminal.fill"
-            // A window crossed out, beside the two icons that are windows: the one thing a
-            // person needs from this row is that there is nowhere to be sent.
+            // A window crossed out, beside the two icons that are windows: this session has
+            // none of its own, and its `↗` opens a terminal tab instead of raising one.
             case .background: "rectangle.slash"
             }
         let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: name(for: clientKind))

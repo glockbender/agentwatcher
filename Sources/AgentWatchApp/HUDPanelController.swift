@@ -28,6 +28,9 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// so `inLiveResize` — which only knows about the window server's own drag — is false
     /// throughout, and without this the self-sizing would fight the drag frame by frame.
     private var isUserResizing = false
+    /// Where the widget reads the time. One place, so a test can move it: a row gains its `×`
+    /// by the clock alone, and only a clock the test holds can stage that crossing.
+    var clock: () -> Date = { .now }
 
     init(
         locator: @escaping (SessionSnapshot) -> SessionLocator,
@@ -213,7 +216,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         let width = panel.contentLayoutRect.width
         // One moment for the models and for the rows built from them: two readings of the
         // clock would let a row's age disagree with the thresholds decided beside it.
-        let moment = Date.now
+        let moment = clock()
         let models = orderedForDisplay(state.sessions).map { snapshot in
             HUDRowModel(snapshot: snapshot, now: moment, showsSessionTopic: settings.showsSessionTopic)
         }
@@ -281,7 +284,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             // The replacement row gets no arrival of its own if the pointer has not moved, so
             // the highlight has to be put back by hand.
             currentRow(for: sessionID)?.setHighlighted(true)
-            refreshHoverCardText(now: .now)
+            refreshHoverCardText(now: clock())
         case .dismiss:
             endHover()
         }
@@ -314,7 +317,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         guard let row = currentRow(for: sessionID), let frame = row.frameOnScreen else {
             return
         }
-        hoverCard.show(text: cardText(for: row.snapshot, now: .now), below: frame)
+        hoverCard.show(text: cardText(for: row.snapshot, now: clock()), below: frame)
     }
 
     /// What the hover card is showing, or `nil` when none is open. The card is a window of

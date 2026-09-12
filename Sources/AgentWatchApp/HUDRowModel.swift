@@ -20,8 +20,6 @@ struct HUDRowModel: Equatable {
     /// Whether the row offers a `×`. From the clock, by a threshold: a session left silent
     /// long enough gains one without an event of its own, which is why `now` is an input.
     let isDismissible: Bool
-    /// Whether the `↗` is offered rather than greyed.
-    let canBeBroughtForward: Bool
 
     var id: String {
         snapshot.id
@@ -31,6 +29,5 @@ struct HUDRowModel: Equatable {
         self.snapshot = snapshot
         name = rowName(for: snapshot, showsSessionTopic: showsSessionTopic)
         isDismissible = SessionPresence.isDismissible(snapshot, now: now)
-        canBeBroughtForward = SessionPresence.canBeBroughtForward(snapshot)
     }
 }

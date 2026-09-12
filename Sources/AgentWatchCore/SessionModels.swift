@@ -16,9 +16,8 @@ public enum SessionClientKind: String, Codable, Sendable {
     /// A third place rather than a flavour of `cli`, because it answers the widget's `↗`
     /// differently from both others. A terminal session and a desktop one have a window to
     /// bring forward; this one never had and never will — its process tree ends at `launchd`,
-    /// measured, with no application anywhere above it. It is also the only kind whose answer
-    /// cannot change later, which is what makes greying that button honest here and nowhere
-    /// else.
+    /// measured, with no application anywhere above it. Its `↗` opens a terminal tab with
+    /// `claude attach` instead (`BackgroundSessionAttach`).
     case background
 }
 

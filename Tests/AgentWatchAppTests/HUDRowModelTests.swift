@@ -42,18 +42,6 @@ final class HUDRowModelTests: XCTestCase {
             HUDRowModel(snapshot: waiting, now: atTheThreshold, showsSessionTopic: true).isDismissible)
     }
 
-    /// A session with no window of its own is still reachable: `↗` opens it in a new
-    /// terminal tab with `claude attach`, so its button is offered like every other row's.
-    func testABackgroundSessionCanBeBroughtForwardByAttaching() {
-        let background = testSession(clientKind: .background, lastObservedAt: now)
-        let terminal = testSession(clientKind: .cli, lastObservedAt: now)
-
-        XCTAssertTrue(
-            HUDRowModel(snapshot: background, now: now, showsSessionTopic: true).canBeBroughtForward)
-        XCTAssertTrue(
-            HUDRowModel(snapshot: terminal, now: now, showsSessionTopic: true).canBeBroughtForward)
-    }
-
     /// Turning the topic off is a change to what the row draws, so it has to be a change to
     /// the model — otherwise the setting would appear not to work until the next event.
     func testHidingTheTopicTakesTheNameOutOfTheModel() {

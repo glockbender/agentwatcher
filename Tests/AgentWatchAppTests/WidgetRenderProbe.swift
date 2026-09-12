@@ -238,9 +238,9 @@ final class WidgetRenderProbe: XCTestCase {
             )
         ]
 
-        // An agent with no window of its own. Its `↗` is greyed rather than hidden, and this
-        // is the only place that can be looked at: a disabled button beside enabled ones has
-        // to read as unavailable without reading as broken.
+        // An agent with no window of its own. Its `↗` is offered like every other row's — the
+        // press opens a terminal tab — and the crossed-out window icon is what says the
+        // difference; this is the only place that icon can be looked at beside the other two.
         var headless = session(10, "Ночная проверка по расписанию", .executing, secondsAgo: 12)
         headless.clientKind = .background
 

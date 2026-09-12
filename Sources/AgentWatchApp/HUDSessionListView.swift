@@ -142,7 +142,7 @@ class HUDSessionListView: NSView {
         // resists growing, which is exactly what makes the right edge work.
         //
         // A row built later — by the diff, for a session that has just arrived — is given the
-        // same width the same way, in `pinWidth(of:)`.
+        // same width the same way, in `widthConstraint(for:)`.
         constraints += rows.map(widthConstraint(for:))
 
         let usageStack = makeUsageStack()
@@ -204,8 +204,7 @@ class HUDSessionListView: NSView {
 
     /// Shows a new set of models, rebuilding only the rows that differ.
     ///
-    /// Answers whether anything changed, so the widget can skip the resize and the layout
-    /// that would follow a report that changed nothing.
+    /// Answers whether anything changed. The widget lays out either way; the tests read it.
     ///
     /// The rows that stay are the same objects they were, which is the point: the pointer
     /// keeps the row it was resting on, the tooltip that was counting down survives, and the
@@ -216,11 +215,16 @@ class HUDSessionListView: NSView {
             return false
         }
         let update = rowListUpdate(from: models, to: newModels)
+        // Before anything else, and whether or not the diff finds a change: a row that stays
+        // reads its age from this moment, and the tick that would keep it current stops as
+        // soon as no session claims work. Every event used to rebuild every row with a fresh
+        // clock; a kept row is told the time instead. The same `now` is what a rebuilt row is
+        // born with.
+        self.now = now
+        refreshTimers(now: now)
         guard !update.changesNothing else {
             return false
         }
-        // Before any row is built, because that is what a row reads its age from.
-        self.now = now
 
         let rebuilt = Set(update.rebuilt)
         var rowsByID = Dictionary(

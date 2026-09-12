@@ -238,9 +238,9 @@ final class HUDSessionRowView: NSStackView {
         return spacer
     }
 
-    /// Pressable unless the session is one that has no window at all.
+    /// Pressable for every session.
     ///
-    /// Pressable is the default, and a decision rather than an omission: a grey control would
+    /// A decision rather than an omission: a grey control would
     /// say "this session cannot be reached", which is nearly never true — the host is usually
     /// running, and when it is not, the row's card says so in a sentence a person can act on.
     /// Where the host is only holds while nothing moves, so a button greyed on that answer
