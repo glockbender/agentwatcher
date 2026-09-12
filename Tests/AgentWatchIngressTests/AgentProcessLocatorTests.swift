@@ -145,13 +145,30 @@ final class AgentProcessLocatorTests: XCTestCase {
         )
     }
 
+    /// `claude attach` shows a background session in this terminal, and that session already
+    /// has its row — the background one, whose `↗` is what opens the attach to begin with. A
+    /// row for the viewer too would be nameless, would never hear a hook of its own, and would
+    /// stand beside the row it duplicates. The earlier reading — "a session, in a window
+    /// somebody can be sent to" — is kept the other way round: the background row's press is
+    /// what finds that window. Measured: the kernel hands the words back one by one.
+    func testAViewerAttachedToABackgroundSessionIsNotASecondSession() {
+        XCTAssertTrue(AgentProcessLocator.isHelperCommand(["claude", "attach", "3345bfdf"]))
+        XCTAssertTrue(AgentProcessLocator.isHelperCommand(["claude attach 3345bfdf"]))
+    }
+
+    /// One reading for both shapes the kernel reports — the words after the program, whether
+    /// the program renamed itself into them or not — because two rules ask it: whether a
+    /// process is a helper, and whether a viewer of one particular session is running.
+    func testTheWordsAfterTheProgramAreReadTheSameWayInBothShapes() {
+        XCTAssertEqual(AgentProcessLocator.commandWords(["claude", "attach", "3345bfdf"]), ["attach", "3345bfdf"])
+        XCTAssertEqual(AgentProcessLocator.commandWords(["claude attach 3345bfdf"]), ["attach", "3345bfdf"])
+        XCTAssertEqual(AgentProcessLocator.commandWords(["/private/opaque/.local/bin/claude"]), [])
+        XCTAssertEqual(AgentProcessLocator.commandWords([]), [])
+    }
+
     func testASessionIsNotMistakenForAHelper() {
         XCTAssertFalse(AgentProcessLocator.isHelperCommand(["claude"]))
         XCTAssertFalse(AgentProcessLocator.isHelperCommand(["claude", "--resume"]))
-        XCTAssertFalse(
-            AgentProcessLocator.isHelperCommand(["claude", "attach", "7f3a"]),
-            "attaching to a background session opens it in this terminal: a session, in a window somebody can be sent to"
-        )
         XCTAssertFalse(
             AgentProcessLocator.isHelperCommand(["claude", "daemon of the lamp, explain yourself"]),
             "a prompt is one argument, and the word it starts with is not a subcommand"

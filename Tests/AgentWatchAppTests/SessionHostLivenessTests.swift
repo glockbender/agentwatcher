@@ -138,6 +138,53 @@ final class SessionHostLivenessTests: XCTestCase {
         )
     }
 
+    /// A background session's press opens a terminal tab with `claude attach` instead of
+    /// raising a window, and the job to attach to is read from Claude Code's own record of
+    /// the process. When there is no record, the outcome says so — the alternative is a
+    /// press that does nothing and a log line that says only that.
+    func testABackgroundSessionWithNoRecordOfItsProcessSaysSo() throws {
+        let registry = SessionHostRegistry(claudeHome: try temporaryClaudeHome()) { _ in }
+        var background = testSession(clientKind: .background, lastObservedAt: moment)
+        background.agentProcessID = 4_242
+
+        let outcome = registry.focus(background)
+
+        XCTAssertFalse(outcome.raised)
+        XCTAssertEqual(outcome.tab, .missing("Claude Code keeps no record of process 4242"))
+    }
+
+    /// An interactive session has a record too, with no job in it. Only a background session
+    /// reaches this code, so a record without a job is Claude Code's file changing shape —
+    /// worth a line that says which file, not a silent press.
+    func testABackgroundSessionWhoseRecordNamesNoJobSaysSo() throws {
+        let home = try temporaryClaudeHome()
+        try Data(#"{"pid":"4242","kind":"interactive","name":"unnamed"}"#.utf8)
+            .write(to: BackgroundSessionAttach.sessionRecordURL(claudeHome: home, agentProcessID: 4_242))
+        let registry = SessionHostRegistry(claudeHome: home) { _ in }
+        var background = testSession(clientKind: .background, lastObservedAt: moment)
+        background.agentProcessID = 4_242
+
+        let outcome = registry.focus(background)
+
+        XCTAssertFalse(outcome.raised)
+        XCTAssertEqual(outcome.tab, .missing("Claude Code's record of the process names no job to attach to"))
+    }
+
+    /// A `~/.claude` of this test's own, with the `sessions` folder Claude Code keeps there.
+    private func temporaryClaudeHome() throws -> URL {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("agent-watch-tests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent("sessions", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: home.deletingLastPathComponent())
+        }
+        return home
+    }
+
     private func session(_ configure: (inout SessionSnapshot) -> Void) -> SessionSnapshot {
         var session = testSession(lastObservedAt: moment)
         configure(&session)

@@ -98,21 +98,35 @@ public enum AgentProcessLocator {
     /// only ever removes a row, so a helper it does not know yet is today's behaviour and
     /// nothing worse.
     ///
+    /// `attach` is on the list for a reason of its own: not a helper of the agent's but a
+    /// viewer of a person's. It shows a background session in the terminal it is typed into,
+    /// and that session has a row already — the background one, whose `↗` is what opens the
+    /// viewer to begin with (`BackgroundSessionAttach`). A row for the viewer too would be
+    /// nameless, would never hear a hook of its own, and would stand beside the row it
+    /// duplicates.
+    ///
     /// Asked of a process's arguments and nothing else, so the whole rule can be exercised
     /// without a machine that happens to be running one.
     static func isHelperCommand(_ arguments: [String]) -> Bool {
-        // A helper renames itself: `claude bg-pty-host` arrives as one argument, with the
-        // job written into the name. A subcommand typed by a person is the next argument
-        // instead, so both shapes are read as the same list of words.
-        let programWords = (arguments.first ?? "").split(separator: " ").map(String.init)
-        let words = Array(programWords.dropFirst()) + arguments.dropFirst()
-        guard let subcommand = words.first else {
+        guard let subcommand = commandWords(arguments).first else {
             return false
         }
         return helperCommands.contains(subcommand)
     }
 
-    private static let helperCommands: Set<String> = ["daemon", "bg-pty-host", "bg-spare"]
+    /// The words a process was started with, after the program itself.
+    ///
+    /// A helper renames itself: `claude bg-pty-host` arrives as one argument, with the job
+    /// written into the name. A subcommand typed by a person is the next argument instead, so
+    /// both shapes are read as the same list of words. Two rules ask it — whether a process is
+    /// one of the agent's helpers, and whether a viewer of one particular job is running — and
+    /// one reading keeps them from drifting apart.
+    static func commandWords(_ arguments: [String]) -> [String] {
+        let programWords = (arguments.first ?? "").split(separator: " ").map(String.init)
+        return Array(programWords.dropFirst()) + arguments.dropFirst()
+    }
+
+    private static let helperCommands: Set<String> = ["daemon", "bg-pty-host", "bg-spare", "attach"]
 
     private static func isCodexDesktopProcess(_ snapshot: ProcessSnapshot) -> Bool {
         guard let executablePath = snapshot.executablePath?.lowercased() else {

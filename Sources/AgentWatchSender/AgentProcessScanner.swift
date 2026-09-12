@@ -51,6 +51,29 @@ public enum AgentProcessScanner {
             .sorted { $0.processID < $1.processID }
     }
 
+    /// Whether some Claude process was started with exactly these words after the program —
+    /// `["attach", "3345bfdf"]` for a viewer of that job.
+    ///
+    /// Asked before a background session's press opens a viewer of its own, so that a second
+    /// press finds the first viewer's tab instead of opening another. Helpers are not dropped
+    /// here, because a viewer is one of the processes `claudeProcessIDs` drops.
+    public static func isClaudeRunning(withWords words: [String]) -> Bool {
+        allProcessIDs().contains { processID in
+            guard let executablePath = AgentProcessLocator.executablePath(for: processID) else {
+                return false
+            }
+            let snapshot = ProcessSnapshot(
+                processID: processID,
+                executableName: URL(fileURLWithPath: executablePath).lastPathComponent,
+                executablePath: executablePath
+            )
+            guard AgentProcessLocator.isClaudeProcess(snapshot) else {
+                return false
+            }
+            return AgentProcessLocator.commandWords(AgentProcessLocator.commandArguments(of: processID) ?? []) == words
+        }
+    }
+
     /// A helper an agent started for itself is not a second session.
     ///
     /// The other half of the same rule is `AgentProcessLocator.isHelperCommand`, which

@@ -215,7 +215,14 @@ final class SessionSupervisor {
     func focus(_ snapshot: SessionSnapshot) -> Bool {
         let outcome = hostRegistry.focus(snapshot)
         if !outcome.raised {
-            onNotableEvent("\(Self.label(snapshot)) · nothing to bring forward")
+            // With the reason when there is one: a background session's press can fail on the
+            // way to its terminal — no record of the process, no job in it, Ghostty declining
+            // — and "nothing to bring forward" alone would hide which.
+            if case .missing(let reason) = outcome.tab {
+                onNotableEvent("\(Self.label(snapshot)) · \(reason); nothing to bring forward")
+            } else {
+                onNotableEvent("\(Self.label(snapshot)) · nothing to bring forward")
+            }
         } else if case .missing(let reason) = outcome.tab {
             onNotableEvent("\(Self.label(snapshot)) · \(reason); window only")
         }

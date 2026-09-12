@@ -42,13 +42,13 @@ final class HUDRowModelTests: XCTestCase {
             HUDRowModel(snapshot: waiting, now: atTheThreshold, showsSessionTopic: true).isDismissible)
     }
 
-    /// A session with no window of its own has nowhere to be brought forward to, and the row
-    /// says so by greying the button rather than by promising a jump that does nothing.
-    func testABackgroundSessionCannotBeBroughtForward() {
+    /// A session with no window of its own is still reachable: `↗` opens it in a new
+    /// terminal tab with `claude attach`, so its button is offered like every other row's.
+    func testABackgroundSessionCanBeBroughtForwardByAttaching() {
         let background = testSession(clientKind: .background, lastObservedAt: now)
         let terminal = testSession(clientKind: .cli, lastObservedAt: now)
 
-        XCTAssertFalse(
+        XCTAssertTrue(
             HUDRowModel(snapshot: background, now: now, showsSessionTopic: true).canBeBroughtForward)
         XCTAssertTrue(
             HUDRowModel(snapshot: terminal, now: now, showsSessionTopic: true).canBeBroughtForward)

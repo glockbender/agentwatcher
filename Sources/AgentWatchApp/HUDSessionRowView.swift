@@ -246,9 +246,11 @@ final class HUDSessionRowView: NSStackView {
     /// Where the host is only holds while nothing moves, so a button greyed on that answer
     /// greys rows that are perfectly reachable a second later.
     ///
-    /// `SessionPresence.canBeBroughtForward` names the one exception, and the button stays in
-    /// place for it rather than disappearing: the row would otherwise lose its first column
-    /// and stop lining up with every other row. The card says why it is grey.
+    /// `SessionPresence.canBeBroughtForward` is where an exception would be named; there is
+    /// none today — a background session's press opens a terminal tab instead of raising a
+    /// window. Were one to come back, the button would stay in place for it rather than
+    /// disappear: the row would otherwise lose its first column and stop lining up with every
+    /// other row, and the card would say why it is grey.
     ///
     /// No tooltip: the card is the one thing that explains a row.
     private static func makeFocusButton(for snapshot: SessionSnapshot, onFocus: @escaping () -> Void) -> NSButton {

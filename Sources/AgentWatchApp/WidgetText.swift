@@ -564,7 +564,8 @@ func hoverCardText(
 
     // Said here rather than on the button, which carries no tooltip of its own: the line
     // tells a person how far one press gets them, and at the two finer levels where to look
-    // for the rest of the way. For the one row whose button is grey it says why instead.
+    // for the rest of the way. For a background session it says that the press opens a tab
+    // rather than raising one, which is a different promise.
     let focus = focusHint(
         locator,
         namesTheSessionAbove: name != nil,
@@ -606,10 +607,11 @@ func focusHint(
     }
     guard let application = locator.applicationName else {
         // Two different absences, and the difference is what a person does next. A host that
-        // is gone may come back; a background session never had a window at all, which is
-        // also why its button is grey rather than pressable.
+        // is gone may come back; a background session never had a window at all, so its
+        // press opens one — a terminal tab with `claude attach` typed into it — and the line
+        // names the command so that a person can do the same by hand anywhere else.
         return runsWithoutAWindow
-            ? "No window to bring forward — a background session runs in the agent's own pty"
+            ? "↗ opens it in a new Ghostty tab with `claude attach` — a background session has no window of its own"
             : "No window to bring forward"
     }
     let brings = "↗ brings \(application) forward"

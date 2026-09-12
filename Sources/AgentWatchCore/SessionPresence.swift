@@ -6,16 +6,21 @@ import Foundation
 /// and not beside the row that draws the buttons: `AGENTS.md` wants rules like these
 /// checkable without an application.
 public enum SessionPresence {
-    /// Whether `↗` can ever reach this session.
+    /// Whether `↗` can ever reach this session — and since `claude attach`, it always can.
     ///
     /// Asks nothing about the running system — only what kind of place the session itself
-    /// said it is in. A background session is the one row where the answer is no and cannot
-    /// change: the agent runs it in a pty of its own, and its process tree ends at `launchd`
-    /// with no application above it. Every other row has a host that may be running, may
-    /// have quit, or may not have been found this second, and none of that is predicted
-    /// here: a button greyed on a guess about the host is wrong whenever the guess is.
+    /// said it is in. A background session used to be the one row where the answer was no:
+    /// the agent runs it in a pty of its own, its process tree ends at `launchd` with no
+    /// application above it, and no window will ever appear. It has a door instead of a
+    /// window — `claude attach <job id>` shows it in any terminal — so `↗` opens that door in
+    /// a new terminal tab (`BackgroundSessionAttach`). Every other row has a host that may be
+    /// running, may have quit, or may not have been found this second, and none of that is
+    /// predicted here: a button greyed on a guess about the host is wrong whenever the guess is.
+    ///
+    /// Kept as a rule the widget asks rather than deleted, because this is the one place that
+    /// would say so if a kind of session became unreachable again.
     public static func canBeBroughtForward(_ snapshot: SessionSnapshot) -> Bool {
-        snapshot.clientKind != .background
+        true
     }
 
     /// A session the app will never revisit on its own needs a way out by hand.

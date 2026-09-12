@@ -467,9 +467,10 @@ final class HUDRowLayoutTests: XCTestCase {
         }
     }
 
-    /// The one row whose button is grey, and it stays in place: the columns after it line up
-    /// down the whole list, and a row missing its first one would break that everywhere.
-    func testABackgroundSessionsFocusButtonIsGreyAndStaysWhereItIs() throws {
+    /// A background session has no window, and its button is pressable all the same: a press
+    /// opens the session in a new terminal tab. The button keeps its place and width like
+    /// every other row's, because the columns after it line up down the whole list.
+    func testABackgroundSessionsFocusButtonIsPressableAndStaysWhereItIs() throws {
         var background = snapshot()
         background.phase = .executing
         background.clientKind = .background
@@ -477,19 +478,21 @@ final class HUDRowLayoutTests: XCTestCase {
         let button = try XCTUnwrap(row(snapshot: background).arrangedSubviews.first as? RowActionButton)
 
         XCTAssertEqual(button.rowAction, .focus)
-        XCTAssertFalse(button.isEnabled)
+        XCTAssertTrue(button.isEnabled)
         XCTAssertEqual(placed(button).width, HUDSessionRowView.buttonWidth, accuracy: 0.5)
     }
 
-    /// Grey with no explanation is the thing this app must never do.
-    func testTheCardSaysWhyABackgroundSessionCannotBeReached() {
+    /// A press that opens a tab rather than raising a window is a different promise, and the
+    /// card is where a person reads which one they are about to get.
+    func testTheCardSaysABackgroundSessionOpensInANewTerminalTab() {
         var background = snapshot()
         background.phase = .executing
         background.clientKind = .background
 
         let card = hoverCardText(for: background, now: now, locator: .nowhere)
 
-        XCTAssertTrue(card.contains("a background session runs in the agent's own pty"), card)
+        XCTAssertTrue(card.contains("↗ opens it in a new Ghostty tab"), card)
+        XCTAssertTrue(card.contains("no window of its own"), card)
         XCTAssertTrue(card.contains("Background"), "the identity line names the place too")
     }
 

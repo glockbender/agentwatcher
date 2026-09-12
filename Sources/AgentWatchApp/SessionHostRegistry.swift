@@ -12,12 +12,21 @@ final class SessionHostRegistry {
     }
 
     private let onAgentProcessExit: (String) -> Void
+    /// Claude Code's own folder, where it keeps a record of every process it runs — the one
+    /// place a background session's job identifier can be read from. A parameter so a test
+    /// can point it at a folder of its own.
+    private let claudeHome: URL
     private var hosts: [String: SessionHost] = [:]
     private lazy var exitWatcher = SessionProcessExitWatcher { [weak self] sessionID in
         self?.onAgentProcessExit(sessionID)
     }
 
-    init(onAgentProcessExit: @escaping (String) -> Void) {
+    init(
+        claudeHome: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude", isDirectory: true),
+        onAgentProcessExit: @escaping (String) -> Void
+    ) {
+        self.claudeHome = claudeHome
         self.onAgentProcessExit = onAgentProcessExit
     }
 
@@ -85,11 +94,68 @@ final class SessionHostRegistry {
     /// what the IDE plugin is for; without it, raising all of them is the wider net.
     @discardableResult
     func focus(_ snapshot: SessionSnapshot) -> FocusOutcome {
+        // A background session has no application anywhere above it and never will — its
+        // tree ends at `launchd` — so there is no host to raise. What it has is a door, and
+        // the press opens that instead.
+        if snapshot.clientKind == .background {
+            return attachInTerminal(snapshot)
+        }
         guard let application = application(for: snapshot) else {
             return FocusOutcome(raised: false, tab: .unaddressable)
         }
         let raised = application.activate(options: [.activateAllWindows])
         return FocusOutcome(raised: raised, tab: askForTab(of: snapshot, in: application))
+    }
+
+    /// Opens a background session in a new Ghostty tab with `claude attach`.
+    ///
+    /// The job to attach to comes from Claude Code's record of the agent process, read now
+    /// rather than remembered: the record appears when the session is moved to the
+    /// background, which can be twenty minutes after its first hook. Each way the trip can
+    /// end early is named in the outcome, because a press that does nothing and a log that
+    /// says only that is the one thing this app must not do. `BackgroundSessionAttach` holds
+    /// the rules; this is only the disk, the script and the raise.
+    ///
+    /// `raised` is true once the tab is there: the tab *is* the session coming forward, and
+    /// bringing Ghostty in front of everything else is the same best effort as for any host.
+    private func attachInTerminal(_ snapshot: SessionSnapshot) -> FocusOutcome {
+        guard let agentProcessID = snapshot.agentProcessID else {
+            return FocusOutcome(raised: false, tab: .missing("no agent process to look the job up by"))
+        }
+        let record = BackgroundSessionAttach.sessionRecordURL(claudeHome: claudeHome, agentProcessID: agentProcessID)
+        guard let contents = try? Data(contentsOf: record) else {
+            return FocusOutcome(
+                raised: false, tab: .missing("Claude Code keeps no record of process \(agentProcessID)"))
+        }
+        guard let jobID = BackgroundSessionAttach.jobID(inSessionRecord: contents) else {
+            return FocusOutcome(
+                raised: false, tab: .missing("Claude Code's record of the process names no job to attach to"))
+        }
+        // A viewer already on screen is brought forward rather than doubled. Ghostty answers
+        // nothing when it is not running or not allowed to be asked, and an empty list then
+        // leads to the tab being opened — which is also what launches Ghostty.
+        let decision = BackgroundSessionAttach.decision(
+            among: GhosttyScripting.terminals() ?? [],
+            jobID: jobID,
+            viewerIsRunning: AgentProcessScanner.isClaudeRunning(withWords: ["attach", jobID])
+        )
+        switch decision {
+        case .focus(let terminalID):
+            guard GhosttyScripting.focus(terminalID: terminalID) else {
+                return FocusOutcome(raised: false, tab: .missing("Ghostty refused to focus the viewer's tab"))
+            }
+        case .openTab(let line):
+            guard let terminalID = GhosttyScripting.openTab(typing: line) else {
+                return FocusOutcome(raised: false, tab: .missing("Ghostty opened no tab; check Automation permission"))
+            }
+            _ = GhosttyScripting.focus(terminalID: terminalID)
+        case .decline:
+            return FocusOutcome(
+                raised: false, tab: .missing("Claude Code's record of the process names no job to attach to"))
+        }
+        _ = NSRunningApplication.runningApplications(withBundleIdentifier: GhosttyScripting.bundleIdentifier)
+            .first?.activate(options: [.activateAllWindows])
+        return FocusOutcome(raised: true, tab: .asked)
     }
 
     /// Asking whoever owns this host to select the session's tab.
