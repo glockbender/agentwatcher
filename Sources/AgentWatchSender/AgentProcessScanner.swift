@@ -101,7 +101,7 @@ public enum AgentProcessScanner {
         return found
     }
 
-    private static func allProcessIDs() -> [Int32] {
+    static func allProcessIDs() -> [Int32] {
         let reported = proc_listallpids(nil, 0)
         guard reported > 0 else {
             return []
@@ -109,11 +109,16 @@ public enum AgentProcessScanner {
         // Room to spare, because processes start between the two calls and the kernel fills
         // as much of the buffer as it is given without saying that it had more.
         var identifiers = [Int32](repeating: 0, count: Int(reported) * 2)
-        let bytes = proc_listallpids(&identifiers, Int32(identifiers.count * MemoryLayout<Int32>.size))
-        guard bytes > 0 else {
+        // Both calls answer in processes, not bytes: `libproc` divides the kernel's byte count
+        // by `sizeof(int)` before returning it. Read as bytes and divided once more, the
+        // answer kept a quarter of the list — the newest quarter, since the kernel lists
+        // newest first — so an agent running since yesterday was invisible and one a day old
+        // flickered in and out at the boundary. `testProcessListingReachesLaunchd` holds this.
+        let listed = proc_listallpids(&identifiers, Int32(identifiers.count * MemoryLayout<Int32>.size))
+        guard listed > 0 else {
             return []
         }
-        return Array(identifiers.prefix(Int(bytes) / MemoryLayout<Int32>.size)).filter { $0 > 0 }
+        return Array(identifiers.prefix(Int(listed))).filter { $0 > 0 }
     }
 
     /// The name of the directory a process is working in, and never the path to it.
