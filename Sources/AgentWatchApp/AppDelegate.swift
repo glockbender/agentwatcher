@@ -22,13 +22,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// What the widget says instead of "No active sessions", as last read from the agents'
     /// own configuration files. Read at four moments, shown on every redraw.
     private var widgetComplaint: String?
-    /// What this sitting has asked of each IDE, by its settings directory name. Never read
-    /// from disk and never remembered past a launch: it is the difference between "the file
-    /// says the plugin was here" and "it answered me a moment ago".
-    private var ideChecks: [String: IDEPluginCheck] = [:]
-    /// Eight seconds, in quarter-second looks. The reply has been seen arriving in under one;
-    /// the rest of the budget is for an IDE that is busy indexing when it is asked.
-    private static let idePluginReplyAttempts = 32
     private var transcriptSummaryMenuItem: NSMenuItem?
     private let singleInstanceCoordinator: SingleInstanceCoordinator
     private let backgroundStore: WidgetBackgroundStore
@@ -482,7 +475,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
     }
 
-    /// Everything the tooling window shows, read in one go. See `ToolingWindowFacts`.
     private func makeTranscriptMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Read Session Transcripts", action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: "Read Session Transcripts")

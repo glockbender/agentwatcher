@@ -139,6 +139,8 @@ final class ToolingCoordinator {
             return
         }
         ideChecks[dataDirectoryName] = .waiting(token: token)
+        // The window shows the wait as it starts; the answer, when it comes, is another change.
+        onChange()
         _ = NSWorkspace.shared.open(url)
         Task { [weak self] in
             await self?.awaitIDEPluginReply(dataDirectoryName: dataDirectoryName, token: token)

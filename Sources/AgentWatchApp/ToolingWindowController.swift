@@ -236,11 +236,10 @@ final class ToolingWindowController: NSWindowController {
         guard let press = actionButtons.first(where: { $0.value === sender })?.key else {
             return
         }
+        // Nothing is rebuilt here: whoever performs the press says when the facts changed, and
+        // the window is rebuilt from that one report. A second rebuild from this side read the
+        // same disk twice for every press.
         act(press)
-        // The disk changed, so everything shown here is a reading from before it. A press
-        // that only starts something — asking an IDE a question — rebuilds again when its
-        // answer arrives, from wherever that waiting is done.
-        rebuild()
     }
 
     // MARK: - Pieces

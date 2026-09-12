@@ -89,27 +89,41 @@ final class AppUpdater: PreferenceDefaults {
 
     // MARK: - Talking to GitHub
 
+    /// One request, as `URLSession` makes it. Replaceable so a test can answer with a status
+    /// the real endpoint would need a real release to produce.
+    typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
     /// What the release list says, or `nil` when the question could not be asked at all.
     ///
     /// Every failure is one answer: no network, GitHub down, the hourly limit for an address
     /// without a token spent, an answer that is not the JSON expected. None of them is the
     /// person's problem, and none of them may interrupt what they are doing — the same
     /// fail-open rule the hooks live by.
-    private nonisolated static func fetchDecision(
+    ///
+    /// One status is not a failure. `/releases/latest` answers 404 while every release is a
+    /// pre-release — this project's state from the start — and that means "nothing finished
+    /// yet", which is "up to date" and not "GitHub could not be reached".
+    nonisolated static func fetchDecision(
         ownVersion: String?,
-        skippedVersion: String?
+        skippedVersion: String?,
+        transport: Transport = { try await URLSession.shared.data(for: $0) }
     ) async -> AppUpdateDecision? {
         guard
             let latestReleaseURL = AppUpdate.latestReleaseURL(),
-            let data = await fetch(AppUpdate.request(for: latestReleaseURL))
+            let (data, response) = try? await transport(AppUpdate.request(for: latestReleaseURL))
         else {
             return nil
         }
-        return AppUpdate.decide(
-            ownVersion: ownVersion,
-            release: AppUpdate.release(from: data),
-            skippedVersion: skippedVersion
-        )
+        let release: AppRelease?
+        switch (response as? HTTPURLResponse)?.statusCode {
+        case 200:
+            release = AppUpdate.release(from: data)
+        case 404:
+            release = nil
+        default:
+            return nil
+        }
+        return AppUpdate.decide(ownVersion: ownVersion, release: release, skippedVersion: skippedVersion)
     }
 
     /// The bytes one request brings back, or nothing unless the server actually sent them.
@@ -261,10 +275,30 @@ final class AppUpdater: PreferenceDefaults {
             return discard()
         }
         let unpacked = workingDirectory.appendingPathComponent("AgentWatch.app")
-        guard fileManager.fileExists(atPath: unpacked.path), version(ofBundleAt: unpacked) == expectedVersion else {
+        guard
+            fileManager.fileExists(atPath: unpacked.path),
+            version(ofBundleAt: unpacked) == expectedVersion,
+            isSealIntact(unpacked)
+        else {
             return discard()
         }
         return unpacked
+    }
+
+    /// `codesign --verify --strict`: every file in the bundle matches the seal it was signed
+    /// with. The checksum proved the archive arrived whole; this proves what came out of it is
+    /// what was signed — under whatever certificate, ad-hoc included — and it is the same check
+    /// `scripts/e2e-update.sh` treats as the installed copy being good.
+    private nonisolated static func isSealIntact(_ bundle: URL) -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        task.arguments = ["--verify", "--strict", bundle.path]
+        task.standardError = FileHandle.nullDevice
+        guard (try? task.run()) != nil else {
+            return false
+        }
+        task.waitUntilExit()
+        return task.terminationStatus == 0
     }
 
     private nonisolated static func sha256Hex(of data: Data) -> String {
@@ -328,12 +362,16 @@ final class AppUpdater: PreferenceDefaults {
     /// Starts the copy that is now on disk and leaves.
     ///
     /// The order matters and it is not the obvious one. A second Agent Watch cannot start
-    /// while this one holds the socket, so the new copy is opened by a small shell that waits
-    /// a moment — it outlives this process — and this one quits immediately afterwards.
+    /// while this one holds the socket, so the new copy is opened by a small shell that
+    /// outlives this process and waits for it to be gone, and this one quits immediately
+    /// afterwards.
     private func relaunch(at bundleURL: URL) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "sleep 2; open \(ShellWord.quoted(bundleURL.path))"]
+        task.arguments = [
+            "-c",
+            Self.relaunchScript(processID: ProcessInfo.processInfo.processIdentifier, bundlePath: bundleURL.path),
+        ]
         guard (try? task.run()) != nil else {
             // Quitting now would take the app off the screen with nothing to bring it back,
             // right after an update that otherwise worked.
@@ -341,5 +379,15 @@ final class AppUpdater: PreferenceDefaults {
             return
         }
         NSApp.terminate(nil)
+    }
+
+    /// The shell line that opens the new copy once this process is gone.
+    ///
+    /// Waits for the process rather than a fixed two seconds: a copy opened while this one
+    /// still held the single-instance lock would find it, ask it to show itself and exit —
+    /// nothing left running, right after an update that worked. `kill -0` sends no signal; it
+    /// only asks whether the process is still there.
+    nonisolated static func relaunchScript(processID: Int32, bundlePath: String) -> String {
+        "while kill -0 \(processID) 2>/dev/null; do sleep 0.2; done; open \(ShellWord.quoted(bundlePath))"
     }
 }

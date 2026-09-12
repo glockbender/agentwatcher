@@ -48,6 +48,26 @@ final class AppUpdateTests: XCTestCase {
         XCTAssertFalse(release?.downloadURL?.lastPathComponent.contains("ide") ?? true)
     }
 
+    /// The two files are downloaded and one of them replaces the running app, so a release
+    /// that names them over anything but HTTPS is a release with no files.
+    func testAFileOfferedOverPlainHTTPIsNotTaken() throws {
+        let release = try XCTUnwrap(
+            AppUpdate.release(
+                from: Data(
+                    """
+                    {"tag_name": "v0.3.0", "html_url": "https://example.com/r", "assets": [
+                      {"name": "AgentWatch-0.3.0.zip", "browser_download_url": "http://example.com/AgentWatch-0.3.0.zip"},
+                      {"name": "AgentWatch-0.3.0.zip.sha256", "browser_download_url": "https://example.com/AgentWatch-0.3.0.zip.sha256"}
+                    ]}
+                    """.utf8
+                )
+            )
+        )
+
+        XCTAssertNil(release.downloadURL)
+        XCTAssertNotNil(release.checksumURL)
+    }
+
     func testADraftIsNotOffered() {
         let answer = """
             {"tag_name": "v0.3.0", "draft": true, "html_url": "https://example.com/r", "assets": []}
@@ -123,6 +143,16 @@ final class AppUpdateTests: XCTestCase {
         let decision = AppUpdate.decide(ownVersion: "0.1.0", release: nil, skippedVersion: nil)
 
         XCTAssertEqual(decision, .upToDate)
+    }
+
+    /// Measured: left alone, `URLSession` introduces the request as `<executable>/<CFBundleVersion>
+    /// CFNetwork/… Darwin/…`, and the bundle's version is the release version — so the one
+    /// header the app sets is the one that would otherwise have carried it.
+    func testTheRequestNamesTheAppAndNotItsVersion() {
+        let request = AppUpdate.request(for: URL(string: "https://api.github.com/x")!)
+
+        XCTAssertEqual(request.value(forHTTPHeaderField: "User-Agent"), "AgentWatch")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/vnd.github+json")
     }
 
     func testTheChecksumIsReadOutOfTheFileShasumWrites() {

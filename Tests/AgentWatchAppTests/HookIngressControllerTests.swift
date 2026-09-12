@@ -30,6 +30,28 @@ final class HookIngressControllerTests: XCTestCase {
         XCTAssertEqual(logged, ["Local hook listener is unavailable"])
     }
 
+    /// The other way a listener fails: a path it cannot bind. A Unix socket path is limited to
+    /// 104 bytes on macOS, so a longer one is refused by the system, not by this code.
+    func testAListenerThatCannotBindItsSocketLeavesTheAppRunningAndSaysSo() {
+        var logged: [String] = []
+        let tooLong = FileManager.default.temporaryDirectory
+            .appendingPathComponent(String(repeating: "x", count: 120))
+            .appendingPathComponent("agent-watch.sock")
+        let controller = HookIngressController(
+            socketURL: { tooLong },
+            ingest: { _ in
+                XCTFail("nothing can arrive through a listener that never started")
+                return nil
+            },
+            reveal: { XCTFail("nothing arrived") },
+            log: { logged.append($0) }
+        )
+
+        controller.start()
+
+        XCTAssertEqual(logged, ["Local hook listener is unavailable"])
+    }
+
     func testAnAcceptedEventIsHandedOverAndNamedInTheLog() {
         var ingested: [HookIngressRequest] = []
         var logged: [String] = []

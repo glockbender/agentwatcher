@@ -67,10 +67,16 @@ public enum AppUpdate {
     /// downloads a real release — and the idle timeout is a decision, not a default: a check
     /// that hangs would hold the "one check at a time" flag for as long as the system's
     /// own limit, which is a minute.
+    ///
+    /// `User-Agent` is set because it would otherwise be set for us: measured, `URLSession`
+    /// introduces a request as `<executable>/<CFBundleVersion> CFNetwork/… Darwin/…`, and the
+    /// bundle's version is the release version — the one thing this request promises not to
+    /// carry. GitHub wants some name here; it gets the app's and nothing more.
     public static func request(for url: URL) -> URLRequest {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("AgentWatch", forHTTPHeaderField: "User-Agent")
         return request
     }
 
@@ -88,10 +94,17 @@ public enum AppUpdate {
             return nil
         }
         // The file named after the version rather than the first zip in the release: a
-        // release carries the IDE plugin too, and that one is versioned on its own.
+        // release carries the IDE plugin too, and that one is versioned on its own. Over HTTPS
+        // only — the rule in code rather than in the system's transport defaults, because one
+        // of these files replaces the running application.
         let assets = entry.assets ?? []
         func asset(named name: String) -> URL? {
-            assets.first { $0.name == name }?.browserDownloadURL.flatMap(URL.init(string:))
+            guard let url = assets.first(where: { $0.name == name })?.browserDownloadURL.flatMap(URL.init(string:)),
+                url.scheme == "https"
+            else {
+                return nil
+            }
+            return url
         }
         return AppRelease(
             version: version,
