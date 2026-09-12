@@ -48,7 +48,8 @@
 
 Единственный источник — `CFBundleShortVersionString` в `Resources/Info.plist`. Из него же при сборке
 бандла пишется `CFBundleVersion`: по нему macOS решает, какая из двух копий новее, и константа в нём
-делает все сборки одинаковыми на вид — а будущей проверке обновлений сравнивать было бы нечего.
+делает все сборки одинаковыми на вид. Проверка обновлений сравнивает `CFBundleShortVersionString`
+(`AppUpdater.version(ofBundleAt:)`), а по `CFBundleVersion` две копии различает сама macOS.
 
 Workflow первым делом сверяет тег с этим значением и падает при расхождении, ничего не собрав.
 Релиз, у которого имя файла и окно «О программе» говорят разное, находит только тот, кто его скачал.
@@ -108,11 +109,16 @@ System Settings → Privacy & Security → Open Anyway, и для приложе
 из контракта, так что в релиз он кладётся как есть:
 
 ```sh
-gh run download --name agent-watch-ide --dir ide-plugin/build/signed
+gh run download <run-id> --name agent-watch-ide --dir ide-plugin/build/signed
 gh release upload vX.Y.Z ide-plugin/build/signed/agent-watch-ide-<версия>.zip
 ```
 
-Локальная сборка `task plugin` — для проверки на этой машине, не для релиза: подписи в ней нет.
+`<run-id>` — номер запуска `publish-plugin` из `gh run list --workflow publish-plugin`; без него
+команда спросит его сама.
+
+Локальная сборка `task plugin` — для проверки на этой машине, не для релиза: подписи в ней нет. Она же
+кладёт файл туда, откуда приложение предлагает плагин IDE, под тем же именем, что у подписанного
+релиза, — поэтому проверка перед push (`task plugin-check`) собирает и тестирует плагин, но не кладёт.
 
 ## Плагин IDE в Marketplace
 
@@ -123,9 +129,13 @@ Marketplace — основной путь установки плагина (п�
 описание и заметки о версии — в `ide-plugin/src/main/resources/META-INF/plugin.xml`; логотип —
 `pluginIcon.svg` и `pluginIcon_dark.svg` рядом, 40×40 с двухпиксельным прозрачным полем; лицензия —
 `LICENSE` в корне, при загрузке выбирается MIT и даётся ссылка на исходники. Имя не должно содержать
-слов `Plugin`, `IntelliJ`, `JetBrains` и названий продуктов; идентификатор — начинаться с
-`org.jetbrains` или `com.intellij` и содержать название продукта отдельным компонентом.
-`./gradlew verifyPlugin` проверяет это до загрузки, и на 0.1.4 отвечает `Compatible`.
+слов `Plugin`, `IntelliJ`, `JetBrains` и названий продуктов ([правила
+имени](https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html)). Идентификатор
+— полное имя в стиле Java-пакета из букв, цифр, `.`, `-` и `_`, и после публикации он не меняется
+([правила `<id>`](https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html#idea-plugin__id));
+verifier Marketplace предупреждает о шаблонных словах в нём — `plugin`, `intellij`, `jetbrains`, `idea`
+— поэтому выбран `com.glockbender.agentwatch`, без них. Совместимость до загрузки проверяет
+`./gradlew verifyPlugin` (на 0.1.4 — `Compatible`); имя и идентификатор проверяет сам Marketplace.
 
 **Подпись.** Gradle-плагин сам читает три переменные окружения — `CERTIFICATE_CHAIN`, `PRIVATE_KEY`,
 `PRIVATE_KEY_PASSWORD` — и когда они заданы, `signPlugin` срабатывает перед `publishPlugin`.
@@ -180,10 +190,11 @@ openssl req -key private.pem -new -x509 -days 3650 -subj "/CN=glockbender" -out 
 подписанный файл артефактом. Каждая версия снова проходит ревью, так что на Marketplace она
 появляется не сразу.
 
-**Смена идентификатора.** До публикации идентификатор был `com.glockbender.agentwatch.ide`; с 0.1.4
-— `com.glockbender.agentwatch.plugin.jetbrains`, потому что после публикации менять его нельзя. Для
-IDE это другой плагин: копию со старым идентификатором надо удалить в Settings → Plugins до
-установки новой, иначе на адрес `agent-watch` окажутся подписаны два плагина.
+**Смена идентификатора.** До публикации идентификатор был `com.glockbender.agentwatch.ide`, затем
+`…plugin.jetbrains`; с 0.1.4 — `com.glockbender.agentwatch`: после публикации менять его нельзя, а
+слова `plugin` и `jetbrains` verifier помечает как шаблонные. Для IDE это другой плагин: копию со
+старым идентификатором надо удалить в Settings → Plugins до установки новой, иначе на адрес
+`agent-watch` окажутся подписаны два плагина.
 
 ## Чего ещё нет
 

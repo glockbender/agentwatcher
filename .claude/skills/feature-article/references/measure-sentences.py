@@ -7,6 +7,8 @@ import re
 import sys
 from pathlib import Path
 
+if len(sys.argv) != 2:
+    sys.exit(__doc__)
 text = Path(sys.argv[1]).read_text()
 prose = re.sub(r"```.*?```", "", text, flags=re.S)
 prose = re.sub(r"^#.*$", "", prose, flags=re.M)

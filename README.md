@@ -50,7 +50,8 @@ does not leave the widget empty.
 Nothing about your work leaves the machine. The one request the app makes is to GitHub's public API,
 to see whether a newer build exists — at launch, and when you ask from the `Updates` menu. It carries
 no parameters and nothing about you, not even the version you run, because the comparison happens
-here. The app offers to download and install the update itself, and the launch check can be turned
+here — the one header the app sets names it, `AgentWatch`, where the system would otherwise have
+written the version in. The app offers to download and install the update itself, and the launch check can be turned
 off in the same menu.
 
 ## JetBrains IDE plugin
@@ -75,7 +76,7 @@ task run      # run it from the build directory
 
 `task build-app` assembles `dist/AgentWatch.app`, and `task release` packages that bundle into a
 zip with its checksum. `task plugin` builds the IDE plugin with its own Gradle wrapper, which
-fetches everything it needs by itself.
+fetches everything it needs by itself, and puts the file where the app offers it to IDEs.
 
 Development notes — the local signing certificate, the shared Xcode scheme, what `task verify`
 rebuilds — are in [AGENTS.md](AGENTS.md).
