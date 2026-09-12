@@ -21,11 +21,9 @@ final class AppUpdater: PreferenceDefaults {
         static let skippedVersion = "skippedUpdateVersion"
     }
 
-    /// How long after launch the check happens. Late enough that it competes with nothing a
-    /// person is waiting for, early enough to be the same session they opened the app in.
-    private static let delayAfterLaunch: Duration = .seconds(5)
-
     private let preferences: PreferenceFile
+    private let transport: Transport
+    private var launchCheck: Task<Void, Never>?
     /// One check at a time. Both the launch check and the menu item land here, and a second
     /// request while the first is in flight buys nothing but a second dialog.
     private var isWorking = false
@@ -36,9 +34,13 @@ final class AppUpdater: PreferenceDefaults {
     /// development offering the version already running is worse than no check at all.
     let ownVersion: String?
 
-    init(preferences: PreferenceFile) {
+    init(
+        preferences: PreferenceFile,
+        bundleURL: URL = Bundle.main.bundleURL,
+        transport: @escaping Transport = { try await URLSession.shared.data(for: $0) }
+    ) {
         self.preferences = preferences
-        let bundleURL = Bundle.main.bundleURL
+        self.transport = transport
         ownVersion = bundleURL.pathExtension == "app" ? Self.version(ofBundleAt: bundleURL) : nil
     }
 
@@ -51,40 +53,55 @@ final class AppUpdater: PreferenceDefaults {
 
     var checksOnLaunch: Bool {
         get { preferences.flag(forKey: Key.checksOnLaunch) ?? true }
-        set { preferences.set(newValue, forKey: Key.checksOnLaunch) }
+        set {
+            preferences.set(newValue, forKey: Key.checksOnLaunch)
+            if !newValue {
+                launchCheck?.cancel()
+            }
+        }
     }
 
     /// The check that happens by itself, if the person left it on.
-    func checkAfterLaunch() {
+    @discardableResult
+    func checkAfterLaunch(after delay: Duration = .seconds(5)) -> Task<Void, Never>? {
+        launchCheck?.cancel()
         guard checksOnLaunch, ownVersion != nil else {
-            return
+            return nil
         }
-        Task { [weak self] in
-            try? await Task.sleep(for: Self.delayAfterLaunch)
-            self?.check(announceEveryOutcome: false)
+        let task = Task { [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard let self, checksOnLaunch, !Task.isCancelled else {
+                return
+            }
+            await check(announceEveryOutcome: false)
         }
+        launchCheck = task
+        return task
     }
 
     /// The check a person asked for, which answers even when there is nothing to say.
     func checkNow() {
-        check(announceEveryOutcome: true)
+        Task { [weak self] in
+            await self?.check(announceEveryOutcome: true)
+        }
     }
 
-    private func check(announceEveryOutcome: Bool) {
+    private func check(announceEveryOutcome: Bool) async {
         guard !isWorking else {
             return
         }
         isWorking = true
-        let ownVersion = ownVersion
         let skipped = preferences.string(forKey: Key.skippedVersion)
-        Task { [weak self] in
-            let outcome = await Self.fetchDecision(ownVersion: ownVersion, skippedVersion: skipped)
-            guard let self else {
-                return
-            }
-            isWorking = false
-            present(outcome, announceEveryOutcome: announceEveryOutcome)
+        let outcome = await Self.fetchDecision(ownVersion: ownVersion, skippedVersion: skipped, transport: transport)
+        isWorking = false
+        guard !Task.isCancelled else {
+            return
         }
+        present(outcome, announceEveryOutcome: announceEveryOutcome)
     }
 
     // MARK: - Talking to GitHub
@@ -112,18 +129,37 @@ final class AppUpdater: PreferenceDefaults {
             let latestReleaseURL = AppUpdate.latestReleaseURL(),
             let (data, response) = try? await transport(AppUpdate.request(for: latestReleaseURL))
         else {
+            diagnostic("release request failed")
             return nil
         }
+        diagnostic("own version=\(ownVersion ?? "unknown"), HTTP=\((response as? HTTPURLResponse)?.statusCode ?? 0)")
         let release: AppRelease?
         switch (response as? HTTPURLResponse)?.statusCode {
         case 200:
-            release = AppUpdate.release(from: data)
+            guard let decoded = AppUpdate.release(from: data) else {
+                diagnostic("invalid release response")
+                return nil
+            }
+            release = decoded
         case 404:
             release = nil
         default:
             return nil
         }
-        return AppUpdate.decide(ownVersion: ownVersion, release: release, skippedVersion: skippedVersion)
+        let decision = AppUpdate.decide(ownVersion: ownVersion, release: release, skippedVersion: skippedVersion)
+        diagnostic("decision=\(decision)")
+        return decision
+    }
+
+    /// Opted into only by the debug end-to-end harness. No response body or session data is
+    /// recorded; the output distinguishes a network/decision failure from an inaccessible alert.
+    private nonisolated static func diagnostic(_ message: String) {
+        #if DEBUG
+            guard ProcessInfo.processInfo.environment["AGENT_WATCH_UPDATE_DIAGNOSTICS"] == "1" else {
+                return
+            }
+            try? FileHandle.standardError.write(contentsOf: Data("Update check: \(message)\n".utf8))
+        #endif
     }
 
     /// The bytes one request brings back, or nothing unless the server actually sent them.
@@ -169,6 +205,7 @@ final class AppUpdater: PreferenceDefaults {
     }
 
     private func offer(_ release: AppRelease) {
+        Self.diagnostic("presenting offer for \(release.version)")
         let alert = NSAlert()
         alert.messageText = updateAvailableTitle(version: release.version)
         alert.informativeText = updateAvailableBody(ownVersion: ownVersion ?? "")

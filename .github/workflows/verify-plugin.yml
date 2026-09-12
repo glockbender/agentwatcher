@@ -1,0 +1,45 @@
+name: verify-plugin
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "ide-plugin/**"
+      - ".github/workflows/verify-plugin.yml"
+      - "Taskfile.yml"
+  pull_request:
+    paths:
+      - "ide-plugin/**"
+      - ".github/workflows/verify-plugin.yml"
+      - "Taskfile.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-plugin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build, test and verify compatibility with platforms 251 and 261
+        working-directory: ide-plugin
+        run: ./gradlew test buildPlugin verifyPlugin -Pagentwatch.ide.download=true
+      - name: Keep test and compatibility reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-verification-reports
+          path: |
+            ide-plugin/build/reports/tests/
+            ide-plugin/build/reports/pluginVerifier/
+          if-no-files-found: ignore

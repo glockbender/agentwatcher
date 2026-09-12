@@ -57,6 +57,19 @@ final class StatusLineRelayTests: XCTestCase {
         XCTAssertEqual(output.exitCode, 7)
     }
 
+    func testCompoundCommandsReceiveThePayloadAndKeepTheirShellVariables() throws {
+        let directory = try makeDirectory()
+        for command in ["true; cat", #"payload=$(cat); printf '%s' "$payload"; exit 7"#] {
+            let output = try run(
+                StatusLineRelay.script(senderPath: "/bin/true", originalCommand: command),
+                in: directory,
+                payload: #"{"session_id":"abc"}"#
+            )
+            XCTAssertEqual(output.standardOutput, #"{"session_id":"abc"}"#, command)
+            XCTAssertEqual(output.exitCode, command.hasSuffix("exit 7") ? 7 : 0)
+        }
+    }
+
     /// The ordinary starting state, and the one the round trip did not cover: most people have
     /// no status line of their own. With nothing to wrap there must still be a script that
     /// runs — a pipe into an empty command is a syntax error, and a person whose status line
@@ -88,7 +101,11 @@ final class StatusLineRelayTests: XCTestCase {
             }
             Thread.sleep(forTimeInterval: 0.02)
         }
-        throw XCTSkip("the relay never handed the payload on")
+        throw RelayTestError.payloadWasNotDelivered
+    }
+
+    private enum RelayTestError: Error {
+        case payloadWasNotDelivered
     }
 
     // MARK: - Helpers

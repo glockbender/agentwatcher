@@ -309,7 +309,7 @@ final class UnixSocketIngressTests: XCTestCase {
         let sender = try runSender(
             input: Data(
                 """
-                {"session_id":"session-secret","context_total_input_tokens":85000,"context_used_percentage":42.5}
+                {"session_id":"session-secret","context_window":{"total_input_tokens":85000,"used_percentage":42.5,"private":"secret-context"},"rate_limits":{"five_hour":{"used_percentage":17,"resets_at":2000000000},"seven_day":{"used_percentage":31}}}
                 """.utf8
             ),
             arguments: [
@@ -330,6 +330,13 @@ final class UnixSocketIngressTests: XCTestCase {
         XCTAssertEqual(fields["context_total_input_tokens"], .number(85_000))
         XCTAssertEqual(fields["context_used_percentage"], .number(42.5))
         XCTAssertNotEqual(fields["session_id"], .string("session-secret"))
+        let event = try HookIngressProcessor.normalize(request, observedAt: Date())
+        XCTAssertEqual(event.contextTelemetry, .init(totalInputTokens: 85_000, usedPercentage: 42.5))
+        XCTAssertEqual(event.usageLimits?.fiveHour?.usedPercentage, 17)
+        XCTAssertEqual(event.usageLimits?.sevenDay?.usedPercentage, 31)
+        let wire = String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
+        XCTAssertFalse(wire.contains("secret-context"))
+        XCTAssertFalse(wire.contains("resets_at"))
     }
 
     func testSocketHasOwnerOnlyPermissions() throws {
@@ -457,11 +464,62 @@ final class UnixSocketIngressTests: XCTestCase {
         let socketURL = directoryURL.appendingPathComponent("agent-watch.sock")
         try Data("somebody else's file".utf8).write(to: socketURL)
 
-        let ingress = UnixSocketIngress(socketPath: socketURL.path) { _ in }
-        XCTAssertThrowsError(try ingress.start()) { error in
+        var ingress: UnixSocketIngress? = UnixSocketIngress(socketPath: socketURL.path) { _ in }
+        XCTAssertThrowsError(try ingress?.start()) { error in
             XCTAssertEqual(error as? UnixSocketIngressError, .existingPathIsNotSocket)
         }
+        ingress?.stop()
+        ingress?.stop()
+        ingress = nil
         XCTAssertEqual(try String(contentsOf: socketURL, encoding: .utf8), "somebody else's file")
+    }
+
+    func testStoppingPreservesAFileThatReplacedTheOwnedSocket() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let socketURL = directoryURL.appendingPathComponent("agent-watch.sock")
+        var ingress: UnixSocketIngress? = UnixSocketIngress(socketPath: socketURL.path) { _ in }
+        try ingress?.start()
+        try FileManager.default.removeItem(at: socketURL)
+        try Data("replacement".utf8).write(to: socketURL)
+
+        ingress?.stop()
+        ingress = nil
+
+        XCTAssertEqual(try String(contentsOf: socketURL, encoding: .utf8), "replacement")
+    }
+
+    func testRepeatedStopDoesNotRemoveTheNextListenersSocket() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let socketPath = directoryURL.appendingPathComponent("agent-watch.sock").path
+        var first: UnixSocketIngress? = UnixSocketIngress(socketPath: socketPath) { _ in }
+        try first?.start()
+        first?.stop()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: socketPath))
+        let second = UnixSocketIngress(socketPath: socketPath) { _ in }
+        try second.start()
+        defer { second.stop() }
+
+        first?.stop()
+        first = nil
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
+    }
+
+    func testStoppingPreservesAReplacementSocketOwnedByAnotherListener() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        let socketPath = directoryURL.appendingPathComponent("agent-watch.sock").path
+        let first = UnixSocketIngress(socketPath: socketPath) { _ in }
+        try first.start()
+        let second = UnixSocketIngress(socketPath: socketPath) { _ in }
+        try second.start()
+        defer { second.stop() }
+
+        first.stop()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
     }
 
     /// Starting twice is what a retry looks like, and the second start must not take the
@@ -628,26 +686,10 @@ final class UnixSocketIngressTests: XCTestCase {
         for path: String,
         body: (UnsafePointer<sockaddr>, socklen_t) throws -> T
     ) throws -> T {
-        let pathBytes = Array(path.utf8)
-        let pathCapacity = MemoryLayout<sockaddr_un>.size - MemoryLayout<sa_family_t>.size
-        guard pathBytes.count < pathCapacity else {
+        guard var address = PosixSocket.makeAddress(path: path) else {
             throw SocketTestError.invalidPath
         }
-
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        let pathWithTerminator = pathBytes + [0]
-        withUnsafeMutableBytes(of: &address.sun_path) { destination in
-            pathWithTerminator.withUnsafeBytes { source in
-                destination.copyBytes(from: source)
-            }
-        }
-
-        return try withUnsafePointer(to: &address) { pointer in
-            try pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                try body($0, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
+        return try PosixSocket.withSockaddr(&address, body)
     }
 
     private func makeTemporaryDirectory() throws -> URL {

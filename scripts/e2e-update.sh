@@ -22,7 +22,9 @@ tag="${1:-v0.1.0}"
 old_version="${2:-0.0.9}"
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-sandbox="$(mktemp -d "${TMPDIR:-/tmp}/agent-watch-e2e.XXXXXX")"
+# Darwin socket names have 104 bytes including their terminator. The per-user TMPDIR plus
+# support/AgentWatch/agent-watch.sock can exceed that even though each path component is valid.
+sandbox="$(mktemp -d "/private/tmp/agent-watch-e2e.XXXXXX")"
 sandbox_name="$(basename "$sandbox")"
 support="$sandbox/support"
 app="$sandbox/AgentWatch.app"
@@ -31,6 +33,12 @@ mkdir -p "$support"
 say() { printf '\n== %s\n' "$1"; }
 fail() {
     printf '\nFAILED: %s\n' "$1" >&2
+    for diagnostic in app-stderr.log accessibility-last-error.log; do
+        if [[ -s "$sandbox/$diagnostic" ]]; then
+            printf '\n%s:\n' "$diagnostic" >&2
+            tail -30 "$sandbox/$diagnostic" >&2
+        fi
+    done
     # The files stay for inspection; the process does not — a copy left running with a modal
     # alert on screen is what every retry would add one more of.
     pkill -f "$sandbox_name" 2>/dev/null || true
@@ -54,14 +62,17 @@ press() {
     # then finds nothing while the same query written out finds the button. Measured.
     until osascript \
         -e "tell application \"System Events\"" \
+        -e "set failureMessage to \"No windows containing $label\"" \
         -e "repeat with i from 1 to (count of windows of $target)" \
         -e "try" \
         -e "click button \"$label\" of window i of $target" \
         -e "return \"pressed\"" \
+        -e "on error errorMessage number errorNumber" \
+        -e "set failureMessage to errorMessage & \" (\" & errorNumber & \")\"" \
         -e "end try" \
         -e "end repeat" \
-        -e "error \"no such button\"" \
-        -e "end tell" >/dev/null 2>&1; do
+        -e "error failureMessage" \
+        -e "end tell" >/dev/null 2>"$sandbox/accessibility-last-error.log"; do
         sleep 1
         waited=$((waited + 1))
         if [[ "$waited" -ge "$seconds" ]]; then
@@ -75,8 +86,15 @@ version_of() {
     plutil -extract CFBundleShortVersionString raw -o - "$1/Contents/Info.plist" 2>/dev/null || true
 }
 
-# Your own copy is matched by executable name and never by path: it may be installed anywhere.
-pgrep -x AgentWatch >/dev/null || fail "start your own Agent Watch first — see the header of this script"
+# A debug copy using a different support directory does not protect the real state when the
+# downloaded release relaunches. Require the real directory's lock to be open by AgentWatch.
+# SingleInstanceCoordinator keeps this descriptor only after it successfully acquires flock.
+require_real_instance() {
+    local instance_lock="$HOME/Library/Application Support/AgentWatch/instance.lock"
+    lsof -a -c AgentWatch -t -- "$instance_lock" >/dev/null 2>&1 \
+        || fail "start Agent Watch against its normal support directory first — see the header"
+}
+require_real_instance
 
 say "Building the copy to be updated ($old_version)"
 "$project_root/scripts/build-app.sh" debug "$app" >/dev/null
@@ -95,6 +113,8 @@ printf '   %s is %s\n' "$app" "$(version_of "$app")"
 say "Starting it against $tag"
 open --env "AGENT_WATCH_SUPPORT_DIR=$support" \
     --env "AGENT_WATCH_RELEASE_URL=https://api.github.com/repos/glockbender/agentwatcher/releases/tags/$tag" \
+    --env "AGENT_WATCH_UPDATE_DIAGNOSTICS=1" \
+    --stdout "$sandbox/app-stdout.log" --stderr "$sandbox/app-stderr.log" \
     -n "$app"
 started_pid=""
 for _ in $(seq 1 20); do
@@ -112,8 +132,9 @@ done
 printf '   pid %s, state in %s\n' "$started_pid" "$support"
 
 say "Answering the dialogs"
-press "Download" 60 || fail "no update was offered within a minute"
-press "Install and Relaunch" 120 || fail "the download never finished"
+press "Download" 60 || fail "could not press Download within a minute; see updater and Accessibility diagnostics"
+require_real_instance
+press "Install and Relaunch" 120 || fail "could not press Install and Relaunch; see diagnostics"
 
 say "Waiting for the bundle to change"
 installed=""

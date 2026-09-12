@@ -93,6 +93,8 @@ final class TranscriptWatcher {
         let offset: UInt64
         /// Whether a failure to find the file has waited out its grace and may be reported.
         let reportsNotFound: Bool
+        /// Only the initial live read recovers facts since observation began.
+        var liveSince: Date?
         /// The wait this session was remembered in, when the file is being asked about one.
         var rememberedWait: SessionHistory.RememberedWait?
     }
@@ -115,6 +117,7 @@ final class TranscriptWatcher {
     private var sessions: [SessionSnapshot] = []
     private var timer: Timer?
     private var lastReadAt: Date?
+    private var hasRead = false
     private var lastHookAt: Date?
     /// Guards against a slow disk stacking one tick on top of the last.
     private var isReading = false
@@ -192,6 +195,10 @@ final class TranscriptWatcher {
         self.sessions = sessions
         let live = Set(sessions.map(\.id))
         watches = watches.filter { live.contains($0.key) }
+        let moment = now()
+        for snapshot in Self.watchableSessions(sessions, now: moment) where watches[snapshot.id] == nil {
+            watches[snapshot.id] = Watch(firstSeenAt: moment, nextLocateAttemptAt: moment)
+        }
         rescheduleReads()
     }
 
@@ -234,6 +241,7 @@ final class TranscriptWatcher {
         }
         let moment = now()
         lastReadAt = moment
+        hasRead = true
         defer { rescheduleReads() }
         let jobs = makeJobs(at: moment)
         guard !jobs.isEmpty else {
@@ -342,7 +350,8 @@ final class TranscriptWatcher {
                 root: TranscriptLocator.defaultRoot(for: snapshot.source, home: home),
                 url: watch.url,
                 offset: watch.offset,
-                reportsNotFound: moment.timeIntervalSince(watch.firstSeenAt) >= Self.locateGrace
+                reportsNotFound: moment.timeIntervalSince(watch.firstSeenAt) >= Self.locateGrace,
+                liveSince: watch.firstSeenAt
             )
         }
     }
@@ -437,7 +446,7 @@ final class TranscriptWatcher {
     private nonisolated static func perform(_ jobs: [ReadJob], observedAt: Date) -> [ReadResult] {
         jobs.map { job in
             guard let url = job.url else {
-                return locate(job)
+                return locateLive(job)
             }
             return read(job, at: url, observedAt: observedAt)
         }
@@ -475,11 +484,8 @@ final class TranscriptWatcher {
 
     /// What the tail says about the wait this session was remembered in.
     ///
-    /// The parse is dated at the moment the session was last heard from rather than at now.
-    /// `TranscriptReader` stamps a fact from a record it cannot date with the moment it was
-    /// given, and dating those at `now` would make every one of them newer than the wait —
-    /// which is the one thing that refuses a wait outright. Dated at the wait instead, an
-    /// undatable record lands exactly on the boundary and decides nothing.
+    /// Undated records are historical evidence only. Dating them at the wait or at now
+    /// would turn an old cancellation into a fresh answer to the remembered dialog.
     private nonisolated static func waitEvidence(
         inTail tail: Data?,
         for wait: SessionHistory.RememberedWait,
@@ -490,7 +496,7 @@ final class TranscriptWatcher {
             let increment = try? TranscriptReader.read(
                 increment: tail,
                 source: source,
-                observedAt: wait.observedAt
+                observedAt: .distantPast
             )
         else {
             return nil
@@ -542,6 +548,48 @@ final class TranscriptWatcher {
     /// anything. Cheaper than reading it and, for a session nobody was watching, just as true.
     private nonisolated static func modificationDate(at url: URL) -> Date? {
         try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
+    /// Recover the coalescing window on the first live read. A bounded tail avoids replaying
+    /// the whole history; timestamps reject old and undated facts. Catch-up after relaunch
+    /// deliberately uses `locate` instead, because its state still awaits a real hook.
+    private nonisolated static func locateLive(_ job: ReadJob) -> ReadResult {
+        var result = locate(job)
+        guard let url = result.url, let boundary = job.liveSince else {
+            return result
+        }
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let end = try handle.seekToEnd()
+            let start =
+                end > UInt64(TranscriptReader.maximumIncrementByteCount)
+                ? end - UInt64(TranscriptReader.maximumIncrementByteCount) : 0
+            try handle.seek(toOffset: start)
+            var data = try handle.read(upToCount: Int(end - start)) ?? Data()
+            var offset = start
+            if start > 0 {
+                // The cap can land inside a record. Never parse that fragment as a new line.
+                let skipped =
+                    data.firstIndex(of: 0x0A).map { data.distance(from: data.startIndex, to: $0) + 1 }
+                    ?? data.count
+                data = Data(data.dropFirst(skipped))
+                offset += UInt64(skipped)
+            }
+            let increment = try TranscriptReader.read(increment: data, source: job.source, observedAt: boundary)
+            result = ReadResult(
+                sessionID: job.sessionID,
+                url: url,
+                offset: offset + UInt64(increment.consumedByteCount),
+                facts: increment.facts.filter { $0.at > boundary },
+                fault: nil,
+                newestRecordAt: increment.newestRecordAt.flatMap { $0 > boundary ? $0 : nil },
+                signals: result.signals.merging(increment.signals)
+            )
+        } catch {
+            result = ReadResult(sessionID: job.sessionID, url: nil, offset: 0, facts: [], fault: .transcriptUnreadable)
+        }
+        return result
     }
 
     private nonisolated static func locate(_ job: ReadJob) -> ReadResult {
@@ -680,6 +728,7 @@ final class TranscriptWatcher {
             timer = nil
             nextReadAt = nil
             lastReadAt = nil
+            hasRead = false
             return
         }
 
@@ -692,7 +741,7 @@ final class TranscriptWatcher {
             floor: floor,
             idle: floor * 2,
             coalesceWindow: Self.coalesceWindow
-        ).nextRead(lastReadAt: anchor, lastHookAt: lastHookAt)
+        ).nextRead(lastReadAt: anchor, lastHookAt: lastHookAt, isFirstRead: !hasRead)
         guard due != nextReadAt || timer == nil else {
             return
         }

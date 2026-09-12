@@ -93,7 +93,9 @@ final class ToolingInstallerTests: XCTestCase {
             at: settingsURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try Data(#"{"statusLine":{"type":"command","command":"bash ~/mine.sh"}}"#.utf8)
+        let original =
+            #"{"statusLine":{"type":"command","command":"bash ~/mine.sh","padding":2,"refreshInterval":5,"hideVimModeIndicator":true,"futureOption":{"enabled":true}},"model":"opus"}"#
+        try Data(original.utf8)
             .write(to: settingsURL)
         let installer = ToolingInstaller(home: home)
         XCTAssertEqual(installer.statusLineState(), .theirs(command: "bash ~/mine.sh"))
@@ -101,6 +103,13 @@ final class ToolingInstallerTests: XCTestCase {
         try installer.connectStatusLine(senderPath: sender.path)
 
         XCTAssertEqual(installer.statusLineState(), .connected)
+        var connected = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: settingsURL))
+        if case var .object(root) = connected, case var .object(statusLine)? = root["statusLine"] {
+            statusLine["command"] = .string("bash ~/mine.sh")
+            root["statusLine"] = .object(statusLine)
+            connected = .object(root)
+        }
+        XCTAssertEqual(connected, try JSONDecoder().decode(JSONValue.self, from: Data(original.utf8)))
         let relay = home.appendingPathComponent("Library/Application Support/AgentWatch/statusline-relay.sh")
         XCTAssertTrue(FileManager.default.fileExists(atPath: relay.path))
         XCTAssertEqual(
@@ -119,8 +128,28 @@ final class ToolingInstallerTests: XCTestCase {
         try installer.disconnectStatusLine()
 
         XCTAssertEqual(installer.statusLineState(), .theirs(command: "bash ~/mine.sh"))
+        XCTAssertEqual(
+            try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: settingsURL)),
+            try JSONDecoder().decode(JSONValue.self, from: Data(original.utf8))
+        )
         XCTAssertFalse(FileManager.default.fileExists(atPath: relay.path))
         XCTAssertEqual(try Self.backups(of: settingsURL).count, 2, "and giving it back is a change too")
+    }
+
+    func testDisconnectingAnOriginallyAbsentStatusLineRemovesOnlyTheAddedSlot() throws {
+        let home = try makeHome()
+        let settings = home.appendingPathComponent(".claude/settings.json")
+        try FileManager.default.createDirectory(
+            at: settings.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let original = Data(#"{"model":"opus"}"#.utf8)
+        try original.write(to: settings)
+        let installer = ToolingInstaller(home: home)
+        try installer.connectStatusLine(senderPath: try makeSender(in: home).path)
+        try installer.disconnectStatusLine()
+        XCTAssertEqual(
+            try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: settings)),
+            try JSONDecoder().decode(JSONValue.self, from: original)
+        )
     }
 
     /// Every copy `backUp` makes of one file, by the name it gives them.

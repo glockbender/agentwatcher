@@ -95,6 +95,9 @@ public struct SessionStateEngine: Sendable {
         }
 
         let previouslyObservedAt = snapshot.lastObservedAt
+        if let mode = event.mode {
+            snapshot = SessionReducer.reduce(snapshot, event: .modeChanged(mode, at: event.observedAt))
+        }
 
         switch event.kind {
         case .sessionStarted:
@@ -188,6 +191,8 @@ public struct SessionStateEngine: Sendable {
         switch fact {
         case let .callReturned(activityID, at):
             next = SessionReducer.reduce(previous, event: .activityCompleted(id: activityID, at: at))
+        case let .callFailed(activityID, at):
+            next = SessionReducer.reduce(previous, event: .activityFailed(id: activityID, at: at))
         case let .workEnded(activityID, at):
             next = SessionReducer.reduce(previous, event: .workEnded(id: activityID, at: at))
         case let .callStarted(activityID, kind, at):

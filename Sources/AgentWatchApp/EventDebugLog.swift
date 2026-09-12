@@ -26,7 +26,9 @@ final class EventDebugLog {
 
         var fileURL: URL?
         do {
-            let directoryURL = try directoryURL ?? Self.defaultDirectoryURL(fileManager: fileManager)
+            guard let directoryURL = directoryURL ?? Self.defaultDirectoryURL(fileManager: fileManager) else {
+                throw CocoaError(.fileNoSuchFile)
+            }
             try fileManager.createDirectory(
                 at: directoryURL,
                 withIntermediateDirectories: true,
@@ -43,14 +45,9 @@ final class EventDebugLog {
         entries = Array(stored.suffix(Self.maximumEntryCount))
     }
 
-    private static func defaultDirectoryURL(fileManager: FileManager) throws -> URL {
-        let applicationSupport = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        return AgentWatchPaths.supportDirectory(inApplicationSupport: applicationSupport)
+    private static func defaultDirectoryURL(fileManager: FileManager) -> URL? {
+        AgentWatchPaths.applicationSupportDirectory(fileManager: fileManager)
+            .map { AgentWatchPaths.supportDirectory(inApplicationSupport: $0) }
     }
 
     /// How many lines the file holds, for a test that checks the log stays bounded.

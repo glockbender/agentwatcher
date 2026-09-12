@@ -87,7 +87,29 @@ public enum HookCaptureRedactor {
         guard case .object = payload else {
             throw HookCaptureError.expectedJSONObject
         }
-        return (redactEventName(declaredEvent), redact(payload))
+        let projected = declaredEvent == "StatusLine" ? statusLineTelemetry(in: payload) : payload
+        return (redactEventName(declaredEvent), redact(projected))
+    }
+
+    /// Claude's status line nests these aggregates. Project only the fields the protocol
+    /// understands; the containers and all their other contents still go through redaction.
+    /// Already-projected messages survive the app's second redaction unchanged.
+    private static func statusLineTelemetry(in payload: JSONValue) -> JSONValue {
+        guard case var .object(fields) = payload else {
+            return payload
+        }
+        if case let .object(context)? = fields["context_window"] {
+            fields["context_total_input_tokens"] = context["total_input_tokens"]
+            fields["context_used_percentage"] = context["used_percentage"]
+        }
+        if case let .object(limits)? = fields["rate_limits"] {
+            for window in ["five_hour", "seven_day"] {
+                if case let .object(usage)? = limits[window] {
+                    fields["\(window)_used_percentage"] = usage["used_percentage"]
+                }
+            }
+        }
+        return .object(fields)
     }
 
     private static func redact(_ value: JSONValue, key: String? = nil) -> JSONValue {

@@ -7,6 +7,41 @@ import XCTest
 /// what it costs once.
 @MainActor
 final class EventDebugLogTests: XCTestCase {
+    /// Environment overrides are process-wide, so this probe runs in its own xctest rather
+    /// than changing the environment of tests executing in parallel.
+    func testDefaultLogHonorsTheDebugSupportOverride() throws {
+        let environment = ProcessInfo.processInfo.environment
+        if let expectedDirectory = environment["AGENT_WATCH_LOG_TEST_DIRECTORY"] {
+            let log = EventDebugLog()
+            log.append("isolated log probe")
+            let output = URL(fileURLWithPath: expectedDirectory)
+                .appendingPathComponent("AgentWatch/event-debug.log")
+            XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), "isolated log probe\n")
+            return
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("LogOverride-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        child.arguments = [
+            "xctest", "-XCTest", "AgentWatchAppTests.EventDebugLogTests/testDefaultLogHonorsTheDebugSupportOverride",
+            Bundle(for: Self.self).bundlePath,
+        ]
+        var childEnvironment = environment
+        childEnvironment["AGENT_WATCH_LOG_TEST_DIRECTORY"] = directory.path
+        childEnvironment["AGENT_WATCH_SUPPORT_DIR"] = directory.path
+        child.environment = childEnvironment
+        try child.run()
+        child.waitUntilExit()
+
+        XCTAssertEqual(child.terminationStatus, 0)
+        XCTAssertEqual(
+            try String(contentsOf: directory.appendingPathComponent("AgentWatch/event-debug.log"), encoding: .utf8),
+            "isolated log probe\n"
+        )
+    }
+
     func testTheLogStaysBoundedWithoutRewritingItselfOnEveryEntry() throws {
         let directoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("AgentWatchLogTests.\(UUID().uuidString)", isDirectory: true)

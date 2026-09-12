@@ -103,6 +103,13 @@ tasks:
       # ./gradlew buildPlugin -Pagentwatch.ide.path=/Applications/PyCharm.app
       - ./gradlew test buildPlugin
 
+  plugin-verify:
+    desc: Verify the IDE plugin against the oldest supported platform and the build platform
+    dir: ide-plugin
+    cmds:
+      # Downloads are cached. To reproduce one member: task plugin-verify -- -Pagentwatch.verify.versions=2025.1
+      - ./gradlew test buildPlugin verifyPlugin {{.CLI_ARGS}}
+
   plugin:
     desc: Build the JetBrains IDE plugin and put it where Agent Watch offers it to IDEs
     dir: ide-plugin

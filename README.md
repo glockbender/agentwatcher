@@ -16,6 +16,8 @@ Alpha: it works and is used daily, but what it shows is still moving.
 
 ## Install
 
+Requires a Mac with Apple Silicon (ARM64) and macOS 14 or newer.
+
 1. Download `AgentWatch-<version>.zip` from [Releases](https://github.com/glockbender/agentwatcher/releases)
    and unzip it into `/Applications`.
 2. Remove the flag macOS puts on everything downloaded:
@@ -67,7 +69,7 @@ answers there now.
 
 ## Build from source
 
-Needs macOS 14+, Swift 6, Xcode 16 and [Task](https://taskfile.dev/). No third-party dependencies.
+Needs Apple Silicon, macOS 14+, Swift 6, Xcode 16 and [Task](https://taskfile.dev/). No third-party dependencies.
 
 ```sh
 task verify   # lint, tests, debug and release builds, app bundle

@@ -72,7 +72,7 @@ public enum StatusLineRelay {
         }
         return """
             # Your command, exactly as it was, with your payload and your exit code.
-            printf '%s' "$payload" | \(originalCommand)
+            printf '%s' "$payload" | /bin/bash -c \(ShellWord.quoted(originalCommand))
             """
     }
 }

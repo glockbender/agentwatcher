@@ -513,11 +513,11 @@ public enum HookEventNormalizer {
     }
 
     private static func nonNegativeInteger(_ key: String, in fields: [String: JSONValue]) -> Int? {
-        guard case let .number(value)? = fields[key], value >= 0, value.rounded() == value,
-            value <= Double(Int.max)
+        guard case let .number(value)? = fields[key], value >= 0,
+            value <= Double(SessionDescription.maximumContextInputTokens)
         else {
             return nil
         }
-        return Int(value)
+        return Int(exactly: value)
     }
 }

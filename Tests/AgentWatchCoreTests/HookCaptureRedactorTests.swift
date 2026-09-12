@@ -189,6 +189,42 @@ final class HookCaptureRedactorTests: XCTestCase {
         XCTAssertEqual(payload["last_assistant_message"], .string("<redacted>"))
     }
 
+    func testRealStatusLineProjectsOnlyNumericAggregatesBeforeRedaction() throws {
+        let raw = try JSONDecoder().decode(
+            JSONValue.self,
+            from: Data(
+                #"{"session_id":"secret","context_window":{"total_input_tokens":85000,"used_percentage":42.5,"current_usage":{"secret":"private"}},"rate_limits":{"five_hour":{"used_percentage":17,"resets_at":2000000000},"seven_day":{"used_percentage":31}}}"#
+                    .utf8))
+        let first = try HookCaptureRedactor.redact(declaredEvent: "StatusLine", payload: raw)
+        let second = try HookCaptureRedactor.redact(declaredEvent: "StatusLine", payload: first.payload)
+        for payload in [first.payload, second.payload] {
+            guard case let .object(fields) = payload else {
+                return XCTFail("Expected a projected object")
+            }
+            XCTAssertEqual(fields["context_total_input_tokens"], .number(85000))
+            XCTAssertEqual(fields["context_used_percentage"], .number(42.5))
+            XCTAssertEqual(fields["five_hour_used_percentage"], .number(17))
+            XCTAssertEqual(fields["seven_day_used_percentage"], .number(31))
+            XCTAssertNil(fields["context_window"])
+            XCTAssertNil(fields["rate_limits"])
+            XCTAssertFalse(String(decoding: try JSONEncoder().encode(payload), as: UTF8.self).contains("private"))
+        }
+    }
+
+    func testStatusLineProjectionDoesNotTrustStringsOrBooleansAsNumbers() throws {
+        let payload: JSONValue = .object([
+            "context_window": .object(["total_input_tokens": .string("secret"), "used_percentage": .bool(true)]),
+            "rate_limits": .object(["five_hour": .object(["used_percentage": .string("private")])]),
+        ])
+        let captured = try HookCaptureRedactor.redact(declaredEvent: "StatusLine", payload: payload)
+        guard case let .object(fields) = captured.payload else {
+            return XCTFail("Expected a projected object")
+        }
+        for key in ["context_total_input_tokens", "context_used_percentage", "five_hour_used_percentage"] {
+            XCTAssertEqual(fields[key], .string("<redacted:invalid-type>"))
+        }
+    }
+
     /// From raw bytes, the way the socket does it: decoded with `JSONDecoder` — which is what
     /// the ingress uses — and then redacted.
     ///

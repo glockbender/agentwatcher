@@ -34,18 +34,20 @@ val ideHome: String? =
             ).firstOrNull { file(it).isDirectory }
     }
 
-// Which IDE the downloaded fallback uses, and the one the verifier checks against.
+// Which IDE the downloaded build uses. Verification also covers the oldest supported IDE.
 //
-// Not the `sinceBuild` below, and that is measured: against 2025.1 the build fails on
-// `ReworkedTerminalTabs.kt` with `Unresolved reference 'toolwindow'`. The plugin compiles
-// against a platform new enough to hold the reworked terminal's classes and declares
-// compatibility with older ones, where that code is never reached — the file says how.
+// Not the `sinceBuild` below: the build and reflection-contract test use 261, while the
+// verifier also checks the minimum platform 251. New terminal types are resolved only by
+// the adapter, so their names do not become binary links on older IDEs.
 val fallbackIdeVersion = "2026.1.4"
+val verificationIdeVersions = providers.gradleProperty("agentwatch.verify.versions")
+    .map { versions -> versions.split(',').map { it.trim() }.filter { it.isNotEmpty() } }
+    .getOrElse(listOf("2025.1", fallbackIdeVersion))
+require(verificationIdeVersions.isNotEmpty()) { "agentwatch.verify.versions must name at least one IDE version" }
 
-// The same fact, checked on an installed IDE before the compiler finds it: `product-info.json`
-// carries the build number, whose first three digits name the release — 261 is 2026.1. An IDE
-// that is too old is refused here with the way out, not two minutes later with an unresolved
-// reference and no hint.
+// The build/test platform requirement, checked before the reflection-contract test: `product-info.json`
+// carries the build number, whose first three digits name the release — 261 is 2026.1.
+// Older IDEs can run the plugin, but cannot test the newer adapter's actual API contract.
 val minimumIdeRelease = 261
 ideHome?.let { home ->
     val productInfo = file("$home/Contents/Resources/product-info.json")
@@ -70,7 +72,7 @@ dependencies {
         // afterwards, which is a price worth paying only where the alternative is not
         // building at all. GoLand rather than IntelliJ IDEA Community, which would be the
         // smaller download: Community has no 2026.1 to fetch, and 2026.1 is where the
-        // terminal classes this plugin compiles against first appeared.
+        // terminal classes the adapter contract test resolves first appeared.
         if (ideHome != null) {
             local(ideHome)
         } else {
@@ -100,16 +102,11 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            // The IDE already on this machine, for the same reason the build uses it. The
-            // verifier answers one question this project cannot answer by reading code: whether
-            // every class the plugin references is reachable from the plugin's own classloader
-            // at runtime — which is exactly what a dependency on a bundled plugin's module
-            // decides. `task plugin` leaves it out; run `./gradlew verifyPlugin` when the set of
-            // platform classes used changes, and before publishing.
-            if (ideHome != null) {
-                local(ideHome)
-            } else {
-                create(IntelliJPlatformType.GoLand, fallbackIdeVersion)
+            // Build against 261, verify both 251 and 261: the declared lower bound needs a
+            // real check even on a development machine with only the newest IDE installed.
+            // A comma-separated override allows a failing member to be reproduced alone.
+            verificationIdeVersions.forEach { version ->
+                create(IntelliJPlatformType.GoLand, version)
             }
         }
     }

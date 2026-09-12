@@ -9,12 +9,12 @@ import XCTest
 /// be checking only the parts that were never in doubt.
 @MainActor
 final class TranscriptWatcherTests: XCTestCase {
-    private let start = Date(timeIntervalSince1970: 5_000)
+    private let start = Date(timeIntervalSince1970: 1_788_574_197)
     /// A real session identifier, so the label the locator hashes is a real one too.
     private let sessionUUID = "bfe119e1-b5de-45e1-9035-d58c671803d0"
     private let codexSessionUUID = "01a05e55-adab-7881-abc6-b9fe09056a27"
 
-    private var clock = Date(timeIntervalSince1970: 5_000)
+    private var clock = Date(timeIntervalSince1970: 1_788_574_197)
     private var inbox: [TranscriptUpdate] = []
     private var arrival: XCTestExpectation?
 
@@ -67,13 +67,47 @@ final class TranscriptWatcherTests: XCTestCase {
 
         try append(
             """
-            {"type":"user","timestamp":"2026-09-05T02:09:56Z","message":{"role":"user","content":\
+            {"type":"user","interruptedMessageId":"message-1","timestamp":"2026-09-05T02:09:56Z","message":{"role":"user","content":\
             [{"type":"text","text":"[Request interrupted by user]"}]}}
             """
         )
 
         let facts = try await poll(watcher).flatMap(\.facts)
         XCTAssertEqual(facts, [.turnInterrupted(at: Date(timeIntervalSince1970: 1_788_574_196))])
+    }
+
+    func testInterruptionBetweenHookAndFirstReadIsRecoveredWithoutReplayingHistory() async throws {
+        try write(toolResult(id: "call-old"))
+        let watcher = try makeWatcher()
+        watcher.update(sessions: [working()])
+        clock = start + 1
+        try append(
+            """
+            {"type":"user","interruptedMessageId":"message-current","timestamp":"2026-09-05T02:09:59Z","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}
+            """
+        )
+        let updates = try await poll(watcher)
+        XCTAssertEqual(updates.flatMap(\.facts), [.turnInterrupted(at: start + 2)])
+        let next = try await poll(watcher)
+        XCTAssertTrue(next.flatMap(\.facts).isEmpty, "the initial fact is consumed exactly once")
+    }
+
+    func testInitialReadKeepsAnIncompleteCurrentRecordForTheNextRead() async throws {
+        try write(toolResult(id: "call-old"))
+        let watcher = try makeWatcher()
+        watcher.update(sessions: [working()])
+        let handle = try FileHandle(forWritingTo: transcriptURL)
+        try handle.seekToEnd()
+        try handle.write(
+            contentsOf: Data(
+                #"{"type":"user","interruptedMessageId":"message-current","timestamp":"2026-09-05T02:09:59Z","message":{"role":"user","content":["#
+                    .utf8))
+        let first = try await poll(watcher)
+        XCTAssertTrue(first.flatMap(\.facts).isEmpty)
+        try handle.write(contentsOf: Data((#"{"type":"text","text":"[Request interrupted by user]"}]}}"# + "\n").utf8))
+        try handle.close()
+        let next = try await poll(watcher)
+        XCTAssertEqual(next.flatMap(\.facts), [.turnInterrupted(at: start + 2)])
     }
 
     // MARK: - What a session says about itself
@@ -331,7 +365,7 @@ final class TranscriptWatcherTests: XCTestCase {
 
         try append(
             """
-            {"type":"user","timestamp":"2026-09-05T02:09:56Z","message":{"role":"user","content":\
+            {"type":"user","interruptedMessageId":"message-1","timestamp":"2026-09-05T02:09:56Z","message":{"role":"user","content":\
             [{"type":"text","text":"[Request interrupted by user for tool use]"}]}}
             """
         )
@@ -434,6 +468,17 @@ final class TranscriptWatcherTests: XCTestCase {
         XCTAssertEqual(updates.first?.newestRecordAt, lastWritten)
         XCTAssertTrue(updates.flatMap(\.facts).isEmpty, "the file says when, not what")
         XCTAssertNil(updates.first?.fault, "a session from a previous launch is nothing to complain about")
+    }
+
+    func testUndatedHistoricalInterruptionDoesNotRetractARememberedWait() async throws {
+        try write(
+            #"{"type":"user","interruptedMessageId":"old-message","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#
+        )
+        let watcher = try makeWatcher()
+        let session = restored()
+        let wait = SessionHistory.RememberedWait(awaitedActivityID: "call-current", kind: .approval, observedAt: start)
+        let updates = try await catchUp(watcher, sessions: [session], waits: [session.id: wait])
+        XCTAssertTrue(SessionHistory.waitStillHolds(wait, evidence: updates.first?.waitEvidence))
     }
 
     /// A launch is not an exception to the setting.
@@ -546,12 +591,13 @@ final class TranscriptWatcherTests: XCTestCase {
     /// One catch-up, waited out, for the same reason `poll` is waited out.
     private func catchUp(
         _ watcher: TranscriptWatcher,
-        sessions: [SessionSnapshot]
+        sessions: [SessionSnapshot],
+        waits: [String: SessionHistory.RememberedWait] = [:]
     ) async throws -> [TranscriptUpdate] {
         let reported = expectation(description: "the catch-up reported back")
         arrival = reported
         inbox = []
-        watcher.catchUp(sessions: sessions)
+        watcher.catchUp(sessions: sessions, waits: waits)
         await fulfillment(of: [reported], timeout: 2)
         arrival = nil
         return inbox

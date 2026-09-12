@@ -45,6 +45,27 @@ public final class UnixSocketIngress: @unchecked Sendable {
     private let connectionQueue = DispatchQueue(label: "AgentWatch.UnixSocketIngress.connection")
     private var listenerDescriptor: Int32 = -1
     private var listenerSource: DispatchSourceRead?
+    private var ownedSocket: SocketIdentity?
+
+    /// The name can be replaced while this listener is alive. Cleanup owns the inode it
+    /// created, not whatever happens to occupy that name later.
+    private struct SocketIdentity {
+        let device: dev_t
+        let inode: ino_t
+
+        init?(at path: String) {
+            var info = stat()
+            guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFSOCK else {
+                return nil
+            }
+            device = info.st_dev
+            inode = info.st_ino
+        }
+
+        func matches(_ other: SocketIdentity) -> Bool {
+            device == other.device && inode == other.inode
+        }
+    }
 
     public init(socketPath: String, handler: @escaping Handler) {
         self.socketPath = socketPath
@@ -71,6 +92,10 @@ public final class UnixSocketIngress: @unchecked Sendable {
 
         do {
             try bind(descriptor)
+            ownedSocket = SocketIdentity(at: socketPath)
+            guard ownedSocket != nil else {
+                throw UnixSocketIngressError.bindFailed
+            }
             guard listen(descriptor, SOMAXCONN) == 0 else {
                 throw UnixSocketIngressError.listenFailed
             }
@@ -79,7 +104,7 @@ public final class UnixSocketIngress: @unchecked Sendable {
             }
         } catch {
             close(descriptor)
-            _ = unlink(socketPath)
+            removeOwnedSocket()
             throw error
         }
 
@@ -95,15 +120,24 @@ public final class UnixSocketIngress: @unchecked Sendable {
 
     public func stop() {
         stateLock.lock()
+        defer { stateLock.unlock() }
         let descriptor = listenerDescriptor
         let source = listenerSource
         listenerDescriptor = -1
         listenerSource = nil
-        stateLock.unlock()
 
         source?.cancel()
         if descriptor >= 0 {
             close(descriptor)
+        }
+        removeOwnedSocket()
+    }
+
+    /// Called only while holding `stateLock`, including failure during startup.
+    private func removeOwnedSocket() {
+        defer { ownedSocket = nil }
+        guard let ownedSocket, let current = SocketIdentity(at: socketPath), ownedSocket.matches(current) else {
+            return
         }
         _ = unlink(socketPath)
     }

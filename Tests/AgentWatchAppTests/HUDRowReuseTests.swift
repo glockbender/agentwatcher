@@ -188,6 +188,36 @@ final class HUDRowReuseTests: XCTestCase {
         XCTAssertEqual(try bitmap(of: whole), try bitmap(of: grown))
     }
 
+    func testSilentRowGainsDismissAtItsDeadlineWithoutAnUnrelatedEvent() throws {
+        let controller = try makeController()
+        defer { controller.shutdown() }
+        let waiting = testSession(index: 0, phase: .waitingForUser, lastObservedAt: now)
+        controller.clock = { self.now }
+        controller.render(WidgetState(sessions: [waiting]))
+        controller.show()
+        XCTAssertEqual(controller.nextDismissRefreshAt, now + SessionFreshnessEvaluator.defaultDisconnectAfter)
+        XCTAssertFalse(hasDismissButton(try XCTUnwrap(controller.currentRow(for: waiting.id))))
+        let later = now + SessionFreshnessEvaluator.defaultDisconnectAfter
+        controller.clock = { later }
+        controller.refreshTimers(now: later)
+        XCTAssertTrue(hasDismissButton(try XCTUnwrap(controller.currentRow(for: waiting.id))))
+        XCTAssertNil(controller.nextDismissRefreshAt, "the deadline is spent; an idle row needs no further wakeups")
+    }
+
+    func testNewEvidenceMovesDismissalDeadlineAndHidingCancelsIt() throws {
+        let controller = try makeController()
+        defer { controller.shutdown() }
+        var waiting = testSession(index: 0, phase: .waitingForUser, lastObservedAt: now)
+        controller.clock = { self.now }
+        controller.render(WidgetState(sessions: [waiting]))
+        controller.show()
+        waiting.lastObservedAt = now + 60
+        controller.render(WidgetState(sessions: [waiting]))
+        XCTAssertEqual(controller.nextDismissRefreshAt, now + 60 + SessionFreshnessEvaluator.defaultDisconnectAfter)
+        controller.toggle()
+        XCTAssertNil(controller.nextDismissRefreshAt)
+    }
+
     private func rowOrder(of controller: HUDPanelController) -> [String] {
         controller.visibleRows.map(\.snapshot.id)
     }

@@ -96,8 +96,7 @@ public enum SessionHistory {
     public struct RememberedWait: Equatable, Sendable {
         public let awaitedActivityID: String?
         public let kind: UserInputRequestKind?
-        /// When the session was last heard from. Anything its transcript did after this is
-        /// the session moving on without the app.
+        /// When the session was last heard from, used to reject older interruptions.
         public let observedAt: Date
 
         public init(awaitedActivityID: String?, kind: UserInputRequestKind?, observedAt: Date) {
@@ -109,23 +108,18 @@ public enum SessionHistory {
 
     /// What a session's own transcript says about the wait it was remembered in.
     ///
-    /// Two questions, because neither answers alone. The awaited call having reported back
-    /// says the wait is over outright — but the tail is a window, and a session that ran on
-    /// for a week leaves that answer far behind it. The newest fact is what covers that: a
-    /// session that did anything at all after the wait began was not waiting.
+    /// The awaited call ending or a current interruption retracts the wait. Unrelated calls
+    /// can finish while a permission dialog stays open, so their dates prove nothing about it.
     public struct RememberedWaitEvidence: Equatable, Sendable {
         /// The awaited call reported back somewhere in the tail.
-        public let awaitedCallEnded: Bool
-        /// When the newest fact in the tail happened, or `nil` when the tail holds none.
-        ///
-        /// Facts rather than records, and the difference is measured: an `attachment` record
-        /// was written while a call was still open, so "the file grew" does not mean "the
-        /// session moved on". A call starting or ending does.
-        public let newestFactAt: Date?
+        public let newestAwaitedCallEndAt: Date?
+        /// A whole-turn interruption, judged against the age of the remembered wait.
+        /// Late observations of calls starting preserve a wait, just as they do live.
+        public let newestInterruptionAt: Date?
 
-        public init(awaitedCallEnded: Bool, newestFactAt: Date?) {
-            self.awaitedCallEnded = awaitedCallEnded
-            self.newestFactAt = newestFactAt
+        public init(newestAwaitedCallEndAt: Date?, newestInterruptionAt: Date?) {
+            self.newestAwaitedCallEndAt = newestAwaitedCallEndAt
+            self.newestInterruptionAt = newestInterruptionAt
         }
 
         /// Reads one tail's worth of facts as evidence about one wait.
@@ -133,8 +127,13 @@ public enum SessionHistory {
         /// Here rather than in the reader that produced the bytes: this is the whole
         /// interpretation step, and it is worth being able to exercise it without a file.
         public init(facts: [TranscriptFact], awaitedActivityID: String?) {
-            awaitedCallEnded = facts.contains { $0.ends(activityID: awaitedActivityID) }
-            newestFactAt = facts.map(\.at).max()
+            newestAwaitedCallEndAt = facts.filter { $0.ends(activityID: awaitedActivityID) }.map(\.at).max()
+            newestInterruptionAt = facts.compactMap { fact in
+                if case let .turnInterrupted(at) = fact {
+                    return at
+                }
+                return nil
+            }.max()
         }
     }
 
@@ -145,12 +144,15 @@ public enum SessionHistory {
     /// memory alone. `false` is the answer that costs nothing — the row stays `no signal`,
     /// and the session's next hook says what it is really doing.
     public static func waitStillHolds(_ wait: RememberedWait, evidence: RememberedWaitEvidence?) -> Bool {
-        guard let evidence, !evidence.awaitedCallEnded else {
+        guard let evidence else {
             return false
         }
-        guard let newestFactAt = evidence.newestFactAt else {
+        if let endedAt = evidence.newestAwaitedCallEndAt, endedAt >= wait.observedAt {
+            return false
+        }
+        guard let newestInterruptionAt = evidence.newestInterruptionAt else {
             return true
         }
-        return newestFactAt <= wait.observedAt
+        return newestInterruptionAt < wait.observedAt
     }
 }

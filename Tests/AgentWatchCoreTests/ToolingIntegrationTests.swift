@@ -97,7 +97,8 @@ final class ToolingIntegrationTests: XCTestCase {
             case let .array(entries)? = group["hooks"], case let .object(entry)? = entries.first,
             case let .string(command)? = entry["command"]
         else {
-            throw XCTSkip("no command written for \(event)")
+            XCTFail("no command written for \(event)")
+            throw CocoaError(.coderInvalidValue)
         }
         return command
     }

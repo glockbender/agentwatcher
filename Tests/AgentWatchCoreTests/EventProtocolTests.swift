@@ -822,6 +822,35 @@ final class EventProtocolTests: XCTestCase {
         )
     }
 
+    func testDecodedStatusLineRejectsUnrepresentableAndImplausibleTokenCounts() throws {
+        for number in ["9223372036854775808", "1e30", "100000001", "-1", "0.5"] {
+            let data = Data(
+                """
+                {"schemaVersion":1,"source":"claude","declaredEvent":"StatusLine",
+                 "payload":{"session_id":"session","context_total_input_tokens":\(number),
+                 "context_used_percentage":50}}
+                """.utf8)
+            let request = try JSONDecoder().decode(HookIngressRequest.self, from: data)
+            let event = try HookIngressProcessor.normalize(request, observedAt: start)
+            XCTAssertNil(event.contextTelemetry, number)
+        }
+        for count in [0, SessionDescription.maximumContextInputTokens] {
+            let event = try HookIngressProcessor.normalize(
+                HookIngressRequest(
+                    source: .claude,
+                    declaredEvent: "StatusLine",
+                    payload: .object([
+                        "session_id": .string("session"),
+                        "context_total_input_tokens": .number(Double(count)),
+                        "context_used_percentage": .number(50),
+                    ])
+                ),
+                observedAt: start
+            )
+            XCTAssertEqual(event.contextTelemetry?.totalInputTokens, count)
+        }
+    }
+
     private func ingestFixture(named name: String) throws -> [SessionSnapshot] {
         var engine = SessionStateEngine()
         var snapshots: [SessionSnapshot] = []

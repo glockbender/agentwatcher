@@ -16,6 +16,8 @@ import AppKit
 final class ToolingCoordinator {
     private let installer: ToolingInstaller
     private let heard: AgentHeardStore
+    private let sender: SenderLink
+    private let executableURL: URL
     /// What this sitting has asked of each IDE, by its settings directory name. Never read
     /// from disk and never remembered past a launch: it is the difference between "the file
     /// says the plugin was here" and "it answered me a moment ago".
@@ -29,9 +31,18 @@ final class ToolingCoordinator {
     /// Something about the installation changed, and whatever shows it must look again.
     var onChange: () -> Void = {}
 
-    init(installer: ToolingInstaller = ToolingInstaller(), heard: AgentHeardStore) {
+    init(
+        installer: ToolingInstaller = ToolingInstaller(),
+        heard: AgentHeardStore,
+        sender: SenderLink = SenderLink(),
+        executableURL: URL? = nil
+    ) {
         self.installer = installer
         self.heard = heard
+        self.sender = sender
+        self.executableURL =
+            (executableURL ?? Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0]))
+            .resolvingSymlinksInPath()
     }
 
     /// Everything the tooling window shows, read in one go. See `ToolingWindowFacts`.
@@ -76,7 +87,7 @@ final class ToolingCoordinator {
     /// names a file that exists: whichever copy is running is the one that just claimed it.
     @discardableResult
     func refreshSenderLink() -> String {
-        let sender = senderLink()
+        let sender = sender.refresh(forExecutableAt: executableURL)
         if case let .tiedToThisBuild(path) = sender {
             // Said out loud for the same reason a refused event is: the fallback works today
             // and stops working when this build goes away, and it would be written into
@@ -217,15 +228,10 @@ final class ToolingCoordinator {
     /// is redrawn would bury the one that means something: a link that could not be made
     /// while installing.
     private func senderLink() -> SenderPath {
-        // From the bundle rather than from `argv[0]`: this decides what ends up in another
-        // program's configuration, and what a launcher put in `argv[0]` is up to the launcher.
-        let executable =
-            Bundle.main.executableURL
-            ?? URL(fileURLWithPath: CommandLine.arguments[0])
         // `current` and not `refresh`: this is the reporting path. The link is claimed at
         // launch and by `refreshSenderLink()`, and a window that describes what was written
         // must not be one of the things that writes it.
-        return SenderLink().current(forExecutableAt: executable.resolvingSymlinksInPath())
+        return sender.current(forExecutableAt: executableURL)
     }
 
     /// Runs one tooling change, and says so either way.

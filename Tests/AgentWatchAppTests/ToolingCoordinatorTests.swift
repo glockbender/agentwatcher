@@ -76,17 +76,63 @@ final class ToolingCoordinatorTests: XCTestCase {
         )
     }
 
+    func testStartupAndInstallationHandTheSameLinkToTheNextBuild() throws {
+        let (first, home) = try makeCoordinator()
+        let support = home.appendingPathComponent("support")
+        let link = support.appendingPathComponent("AgentWatchSend")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: link.path))
+        XCTAssertEqual(first.refreshSenderLink(), link.path)
+        for source in AgentSource.allCases {
+            first.press(.integration(ToolingIntegration(source: source, kind: .hooks)))
+        }
+
+        let installer = ToolingInstaller(home: home)
+        let hookFiles = AgentSource.allCases.map { installer.hooksPath(for: $0) }
+        let originalHooks = try hookFiles.map { try Data(contentsOf: $0) }
+        let executable = try makeExecutable(in: home.appendingPathComponent("next-build"))
+        let second = ToolingCoordinator(
+            installer: installer,
+            heard: AgentHeardStore(directoryURL: home),
+            sender: SenderLink(directoryURL: support),
+            executableURL: executable
+        )
+        XCTAssertEqual(second.refreshSenderLink(), link.path)
+        XCTAssertEqual(
+            link.resolvingSymlinksInPath(),
+            executable.deletingLastPathComponent().appendingPathComponent("AgentWatchSend").resolvingSymlinksInPath()
+        )
+        XCTAssertEqual(try hookFiles.map { try Data(contentsOf: $0) }, originalHooks)
+        for source in AgentSource.allCases {
+            let document = try JSONDecoder().decode(
+                JSONValue.self, from: Data(contentsOf: installer.hooksPath(for: source)))
+            XCTAssertEqual(Set(ToolingInstallation.senderPaths(inHooks: document, source: source).values), [link.path])
+        }
+    }
+
     private func makeCoordinator() throws -> (ToolingCoordinator, URL) {
         let home = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let support = home.appendingPathComponent("support")
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        let executable = try makeExecutable(in: home.appendingPathComponent("first-build"))
         return (
             ToolingCoordinator(
                 installer: ToolingInstaller(home: home),
-                heard: AgentHeardStore(directoryURL: home)
+                heard: AgentHeardStore(directoryURL: home),
+                sender: SenderLink(directoryURL: support),
+                executableURL: executable
             ),
             home
         )
+    }
+
+    private func makeExecutable(in directory: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let sender = directory.appendingPathComponent("AgentWatchSend")
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(to: sender)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sender.path)
+        return directory.appendingPathComponent("AgentWatch")
     }
 }

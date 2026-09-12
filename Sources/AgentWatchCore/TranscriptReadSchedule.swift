@@ -37,9 +37,10 @@ public struct TranscriptReadSchedule: Equatable, Sendable {
     ///
     /// Deliberately takes no "now": the answer depends only on what has already happened, and
     /// whether that moment has arrived is the caller's question, not this one's.
-    public func nextRead(lastReadAt: Date, lastHookAt: Date?) -> Date {
+    /// Before the first read, `lastReadAt` is the scheduling anchor, not a consumed hook boundary.
+    public func nextRead(lastReadAt: Date, lastHookAt: Date?, isFirstRead: Bool = false) -> Date {
         let deadline = lastReadAt.addingTimeInterval(idle)
-        guard let lastHookAt else {
+        guard let lastHookAt, isFirstRead || lastHookAt > lastReadAt else {
             return deadline
         }
         // Never later than the deadline: a hook is a reason to read sooner, and one arriving

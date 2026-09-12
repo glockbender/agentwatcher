@@ -8,7 +8,6 @@ import com.intellij.openapi.application.JBProtocolCommandResult
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.project.ProjectManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -83,7 +82,9 @@ class FocusSessionCommand : JBProtocolCommand(COMMAND) {
             thisLogger().info("agent-watch ping without a usable token; nothing written")
             return JBProtocolCommandResult(null, LEAVE_THE_WINDOWS_ALONE)
         }
-        val version = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.version
+        // PluginId became a Kotlin class after platform 251. Calling its factory from
+        // Kotlin compiled against 261 emits a Companion reference that 251 cannot load.
+        val version = PluginManagerCore.loadedPlugins.firstOrNull { it.pluginId.idString == PLUGIN_ID }?.version
         val reply = InstallationReport.reply(
             token = token,
             pluginVersion = version,

@@ -6,7 +6,6 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.terminal.ui.TerminalWidget
 import com.intellij.ui.content.Content
 import org.jetbrains.plugins.terminal.ShellTerminalWidget
-import org.jetbrains.plugins.terminal.TerminalOptionsProvider
 import org.jetbrains.plugins.terminal.TerminalToolWindowFactory
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 
@@ -70,17 +69,18 @@ fun isDescendant(processID: Long, shellProcessID: Long, maximumDepth: Int = 32):
  * Written because the first measurement on a live IDE came back as "no tabs at all", and an
  * empty list has too many causes to act on. It now names the engine in the settings and asks both
  * managers, so the line distinguishes an IDE whose reworked API this plugin cannot reach from one
- * where it can but the tabs have no shell yet.
+ * where it can but the tabs have no shell yet. The engine-setting enum is internal and differs
+ * between platforms, so the diagnostic describes the actual tabs instead.
  */
 suspend fun describeTerminalTabs(project: Project): List<String> {
-    val engine = runCatching { TerminalOptionsProvider.instance.terminalEngine.name }
-        .getOrElse { "unreadable" }
     val reworked = try {
         ReworkedTerminalTabs.describe(project)
+    } catch (error: ReflectiveOperationException) {
+        listOf("${project.name}: reworked terminal API unavailable ($error)")
     } catch (error: LinkageError) {
         listOf("${project.name}: reworked terminal API absent ($error)")
     }
-    return listOf("${project.name}: engine setting is $engine") + reworked + describeClassicTabs(project)
+    return reworked + describeClassicTabs(project)
 }
 
 /** Bringing one tab to the front, once its window already is. */
@@ -101,6 +101,9 @@ object TerminalToolWindow {
 private suspend fun reworkedTabs(project: Project): List<TerminalTab> =
     try {
         ReworkedTerminalTabs.of(project)
+    } catch (error: ReflectiveOperationException) {
+        LOG.info("agent-watch: reworked terminal API unavailable, classic tabs only ($error)")
+        emptyList()
     } catch (error: LinkageError) {
         // Expected on an IDE older than the reworked API, which `since-build` still admits. The
         // classic path below is the whole answer there, so this is a note and not a failure.

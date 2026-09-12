@@ -36,7 +36,7 @@ final class TranscriptReaderTests: XCTestCase {
         XCTAssertEqual(
             increment.facts,
             [
-                .callReturned(
+                .callFailed(
                     activityID: HookCaptureRedactor.label(forRawIdentifier: rawToolUseID),
                     at: Date(timeIntervalSince1970: 1_788_574_196.557)
                 )
@@ -49,9 +49,10 @@ final class TranscriptReaderTests: XCTestCase {
     func testATaskNotificationEndsWorkThatOutlivedItsCall() throws {
         let increment = try read([
             """
-            {"type":"user","timestamp":"2026-09-05T02:09:56Z","message":{"role":"user","content":\
-            [{"type":"text","text":"<task-notification>\\n<task-id>b9qwjr452</task-id>\\n\
-            <tool-use-id>\(rawToolUseID)</tool-use-id>\\n<status>killed</status>\\n</task-notification>"}]}}
+            {"type":"user","promptSource":"system","origin":{"kind":"task-notification"},\
+            "timestamp":"2026-09-05T02:09:56Z","message":{"role":"user","content":\
+            "<task-notification>\\n<task-id>b9qwjr452</task-id>\\n\
+            <tool-use-id>\(rawToolUseID)</tool-use-id>\\n<status>killed</status>\\n</task-notification>"}}
             """
         ])
 
@@ -132,11 +133,11 @@ final class TranscriptReaderTests: XCTestCase {
     func testTheInterruptionMarkerEndsTheTurn() throws {
         let increment = try read([
             """
-            {"type":"user","timestamp":"2026-09-05T02:05:53Z","message":{"role":"user","content":\
+            {"type":"user","interruptedMessageId":"message-1","timestamp":"2026-09-05T02:05:53Z","message":{"role":"user","content":\
             [{"type":"text","text":"[Request interrupted by user]"}]}}
             """,
             """
-            {"type":"user","timestamp":"2026-09-05T02:05:53Z","message":{"role":"user","content":\
+            {"type":"user","interruptedMessageId":"message-2","timestamp":"2026-09-05T02:05:53Z","message":{"role":"user","content":\
             [{"type":"text","text":"[Request interrupted by user for tool use]"}]}}
             """,
         ])
@@ -410,7 +411,7 @@ extension TranscriptFact {
     /// The activity a fact ends, for tests that care which one rather than which case.
     fileprivate var endedActivityID: String? {
         switch self {
-        case let .callReturned(id, _), let .workEnded(id, _): id
+        case let .callReturned(id, _), let .callFailed(id, _), let .workEnded(id, _): id
         case .callStarted, .turnInterrupted: nil
         }
     }

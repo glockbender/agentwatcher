@@ -279,7 +279,13 @@ final class ToolingInstaller {
             return
         }
         if let command {
-            root["statusLine"] = .object(["type": .string("command"), "command": .string(command)])
+            var statusLine: [String: JSONValue] = [:]
+            if case let .object(existing)? = root["statusLine"] {
+                statusLine = existing
+            }
+            statusLine["type"] = .string("command")
+            statusLine["command"] = .string(command)
+            root["statusLine"] = .object(statusLine)
         } else {
             root.removeValue(forKey: "statusLine")
         }

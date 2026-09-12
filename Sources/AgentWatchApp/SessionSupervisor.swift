@@ -69,12 +69,14 @@ final class SessionSupervisor {
         }
     )
     private let home: URL
+    private let workspaceNotifications: NotificationCenter
 
     init(
         settings: WidgetSettingsStore,
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         heard: AgentHeardStore = AgentHeardStore(),
         history: SessionHistoryStore,
+        workspaceNotifications: NotificationCenter = NSWorkspace.shared.notificationCenter,
         now: @escaping () -> Date = { .now },
         liveAgentProcesses: @escaping () -> [DiscoveredAgentProcess] = AgentProcessScanner.liveAgentProcesses,
         agentProcessStartedAt: @escaping (Int32) -> Date? = AgentProcessLocator.startTime(of:),
@@ -83,6 +85,7 @@ final class SessionSupervisor {
     ) {
         self.settings = settings
         self.home = home
+        self.workspaceNotifications = workspaceNotifications
         self.heard = heard
         self.history = history
         self.now = now
@@ -113,7 +116,7 @@ final class SessionSupervisor {
     }
 
     func start() {
-        NSWorkspace.shared.notificationCenter.addObserver(
+        workspaceNotifications.addObserver(
             self,
             selector: #selector(agentApplicationTerminated(_:)),
             name: NSWorkspace.didTerminateApplicationNotification,
@@ -121,7 +124,7 @@ final class SessionSupervisor {
         )
         // A Mac that slept through an agent starting or ending wakes up with a stale list,
         // and waking is a notification rather than a poll.
-        NSWorkspace.shared.notificationCenter.addObserver(
+        workspaceNotifications.addObserver(
             self,
             selector: #selector(systemDidWake(_:)),
             name: NSWorkspace.didWakeNotification,
@@ -176,7 +179,7 @@ final class SessionSupervisor {
         maintenanceTimer?.invalidate()
         maintenanceTimer = nil
         transcripts.stop()
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        workspaceNotifications.removeObserver(self)
     }
 
     /// Whether a transcript is being read right now, for the menu to say so plainly.
@@ -676,6 +679,7 @@ final class SessionSupervisor {
         switch fact {
         case let .callStarted(_, kind, _): "\(kind.rawValue) call started"
         case .callReturned: "call ended"
+        case .callFailed: "call failed"
         case .workEnded: "background work ended"
         case .turnInterrupted: "turn interrupted"
         }

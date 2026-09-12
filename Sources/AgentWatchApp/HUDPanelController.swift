@@ -7,6 +7,9 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// nothing else — see `WidgetState`.
     private var state = WidgetState()
     private var freshnessTimer: Timer?
+    private var dismissalTimer: Timer?
+    /// A single deadline, including while all sessions wait or rest. No idle polling.
+    private(set) var nextDismissRefreshAt: Date?
     private let locator: (SessionSnapshot) -> SessionLocator
     private let focus: (SessionSnapshot) -> Void
     private let remove: (SessionSnapshot) -> Void
@@ -132,6 +135,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             endHover()
             freshnessTimer?.invalidate()
             freshnessTimer = nil
+            cancelDismissalTimer()
         } else {
             show()
         }
@@ -174,6 +178,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         endHover()
         freshnessTimer?.invalidate()
         freshnessTimer = nil
+        cancelDismissalTimer()
         close()
     }
 
@@ -202,6 +207,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         resizeIfSelfSizing(panel)
         panel.updateHighlightOverlay()
         updateFreshnessTimer()
+        updateDismissalTimer(now: clock())
         refreshHoverCard()
     }
 
@@ -212,11 +218,11 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// moved: the width decides how much of each name fits, and the usage block under the
     /// divider is not made of rows. Either of those is rare — a resize, a new reading of the
     /// account's limits — and rebuilding the list for them costs nothing anybody sees.
-    private func showRows(in panel: HUDPanel) {
+    private func showRows(in panel: HUDPanel, now: Date? = nil) {
         let width = panel.contentLayoutRect.width
         // One moment for the models and for the rows built from them: two readings of the
         // clock would let a row's age disagree with the thresholds decided beside it.
-        let moment = clock()
+        let moment = now ?? clock()
         let models = orderedForDisplay(state.sessions).map { snapshot in
             HUDRowModel(snapshot: snapshot, now: moment, showsSessionTopic: settings.showsSessionTopic)
         }
@@ -431,8 +437,43 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// The one-second tick. Takes the moment as a parameter so a test can advance it
     /// instead of waiting for it.
     func refreshTimers(now: Date = .now) {
-        (container.body as? HUDSessionListView)?.refreshTimers(now: now)
+        if let panel = window as? HUDPanel, !state.sessions.isEmpty {
+            showRows(in: panel, now: now)
+        }
         refreshHoverCardText(now: now)
+        updateDismissalTimer(now: now)
+    }
+
+    private func cancelDismissalTimer() {
+        dismissalTimer?.invalidate()
+        dismissalTimer = nil
+        nextDismissRefreshAt = nil
+    }
+
+    private func updateDismissalTimer(now: Date) {
+        guard window?.isVisible == true else {
+            cancelDismissalTimer()
+            return
+        }
+        let deadline = state.sessions.filter { !SessionPresence.isDismissible($0, now: now) }
+            .map { $0.lastObservedAt + SessionFreshnessEvaluator.defaultDisconnectAfter }.min()
+        guard deadline != nextDismissRefreshAt else {
+            return
+        }
+        cancelDismissalTimer()
+        guard let deadline else {
+            return
+        }
+        nextDismissRefreshAt = deadline
+        dismissalTimer = Timer.scheduledTimer(withTimeInterval: max(0, deadline.timeIntervalSince(now)), repeats: false)
+        {
+            [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.cancelDismissalTimer()
+                self.refreshTimers(now: self.clock())
+            }
+        }
     }
 
     func windowDidMove(_ notification: Notification) {

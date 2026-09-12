@@ -41,13 +41,13 @@ public enum PosixSocket {
     /// the length is checked before the copy rather than truncated into a path that points
     /// somewhere else.
     public static func makeAddress(path: String) -> sockaddr_un? {
+        var address = sockaddr_un()
         let pathBytes = Array(path.utf8)
-        let capacity = MemoryLayout<sockaddr_un>.size - MemoryLayout<sa_family_t>.size
-        guard !pathBytes.isEmpty, pathBytes.count < capacity else {
+        let capacity = MemoryLayout.size(ofValue: address.sun_path)
+        guard !pathBytes.isEmpty, !pathBytes.contains(0), pathBytes.count < capacity else {
             return nil
         }
 
-        var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
         let pathWithTerminator = pathBytes + [0]
         withUnsafeMutableBytes(of: &address.sun_path) { destination in

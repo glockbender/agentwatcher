@@ -43,7 +43,7 @@ final class RememberedWaitTests: XCTestCase {
 
         let restored = engine.confirmRememberedWait(
             forSessionWithID: "claude:abc",
-            evidence: SessionHistory.RememberedWaitEvidence(awaitedCallEnded: false, newestFactAt: nil)
+            evidence: SessionHistory.RememberedWaitEvidence(newestAwaitedCallEndAt: nil, newestInterruptionAt: nil)
         )
 
         XCTAssertEqual(restored?.phase, .waitingForUser)
@@ -75,10 +75,8 @@ final class RememberedWaitTests: XCTestCase {
         XCTAssertEqual(engine.snapshots["claude:abc"]?.phase, .disconnected)
     }
 
-    /// The tail is a window. A session that ran on for a week leaves the awaited call's
-    /// result far behind it, so "no result in the tail" cannot carry the answer alone — any
-    /// fact newer than the wait says the session moved on without the app.
-    func testASessionThatDidAnythingAfterTheWaitIsNotWaiting() {
+    /// Transcript starts are late observations and preserve waits on the live path too.
+    func testAnObservedCallDoesNotContradictTheRememberedWait() {
         var engine = SessionStateEngine()
         engine.restore([SessionHistory.remembered(waiting())])
 
@@ -90,7 +88,7 @@ final class RememberedWaitTests: XCTestCase {
             )
         )
 
-        XCTAssertNil(restored, "a call that started an hour after the wait is a session that was not waiting")
+        XCTAssertEqual(restored?.phase, .waitingForUser)
     }
 
     /// A transcript that could not be found or read says nothing, and nothing is not weak
@@ -117,7 +115,7 @@ final class RememberedWaitTests: XCTestCase {
         )
         let refused = engine.confirmRememberedWait(
             forSessionWithID: "claude:abc",
-            evidence: SessionHistory.RememberedWaitEvidence(awaitedCallEnded: false, newestFactAt: nil)
+            evidence: SessionHistory.RememberedWaitEvidence(newestAwaitedCallEndAt: nil, newestInterruptionAt: nil)
         )
 
         XCTAssertNil(refused)
@@ -189,7 +187,8 @@ final class RememberedWaitTests: XCTestCase {
         engine.restore([SessionHistory.remembered(waiting())])
         engine.confirmRememberedWait(
             forSessionWithID: "claude:abc",
-            evidence: SessionHistory.RememberedWaitEvidence(awaitedCallEnded: true, newestFactAt: nil)
+            evidence: SessionHistory.RememberedWaitEvidence(
+                newestAwaitedCallEndAt: waitedAt + 1, newestInterruptionAt: nil)
         )
 
         let written = SessionHistory.records(
@@ -199,6 +198,82 @@ final class RememberedWaitTests: XCTestCase {
 
         XCTAssertEqual(try XCTUnwrap(written.first).phase, .disconnected)
         XCTAssertNil(try XCTUnwrap(written.first).awaitedActivityID)
+    }
+
+    func testLiveAndRestoredWaitsAgreeOnWhichTranscriptFactsAnswerThem() throws {
+        let facts: [TranscriptFact] = [
+            TranscriptFact.callReturned(activityID: "call-2", at: waitedAt + 1),
+            .workEnded(activityID: "call-2", at: waitedAt + 1),
+            .callFailed(activityID: "call-2", at: waitedAt + 1),
+            .callReturned(activityID: "call-1", at: waitedAt + 1),
+            .workEnded(activityID: "call-1", at: waitedAt + 1),
+            .callFailed(activityID: "call-1", at: waitedAt + 1),
+            .callStarted(activityID: "call-2", kind: .advisor, at: waitedAt + 1),
+            .turnInterrupted(at: waitedAt + 1),
+            .turnInterrupted(at: waitedAt),
+            .turnInterrupted(at: waitedAt - 1),
+        ]
+        let awaitedIDs: [String?] = ["call-1", nil]
+        for awaitedID in awaitedIDs {
+            for fact in facts {
+                var live = SessionStateEngine()
+                let waiting = try live.ingest(
+                    EventEnvelope(
+                        source: .claude, sessionID: "abc", activityID: awaitedID,
+                        observedAt: waitedAt, kind: .userInputRequired, userInputRequestKind: .approval
+                    ))
+                var restored = SessionStateEngine()
+                restored.restore([SessionHistory.remembered(waiting)])
+
+                live.apply(fact, toSessionWithID: waiting.id)
+                restored.confirmRememberedWait(
+                    forSessionWithID: waiting.id,
+                    evidence: SessionHistory.RememberedWaitEvidence(facts: [fact], awaitedActivityID: awaitedID)
+                )
+
+                XCTAssertEqual(
+                    live.snapshots[waiting.id]?.phase == .waitingForUser,
+                    restored.snapshots[waiting.id]?.phase == .waitingForUser,
+                    "awaited=\(String(describing: awaitedID)), fact=\(fact)"
+                )
+            }
+        }
+    }
+
+    func testUnnamedLiveWaitIgnoresOldEndingsButAcceptsCurrentOnes() throws {
+        let offsets: [TimeInterval] = [-1, 0, 1]
+        for offset in offsets {
+            let at = waitedAt + offset
+            let facts: [TranscriptFact] = [
+                .callReturned(activityID: "old-call", at: at),
+                .callFailed(activityID: "old-call", at: at),
+                .workEnded(activityID: "old-call", at: at),
+            ]
+            for fact in facts {
+                var engine = SessionStateEngine()
+                let waiting = try engine.ingest(
+                    EventEnvelope(
+                        source: .claude, sessionID: "abc", observedAt: waitedAt,
+                        kind: .userInputRequired, userInputRequestKind: .approval)
+                )
+                XCTAssertNil(waiting.awaitedActivityID)
+                engine.apply(fact, toSessionWithID: waiting.id)
+                XCTAssertEqual(
+                    engine.snapshots[waiting.id]?.phase, offset < 0 ? .waitingForUser : .executing,
+                    "\(fact)")
+            }
+        }
+    }
+
+    func testHistoricalEndingsDoNotAnswerALaterWait() {
+        let ids: [String?] = [nil, "call-1"]
+        for id in ids {
+            let wait = SessionHistory.RememberedWait(awaitedActivityID: id, kind: .approval, observedAt: waitedAt)
+            let evidence = SessionHistory.RememberedWaitEvidence(
+                facts: [.callReturned(activityID: "call-1", at: waitedAt - 60)], awaitedActivityID: id
+            )
+            XCTAssertTrue(SessionHistory.waitStillHolds(wait, evidence: evidence))
+        }
     }
 
     private func waiting() -> SessionSnapshot {

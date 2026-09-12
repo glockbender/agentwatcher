@@ -28,6 +28,12 @@ final class PreferenceSeedingTests: XCTestCase {
         }
     }
 
+    func testAutomaticUpdatePreferenceIsSeededOnFirstLaunch() throws {
+        let (preferences, owners) = try makeStores()
+        seed(owners, into: preferences)
+        XCTAssertEqual(preferences.flag(forKey: "checkForUpdatesOnLaunch"), true)
+    }
+
     /// The size is seeded like everything else, and what used to be its absence is now a
     /// value beside it: `widgetSizeFollowsSessions`. A widget that has never been resized
     /// still has a size to open at and still follows the session count.
@@ -118,6 +124,7 @@ final class PreferenceSeedingTests: XCTestCase {
                 WidgetSettingsStore(preferences: preferences),
                 HUDFrameStore(preferences: preferences),
                 LampSchemeStore(preferences: preferences),
+                AppUpdater(preferences: preferences),
             ]
         )
     }

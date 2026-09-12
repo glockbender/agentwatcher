@@ -1,5 +1,6 @@
 import AgentWatchCore
 import AgentWatchTestSupport
+import AppKit
 import XCTest
 
 @testable import AgentWatchApp
@@ -44,6 +45,25 @@ final class SessionSupervisorTests: XCTestCase {
 
     func testNoSessionsMeansNoSweep() {
         XCTAssertFalse(hasWork(phases: [], retention: .after(120)))
+    }
+
+    func testWorkspaceWakeTriggersDiscoveryOnlyUntilSupervisorStops() throws {
+        let notifications = NotificationCenter()
+        var scans = 0
+        let supervisor = try makeSupervisor(
+            workspaceNotifications: notifications,
+            liveAgentProcesses: {
+                scans += 1
+                return []
+            }
+        )
+        supervisor.start()
+        XCTAssertEqual(scans, 1)
+        notifications.post(name: NSWorkspace.didWakeNotification, object: nil)
+        XCTAssertEqual(scans, 2)
+        supervisor.stop()
+        notifications.post(name: NSWorkspace.didWakeNotification, object: nil)
+        XCTAssertEqual(scans, 2, "stopping removes workspace observers")
     }
 
     // MARK: - What the predicate is wired to
@@ -897,7 +917,8 @@ final class SessionSupervisorTests: XCTestCase {
             payload: .object(["tool_use_id": .string(rawToolUseID)])
         )
         guard case let .object(fields) = onTheSocket.payload, case let .string(value)? = fields["tool_use_id"] else {
-            throw XCTSkip("the redactor no longer carries a tool call identifier")
+            XCTFail("the redactor no longer carries a tool call identifier")
+            throw CocoaError(.coderInvalidValue)
         }
         return value
     }
@@ -912,7 +933,7 @@ final class SessionSupervisorTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let record = """
-            {"type":"user","timestamp":"\(formatter.string(from: moment))","message":{"content":\
+            {"type":"user","timestamp":"\(formatter.string(from: moment))","message":{"role":"user","content":\
             [{"type":"tool_result","tool_use_id":"\(toolUseID)"}]}}
             """
         let url = home.appendingPathComponent(".claude/projects/p/\(sessionUUID).jsonl")
@@ -932,7 +953,8 @@ final class SessionSupervisorTests: XCTestCase {
             payload: .object(["session_id": .string(rawSessionUUID)])
         )
         guard case let .object(fields) = onTheSocket.payload, case let .string(value)? = fields["session_id"] else {
-            throw XCTSkip("the redactor no longer carries a session identifier")
+            XCTFail("the redactor no longer carries a session identifier")
+            throw CocoaError(.coderInvalidValue)
         }
         return value
     }
@@ -987,6 +1009,7 @@ final class SessionSupervisorTests: XCTestCase {
         history: SessionHistoryStore? = nil,
         settings: WidgetSettingsStore? = nil,
         home: URL? = nil,
+        workspaceNotifications: NotificationCenter = NotificationCenter(),
         // Nothing by default, and never the real scanner: a test that started the app would
         // otherwise find whatever agents happen to be running on the machine it runs on.
         liveAgentProcesses: @escaping () -> [DiscoveredAgentProcess] = { [] },
@@ -1014,6 +1037,7 @@ final class SessionSupervisorTests: XCTestCase {
                     directoryURL: FileManager.default.temporaryDirectory
                         .appendingPathComponent(UUID().uuidString)
                 ),
+            workspaceNotifications: workspaceNotifications,
             now: now,
             liveAgentProcesses: liveAgentProcesses,
             agentProcessStartedAt: agentProcessStartedAt,

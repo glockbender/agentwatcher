@@ -114,7 +114,7 @@ public enum SessionReducer {
             // shell hands back a handle in about five seconds and runs on; nothing reports
             // its real end, so only the end of the turn clears it.
             next.activities.removeAll { $0.id == id && !$0.outlivesItsCall }
-            endWait(&next, forActivity: id)
+            endWait(&next, forActivity: id, at: observedAt)
             next.lastObservedAt = observedAt
 
         case let .workEnded(id, observedAt):
@@ -123,14 +123,14 @@ public enum SessionReducer {
             // runs on, so treating that as the end would close the work as it started.
             // Here the agent has said the work itself finished or was killed.
             next.activities.removeAll { $0.id == id }
-            endWait(&next, forActivity: id)
+            endWait(&next, forActivity: id, at: observedAt)
             next.lastObservedAt = observedAt
 
         case let .activityFailed(id, observedAt):
             // A call that failed or was refused started no work at all, so nothing of it can
             // outlive it — which is why this is a separate event and not a completion.
             next.activities.removeAll { $0.id == id }
-            endWait(&next, forActivity: id)
+            endWait(&next, forActivity: id, at: observedAt)
             next.lastObservedAt = observedAt
 
         case let .userInputRequired(reason, activityID, observedAt):
@@ -211,8 +211,17 @@ public enum SessionReducer {
     /// Only the call the session is actually waiting on ends the wait. With no awaited call
     /// recorded there is nothing to compare against, and any ending has to be taken as the
     /// answer.
-    private static func endWait(_ next: inout SessionSnapshot, forActivity id: String) {
-        if next.phase == .waitingForUser, next.awaitedActivityID == nil || next.awaitedActivityID == id {
+    static func activityEndsWait(awaitedActivityID: String?, endingActivityID: String) -> Bool {
+        awaitedActivityID == nil || awaitedActivityID == endingActivityID
+    }
+
+    private static func endWait(_ next: inout SessionSnapshot, forActivity id: String, at: Date) {
+        if next.phase == .waitingForUser,
+            // Without an identity, a late ending from a previous turn cannot answer this
+            // dialog. Named calls still close out of order by their own identity.
+            (next.awaitedActivityID != nil || at >= next.lastObservedAt),
+            activityEndsWait(awaitedActivityID: next.awaitedActivityID, endingActivityID: id)
+        {
             next.phase = next.mode == .plan ? .planning : .executing
             next.userInputRequestKind = nil
             next.awaitedActivityID = nil
