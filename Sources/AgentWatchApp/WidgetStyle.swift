@@ -36,8 +36,8 @@ enum WidgetStyle {
     static let usageFont = NSFont.systemFont(ofSize: 11, weight: .medium)
     /// The hover card.
     static let secondaryFont = NSFont.systemFont(ofSize: 11)
-    /// The `▾ N more` badge. Smaller than anything else here: it lies over a row rather than
-    /// beside one, so it has to read as a mark on the list instead of as another line of it.
+    /// The `+N` badges. Smaller than anything else here: they lie over a row rather than
+    /// beside one, so they have to read as a mark on the list instead of as another line of it.
     static let overflowFont = NSFont.systemFont(ofSize: 9, weight: .medium)
     /// The empty state, which is read from further away than a row.
     static let emptyTitleFont = NSFont.systemFont(ofSize: 14, weight: .semibold)
