@@ -26,6 +26,35 @@ final class HUDOverflowTests: XCTestCase {
         XCTAssertGreaterThan(list.hiddenSessionCount, 0)
     }
 
+    /// The complaint this answers: the counter stood there announcing sessions while the list
+    /// was scrolled all the way down and every one of them had been read. It counted the rows
+    /// scrolled past above as well as the ones still below — under a `▾` that points down.
+    func testTheCounterGoesAwayAtTheBottomOfTheList() throws {
+        let list = listView(sessionCount: 8)
+        place(list, height: 80)
+        XCTAssertGreaterThan(list.hiddenSessionCount, 0, "this size really does cut rows off")
+        let badge = try XCTUnwrap(firstBadge(in: list))
+
+        try scrollToBottom(list)
+
+        XCTAssertEqual(list.hiddenSessionCount, 0, "nothing is below the view any more")
+        XCTAssertTrue(badge.isHidden)
+    }
+
+    /// One row down is one row fewer still to come. The count used to stand still here: the
+    /// row that left the top was counted the moment the row that arrived at the bottom
+    /// stopped being.
+    func testScrollingDownTakesOffTheRowItReveals() throws {
+        let list = listView(sessionCount: 8)
+        place(list, height: 80)
+        let atTheTop = list.hiddenSessionCount
+        XCTAssertGreaterThan(atTheTop, 1, "this size really does cut rows off")
+
+        try scroll(list, by: HUDSessionRowView.rowHeight + HUDSessionListView.rowSpacing)
+
+        XCTAssertEqual(list.hiddenSessionCount, atTheTop - 1)
+    }
+
     /// The counter used to sit under the list and take a strip of height from it, so it was
     /// partly the cause of what it reported: while it was there the widget showed one row
     /// fewer. As a badge over the list it costs the rows nothing.
@@ -46,6 +75,60 @@ final class HUDOverflowTests: XCTestCase {
         XCTAssertTrue(
             badge.frame.intersects(scrollView.frame),
             "the badge is over the list, which is the only way it can cost it nothing"
+        )
+    }
+
+    /// Wherever it sits the badge hides part of a row, so it sits in the margin the rows
+    /// already leave clear — past their right edge and below their last line — rather than in
+    /// line with them. The rows keep their own inset; only the badge goes into the border.
+    func testTheCounterSitsInTheMarginTheRowsLeaveClear() throws {
+        let list = listView(sessionCount: 8)
+        place(list, height: 80)
+        let scrollView = try XCTUnwrap(firstScrollView(in: list))
+        let badge = try XCTUnwrap(firstBadge(in: list))
+        let frame = badge.convert(badge.bounds, to: list)
+        let rows = scrollView.convert(scrollView.bounds, to: list)
+
+        XCTAssertGreaterThan(frame.maxX, rows.maxX, "past the right edge the rows stop at")
+        XCTAssertLessThan(frame.minY, rows.minY, "and below the line they stop at")
+        XCTAssertTrue(list.bounds.contains(frame), "without leaving the widget")
+    }
+
+    /// The badge lands where a row keeps its `×`, and that button is the only way to clear a
+    /// session that has stopped. Covering it whole takes the gesture away; this leaves most of
+    /// it showing.
+    func testTheCounterLeavesTheDismissButtonShowing() throws {
+        let list = listView(sessionCount: 8, phase: .sessionClosed)
+        place(list, height: 80)
+        let badge = try XCTUnwrap(firstBadge(in: list))
+        XCTAssertFalse(badge.isHidden, "this size really does cut rows off")
+
+        let button = try XCTUnwrap(lowestFullyVisibleDismissButton(in: list))
+        let covered = badge.convert(badge.bounds, to: list).intersection(button)
+
+        XCTAssertGreaterThan(
+            button.height - covered.height,
+            button.height / 2,
+            "over half the button has to stay in sight to be aimed at"
+        )
+    }
+
+    /// The badge drops into the border below the list. Where there is an account usage block
+    /// down there the border is all it may take: the divider and the figures under it are not
+    /// a row, and nothing announces them.
+    func testTheCounterStaysClearOfTheUsageBlock() throws {
+        let list = listView(
+            sessionCount: 8,
+            usageLimits: [AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 17), observedAt: now)]
+        )
+        place(list, height: 120)
+        let badge = try XCTUnwrap(firstBadge(in: list))
+        XCTAssertFalse(badge.isHidden, "this size really does cut rows off")
+        let divider = try XCTUnwrap(allSubviews(of: list).compactMap { $0 as? NSBox }.first)
+
+        XCTAssertGreaterThanOrEqual(
+            badge.convert(badge.bounds, to: list).minY,
+            divider.convert(divider.bounds, to: list).maxY
         )
     }
 
@@ -71,6 +154,35 @@ final class HUDOverflowTests: XCTestCase {
             return badge
         }
         return view.subviews.lazy.compactMap { self.firstBadge(in: $0) }.first
+    }
+
+    /// Moves the list the way a wheel does, and lets the count settle afterwards.
+    private func scroll(_ list: HUDSessionListView, by delta: CGFloat) throws {
+        let scrollView = try XCTUnwrap(firstScrollView(in: list))
+        // The document view is flipped, so a larger `y` is further down the list.
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollView.documentVisibleRect.minY + delta))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        settle(list)
+    }
+
+    private func scrollToBottom(_ list: HUDSessionListView) throws {
+        let scrollView = try XCTUnwrap(firstScrollView(in: list))
+        let document = try XCTUnwrap(scrollView.documentView)
+        try scroll(list, by: document.bounds.height - scrollView.documentVisibleRect.maxY)
+    }
+
+    /// The `×` of the lowest row that is wholly in view, in the list's own coordinates.
+    /// That is the row the badge lands on, and the button it can take away.
+    private func lowestFullyVisibleDismissButton(in list: HUDSessionListView) throws -> NSRect? {
+        let scrollView = try XCTUnwrap(firstScrollView(in: list))
+        let visible = scrollView.documentVisibleRect
+        guard
+            let row = list.rows.last(where: { visible.contains($0.frame) }),
+            let button = allSubviews(of: row).compactMap({ $0 as? RowDismissButton }).first
+        else {
+            return nil
+        }
+        return button.convert(button.bounds, to: list)
     }
 
     /// The complaint this answers: after a few resizes the widget claimed sessions were
@@ -279,10 +391,18 @@ final class HUDOverflowTests: XCTestCase {
         )
     }
 
-    private func listView(sessionCount: Int, title: String? = nil) -> HUDSessionListView {
+    private func listView(
+        sessionCount: Int,
+        title: String? = nil,
+        phase: SessionPhase = .executing,
+        usageLimits: [AgentUsageLimits] = []
+    ) -> HUDSessionListView {
         HUDSessionListView(
-            models: rowModels((0..<sessionCount).map { session(index: $0, title: title) }, now: now),
-            usageLimits: [],
+            models: rowModels(
+                (0..<sessionCount).map { session(index: $0, title: title, phase: phase) },
+                now: now
+            ),
+            usageLimits: usageLimits,
             now: now,
             availableWidth: 400,
             focus: { _ in },
@@ -304,11 +424,19 @@ final class HUDOverflowTests: XCTestCase {
         )
         window.contentView = list
         window.setContentSize(NSSize(width: width, height: height))
+        settle(list)
+    }
+
+    /// Two passes, because the counter's text is written during the first one: a label given
+    /// a new string is only as wide as that string on the pass that follows. AppKit runs that
+    /// second pass by itself before anything is drawn; a test has to ask for it.
+    private func settle(_ list: HUDSessionListView) {
+        list.layoutSubtreeIfNeeded()
         list.layoutSubtreeIfNeeded()
     }
 
-    private func session(index: Int, title: String? = nil) -> SessionSnapshot {
-        testSession(index: index, title: title ?? "Session \(index)", phase: .executing, lastObservedAt: now)
+    private func session(index: Int, title: String? = nil, phase: SessionPhase = .executing) -> SessionSnapshot {
+        testSession(index: index, title: title ?? "Session \(index)", phase: phase, lastObservedAt: now)
     }
 }
 

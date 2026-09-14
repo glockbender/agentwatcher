@@ -15,6 +15,12 @@ class HUDSessionListView: NSView {
     /// height as well, which is why there is one of these and not one per reader.
     static let verticalPadding: CGFloat = 6
 
+    /// How much clear space the `▾ N more` badge keeps from whatever is below it and from the
+    /// widget's right edge. Less than the inset the rows keep, and that is the point: the
+    /// badge lies over the bottom row, so every point it moves out of the rows' own column is
+    /// a point of that row's `×` left to aim at.
+    private static let badgeInset: CGFloat = 2
+
     /// What each row is currently showing, in the order the rows are in. Kept so the next
     /// report can be compared against it and only the rows that differ rebuilt.
     private var models: [HUDRowModel]
@@ -115,10 +121,11 @@ class HUDSessionListView: NSView {
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Self.horizontalInset),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Self.horizontalInset),
             scrollView.topAnchor.constraint(equalTo: container.topAnchor, constant: Self.verticalPadding),
-            // Against the bottom of the list, which is as close to the widget's own edge as
-            // anything can be without covering the usage block below it.
-            overflowBadge.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Self.horizontalInset),
-            overflowBadge.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            // Into the widget's own border, not in line with the rows. Wherever it sits the
+            // badge covers part of the bottom row, and the bottom right of a row is where its
+            // `×` is — the only way to clear a session that has stopped. Out here it clears
+            // most of that button instead of all of it, and the rows keep their own inset.
+            overflowBadge.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Self.badgeInset),
             // The row stack must be free to exceed the clip view, otherwise a row that
             // cannot shrink any further would be clipped instead of scrolled to.
             rowStack.widthAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.widthAnchor),
@@ -163,17 +170,21 @@ class HUDSessionListView: NSView {
                 ),
                 usageStack.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: Self.usageDividerGap),
                 usageStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Self.verticalPadding),
+                // The badge stops above the divider. What is under it there is a block of
+                // account figures — not a row, and nothing announces it — so the badge may
+                // have the gap before the separator and no more.
+                overflowBadge.bottomAnchor.constraint(equalTo: divider.topAnchor, constant: -Self.badgeInset),
             ]
         } else {
-            // Must be an equality: the scroll view has no intrinsic height, so with only
-            // its top pinned and a `lessThanOrEqualTo` at the bottom nothing would stretch
-            // it and the list would collapse.
-            constraints.append(
-                scrollView.bottomAnchor.constraint(
-                    equalTo: container.bottomAnchor,
-                    constant: -Self.verticalPadding
-                )
-            )
+            constraints += [
+                // Must be an equality: the scroll view has no intrinsic height, so with only
+                // its top pinned and a `lessThanOrEqualTo` at the bottom nothing would stretch
+                // it and the list would collapse.
+                scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Self.verticalPadding),
+                // Nothing under the list but the widget's own edge, so the badge goes all the
+                // way down into the corner.
+                overflowBadge.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Self.badgeInset),
+            ]
         }
 
         addSubview(container)
@@ -408,7 +419,7 @@ class HUDSessionListView: NSView {
         // width budget for the session name is computed against the full width — names would
         // be sized for room they do not have. The accessibility reason for that setting is
         // "make it visible that there is more", and this widget answers it better than a bar
-        // does: the `▾ N more` counter says how many sessions are out of sight, in words.
+        // does: the `▾ N more` counter says how many sessions are still below, in words.
         scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
@@ -432,7 +443,7 @@ class HUDSessionListView: NSView {
     }
 
     /// Auto-hiding scrollers vanish when the pointer is elsewhere, which is exactly when
-    /// a hidden session most needs announcing. This says how many are out of sight.
+    /// a hidden session most needs announcing. This says how many are still below.
     ///
     /// Counted from the rows' real frames rather than an assumed row height: an estimate
     /// that runs high would report nothing hidden while sessions were in fact cut off,
@@ -560,8 +571,8 @@ func orderedForDisplay(_ sessions: [SessionSnapshot]) -> [SessionSnapshot] {
 /// that swallowed those would take away more than it tells.
 @MainActor
 final class HUDOverflowBadge: NSView {
-    private static let horizontalPadding: CGFloat = 5
-    private static let verticalPadding: CGFloat = 1.5
+    private static let horizontalPadding: CGFloat = 4
+    private static let verticalPadding: CGFloat = 1
 
     let label = NSTextField(labelWithString: "")
 
@@ -615,7 +626,12 @@ final class FlippedStackView: NSStackView {
     override var isFlipped: Bool { true }
 }
 
-/// How many rows are not fully in view, counted vertically.
+/// How many rows are still below the view, counted vertically.
+///
+/// Below, and only below: the counter reads `▾ N more` under the last line, which is a
+/// promise about what scrolling on will reach. It used to count the rows scrolled past above
+/// as well, so at the bottom of a long list it stood there announcing five sessions that had
+/// already been read, under an arrow pointing at nothing.
 ///
 /// Only the vertical axis matters. A row wider than the clip view is reached by scrolling
 /// sideways, not hidden — counting it made the indicator claim sessions were missing while
@@ -630,7 +646,5 @@ func hiddenRowCount(rowFrames: [NSRect], visibleRect: NSRect) -> Int {
     // Row frames land on fractional coordinates, so a row ending exactly at the edge must
     // not be reported as out of sight.
     let tolerance: CGFloat = 0.5
-    return rowFrames.filter {
-        $0.minY < visibleRect.minY - tolerance || $0.maxY > visibleRect.maxY + tolerance
-    }.count
+    return rowFrames.filter { $0.maxY > visibleRect.maxY + tolerance }.count
 }
