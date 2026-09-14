@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchLookup
 import AgentWatchSender
 import Darwin
 import Foundation

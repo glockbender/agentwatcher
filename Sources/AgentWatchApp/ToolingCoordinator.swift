@@ -1,5 +1,4 @@
 import AgentWatchCore
-import AgentWatchSender
 import AppKit
 
 /// Everything about attaching Agent Watch to the agents it watches: an agent's records, the

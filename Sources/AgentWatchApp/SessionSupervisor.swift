@@ -1,5 +1,5 @@
 import AgentWatchCore
-import AgentWatchSender
+import AgentWatchLookup
 import AppKit
 
 /// Owns everything about the set of live sessions: ingesting events, watching for their

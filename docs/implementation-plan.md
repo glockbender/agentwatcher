@@ -728,7 +728,7 @@ hook sender, задержки HUD и overhead watchdog. Численные по�
 
 Рассмотрено и намеренно не сделано: `SessionSupervisor` в `AgentWatchCore` — ревью назвало это
 механическим переносом ради двух вызовов AppKit, но это неверно: супервизор владеет
-`SessionHostRegistry` (AppKit по существу) и `TranscriptWatcher` (зависит от `AgentWatchSender`), и
+`SessionHostRegistry` (AppKit по существу) и `TranscriptWatcher` (зависит от `AgentWatchLookup`), и
 перенос требует шва с одним адаптером, а не переезда файла. Главная часть выгоды — правила порядка
 событий — уже переехала в Core вместе с `receive`. Четыре одинаковых чтения-записи JSON не сведены к
 одному: настоящая потеря данных была только у файла настроек, и она устранена по месту; у двух

@@ -3,10 +3,12 @@ import Foundation
 
 /// Reads what a session says about itself in its own files.
 ///
-/// This runs in the hook process on purpose. It is the only place that still holds the raw
-/// `session_id`, `cwd` and `transcript_path`: all three are redacted before anything reaches
-/// the socket, so the app cannot locate these files itself. Only the resolved values travel,
-/// and of the working directory only its last component — see `docs/architecture.md` §15.
+/// Both processes ask, and they reach the files by different routes. The hook process holds
+/// the raw `session_id`, `cwd` and `transcript_path` — all three are redacted before anything
+/// reaches the socket, so only the resolved values travel, and of the working directory only
+/// its last component (`docs/architecture.md` §15). The app never receives a path and finds
+/// the transcript itself through `TranscriptLocator`. The rules for reading one live here
+/// once so that the name a session shows does not depend on which side looked.
 ///
 /// Every step is fail-open. The on-disk shapes below are undocumented internals of Claude
 /// Code and Codex — they have changed before — so a missing file or an unfamiliar layout

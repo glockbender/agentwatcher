@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import AgentWatchSender
+@testable import AgentWatchLookup
 
 final class AgentProcessLocatorTests: XCTestCase {
     func testFindsClaudeProcessAmongHookShellAncestors() {

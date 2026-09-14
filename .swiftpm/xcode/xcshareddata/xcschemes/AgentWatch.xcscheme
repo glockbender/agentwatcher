@@ -63,6 +63,24 @@
          <TestableReference skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "AgentWatchSenderTests"
+               BuildableName = "AgentWatchSenderTests"
+               BlueprintName = "AgentWatchSenderTests"
+               ReferencedContainer = "container:">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "AgentWatchLookupTests"
+               BuildableName = "AgentWatchLookupTests"
+               BlueprintName = "AgentWatchLookupTests"
+               ReferencedContainer = "container:">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "AgentWatchAppTests"
                BuildableName = "AgentWatchAppTests"
                BlueprintName = "AgentWatchAppTests"

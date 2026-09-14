@@ -2,7 +2,7 @@ import AgentWatchCore
 import Foundation
 import XCTest
 
-@testable import AgentWatchSender
+@testable import AgentWatchLookup
 
 /// The on-disk shapes parsed here are undocumented internals of Claude Code and Codex.
 /// These tests pin what today's files look like so a future format change fails loudly

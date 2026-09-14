@@ -1,5 +1,5 @@
 import AgentWatchCore
-import AgentWatchSender
+import AgentWatchLookup
 import Foundation
 
 /// What one poll of one session's transcript produced.

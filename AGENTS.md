@@ -8,6 +8,8 @@
 - Lifecycle facts are deterministic; LLM output must never become the source of session state.
 - Monitoring failures are fail-open and must not block an agent.
 - Avoid polling while there are no active sessions.
+- `AgentWatchLookup` asks the machine and answers; `AgentWatchSender` builds a request and
+  sends it. Neither does the other's job — that is what the two targets are for.
 
 ## Required checks
 
