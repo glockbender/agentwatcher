@@ -98,7 +98,7 @@ final class SessionHostLivenessTests: XCTestCase {
         codex.agentProcessID = getpid()
 
         registry.associate(codex)
-        _ = registry.locator(for: codex)
+        _ = registry.reach(for: codex)
         _ = registry.focus(codex)
 
         XCTAssertTrue(
@@ -190,14 +190,14 @@ final class SessionHostLivenessTests: XCTestCase {
     /// a walk, and not from memory either. The memory is the trap: a hover while the terminal
     /// still showed it remembered that terminal's application, and once the terminal was gone
     /// the card promised to bring it forward while the click attached instead.
-    func testABackgroundSessionWithNoTerminalShowingItNamesNoApplication() throws {
+    func testABackgroundSessionWithNoTerminalShowingItHasNothingToBringForward() throws {
         let registry = SessionHostRegistry(claudeHome: try temporaryClaudeHome()) { _ in }
         // This process, whose tree does reach an application on a developer's machine — the
         // terminal or the IDE the tests run from — which is exactly what must not be named.
         var background = testSession(clientKind: .background, lastObservedAt: Date())
         background.agentProcessID = getpid()
 
-        XCTAssertNil(registry.locator(for: background).applicationName)
+        XCTAssertEqual(registry.reach(for: background), .nowhere)
     }
 
     /// A `~/.claude` of this test's own, with the `sessions` folder Claude Code keeps there.

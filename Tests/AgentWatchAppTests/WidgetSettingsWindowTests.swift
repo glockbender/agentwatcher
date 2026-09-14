@@ -132,7 +132,7 @@ final class LampSchemeReachesTheWidgetTests: XCTestCase {
     func testARecolouredPhaseRepaintsTheRowOnScreen() throws {
         let preferences = try isolatedPreferences()
         let controller = HUDPanelController(
-            locator: { _ in .nowhere },
+            reach: { _ in .nowhere },
             focus: { _ in },
             remove: { _ in },
             background: .graphite,

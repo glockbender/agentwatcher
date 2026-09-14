@@ -223,8 +223,8 @@ final class SessionSupervisor {
         transcripts.settingsChanged()
     }
 
-    func locator(for snapshot: SessionSnapshot) -> SessionLocator {
-        hostRegistry.locator(for: snapshot)
+    func reach(for snapshot: SessionSnapshot) -> SessionReach {
+        hostRegistry.reach(for: snapshot)
     }
 
     /// A click that reached nothing is said out loud rather than swallowed.

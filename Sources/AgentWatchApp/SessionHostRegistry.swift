@@ -86,27 +86,15 @@ final class SessionHostRegistry {
         }
     }
 
-    /// Everything that can honestly be said about where this session is, asked now.
+    /// Whether anything holds this session that a click could bring forward, asked now.
     ///
-    /// Asked now rather than remembered from the association, because every part of the
-    /// answer moves: an application quits, a project is opened, a session is given a name
-    /// twenty minutes in. The previous rule resolved the host once — on the first hook, or
-    /// while the app was still starting up — and kept that answer for the life of the row,
-    /// so a resolution that failed at that one moment disabled the row's button for good.
-    func locator(for snapshot: SessionSnapshot) -> SessionLocator {
-        guard let application = application(for: snapshot) else {
-            return .nowhere
-        }
-        return SessionLocator(
-            applicationName: application.localizedName,
-            projectName: openProjectName(for: snapshot, in: application),
-            // Only a session running in a terminal has a tab, and only such a tab carries
-            // the session's name — the agent writes it there itself. A desktop client has
-            // no tab to name. See `docs/session-focus-research.md`. By where the session is
-            // read rather than where it runs: a background session on screen in a terminal
-            // has that terminal's tab.
-            tabName: snapshot.hostKind == .cli ? snapshot.title?.nonEmpty : nil
-        )
+    /// Asked every time rather than remembered from the association. The previous rule
+    /// resolved the host once — on the first hook, or while the app was still starting up —
+    /// and kept that answer for the life of the row, so a resolution that failed at that one
+    /// moment left the row saying there was nothing to bring forward long after its
+    /// application was back.
+    func reach(for snapshot: SessionSnapshot) -> SessionReach {
+        application(for: snapshot) == nil ? .nowhere : .anApplication
     }
 
     /// What one click achieved.
@@ -270,35 +258,6 @@ final class SessionHostRegistry {
         case .decline(let refusal):
             return refusal.attempt
         }
-    }
-
-    /// Which open project window of this IDE to expect the session in.
-    ///
-    /// Answered by the IDE's files rather than by us: `recentProjects.xml` is where it keeps
-    /// the mapping, and reading it costs no permission. A host that is not a JetBrains IDE
-    /// has no such list and answers nothing, which is the correct answer for Ghostty.
-    ///
-    /// Only a project the file calls open. The name is used to tell a person which *window*
-    /// to look at, and a closed project has none — the file was seen listing a project as
-    /// open three hours after it was closed, so the flag is the weaker of the two claims and
-    /// the wording must not outrun it. What the session's own project is called is already
-    /// on the card, from the session itself.
-    ///
-    /// The path never leaves this function — ADR-0001. What comes out is
-    /// the project's name.
-    private func openProjectName(for snapshot: SessionSnapshot, in application: NSRunningApplication) -> String? {
-        guard
-            let bundleURL = application.bundleURL,
-            let agentProcessID = snapshot.hostProcessID,
-            let workingDirectory = AgentProcessLocator.workingDirectoryPath(of: agentProcessID)
-        else {
-            return nil
-        }
-        let project = SessionPlace.project(
-            containing: workingDirectory,
-            among: JetBrainsInstallation.projects(ofApplicationAt: bundleURL)
-        )
-        return project?.isOpen == true ? project?.name : nil
     }
 
     /// Sessions this registry has a live process-exit watch on. Reported rather than

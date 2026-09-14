@@ -346,7 +346,7 @@ final class WidgetRenderProbe: XCTestCase {
         let text = hoverCardText(
             for: sessions()[0],
             now: now,
-            locator: SessionLocator(applicationName: "GoLand", projectName: "mcp-hub", tabName: "x")
+            reach: .anApplication
         )
         let label = NSTextField(labelWithString: text)
         label.font = WidgetStyle.secondaryFont

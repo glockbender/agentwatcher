@@ -58,23 +58,6 @@ enum WidgetBackground: String, CaseIterable, Hashable {
         foregroundColor.withAlphaComponent(isLight ? 0.08 : 0.12)
     }
 
-    /// The client icons carry a colour as well as a shape. At row size a filled and an
-    /// outlined rectangle in the same grey read as one picture drawn twice, which is what
-    /// these two were. Mid-tone rather than the bright system colours: half the palette is
-    /// light, and `systemYellow` all but vanishes on sand.
-    func clientColor(for kind: SessionClientKind) -> NSColor {
-        switch kind {
-        // The same grey as a terminal session: a background one is a session in a place a
-        // person cannot look at, not a session of a different importance.
-        case .cli, .background:
-            secondaryForegroundColor
-        case .desktop:
-            isLight
-                ? NSColor(calibratedRed: 0.06, green: 0.44, blue: 0.72, alpha: 1)
-                : NSColor(calibratedRed: 0.42, green: 0.79, blue: 0.96, alpha: 1)
-        }
-    }
-
     var secondaryForegroundColor: NSColor {
         isLight
             ? NSColor(calibratedRed: 0.29, green: 0.33, blue: 0.38, alpha: 1)

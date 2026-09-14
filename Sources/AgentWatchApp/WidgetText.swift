@@ -1,6 +1,24 @@
 import AgentWatchCore
 import AppKit
 
+/// Where the session runs, as the card says it.
+///
+/// Words and no picture. It used to be a symbol at the start of every row, beside the
+/// agent's own icon. Folding the two into one glyph — the agent's icon inside a terminal or
+/// a window frame — was drawn into real rows at 18, 20 and 22 points: it reads only from 20,
+/// which costs every row three points of height. Shown that, the owner turned down both the
+/// taller row and the combined glyph, and chose to drop the client from the row altogether.
+/// So the row carries the agent alone, and this is one of the things the hover card is for.
+extension SessionClientKind {
+    var displayName: String {
+        switch self {
+        case .desktop: "Desktop"
+        case .cli: "CLI"
+        case .background: "Background"
+        }
+    }
+}
+
 /// The activity counters a row shows, in a fixed order so they never swap places between
 /// two refreshes.
 ///
@@ -174,15 +192,16 @@ func hoverCardText(
     for snapshot: SessionSnapshot,
     now: Date,
     showsSessionTopic: Bool = true,
-    /// Optional, and `nil` is not `.nowhere`: one means nobody asked where the session is,
-    /// the other means somebody asked and the host is gone. Only the second is worth a line.
-    locator: SessionLocator? = nil
+    /// Optional, and `nil` is not `.nowhere`: one means nobody asked whether the session can
+    /// be reached, the other means somebody asked and the answer was no. Only the second is
+    /// worth a line.
+    reach: SessionReach? = nil
 ) -> String {
     let identity = [
         AgentIcon.name(for: snapshot.source),
         // Where the session is read rather than where it runs: a background session on
         // screen in a terminal says `CLI`, because that terminal is what a click reaches.
-        snapshot.hostKind.map(SessionClientIcon.name(for:)),
+        snapshot.hostKind?.displayName,
         // Whose thread this is belongs with what it is rather than on a line of its own. A
         // person reading the top of the card is asking one question, and "Codex · Desktop ·
         // subagent Darwin · working" answers all of it at once.
@@ -214,14 +233,7 @@ func hoverCardText(
     // keep exactly the promise the rows had just stopped keeping.
     let name = showsSessionTopic ? snapshot.title?.nonEmpty : nil
 
-    // The line tells a person how far one click on the row gets them, and at the two finer
-    // levels where to look for the rest of the way. For a background session it says that
-    // the click opens a tab rather than raising one, which is a different promise.
-    let focus = focusHint(
-        locator,
-        namesTheSessionAbove: name != nil,
-        runsWithoutAWindow: snapshot.hostKind == .background
-    )
+    let focus = focusHint(reach, runsWithoutAWindow: snapshot.hostKind == .background)
 
     return [
         name,
@@ -233,7 +245,8 @@ func hoverCardText(
         context,
         // After everything the session itself has to say, because it qualifies all of it: how
         // much of the lines above is still being watched. The focus hint stays below it, being
-        // the one line that asks the reader to do something rather than telling them anything.
+        // the one line that is about the click rather than about the session — and, most
+        // rows, not there at all.
         snapshot.monitoringFault.map(monitoringFaultText(for:)),
         focus,
         dismissHint(SessionPresence.dismissal(of: snapshot, now: now), now: now),
@@ -256,42 +269,29 @@ func dismissHint(_ dismissal: RowDismissal, now: Date) -> String? {
         "× in \(compactElapsed(at.timeIntervalSince(now))) — the row is kept until then in case the session speaks again"
 }
 
-/// What one click on the row will actually reach, in one line.
+/// Said only when a click on the row will not do the ordinary thing.
 ///
-/// Deliberately the weaker claim. A click does now reach the tab itself — through the plugin
-/// in a JetBrains IDE, through AppleScript in Ghostty — but neither route is certain: the
-/// plugin may not be installed, and a tab may be named after two sessions at once. So the
-/// line promises the part that always happens and names the rest, which is what a person
-/// needs to finish the trip with their own eyes when the tab step declines.
-func focusHint(
-    _ locator: SessionLocator?,
-    namesTheSessionAbove: Bool,
-    runsWithoutAWindow: Bool = false
-) -> String? {
-    guard let locator else {
+/// The sibling of `dismissHint`, and for the same reason it gives: a control that works needs
+/// no sentence. A click raises the session's application, which is what one click teaches
+/// anyway. The line that used to say so also named the window and the tab to look at, and
+/// both repeated what the card already carried — the project has a line of its own, and the
+/// session's name is the card's first line.
+///
+/// What is left are the two cases where a click does something else: there is nothing to
+/// raise, or there is no window at all and the click opens a terminal tab instead.
+func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
+    // Nobody asked where the session is, or an application holds it — and an application that
+    // can be brought forward is the ordinary case, which says nothing.
+    guard reach == .nowhere else {
         return nil
     }
-    guard let application = locator.applicationName else {
-        // Two different absences, and the difference is what a person does next. A host that
-        // is gone may come back; a background session never had a window at all, so a click
-        // opens one — a terminal tab with `claude attach` typed into it — and the line
-        // names the command so that a person can do the same by hand anywhere else.
-        return runsWithoutAWindow
-            ? "Click opens it in a new Ghostty tab with `claude attach` — a background session has no window of its own"
-            : "No window to bring forward"
-    }
-    let brings = "Click brings \(application) forward"
-    // Pointed at the card's own first line rather than repeated here, and only when that
-    // line is there: with the topic switched off the card must not say the name by the back
-    // door, and a card that pointed at a line it had just been told to drop would point at
-    // nothing.
-    let tab = locator.tabName != nil && namesTheSessionAbove ? "terminal tab named above" : nil
-    // The window, not the project: the card names the project a line above already, and
-    // what this adds is which of an IDE's several windows to expect.
-    let window = locator.projectName.map { "the \($0) window" }
-
-    let rest = [window, tab].compactMap { $0 }.joined(separator: ", ")
-    return rest.isEmpty ? brings : "\(brings) — \(rest)"
+    // Two different absences, and the difference is what a person does next. A host that is
+    // gone may come back; a background session never had a window at all, so a click opens
+    // one — a terminal tab with `claude attach` typed into it — and the line names the
+    // command so that a person can do the same by hand anywhere else.
+    return runsWithoutAWindow
+        ? "Click opens it in a new Ghostty tab with `claude attach` — a background session has no window of its own"
+        : "No window to bring forward"
 }
 
 /// Whose thread a row is, when it is not a person's.

@@ -15,56 +15,11 @@ struct JetBrainsProduct: Equatable {
 ///
 /// Every IDE bundle carries `product-info.json`, and the one field that matters there is
 /// `dataDirectoryName`: it names the settings directory this exact product and version uses,
-/// which is where `recentProjects.xml` lives. Following the bundle to its settings is what
+/// which is where the plugin's own files live. Following the bundle to its settings is what
 /// makes this work for whichever IDE a person actually has, without a table of bundle
 /// identifiers to keep in step with JetBrains' catalogue — and without asking macOS for a
 /// single permission. See `docs/session-focus-research.md`.
-/// On the main actor for the cache alone: the one caller is the host registry, which is
-/// already there, and a lock around a dictionary read on a hover would cost more than it
-/// protects.
-@MainActor
 enum JetBrainsInstallation {
-    /// Cached by settings directory and by the file's own modification date, so a hover
-    /// costs a `stat` rather than a parse of forty kilobytes, and an IDE that has just
-    /// opened a project is still read again.
-    private struct CachedProjects {
-        let modifiedAt: Date
-        let projects: [KnownProject]
-    }
-
-    private static var cache: [String: CachedProjects] = [:]
-
-    /// The projects the IDE in this bundle remembers, or nothing if the bundle is not a
-    /// JetBrains IDE at all — which is how every other host answers.
-    static func projects(ofApplicationAt bundleURL: URL, fileManager: FileManager = .default) -> [KnownProject] {
-        guard let dataDirectoryName = dataDirectoryName(ofApplicationAt: bundleURL, fileManager: fileManager) else {
-            return []
-        }
-        let file = settingsDirectory(named: dataDirectoryName, fileManager: fileManager)
-            .appendingPathComponent("options/recentProjects.xml")
-
-        let modifiedAt = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        if let cached = cache[dataDirectoryName], cached.modifiedAt == modifiedAt {
-            return cached.projects
-        }
-        guard let data = try? Data(contentsOf: file) else {
-            return []
-        }
-        // The same home the settings directory was found under, and not `NSHomeDirectory()`.
-        // Two notions of home in one function means the injected `fileManager` can move the
-        // file but not the macro inside it, so every expanded project path would miss and the
-        // name would silently never appear — and under a sandbox, where `NSHomeDirectory()`
-        // is the container, that is what happens without anything being injected at all.
-        let projects = JetBrainsRecentProjects.parse(
-            data,
-            userHome: fileManager.homeDirectoryForCurrentUser.path
-        )
-        if let modifiedAt {
-            cache[dataDirectoryName] = CachedProjects(modifiedAt: modifiedAt, projects: projects)
-        }
-        return projects
-    }
-
     /// Reads the one field this needs out of the bundle's own description of itself.
     static func dataDirectoryName(ofApplicationAt bundleURL: URL, fileManager: FileManager = .default) -> String? {
         product(ofApplicationAt: bundleURL, fileManager: fileManager)?.dataDirectoryName

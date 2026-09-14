@@ -339,43 +339,29 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertTrue(hidden.contains("Claude Code"), "everything else the card knows still stands")
     }
 
-    /// The row always answers a click, so the card is where a person learns how far one
-    /// click gets them — and, when the host is gone, that it gets them nowhere.
-    func testTheCardSaysHowFarAClickReaches() {
+    /// The card is silent about a click that works, and speaks when the host is gone.
+    ///
+    /// It used to spell out the ordinary case too — which application a click raises, which
+    /// window, which tab. A control that works needs no sentence, which is the rule the
+    /// greyed dismiss button already follows, and two of those three facts repeated lines
+    /// the card carries anyway.
+    func testTheCardSpeaksAboutTheClickOnlyWhenItWillNotDoTheOrdinaryThing() {
         var live = snapshot()
         live.phase = .executing
 
         XCTAssertTrue(
-            hoverCardText(for: live, now: now, locator: .nowhere).contains("No window to bring forward")
+            hoverCardText(for: live, now: now, reach: .nowhere).contains("No window to bring forward")
         )
-        XCTAssertTrue(
-            hoverCardText(for: live, now: now, locator: SessionLocator(applicationName: "Ghostty"))
-                .contains("Click brings Ghostty forward")
-        )
-        XCTAssertTrue(
+        XCTAssertFalse(
             hoverCardText(
                 for: live,
                 now: now,
-                locator: SessionLocator(applicationName: "GoLand", projectName: "mcp-hub", tabName: live.title)
+                reach: .anApplication
             )
-            .contains("the mcp-hub window, terminal tab named above")
+            .lowercased()
+            .contains("click"),
+            "a click that simply brings the session forward needs no line"
         )
-    }
-
-    /// With the topic switched off there is no line above to point at, so the tab is not
-    /// mentioned — the setting says stop showing the name, and this must not say it by the
-    /// back door either.
-    func testTheTabIsNotPointedAtWhenTheNameIsHidden() {
-        let hint = hoverCardText(
-            for: snapshot(),
-            now: now,
-            showsSessionTopic: false,
-            locator: SessionLocator(applicationName: "GoLand", projectName: "mcp-hub", tabName: "Fix the widget")
-        )
-
-        XCTAssertTrue(hint.contains("the mcp-hub window"))
-        XCTAssertFalse(hint.contains("terminal tab"))
-        XCTAssertFalse(hint.contains("Fix the widget"))
     }
 
     /// The card must not open over the dismiss button: aiming at a button is aiming at a
@@ -655,7 +641,7 @@ final class HUDRowLayoutTests: XCTestCase {
         background.phase = .executing
         background.clientKind = .background
 
-        let card = hoverCardText(for: background, now: now, locator: .nowhere)
+        let card = hoverCardText(for: background, now: now, reach: .nowhere)
 
         XCTAssertTrue(card.contains("Click opens it in a new Ghostty tab"), card)
         XCTAssertTrue(card.contains("no window of its own"), card)
@@ -663,9 +649,8 @@ final class HUDRowLayoutTests: XCTestCase {
     }
 
     /// The same session while the terminal that sent it to the background still shows it: the
-    /// card promises that terminal, as it would for any terminal session, and says nothing
-    /// about a door.
-    func testTheCardOfABackgroundSessionShownInATerminalPromisesThatTerminal() {
+    /// card treats it as any terminal session, and says nothing about a door.
+    func testTheCardOfABackgroundSessionShownInATerminalOffersNoDoor() {
         var shown = snapshot()
         shown.phase = .executing
         shown.clientKind = .background
@@ -673,25 +658,26 @@ final class HUDRowLayoutTests: XCTestCase {
 
         let card = hoverCardText(
             for: shown, now: now,
-            locator: SessionLocator(applicationName: "Ghostty", projectName: nil, tabName: shown.title))
+            reach: .anApplication)
 
-        XCTAssertTrue(card.contains("Click brings Ghostty forward"), card)
         XCTAssertFalse(card.contains("claude attach"), card)
         XCTAssertTrue(card.contains("Claude Code · CLI"), "the identity line names where it is read: \(card)")
     }
 
-    /// And the row wears the terminal's icon, not the crossed-out window.
-    func testTheIconOfABackgroundSessionShownInATerminalIsTheTerminals() throws {
-        var shown = snapshot()
-        shown.phase = .executing
-        shown.clientKind = .background
-        shown.viewerProcessID = 4_243
+    /// The row itself says only which agent it is. Where the session runs was a second
+    /// symbol beside the first until the card above proved able to carry it in words: it
+    /// qualified nothing a person could act on — a click reaches the session either way —
+    /// and it cost a picture in the most crowded place a row has.
+    ///
+    /// A desktop session, because that is the one whose old symbol differed most from a
+    /// terminal's. One image in the row, and it is the agent's own.
+    func testTheRowShowsTheAgentAndNothingAboutWhereItRuns() {
+        var desktop = snapshot()
+        desktop.clientKind = .desktop
 
-        let laidOut = row(snapshot: shown)
-        let descriptions = laidOut.subviews.compactMap { ($0 as? NSImageView)?.image?.accessibilityDescription }
+        let images = row(snapshot: desktop).subviews.compactMap { ($0 as? NSImageView)?.image }
 
-        XCTAssertTrue(descriptions.contains("CLI"), "\(descriptions)")
-        XCTAssertFalse(descriptions.contains("Background"), "\(descriptions)")
+        XCTAssertEqual(images, [AgentIcon.image(for: .claude)])
     }
 
     /// The timer leads every row at one width, so the lamp and everything after it stand in a
@@ -735,6 +721,28 @@ final class HUDRowLayoutTests: XCTestCase {
 
         XCTAssertEqual(liveRow.fittingSize.height, closedRow.fittingSize.height, accuracy: 0.5)
         XCTAssertEqual(liveRow.fittingSize.height, HUDSessionRowView.rowHeight, accuracy: 0.5)
+    }
+
+    /// And the room a row reserves is enough for what it holds.
+    ///
+    /// Asked of the contents rather than of the row: `rowHeight` is imposed on the row as a
+    /// constraint, so measuring the laid-out row only reads the same number back — the
+    /// assertion above it cannot fail whatever the row holds. This one can. The number is
+    /// larger than what the contents strictly need, which is deliberate breathing room, so
+    /// the question is only whether the room is enough.
+    ///
+    /// A row without a dismiss button, because that button's height *is* `rowHeight` —
+    /// everything else in a row brings a size of its own.
+    func testARowReservesEnoughRoomForWhatItHolds() {
+        let laidOut = row(snapshot: snapshot())
+
+        let tallest = laidOut.subviews.map(\.fittingSize.height).max() ?? 0
+
+        XCTAssertGreaterThanOrEqual(
+            HUDSessionRowView.rowHeight,
+            tallest + laidOut.edgeInsets.top + laidOut.edgeInsets.bottom,
+            "something in the row is taller than the room the row reserves"
+        )
     }
 
     /// What Auto Layout actually placed, as opposed to the frame drawn around it.

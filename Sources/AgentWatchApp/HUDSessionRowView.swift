@@ -38,7 +38,7 @@ func chooseTitleDisplay(
     return .truncated(toWidth: availableWidth)
 }
 
-/// One session, laid out as `[timer] [lamp] [icons] [name] [counts] [dismiss]`.
+/// One session, laid out as `[timer] [lamp] [icon] [name] [counts] [dismiss]`.
 ///
 /// The row is itself the way back to the session: a click anywhere on it brings the session
 /// forward. It used to carry a `↗` button for that at its start, and the button was the one
@@ -157,10 +157,6 @@ final class HUDSessionRowView: NSStackView {
             Self.makeLamp(lamp),
             Self.makeSourceIcon(for: snapshot),
         ]
-
-        if let clientIcon = Self.makeClientIcon(for: snapshot, background: background) {
-            views.append(clientIcon)
-        }
 
         // Beside the identity rather than out with the counters: it qualifies everything
         // else in the row, and a marker at the far end would be read as one more count.
@@ -545,25 +541,14 @@ final class HUDSessionRowView: NSStackView {
         SessionLampView(appearance: appearance)
     }
 
+    /// Which agent, and nothing else. Where the session runs used to stand beside this as a
+    /// second symbol and is the hover card's alone now — `SessionClientKind.displayName`
+    /// records what was tried before that and why it was turned down.
     private static func makeSourceIcon(for snapshot: SessionSnapshot) -> NSView {
         let icon = NSImageView()
         icon.image = AgentIcon.image(for: snapshot.source)
         icon.imageScaling = .scaleProportionallyDown
         icon.pinSize(to: AgentIcon.size)
-        return icon
-    }
-
-    private static func makeClientIcon(for snapshot: SessionSnapshot, background: WidgetBackground) -> NSView? {
-        // Where the session is read, not where it runs: a background session on screen in a
-        // terminal wears the terminal's icon, because that is what a click on the row reaches.
-        guard let clientKind = snapshot.hostKind, let image = SessionClientIcon.image(for: clientKind) else {
-            return nil
-        }
-        let icon = NSImageView()
-        icon.image = image
-        icon.contentTintColor = background.clientColor(for: clientKind)
-        icon.symbolConfiguration = .init(pointSize: 11, weight: .regular)
-        icon.pinSize(to: WidgetStyle.rowGlyph)
         return icon
     }
 

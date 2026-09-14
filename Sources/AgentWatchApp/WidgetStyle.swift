@@ -17,15 +17,15 @@ enum WidgetStyle {
     /// row and the empty state have to line up and used to be given 10 and 14.
     static let contentInset: CGFloat = 10
 
-    /// The small template symbols a row draws beside its identity: where the session runs,
-    /// and the mark that says the row may be out of date.
+    /// The small template symbol a row draws beside its identity: the mark that says the row
+    /// may be out of date.
     ///
     /// Measured rather than asked of the image: a template symbol reports its own natural
     /// size, which is not the size it is drawn at here.
     ///
-    /// One number for both, because both are the same kind of mark. The fault marker used to
-    /// borrow the client icon's constant, which made a warning triangle change size whenever
-    /// the client icon did — a dependency neither of them means to have.
+    /// It used to be shared with the symbol for where a session runs, which a row no longer
+    /// draws. Its own number either way — borrowing one made a warning triangle change size
+    /// whenever the other mark did.
     static let rowGlyph = NSSize(width: 13, height: 13)
 
     /// The session's own name — the one thing in a row that gives way under pressure.

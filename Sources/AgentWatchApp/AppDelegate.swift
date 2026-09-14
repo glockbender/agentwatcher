@@ -74,8 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     )
     private lazy var hudController: HUDPanelController = HUDPanelController(
-        locator: { [weak self] snapshot in
-            self?.supervisor.locator(for: snapshot) ?? .nowhere
+        reach: { [weak self] snapshot in
+            self?.supervisor.reach(for: snapshot) ?? .nowhere
         },
         focus: { [weak self] snapshot in
             self?.supervisor.focus(snapshot)

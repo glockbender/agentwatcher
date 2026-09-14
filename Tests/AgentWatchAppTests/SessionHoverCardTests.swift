@@ -122,7 +122,7 @@ final class HoverCardFreshnessTests: XCTestCase {
     private func makeController() throws -> HUDPanelController {
         let preferences = try isolatedPreferences()
         return HUDPanelController(
-            locator: { _ in .nowhere },
+            reach: { _ in .nowhere },
             focus: { _ in },
             remove: { _ in },
             background: .graphite,

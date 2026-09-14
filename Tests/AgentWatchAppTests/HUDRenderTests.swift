@@ -64,7 +64,7 @@ final class HUDRenderTests: XCTestCase {
         let frameStore = HUDFrameStore(preferences: preferences)
         preferences.seed(frameStore.defaultValues)
         let controller = HUDPanelController(
-            locator: { _ in .nowhere },
+            reach: { _ in .nowhere },
             focus: { _ in },
             remove: { _ in },
             background: .graphite,

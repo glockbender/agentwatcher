@@ -93,7 +93,7 @@ final class HUDPanelLockTests: XCTestCase {
 
     private func makeController(preferences: PreferenceFile, settings: WidgetSettingsStore) -> HUDPanelController {
         HUDPanelController(
-            locator: { _ in .nowhere },
+            reach: { _ in .nowhere },
             focus: { _ in },
             remove: { _ in },
             background: .graphite,

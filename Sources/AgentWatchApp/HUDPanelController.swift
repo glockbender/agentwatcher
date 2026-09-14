@@ -10,7 +10,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     private var dismissalTimer: Timer?
     /// A single deadline, including while all sessions wait or rest. No idle polling.
     private(set) var nextDismissRefreshAt: Date?
-    private let locator: (SessionSnapshot) -> SessionLocator
+    private let reach: (SessionSnapshot) -> SessionReach
     private let focus: (SessionSnapshot) -> Void
     private let remove: (SessionSnapshot) -> Void
     private var background: WidgetBackground
@@ -36,7 +36,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     var clock: () -> Date = { .now }
 
     init(
-        locator: @escaping (SessionSnapshot) -> SessionLocator,
+        reach: @escaping (SessionSnapshot) -> SessionReach,
         focus: @escaping (SessionSnapshot) -> Void,
         remove: @escaping (SessionSnapshot) -> Void,
         background: WidgetBackground,
@@ -45,7 +45,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         frameStore: HUDFrameStore,
         settings: WidgetSettingsStore
     ) {
-        self.locator = locator
+        self.reach = reach
         self.focus = focus
         self.remove = remove
         self.background = background
@@ -341,7 +341,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             for: snapshot,
             now: now,
             showsSessionTopic: settings.showsSessionTopic,
-            locator: locator(snapshot)
+            reach: reach(snapshot)
         )
     }
 

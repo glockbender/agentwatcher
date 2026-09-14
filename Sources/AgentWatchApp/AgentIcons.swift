@@ -68,36 +68,6 @@ enum AgentIcon {
     }
 }
 
-/// Where the session runs. System symbols rather than the `⌘` and `⌨` characters: at row
-/// size the characters read as decoration, and `terminal` is unmistakable.
-@MainActor
-enum SessionClientIcon {
-    static func image(for clientKind: SessionClientKind) -> NSImage? {
-        // Solid against a frame. Both were outlined rectangles before, and at 11 points the
-        // `>_` inside one of them was too small to be the whole difference.
-        let symbolName =
-            switch clientKind {
-            case .desktop: "macwindow"
-            case .cli: "terminal.fill"
-            // A window crossed out, beside the two icons that are windows: this session has
-            // none of its own, and a click on its row opens a terminal tab instead of raising
-            // one.
-            case .background: "rectangle.slash"
-            }
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: name(for: clientKind))
-        image?.isTemplate = true
-        return image
-    }
-
-    static func name(for clientKind: SessionClientKind) -> String {
-        switch clientKind {
-        case .desktop: "Desktop"
-        case .cli: "CLI"
-        case .background: "Background"
-        }
-    }
-}
-
 /// What a session is doing, as symbols rather than emoji.
 ///
 /// At row size the emoji were the least legible thing in the widget, and they cannot take
