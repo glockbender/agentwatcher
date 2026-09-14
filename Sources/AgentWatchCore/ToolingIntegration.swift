@@ -45,23 +45,30 @@ public enum ToolingIntegrations {
 /// a missing one is a fault the app says out loud — there is no optional hook, and that is a
 /// decision rather than an omission. See `testNeitherAgentIsAskedForPostToolUse`.
 public enum ToolingHooks {
+    /// Written in terms of `HookEventName`, so a hook this app asks for is by construction a
+    /// hook it can read. The lists themselves stay written out: which events each agent
+    /// offers is a fact about that agent, not something to derive.
     public static func hooks(for source: AgentSource) -> [String] {
+        events(for: source).map(\.rawValue)
+    }
+
+    public static func events(for source: AgentSource) -> [HookEventName] {
         switch source {
         case .claude:
             [
-                "SessionStart",
-                "SessionEnd",
-                "UserPromptSubmit",
-                "Stop",
-                "StopFailure",
-                "PermissionRequest",
-                "PermissionDenied",
-                "PreToolUse",
-                "PostToolUseFailure",
-                "PreCompact",
-                "PostCompact",
-                "SubagentStart",
-                "SubagentStop",
+                .sessionStart,
+                .sessionEnd,
+                .userPromptSubmit,
+                .stop,
+                .stopFailure,
+                .permissionRequest,
+                .permissionDenied,
+                .preToolUse,
+                .postToolUseFailure,
+                .preCompact,
+                .postCompact,
+                .subagentStart,
+                .subagentStop,
             ]
         case .codex:
             // Every event Codex offers except the one declined above. Kept in step by
@@ -69,20 +76,20 @@ public enum ToolingHooks {
             // carries the catalogue: an event this list falls behind on is a fact lost with
             // nothing to report it.
             [
-                "SessionStart",
-                "SessionEnd",
-                "UserPromptSubmit",
-                "Stop",
+                .sessionStart,
+                .sessionEnd,
+                .userPromptSubmit,
+                .stop,
                 // Only Codex reports this. For Claude an interrupted turn produces no hook at
                 // all and is found by reading the transcript on silence, up to ten seconds
                 // later; here it arrives at once.
-                "Interrupt",
-                "PermissionRequest",
-                "PreToolUse",
-                "PreCompact",
-                "PostCompact",
-                "SubagentStart",
-                "SubagentStop",
+                .interrupt,
+                .permissionRequest,
+                .preToolUse,
+                .preCompact,
+                .postCompact,
+                .subagentStart,
+                .subagentStop,
             ]
         }
     }

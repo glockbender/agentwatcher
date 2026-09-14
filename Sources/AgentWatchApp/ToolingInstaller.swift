@@ -10,9 +10,15 @@ import Foundation
 final class ToolingInstaller {
     private let home: URL
     private let fileManager = FileManager.default
+    /// Whether this installer was pointed at a home of its own — see `supportDirectory`.
+    private let ownHome: Bool
 
-    init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
-        self.home = home
+    /// - Parameter home: a home directory to work in instead of the running person's. Given
+    ///   one, this installer keeps *everything* under it, its own folder included; given
+    ///   none, its own folder is the app's, wherever the app keeps it.
+    init(home: URL? = nil) {
+        self.ownHome = home != nil
+        self.home = home ?? FileManager.default.homeDirectoryForCurrentUser
     }
 
     // MARK: - Claude hooks, which live in a plugin of our own
@@ -187,13 +193,24 @@ final class ToolingInstaller {
 
     // MARK: - The status line, the one slot Claude Code allows only one of
 
-    private var supportDirectory: URL {
-        AgentWatchPaths.supportDirectory(
-            inApplicationSupport:
-                home
-                .appendingPathComponent("Library", isDirectory: true)
-                .appendingPathComponent("Application Support", isDirectory: true)
-        )
+    /// Agent Watch's own folder, where the relay script and the command it wraps are kept.
+    ///
+    /// Asked of `AgentWatchPaths` rather than derived from `home`, because that is where the
+    /// one substitution lives: a debug copy run with `AGENT_WATCH_SUPPORT_DIR` keeps the
+    /// socket, the lock, the settings and the remembered sessions in that folder, and these
+    /// two files belong with them. Derived from `home` when this installer was given a home
+    /// of its own — then the pretence is that the whole home is elsewhere, and its
+    /// Application Support with it.
+    var supportDirectory: URL {
+        guard !ownHome, let own = AgentWatchPaths.supportDirectory() else {
+            return AgentWatchPaths.supportDirectory(
+                inApplicationSupport:
+                    home
+                    .appendingPathComponent("Library", isDirectory: true)
+                    .appendingPathComponent("Application Support", isDirectory: true)
+            )
+        }
+        return own
     }
 
     private var relayURL: URL { supportDirectory.appendingPathComponent("statusline-relay.sh") }

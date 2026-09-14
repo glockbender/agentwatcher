@@ -54,9 +54,10 @@ final class HUDRowLayoutTests: XCTestCase {
         justAsked.userInputRequestKind = .approval
         justAsked.lastObservedAt = now.addingTimeInterval(-30)
 
-        XCTAssertTrue(SessionPresence.isDismissible(waiting, now: now))
-        XCTAssertFalse(
-            SessionPresence.isDismissible(justAsked, now: now),
+        XCTAssertEqual(SessionPresence.dismissal(of: waiting, now: now), .now)
+        XCTAssertEqual(
+            SessionPresence.dismissal(of: justAsked, now: now),
+            .notOffered(until: justAsked.lastObservedAt + SessionFreshnessEvaluator.defaultDisconnectAfter),
             "an ordinary approval prompt is not something to offer to delete"
         )
     }
@@ -142,8 +143,10 @@ final class HUDRowLayoutTests: XCTestCase {
         healthy.monitoringFault = nil
         faulted.monitoringFault = .transcriptNotFound
 
-        XCTAssertTrue(SessionPresence.isDismissible(faulted, now: now))
-        XCTAssertFalse(SessionPresence.isDismissible(healthy, now: now))
+        XCTAssertEqual(SessionPresence.dismissal(of: faulted, now: now), .now)
+        XCTAssertEqual(
+            SessionPresence.dismissal(of: healthy, now: now),
+            .notOffered(until: healthy.lastObservedAt + SessionFreshnessEvaluator.defaultDisconnectAfter))
     }
 
     /// The one signal both agents write into their own transcript, which is what lets it be
@@ -410,7 +413,8 @@ final class HUDRowLayoutTests: XCTestCase {
             background: .graphite,
             lampScheme: LampScheme(),
             onFocus: {},
-            onRemove: nil,
+            dismissal: .notOffered(until: now + 1_800),
+            onRemove: {},
             onHoverChanged: { _, isInside in reported.append(isInside) }
         )
         laidOut.frame = NSRect(origin: .zero, size: laidOut.fittingSize)
@@ -447,7 +451,7 @@ final class HUDRowLayoutTests: XCTestCase {
     func testAClickAnywhereButTheDismissButtonIsTheRows() throws {
         var closed = snapshot()
         closed.phase = .sessionClosed
-        let laidOut = row(snapshot: closed, onRemove: {})
+        let laidOut = row(snapshot: closed, dismissal: .now)
         let dismiss = try XCTUnwrap(laidOut.arrangedSubviews.last as? RowDismissButton)
 
         for part in laidOut.arrangedSubviews where part !== dismiss && part.frame.width > 0 {
@@ -568,7 +572,7 @@ final class HUDRowLayoutTests: XCTestCase {
     func testTheDismissButtonIsTheRowsOnlyAccessibilityChild() throws {
         var closed = snapshot()
         closed.phase = .sessionClosed
-        let laidOut = row(snapshot: closed, onRemove: {})
+        let laidOut = row(snapshot: closed, dismissal: .now)
 
         let children = try XCTUnwrap(laidOut.accessibilityChildren())
 
@@ -596,7 +600,7 @@ final class HUDRowLayoutTests: XCTestCase {
     func testTheHoverAreaIsTheRowUpToTheDismissButton() throws {
         var closed = snapshot()
         closed.phase = .sessionClosed
-        let laidOut = row(snapshot: closed, onRemove: {})
+        let laidOut = row(snapshot: closed, dismissal: .now)
         laidOut.updateTrackingAreas()
 
         let area = try XCTUnwrap(laidOut.trackingAreas.first { $0.options.contains(.mouseEnteredAndExited) })
@@ -699,8 +703,8 @@ final class HUDRowLayoutTests: XCTestCase {
         var closed = snapshot()
         closed.phase = .sessionClosed
 
-        let liveRow = row(snapshot: live, onRemove: nil)
-        let closedRow = row(snapshot: closed, onRemove: {})
+        let liveRow = row(snapshot: live, dismissal: .notOffered(until: now + 1_800))
+        let closedRow = row(snapshot: closed, dismissal: .now)
 
         let liveTimer = try XCTUnwrap(liveRow.arrangedSubviews.first as? NSTextField)
         let closedTimer = try XCTUnwrap(closedRow.arrangedSubviews.first as? NSTextField)
@@ -726,8 +730,8 @@ final class HUDRowLayoutTests: XCTestCase {
         var closed = snapshot()
         closed.phase = .sessionClosed
 
-        let liveRow = row(snapshot: live, onRemove: nil)
-        let closedRow = row(snapshot: closed, onRemove: {})
+        let liveRow = row(snapshot: live, dismissal: .notOffered(until: now + 1_800))
+        let closedRow = row(snapshot: closed, dismissal: .now)
 
         XCTAssertEqual(liveRow.fittingSize.height, closedRow.fittingSize.height, accuracy: 0.5)
         XCTAssertEqual(liveRow.fittingSize.height, HUDSessionRowView.rowHeight, accuracy: 0.5)
@@ -881,23 +885,87 @@ final class HUDRowLayoutTests: XCTestCase {
             background: .graphite,
             lampScheme: LampScheme(),
             onFocus: {},
-            onRemove: SessionPresence.isDismissible(snapshot, now: now) ? {} : nil
+            dismissal: SessionPresence.dismissal(of: snapshot, now: now),
+            onRemove: {}
         )
+    }
+
+    /// Disable and explain, never hide. The row a person asks about — one that has finished
+    /// but is still held — keeps its button greyed instead of losing it, and the card says
+    /// when it starts working. A row still at work offers none: there is nothing to refuse.
+    func testARowThatIsOverButHeldKeepsAGreyedButtonAndSaysWhenItWorks() throws {
+        var finished = snapshot()
+        finished.phase = .completed
+        let dismissal = SessionPresence.dismissal(of: finished, now: now)
+
+        let held = try XCTUnwrap(dismissButton(in: row(snapshot: finished, dismissal: dismissal)))
+        XCTAssertFalse(held.isEnabled, "held, and saying so")
+
+        var closed = snapshot()
+        closed.phase = .sessionClosed
+        let over = try XCTUnwrap(dismissButton(in: row(snapshot: closed, dismissal: .now)))
+        XCTAssertTrue(over.isEnabled)
+
+        XCTAssertNil(
+            dismissButton(
+                in: row(snapshot: snapshot(), dismissal: SessionPresence.dismissal(of: snapshot(), now: now))),
+            "a working session has nothing to dismiss, and a greyed button would say otherwise"
+        )
+
+        let card = hoverCardText(for: finished, now: now)
+        XCTAssertTrue(card.contains("× in "), card)
+        XCTAssertFalse(hoverCardText(for: snapshot(), now: now).contains("× in "), "nothing was refused")
+        XCTAssertFalse(hoverCardText(for: closed, now: now).contains("× in "), "the button works")
+    }
+
+    /// One fact, one colour. `no signal` is a phase, the lamp draws it from the scheme a
+    /// person can change, and the timer beside it used to print its own `.systemOrange` for
+    /// the same phase — so recolouring that lamp left an orange number next to it.
+    func testTheTimerOfARowWithNoSignalTakesTheColourOfItsOwnLamp() throws {
+        var lost = snapshot()
+        lost.phase = .disconnected
+        var scheme = LampScheme()
+        let chosen = NSColor(srgbRed: 0.1, green: 0.8, blue: 0.4, alpha: 1)
+        scheme.setColor(chosen, for: .disconnected)
+
+        let defaultRow = row(snapshot: lost)
+        XCTAssertEqual(
+            timerLabel(in: defaultRow)?.textColor,
+            LampScheme().style(for: .disconnected).color,
+            "the default is the lamp's default, not a system colour"
+        )
+
+        let recoloured = row(snapshot: lost, lampScheme: scheme)
+        XCTAssertEqual(timerLabel(in: recoloured)?.textColor, chosen, "and it follows the choice")
+    }
+
+    private func dismissButton(in view: NSView) -> RowDismissButton? {
+        if let button = view as? RowDismissButton {
+            return button
+        }
+        for subview in view.subviews {
+            if let button = dismissButton(in: subview) {
+                return button
+            }
+        }
+        return nil
     }
 
     private func row(
         snapshot: SessionSnapshot? = nil,
         titleDisplay: SessionTitleDisplay = .fullName,
         onFocus: @escaping () -> Void = {},
-        onRemove: (() -> Void)? = nil
+        dismissal: RowDismissal = .notOffered(until: .distantFuture),
+        lampScheme: LampScheme = LampScheme()
     ) -> HUDSessionRowView {
         let view = HUDSessionRowView(
             snapshot: snapshot ?? self.snapshot(),
             now: now,
             background: .graphite,
-            lampScheme: LampScheme(),
+            lampScheme: lampScheme,
             onFocus: onFocus,
-            onRemove: onRemove
+            dismissal: dismissal,
+            onRemove: {}
         )
         view.setTitle((snapshot ?? self.snapshot()).title, display: titleDisplay)
         view.frame = NSRect(x: 0, y: 0, width: view.fittingSize.width, height: view.fittingSize.height)
@@ -907,6 +975,12 @@ final class HUDRowLayoutTests: XCTestCase {
 
     private func allSubviews(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + allSubviews(of: $0) }
+    }
+
+    private func timerLabel(in row: HUDSessionRowView) -> NSTextField? {
+        row.arrangedSubviews
+            .compactMap { $0 as? NSTextField }
+            .first { $0.font == WidgetStyle.timerFont }
     }
 
     private func titleLabel(in row: HUDSessionRowView) -> NSTextField? {

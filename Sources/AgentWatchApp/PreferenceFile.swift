@@ -21,6 +21,14 @@ final class PreferenceFile {
     private let fileURL: URL?
     private let fileManager: FileManager
     private var values: [String: JSONValue]
+    /// A file that was there and could not be read, waiting to be kept aside before the first
+    /// write replaces it. `nil` once it has been, or when there was nothing wrong.
+    private var unreadableFile: URL?
+    /// Where a file this app could not read was put, once it has been put there.
+    ///
+    /// Read by whoever says things out loud: a file kept aside in silence is a person's
+    /// settings apparently reset for no reason.
+    private(set) var unreadableFileKeptAt: URL?
 
     /// - Parameter directoryURL: where the file lives. Given only by tests, which must not
     ///   write into the running person's Application Support.
@@ -28,10 +36,17 @@ final class PreferenceFile {
         self.fileManager = fileManager
         let directory =
             directoryURL
-            ?? AgentWatchPaths.applicationSupportDirectory(fileManager: fileManager)
-            .map { AgentWatchPaths.supportDirectory(inApplicationSupport: $0) }
+            ?? AgentWatchPaths.supportDirectory(fileManager: fileManager)
         fileURL = directory?.appendingPathComponent("settings.json")
-        values = Self.read(fileURL, fileManager: fileManager)
+        switch Self.read(fileURL, fileManager: fileManager) {
+        case .none:
+            values = [:]
+        case let .values(stored):
+            values = stored
+        case .unreadable:
+            values = [:]
+            unreadableFile = fileURL
+        }
     }
 
     func string(forKey key: String) -> String? {
@@ -118,17 +133,48 @@ final class PreferenceFile {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        keepAsideAFileThatCouldNotBeRead()
         try? data.write(to: fileURL, options: .atomic)
     }
 
-    private static func read(_ fileURL: URL?, fileManager: FileManager) -> [String: JSONValue] {
-        guard
-            let fileURL,
-            let data = fileManager.contents(atPath: fileURL.path),
-            let values = try? JSONDecoder().decode([String: JSONValue].self, from: data)
-        else {
-            return [:]
+    /// Moves a file this app could not read out of the way of the one it is about to write.
+    ///
+    /// `README.md` says this file is a person's to edit, and an edit can be wrong: one
+    /// trailing comma read as nothing at all, and the next write — the defaults, at launch —
+    /// put its own contents where a lamp scheme used to be. Kept under a name that says what
+    /// happened and when, the way `ToolingInstaller` keeps a file it is about to change.
+    ///
+    /// Fail-open like every other write here: if the file cannot be moved it is left alone
+    /// and nothing is written over it, which loses a setting rather than a file.
+    private func keepAsideAFileThatCouldNotBeRead() {
+        guard let unreadableFile else {
+            return
         }
-        return values
+        self.unreadableFile = nil
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let kept = unreadableFile.appendingPathExtension("unreadable-\(stamp)")
+        guard (try? fileManager.moveItem(at: unreadableFile, to: kept)) != nil else {
+            return
+        }
+        unreadableFileKeptAt = kept
+    }
+
+    /// What was found where the settings live.
+    private enum StoredValues {
+        /// No file — a first launch, and nothing to keep.
+        case none
+        case values([String: JSONValue])
+        /// A file that is there and is not this file: kept, never overwritten in silence.
+        case unreadable
+    }
+
+    private static func read(_ fileURL: URL?, fileManager: FileManager) -> StoredValues {
+        guard let fileURL, let data = fileManager.contents(atPath: fileURL.path) else {
+            return .none
+        }
+        guard let values = try? JSONDecoder().decode([String: JSONValue].self, from: data) else {
+            return .unreadable
+        }
+        return .values(values)
     }
 }

@@ -104,6 +104,8 @@ final class HUDSessionRowView: NSStackView {
     /// needs half a second of hovering over a view that is still there to appear at all.
     let snapshot: SessionSnapshot
     private let background: WidgetBackground
+    /// Kept because the timer's colour follows it, not only the lamp's — see `timerColor`.
+    private let lampScheme: LampScheme
     private let timerLabel: NSTextField
     /// What the timer currently reads, so a tick that changes nothing writes nothing.
     private var shownElapsed: String
@@ -135,15 +137,17 @@ final class HUDSessionRowView: NSStackView {
         background: WidgetBackground,
         lampScheme: LampScheme,
         onFocus: @escaping () -> Void,
-        onRemove: (() -> Void)?,
+        dismissal: RowDismissal,
+        onRemove: @escaping () -> Void,
         onHoverChanged: @escaping (HUDSessionRowView, Bool) -> Void = { _, _ in }
     ) {
         let lamp = SessionLamp.appearance(for: snapshot, scheme: lampScheme)
         self.snapshot = snapshot
         self.background = background
+        self.lampScheme = lampScheme
         self.onFocus = onFocus
         self.onHoverChanged = onHoverChanged
-        timerLabel = Self.makeTimer(for: snapshot, now: now, background: background)
+        timerLabel = Self.makeTimer(for: snapshot, now: now, background: background, lampScheme: lampScheme)
         shownElapsed = timerLabel.stringValue
         shownColor = timerLabel.textColor
         super.init(frame: .zero)
@@ -191,8 +195,15 @@ final class HUDSessionRowView: NSStackView {
             )
         }
 
-        if let onRemove {
+        // A row that has stopped keeps its button whether or not it works yet, greyed until
+        // it does. Taking the button away instead answered "is there a button?" when the
+        // question a person asks is "why can I not close this?" — and the hover card is
+        // where that one is answered, in words, with the moment it starts working.
+        if case .notOffered = dismissal {
+            // Nothing to dismiss: the session is at work, or waiting for a person.
+        } else {
             let removeButton = RowDismissButton(perform: onRemove)
+            removeButton.isEnabled = dismissal == .now
             removeButton.pinSize(to: Self.buttonSize)
             views.append(removeButton)
         }
@@ -465,7 +476,7 @@ final class HUDSessionRowView: NSStackView {
             wrote = true
         }
 
-        let color = Self.timerColor(for: snapshot, now: now, background: background)
+        let color = Self.timerColor(for: snapshot, now: now, background: background, lampScheme: lampScheme)
         if color != shownColor {
             shownColor = color
             timerLabel.textColor = color
@@ -487,13 +498,14 @@ final class HUDSessionRowView: NSStackView {
     private static func makeTimer(
         for snapshot: SessionSnapshot,
         now: Date,
-        background: WidgetBackground
+        background: WidgetBackground,
+        lampScheme: LampScheme
     ) -> NSTextField {
         let elapsed = compactElapsed(now.timeIntervalSince(snapshot.lastObservedAt))
         let label = NSTextField(labelWithString: elapsed)
         label.font = WidgetStyle.timerFont
         label.alignment = .right
-        label.textColor = timerColor(for: snapshot, now: now, background: background)
+        label.textColor = timerColor(for: snapshot, now: now, background: background, lampScheme: lampScheme)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
         let insets = label.alignmentRectInsets
@@ -513,15 +525,19 @@ final class HUDSessionRowView: NSStackView {
     private static func timerColor(
         for snapshot: SessionSnapshot,
         now: Date,
-        background: WidgetBackground
+        background: WidgetBackground,
+        lampScheme: LampScheme
     ) -> NSColor {
+        // The lamp's own colour, from the scheme a person can change. `no signal` is a phase,
+        // and the lamp two points to the right is already drawing it; a second colour for the
+        // same fact meant recolouring that lamp left this number the colour it used to be.
         guard snapshot.phase != .disconnected else {
-            return .systemOrange
+            return lampScheme.style(for: .disconnected).color
         }
         return switch SessionFreshnessEvaluator.evaluate(snapshot, now: now) {
         case .current: background.secondaryForegroundColor
-        case .quiet: .systemYellow
-        case .noRecentActivity: .systemOrange
+        case .quiet: WidgetStyle.timerQuiet
+        case .noRecentActivity: WidgetStyle.timerStale
         }
     }
 

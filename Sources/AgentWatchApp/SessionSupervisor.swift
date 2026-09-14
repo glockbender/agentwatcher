@@ -260,30 +260,25 @@ final class SessionSupervisor {
         var snapshot: SessionSnapshot
         do {
             event = try HookIngressProcessor.normalize(request, observedAt: now())
-            // Before the session is created, so it can take the place of the row the app
-            // had built from its process. The watcher on that row is dropped here because
-            // the row is: the session is about to get one of its own, under its own
-            // identifier, from `associate` below.
-            if let claimed = engine.claimDiscoveredRow(for: event) {
-                hostRegistry.forget(claimed)
+            let change = try engine.receive(event)
+            // Whatever left as this event landed: its watcher goes with it, since the row it
+            // watched is gone. The watcher the arriving session gets is installed by
+            // `associate` below, keyed on its own identifier.
+            for departure in change.rowsThatLeft {
+                hostRegistry.forget(departure.row)
+                if departure.reason == .itsProcessNowRunsAnother {
+                    onNotableEvent(
+                        "\(Self.label(departure.row)) · closed session dropped; its process now runs another")
+                }
             }
-            // Before the session is created too, and for a reason of its own: the row this
-            // retires is a closed session whose process now runs this one — the two-second
-            // session `/resume` leaves behind. Its watcher goes with it; the watcher this
-            // session gets is installed by `associate` below, keyed on its own identifier.
-            for retired in engine.retireSessionsSuperseded(by: event) {
-                hostRegistry.forget(retired)
-                onNotableEvent("\(Self.label(retired)) · closed session dropped; its process now runs another")
+            // Said out loud, both times. A row that never appeared is otherwise
+            // indistinguishable from an event that never arrived — the one failure a monitor
+            // is not allowed to have.
+            guard let landedOn = change.row else {
+                onNotableEvent(Self.withheldNote(for: event, withheld: change.withheld))
+                return event
             }
-            // Before the session is created too, and for the same reason as the two above: a
-            // copy that already has a row of its own — the file of a launch before this rule
-            // existed remembers the original and the copy as two sessions — folds into the
-            // original's row here. Its watcher goes with it; the original's watcher moves to
-            // the copy's process in `associate` below.
-            if let folded = engine.foldContinuedRow(for: event) {
-                hostRegistry.forget(folded)
-            }
-            snapshot = try engine.ingest(event)
+            snapshot = landedOn
             // Not on a start that names no original: the copy's process first runs the
             // two-second session `--resume` leaves behind, and claiming the terminal for that
             // stub is a line in the log about a row retired a moment later, followed by the
@@ -295,7 +290,7 @@ final class SessionSupervisor {
             // of place it runs in, or that silently split in two, would be one a person cannot
             // check against. The engine says what it decided; every later event of the copy
             // lands on the row without a word.
-            switch engine.lastIngestNote {
+            switch change.note {
             case let .continued(foldedOwnRow):
                 let place = event.clientKind == .background ? "in the background" : "in another process"
                 let folding = foldedOwnRow ? "; the copy's own row folded in" : ""
@@ -391,6 +386,13 @@ final class SessionSupervisor {
         return copies.count == 1
             ? "\(label(snapshot)) · works on beside its copy; the copy is a row of its own from here on"
             : "\(label(snapshot)) · works on beside its copies; they are rows of their own from here on"
+    }
+
+    private static func withheldNote(for event: EventEnvelope, withheld: RowChange.Withholding?) -> String {
+        let label = label(sessionID: SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID))
+        return withheld == .endedWithoutWorking
+            ? "\(label) · background session ended without taking a turn; it never had a row"
+            : "\(label) · background session started; no row until it takes a turn"
     }
 
     private static func viewerGoneNote(for snapshot: SessionSnapshot) -> String {

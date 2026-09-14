@@ -23,6 +23,22 @@ final class HookModeTransitionTests: XCTestCase {
         XCTAssertEqual(unstated.phase, .planning)
     }
 
+    /// The two kinds that state the mode themselves, each with its own rule. The engine
+    /// skips its own mode step for exactly these two, so what they do with a missing mode is
+    /// the whole of the answer.
+    func testAStartWithoutAModeForgetsTheOldOneAndATurnWithoutAModeKeepsIt() throws {
+        var engine = SessionStateEngine()
+        try engine.ingest(hook("UserPromptSubmit", mode: "plan"))
+
+        let started = try engine.ingest(hook("SessionStart"))
+        XCTAssertEqual(started.mode, .unknown, "a start is a new session, and nobody has said")
+
+        try engine.ingest(hook("UserPromptSubmit", mode: "plan"))
+        let turned = try engine.ingest(hook("UserPromptSubmit"))
+        XCTAssertEqual(turned.mode, .plan, "a turn keeps what the session already knows")
+        XCTAssertEqual(turned.phase, .planning)
+    }
+
     func testModeChangesWhileWaitingWithoutAnsweringTheWrongCall() throws {
         var engine = SessionStateEngine()
         try engine.ingest(hook("UserPromptSubmit", mode: "plan"))

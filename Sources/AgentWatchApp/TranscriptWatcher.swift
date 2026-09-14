@@ -194,7 +194,8 @@ final class TranscriptWatcher {
     static func watchableSessions(_ sessions: some Collection<SessionSnapshot>, now: Date) -> [SessionSnapshot] {
         sessions.filter { snapshot in
             SessionSilence.mayEndWithoutAHook(snapshot)
-                && !(snapshot.phase == .waitingForUser && SessionPresence.isDismissible(snapshot, now: now))
+                && !(snapshot.phase == .waitingForUser
+                    && SessionPresence.dismissal(of: snapshot, now: now) == .now)
         }
     }
 

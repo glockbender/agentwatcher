@@ -9,7 +9,9 @@ tasks:
   test:
     desc: Run unit tests
     cmds:
-      - swift build --product AgentWatchSend -Xswiftc -warnings-as-errors
+      # The sender is an executable the tests look for on disk, so it is built first — and
+      # by the task that owns that command, rather than by a second copy of it here.
+      - task: build-sender
       - swift test --parallel -Xswiftc -warnings-as-errors
 
   lint:

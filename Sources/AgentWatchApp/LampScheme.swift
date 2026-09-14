@@ -98,7 +98,7 @@ extension NSColor {
     /// A fixed colour from its `#RRGGBB` spelling, for the values written into this source
     /// file. Distinct from `init?(hex:)`, which reads what a person may have typed: a literal
     /// here is checked when the tests run, and a failure would mean this file is wrong.
-    fileprivate convenience init(sRGB hex: String) {
+    convenience init(sRGB hex: String) {
         guard let color = NSColor(hex: hex) else {
             preconditionFailure("not a colour: \(hex)")
         }

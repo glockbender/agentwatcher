@@ -17,11 +17,20 @@ public struct SessionStateEngine: Sendable {
     /// Waits restored sessions were remembered in, held back until each session's own file
     /// can say whether they still hold. See `restore` and `confirmRememberedWait`.
     private var rememberedWaits: [String: SessionHistory.RememberedWait] = [:]
+    /// Background sessions that have announced themselves and nothing more. See
+    /// `withholdsRow(for:)`.
+    ///
+    /// Nothing sweeps it, and nothing needs to: an entry is one row identifier, it is spent
+    /// by the session's next event, and a session killed without one leaves a single string
+    /// behind. A day of the agents view refilling itself is tens of them. A timer to collect
+    /// that would be polling for nothing, which `AGENTS.md` forbids.
+    private var withheldBackgroundStarts: Set<String> = []
 
-    /// What the last `ingest` decided about which row the event belonged to, when it decided
-    /// anything out of the ordinary. The caller logs from this rather than working the rule
-    /// out again from the snapshots before and after, so the rule has one home.
-    public private(set) var lastIngestNote: IngestNote?
+    /// What applying the event decided about which row it belonged to, when it decided
+    /// anything out of the ordinary. Reported on `RowChange` rather than read off the engine
+    /// afterwards: a field that is only valid until the next call is a contract the type
+    /// cannot state, and the caller logs from the answer it was handed.
+    private var lastIngestNote: IngestNote?
     /// Set by `foldContinuedRow`, which runs before the `ingest` it belongs to.
     private var noteForNextIngest: IngestNote?
 
@@ -38,8 +47,113 @@ public struct SessionStateEngine: Sendable {
 
     public init() {}
 
+    /// Whether this event belongs to a background session that has no row yet — and gets
+    /// none from this event.
+    ///
+    /// A background session starts before it is anybody's conversation. Measured on Claude
+    /// Code 2.1.270: the agents view always holds one live background session and refills it
+    /// from a pre-warmed process the instant the current one settles — `~/.claude/daemon.log`
+    /// shows `bg settled … (done)` and, eight milliseconds later, `bg claimed-spare <new id>
+    /// (spare)`. Every one of those sends `SessionStart` and, seconds later, `SessionEnd`,
+    /// and every one of them was a row: three empty rows in fifteen seconds for one `/stop`.
+    ///
+    /// So the row waits for the session to do something. Any event but a start or an end is
+    /// enough — a turn, a call of its own, a question for a person — because a session that
+    /// works is a conversation whatever started it. What it cannot be is a rule about the
+    /// process: measured, a real job claimed from the fleet and a pre-warmed spare both run
+    /// under `claude bg-spare`, and neither writes a registry record until it is named.
+    ///
+    /// Only a session with no row of its own is held. A copy continuing a row (`/bg`), a job
+    /// the file remembers, a session already on the widget — all speak for rows that exist,
+    /// and taking one away from a person mid-use is the opposite of the point.
+    ///
+    /// The two-second stub session `--resume` leaves behind on a copy's process is held here
+    /// too, and nothing is lost by it: the real session that follows is on the same process
+    /// under a different label, so it never needed the stub's row retired for it.
+    ///
+    /// The first step of `receive`, and private for a reason worth stating: it spends what it
+    /// reads. Asking twice about one event gave two different answers, so a caller that
+    /// re-asked in order to log its own decision was told the opposite of the truth.
+    private mutating func withholding(for event: EventEnvelope) -> RowChange.Withholding? {
+        let own = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
+        if withheldBackgroundStarts.remove(own) != nil {
+            // The end of a session nobody ever saw is nothing to report: without this the
+            // row it never had would arrive as a tombstone instead.
+            return event.kind == .sessionEnded ? .endedWithoutWorking : nil
+        }
+        guard
+            event.kind == .sessionStarted,
+            event.clientKind == .background,
+            snapshots[own] == nil,
+            event.forkedFromSessionID == nil,
+            rowContinued(by: event.sessionID, source: event.source) == nil
+        else {
+            return nil
+        }
+        withheldBackgroundStarts.insert(own)
+        return .announcedItself
+    }
+
+    /// The row under this identifier, unless it has closed.
+    ///
+    /// Closed is terminal — the state diagram in `docs/architecture.md` §7 has no edge
+    /// leaving it — and six methods each said so in their own guard, with nothing checking
+    /// that the six agreed. Said once here, so the seventh gets the rule for free.
+    ///
+    /// The two places that still spell it out are spelling out a *different* rule: `rowID`
+    /// and `foldContinuedRow` refuse a closed row **unless the event is a start**, which is
+    /// the one way back in, and `apply` keeps a late event's description while dropping its
+    /// lifecycle meaning.
+    private func liveRow(_ id: String) -> SessionSnapshot? {
+        guard let row = snapshots[id], row.phase != .sessionClosed else {
+            return nil
+        }
+        return row
+    }
+
+    /// One event, and everything it did to the widget's rows.
+    ///
+    /// The only way in. Applying an event is five steps that have to run in this order, and
+    /// they used to be five public methods a caller ran itself: whether the event gets a row
+    /// at all, a row the app had built from a process being handed over to the session that
+    /// owns it, a closed row whose process now runs this session being retired, a copy's own
+    /// row being folded into the row it continues, and only then the event itself. Three
+    /// private fields carry state from the earlier steps into the last one, so the order was
+    /// load-bearing and nothing enforced it — and the tests, which called the last step on
+    /// its own, exercised a path the application never took.
+    ///
+    /// What the caller still owns is what this engine cannot know: the watcher on each row
+    /// that left, and what is worth saying out loud. Both are reported here rather than
+    /// worked out again from the snapshots before and after.
+    public mutating func receive(_ event: EventEnvelope) throws -> RowChange {
+        if let withheld = withholding(for: event) {
+            return RowChange(row: nil, withheld: withheld, rowsThatLeft: [], note: nil)
+        }
+
+        var left: [RowChange.Departure] = []
+        // Before the session is created, so it can take the place of the row the app had
+        // built from its process.
+        if let claimed = claimDiscoveredRow(for: event) {
+            left.append(RowChange.Departure(row: claimed, reason: .claimedByItsOwnSession))
+        }
+        // Before it too, and for a reason of its own: the row this retires is a closed
+        // session whose process now runs this one — the two-second session `/resume` leaves.
+        for retired in retireSessionsSuperseded(by: event) {
+            left.append(RowChange.Departure(row: retired, reason: .itsProcessNowRunsAnother))
+        }
+        // Before it too: a copy that already has a row of its own — the file of a launch
+        // before this rule existed remembers the original and the copy as two sessions —
+        // folds into the original's row here.
+        if let folded = foldContinuedRow(for: event) {
+            left.append(RowChange.Departure(row: folded, reason: .foldedIntoTheRowItContinues))
+        }
+
+        let row = try apply(event)
+        return RowChange(row: row, withheld: nil, rowsThatLeft: left, note: lastIngestNote)
+    }
+
     @discardableResult
-    public mutating func ingest(_ event: EventEnvelope) throws -> SessionSnapshot {
+    private mutating func apply(_ event: EventEnvelope) throws -> SessionSnapshot {
         guard event.schemaVersion == EventEnvelope.currentSchemaVersion else {
             throw EventIngestionError.unsupportedSchemaVersion(event.schemaVersion)
         }
@@ -47,10 +161,6 @@ public struct SessionStateEngine: Sendable {
         lastIngestNote = noteForNextIngest
         noteForNextIngest = nil
         let snapshotID = rowID(for: event)
-        // The session is speaking for itself, so the memory of what it was waiting for has
-        // nothing left to add — whatever the transcript is about to say about it is older
-        // than this.
-        rememberedWaits.removeValue(forKey: snapshotID)
         var snapshot: SessionSnapshot
         if let known = snapshots[snapshotID] {
             snapshot = known
@@ -128,6 +238,15 @@ public struct SessionStateEngine: Sendable {
             }
         }
 
+        // The row is speaking for itself, so the memory of what it was waiting for has nothing
+        // left to add — whatever the transcript is about to say about it is older than this.
+        //
+        // Here rather than beside `rowID` above, and the difference is a fact the widget can
+        // lose: the copy-chain rule returns without applying anything when an earlier session
+        // of the row speaks, and a wait spent by an event the row refused would leave a
+        // restored row saying `no signal` for good, with nothing left to ask the transcript.
+        rememberedWaits.removeValue(forKey: snapshotID)
+
         if let agentProcessID = event.agentProcessID {
             snapshot.agentProcessID = agentProcessID
         }
@@ -163,7 +282,15 @@ public struct SessionStateEngine: Sendable {
         }
 
         let previouslyObservedAt = snapshot.lastObservedAt
-        if let mode = event.mode {
+        // Every other kind carries a mode without a place to put it — a status line reports
+        // one, and so does a tool call — so the mode is applied here before the kind is.
+        //
+        // Not for the two kinds that state the mode themselves, and each with a rule of its
+        // own: a start without a mode resets it to unknown, because that is a new session
+        // and nobody has said; a turn without one keeps what the session already knows. They
+        // would otherwise write the mode twice, and the second write agreeing with the first
+        // is a coincidence, not a rule.
+        if let mode = event.mode, event.kind != .sessionStarted, event.kind != .turnStarted {
             snapshot = SessionReducer.reduce(snapshot, event: .modeChanged(mode, at: event.observedAt))
         }
 
@@ -306,7 +433,7 @@ public struct SessionStateEngine: Sendable {
     /// A closed original is left alone unless the event is a start, for the reason `rowID`
     /// gives.
     @discardableResult
-    public mutating func foldContinuedRow(for event: EventEnvelope) -> SessionSnapshot? {
+    private mutating func foldContinuedRow(for event: EventEnvelope) -> SessionSnapshot? {
         guard let original = event.forkedFromSessionID else {
             return nil
         }
@@ -353,7 +480,7 @@ public struct SessionStateEngine: Sendable {
     /// draws from it. A closed row is left alone — nothing is reached through it either way.
     @discardableResult
     public mutating func setViewer(processID: Int32?, forSessionWithID id: String) -> SessionSnapshot? {
-        guard var snapshot = snapshots[id], snapshot.phase != .sessionClosed else {
+        guard var snapshot = liveRow(id) else {
             return nil
         }
         snapshot.viewerProcessID = processID
@@ -363,7 +490,7 @@ public struct SessionStateEngine: Sendable {
 
     @discardableResult
     public mutating func apply(_ fact: TranscriptFact, toSessionWithID id: String) -> SessionSnapshot? {
-        guard let previous = snapshots[id], previous.phase != .sessionClosed else {
+        guard let previous = liveRow(id) else {
             return nil
         }
 
@@ -431,7 +558,7 @@ public struct SessionStateEngine: Sendable {
         _ signals: TranscriptSignals,
         toSessionWithID id: String
     ) -> SessionSnapshot? {
-        guard let previous = snapshots[id], previous.phase != .sessionClosed, !signals.isEmpty else {
+        guard let previous = liveRow(id), !signals.isEmpty else {
             return nil
         }
 
@@ -472,7 +599,7 @@ public struct SessionStateEngine: Sendable {
         _ description: SessionDescription,
         toSessionWithID id: String
     ) -> SessionSnapshot? {
-        guard let previous = snapshots[id], previous.phase != .sessionClosed, !description.isEmpty else {
+        guard let previous = liveRow(id), !description.isEmpty else {
             return nil
         }
 
@@ -516,11 +643,7 @@ public struct SessionStateEngine: Sendable {
     /// interruption against.
     @discardableResult
     public mutating func markObserved(at: Date, forSessionWithID id: String) -> SessionSnapshot? {
-        guard
-            var snapshot = snapshots[id],
-            snapshot.phase != .sessionClosed,
-            at > snapshot.lastObservedAt
-        else {
+        guard var snapshot = liveRow(id), at > snapshot.lastObservedAt else {
             return nil
         }
         snapshot.lastObservedAt = at
@@ -560,11 +683,16 @@ public struct SessionStateEngine: Sendable {
     public mutating func markSessionClosed(id: String, at: Date) -> SessionSnapshot? {
         // Already closed is left exactly as it was, so a second signal about the same death
         // does not restart the retention clock that is about to retire it.
-        guard let snapshot = snapshots[id], snapshot.phase != .sessionClosed else {
+        guard let snapshot = liveRow(id) else {
             return nil
         }
 
-        let closed = SessionReducer.reduce(snapshot, event: .sessionClosed(at: at))
+        var closed = SessionReducer.reduce(snapshot, event: .sessionClosed(at: at))
+        // Never backwards, the same rule `apply` and `markObserved` hold. This is the fourth
+        // door into a row's age and the one that never had it: the retention clock counts from
+        // here, so a close dated earlier than the newest thing heard would retire the row
+        // sooner than the setting promises. `RowAgeTests` now asks every door at once.
+        closed.lastObservedAt = max(snapshot.lastObservedAt, closed.lastObservedAt)
         snapshots[id] = closed
         return closed
     }
@@ -738,7 +866,7 @@ public struct SessionStateEngine: Sendable {
     /// earlier (`RememberedAgentProcess`). Taking it away and building it again would throw
     /// away what its own transcript had already told the row — starting with its name.
     @discardableResult
-    public mutating func claimDiscoveredRow(for event: EventEnvelope) -> SessionSnapshot? {
+    private mutating func claimDiscoveredRow(for event: EventEnvelope) -> SessionSnapshot? {
         let arrivingID = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
         guard
             let processID = event.agentProcessID,
@@ -771,7 +899,7 @@ public struct SessionStateEngine: Sendable {
     /// The caller gets the rows rather than their identifiers because it holds what the
     /// engine does not — the watcher on each row's process.
     @discardableResult
-    public mutating func retireSessionsSuperseded(by event: EventEnvelope) -> [SessionSnapshot] {
+    private mutating func retireSessionsSuperseded(by event: EventEnvelope) -> [SessionSnapshot] {
         guard let processID = event.agentProcessID else {
             return []
         }

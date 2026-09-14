@@ -315,28 +315,11 @@ public enum HookCaptureRedactor {
     private static let numberValueKeys: Set<String> = Set(["duration_ms"]).union(telemetryNumberValueKeys)
     private static let booleanValueKeys: Set<String> = ["stop_hook_active", "success"]
 
-    private static let supportedEventNames: Set<String> = [
-        "SessionStart",
-        "SessionEnd",
-        "UserPromptSubmit",
-        "PreToolUse",
-        "PostToolUse",
-        // A tool call that failed, and one that was refused. Neither reports `PostToolUse`,
-        // so without these two an activity had no way to end except by succeeding.
-        "PostToolUseFailure",
-        "PermissionDenied",
-        "SubagentStart",
-        "SubagentStop",
-        "Stop",
-        // A turn that ended in an API error instead of an answer.
-        "StopFailure",
-        // A turn a person stopped. Codex reports it; Claude does not.
-        "Interrupt",
-        "PermissionRequest",
-        "PreCompact",
-        "PostCompact",
-        "StatusLine",
-    ]
+    /// Every name `HookEventName` knows, and nothing else — one list instead of a second
+    /// copy of it. A name accepted here that the normalizer cannot read would be refused a
+    /// moment later; a name missing here is refused in the sending process, where hooks are
+    /// fail-open, and that is silent.
+    private static let supportedEventNames = HookEventName.allNames
 
     private static func supportedValues(for key: String) -> Set<String> {
         switch key {

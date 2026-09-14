@@ -1,5 +1,36 @@
 import Foundation
 
+/// What a person can still do about a row, and when.
+///
+/// Three answers rather than two, and the third is the one a `Bool` could not give: a row
+/// that is over but still held says so, with the moment its `×` starts working. Hiding the
+/// button instead answered a question nobody asked — "is there a button?" — in place of the
+/// one a person actually asks, which is "why can I not close this?".
+public enum RowDismissal: Equatable, Sendable {
+    /// By hand, now.
+    case now
+    /// Offered, and greyed until this moment: the session has stopped, and the row is kept
+    /// in case it speaks again.
+    case notYet(at: Date)
+    /// Not offered at all until this moment. The session is at work or waiting for a person,
+    /// and there is nothing here to dismiss — a button for it, greyed or not, would promise
+    /// otherwise. Long enough silence still ends it, which is what the date says.
+    case notOffered(until: Date)
+
+    /// When this row's `×` starts working, or `nil` because it already does.
+    ///
+    /// Carried on the answer so that a caller who has to wake up for the moment takes it from
+    /// here rather than working it out again. The same arithmetic in two places is how a
+    /// threshold changed in one of them leaves a timer firing at the wrong moment, with
+    /// nothing to notice.
+    public var becomesDismissibleAt: Date? {
+        switch self {
+        case .now: nil
+        case .notYet(let at), .notOffered(let at): at
+        }
+    }
+}
+
 /// What a person can still do about a session, and when.
 ///
 /// A statement about sessions rather than about views, which is why it is in this target
@@ -24,13 +55,26 @@ public enum SessionPresence {
     /// threshold because the app still believes what the row says; a fault is the app saying
     /// it does not, and a person should not have to wait half an hour to clear a row that has
     /// already announced it may be wrong.
-    public static func isDismissible(_ snapshot: SessionSnapshot, now: Date) -> Bool {
+    ///
+    /// Everything else splits by whether the session has finished. A row that has — completed
+    /// or failed — is offered its button greyed, because the question "why can I not close
+    /// this?" is asked exactly there. Anything still live is offered nothing, `idle`
+    /// included: resting between turns is a session waiting for its person to type, and a
+    /// button on a session that started a moment ago is a control nobody was looking for.
+    public static func dismissal(of snapshot: SessionSnapshot, now: Date) -> RowDismissal {
         if snapshot.phase == .sessionClosed || snapshot.phase == .disconnected {
-            return true
+            return .now
         }
         if snapshot.monitoringFault != nil {
-            return true
+            return .now
         }
-        return now.timeIntervalSince(snapshot.lastObservedAt) >= SessionFreshnessEvaluator.defaultDisconnectAfter
+        let silentUntil = snapshot.lastObservedAt + SessionFreshnessEvaluator.defaultDisconnectAfter
+        if now >= silentUntil {
+            return .now
+        }
+        guard snapshot.phase == .completed || snapshot.phase == .failed else {
+            return .notOffered(until: silentUntil)
+        }
+        return .notYet(at: silentUntil)
     }
 }

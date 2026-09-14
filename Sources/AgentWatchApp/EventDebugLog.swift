@@ -46,8 +46,7 @@ final class EventDebugLog {
     }
 
     private static func defaultDirectoryURL(fileManager: FileManager) -> URL? {
-        AgentWatchPaths.applicationSupportDirectory(fileManager: fileManager)
-            .map { AgentWatchPaths.supportDirectory(inApplicationSupport: $0) }
+        AgentWatchPaths.supportDirectory(fileManager: fileManager)
     }
 
     /// How many lines the file holds, for a test that checks the log stays bounded.

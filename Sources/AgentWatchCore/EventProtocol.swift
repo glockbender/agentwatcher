@@ -362,8 +362,12 @@ public enum HookEventNormalizer {
             )
         }
 
-        switch declaredEvent {
-        case "StatusLine":
+        guard let hook = HookEventName(rawValue: declaredEvent) else {
+            throw EventNormalizationError.unsupportedEvent(source: source, name: declaredEvent)
+        }
+
+        switch hook {
+        case .statusLine:
             guard source == .claude else {
                 throw EventNormalizationError.unsupportedEvent(source: source, name: declaredEvent)
             }
@@ -372,21 +376,21 @@ public enum HookEventNormalizer {
                 contextTelemetry: contextTelemetry(in: fields),
                 usageLimits: usageLimits(source: source, fields: fields, observedAt: observedAt)
             )
-        case "SessionStart":
+        case .sessionStart:
             return envelope(.sessionStarted, startedAsCopy: string("source", in: fields) == "fork")
-        case "SessionEnd":
+        case .sessionEnd:
             return envelope(.sessionEnded)
-        case "UserPromptSubmit":
+        case .userPromptSubmit:
             return envelope(.turnStarted)
-        case "Stop":
+        case .stop:
             return envelope(.turnCompleted)
-        case "StopFailure":
+        case .stopFailure:
             return envelope(.turnFailed)
-        case "Interrupt":
+        case .interrupt:
             return envelope(.turnInterrupted)
-        case "PermissionRequest":
+        case .permissionRequest:
             return envelope(.userInputRequired, userInputRequestKind: .approval)
-        case "PreToolUse":
+        case .preToolUse:
             guard let activityID = string("tool_use_id", in: fields) else {
                 throw EventNormalizationError.missingActivityID
             }
@@ -411,21 +415,21 @@ public enum HookEventNormalizer {
         // report are the same fact to a monitor — this call is over — so they normalize
         // alike; the interrupted case is what `Stop` and the next `UserPromptSubmit` have to
         // clean up.
-        case "PostToolUse", "PostToolUseFailure", "PermissionDenied":
+        case .postToolUse, .postToolUseFailure, .permissionDenied:
             guard let activityID = string("tool_use_id", in: fields) else {
                 throw EventNormalizationError.missingActivityID
             }
-            let succeeded = declaredEvent == "PostToolUse"
+            let succeeded = hook == .postToolUse
             return envelope(succeeded ? .activityCompleted : .activityFailed, activityID: activityID)
         // Compaction has no tool call and so no `tool_use_id`; one fixed identifier per
         // session is enough, because a session compacts one context at a time. The pair is
         // deliberately not marked as outliving the turn: if `PostCompact` never arrives —
         // compaction can fail — the end of the turn is what clears it.
-        case "PreCompact":
+        case .preCompact:
             return envelope(.activityStarted, activityID: Self.compactionActivityID, activityKind: .compaction)
-        case "PostCompact":
+        case .postCompact:
             return envelope(.activityCompleted, activityID: Self.compactionActivityID)
-        case "SubagentStart":
+        case .subagentStart:
             guard let activityID = identifier(in: fields, keys: ["agent_id", "subagent_id", "tool_use_id"]) else {
                 throw EventNormalizationError.missingActivityID
             }
@@ -435,13 +439,11 @@ public enum HookEventNormalizer {
                 activityKind: .subagent,
                 outlivesTurn: true
             )
-        case "SubagentStop":
+        case .subagentStop:
             guard let activityID = identifier(in: fields, keys: ["agent_id", "subagent_id", "tool_use_id"]) else {
                 throw EventNormalizationError.missingActivityID
             }
             return envelope(.activityCompleted, activityID: activityID)
-        default:
-            throw EventNormalizationError.unsupportedEvent(source: source, name: declaredEvent)
         }
     }
 

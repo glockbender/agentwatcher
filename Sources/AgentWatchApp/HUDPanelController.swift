@@ -455,8 +455,10 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             cancelDismissalTimer()
             return
         }
-        let deadline = state.sessions.filter { !SessionPresence.isDismissible($0, now: now) }
-            .map { $0.lastObservedAt + SessionFreshnessEvaluator.defaultDisconnectAfter }.min()
+        // Taken from the answer rather than worked out again — see `becomesDismissibleAt`.
+        let deadline = state.sessions
+            .compactMap { SessionPresence.dismissal(of: $0, now: now).becomesDismissibleAt }
+            .min()
         guard deadline != nextDismissRefreshAt else {
             return
         }

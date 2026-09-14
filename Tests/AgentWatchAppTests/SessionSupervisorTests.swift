@@ -97,6 +97,40 @@ final class SessionSupervisorTests: XCTestCase {
         XCTAssertEqual(published.first?.count, 1)
     }
 
+    /// The agents view keeps a pre-warmed background session on hand and replaces it the
+    /// moment one settles; each replacement sends a start and, seconds later, an end. Such a
+    /// session gets no row — and the log says so, because a row that never appeared is
+    /// otherwise indistinguishable from an event that never arrived.
+    func testABackgroundSessionWithoutATurnGetsNoRowAndIsSaidOutLoud() throws {
+        var logged: [String] = []
+        var published: [[SessionSnapshot]] = []
+        let supervisor = try makeSupervisor(
+            onChange: { sessions, _ in published.append(sessions) },
+            onNotableEvent: { logged.append($0) })
+
+        let event = supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "spare", clientKind: .background))
+
+        XCTAssertNotNil(event, "the event was understood; it simply has no row of its own yet")
+        XCTAssertTrue(supervisor.sessions.isEmpty)
+        XCTAssertTrue(published.isEmpty, "nothing changed on the widget, so nothing is published")
+        XCTAssertEqual(logged.count, 1)
+        let note = try XCTUnwrap(logged.last)
+        XCTAssertTrue(note.contains("no row until it takes a turn"), note)
+    }
+
+    /// The same session once it does something: the row appears then, with its place at the
+    /// end of the list like any newcomer.
+    func testABackgroundSessionGetsItsRowOnceItWorks() throws {
+        let supervisor = try makeSupervisor()
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "job", clientKind: .background))
+
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "job", clientKind: .background))
+
+        XCTAssertEqual(supervisor.sessions.count, 1)
+        XCTAssertEqual(supervisor.sessions.first?.phase, .executing)
+    }
+
     /// Fail-open: a request the normalizer cannot make sense of is dropped, not turned into
     /// a session and not reported as a change.
     func testAnUnusableRequestChangesNothing() throws {
@@ -1173,11 +1207,11 @@ final class SessionSupervisorTests: XCTestCase {
     }
 
     /// The copy's process first runs the two-second session `--resume` always leaves behind,
-    /// and that stub's hooks come first: a background session that names no original. The
-    /// terminal is not claimed for it — that would be a line in the log about a row that is
-    /// retired a moment later, and the note "said once" would be said twice — and the copy's
-    /// own start claims it once.
-    func testTheStubTheCopysProcessRunsFirstDoesNotClaimTheTerminal() throws {
+    /// and that stub's hooks come first: a background session that names no original, starts,
+    /// and ends. It gets no row at all — a background session with nothing to show for itself
+    /// waits (`SessionStateEngine.withholdsRow`) — and so it claims no terminal either. The
+    /// copy's own start claims it once.
+    func testTheStubTheCopysProcessRunsFirstNeitherGetsARowNorClaimsTheTerminal() throws {
         let home = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: home) }
         try writeSessionRecords(
@@ -1201,14 +1235,13 @@ final class SessionSupervisorTests: XCTestCase {
                 agentProcessID: 502, clientKind: .background)
         }
         supervisor.ingest(stubRequest("SessionStart"))
-        let stub = try XCTUnwrap(supervisor.sessions.first { $0.agentProcessID == 502 })
-        XCTAssertNil(stub.viewerProcessID, "a start that names no original claims no terminal")
+        XCTAssertEqual(supervisor.sessions.map(\.id), [original.id], "the stub is nobody's row")
         XCTAssertTrue(log.allSatisfy { !$0.contains("on screen in the terminal") }, "\(log)")
         supervisor.ingest(stubRequest("SessionEnd"))
 
         supervisor.ingest(copyRequest(event: "SessionStart", sessionID: "beta", of: "alpha", agentProcessID: 502))
 
-        XCTAssertEqual(supervisor.sessions.map(\.id), [original.id], "the stub is retired, the copy joins")
+        XCTAssertEqual(supervisor.sessions.map(\.id), [original.id], "the copy joins the row it continues")
         XCTAssertEqual(supervisor.sessions.first?.viewerProcessID, 501)
         XCTAssertEqual(
             log.filter { $0.contains("on screen in the terminal that sent it to the background") }.count, 1, "\(log)")

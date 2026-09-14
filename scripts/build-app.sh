@@ -27,7 +27,9 @@ fi
 contents_path="$app_path/Contents"
 
 cd "$project_root"
-swift build --configuration "$configuration"
+# The same flag every other build in the gate carries. Without it this was the one build of
+# the five that let a warning through — and it is the one whose output a person installs.
+swift build --configuration "$configuration" -Xswiftc -warnings-as-errors
 bin_path="$(swift build --configuration "$configuration" --show-bin-path)"
 
 if [[ -e "$app_path" ]]; then

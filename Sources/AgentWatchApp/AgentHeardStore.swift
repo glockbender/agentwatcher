@@ -30,8 +30,7 @@ final class AgentHeardStore {
     init(fileManager: FileManager = .default, directoryURL: URL? = nil) {
         let directory =
             directoryURL
-            ?? AgentWatchPaths.applicationSupportDirectory()
-            .map { AgentWatchPaths.supportDirectory(inApplicationSupport: $0) }
+            ?? AgentWatchPaths.supportDirectory()
         fileURL = directory?.appendingPathComponent("agents-heard.json")
         let document = Self.read(fileURL, fileManager: fileManager)
         heard = document.heard

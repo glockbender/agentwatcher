@@ -17,9 +17,11 @@ struct HUDRowModel: Equatable {
     let snapshot: SessionSnapshot
     /// The name as this row will show it, or `nil` when the row shows none.
     let name: String?
-    /// Whether the row offers a `×`. From the clock, by a threshold: a session left silent
-    /// long enough gains one without an event of its own, which is why `now` is an input.
-    let isDismissible: Bool
+    /// Whether the row offers a `×`, and if it does but cannot work yet, from when it will.
+    /// From the clock, by a threshold: a session left silent long enough gains a working
+    /// button without an event of its own, which is why `now` is an input. The date inside
+    /// `notYet` does not move between ticks, so a row does not rebuild for holding one.
+    let dismissal: RowDismissal
 
     var id: String {
         snapshot.id
@@ -28,6 +30,6 @@ struct HUDRowModel: Equatable {
     init(snapshot: SessionSnapshot, now: Date, showsSessionTopic: Bool) {
         self.snapshot = snapshot
         name = rowName(for: snapshot, showsSessionTopic: showsSessionTopic)
-        isDismissible = SessionPresence.isDismissible(snapshot, now: now)
+        dismissal = SessionPresence.dismissal(of: snapshot, now: now)
     }
 }
