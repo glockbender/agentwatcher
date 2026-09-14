@@ -44,10 +44,42 @@ enum WidgetStyle {
     static let emptySubtitleFont = NSFont.systemFont(ofSize: 12)
     /// The glyph on a row's action button.
     static let buttonFont = NSFont.systemFont(ofSize: 10)
+    /// What the row's timer turns when the session has gone quiet, and when it has gone
+    /// quiet for long enough to say so.
+    ///
+    /// Fixed values for the same measured reason the lamp's table gives (`LampScheme`): a
+    /// system colour adapts to the machine's light or dark appearance, and this number is
+    /// drawn on the widget's own background — one of ten fixed colours a person picks, half
+    /// of them light — so the adaptation was tracking a surface the timer never touches.
+    /// These are `systemYellow` and `systemOrange` as they resolve on a dark machine, which
+    /// is what the timer already looked like there.
+    static let timerQuiet = NSColor(sRGB: "#FFD60A")
+    static let timerStale = NSColor(sRGB: "#FF9F0A")
+
     /// Fully monospaced, not merely monospaced-digit: the unit letter is part of the value,
     /// and `m` is wider than `d` in a proportional face. With every glyph the same width,
     /// three characters is one width rather than four near-misses.
     static let timerFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+}
+
+/// How wide a label holding this text will actually be.
+///
+/// Here rather than among the row's wording: it measures a view, and the budget it feeds is
+/// the one the other constants in this file describe. It lived in `WidgetText` because that
+/// is where it was first needed.
+///
+/// Measured through a real label rather than through `NSAttributedString.size()`, which
+/// returns the width of the glyphs alone. A label is wider than its text — `NSTextField`
+/// keeps a small inset around the cell — and budgeting by the glyph width alone left every
+/// row a few points short of what it went on to lay out.
+@MainActor
+func labelWidth(of text: String, font: NSFont) -> CGFloat {
+    guard !text.isEmpty else {
+        return 0
+    }
+    let label = NSTextField(labelWithString: text)
+    label.font = font
+    return ceil(label.fittingSize.width)
 }
 
 extension NSView {

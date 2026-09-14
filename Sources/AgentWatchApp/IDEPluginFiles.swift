@@ -11,7 +11,7 @@ import Foundation
 enum IDEPluginFiles {
     /// What the plugin last wrote for this IDE, if it ever has.
     static func reply(forDataDirectoryName name: String, fileManager: FileManager = .default) -> IDEPluginReply? {
-        guard let directory = supportDirectory(fileManager: fileManager) else {
+        guard let directory = AgentWatchPaths.supportDirectory(fileManager: fileManager) else {
             return nil
         }
         let file = AgentWatchPaths.idePluginReplyFile(inDirectory: directory, dataDirectoryName: name)
@@ -37,16 +37,9 @@ enum IDEPluginFiles {
     /// download later. The window says where it is whether or not anything is in it, because
     /// it is also the one place a person can put a plugin file for the app to find.
     static func pluginDirectory(fileManager: FileManager = .default) -> URL? {
-        guard let support = supportDirectory(fileManager: fileManager) else {
+        guard let support = AgentWatchPaths.supportDirectory(fileManager: fileManager) else {
             return nil
         }
         return AgentWatchPaths.idePluginDirectory(inDirectory: support)
-    }
-
-    private static func supportDirectory(fileManager: FileManager) -> URL? {
-        guard let applicationSupport = AgentWatchPaths.applicationSupportDirectory(fileManager: fileManager) else {
-            return nil
-        }
-        return AgentWatchPaths.supportDirectory(inApplicationSupport: applicationSupport)
     }
 }

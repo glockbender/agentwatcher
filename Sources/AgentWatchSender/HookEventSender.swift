@@ -30,10 +30,8 @@ public enum HookEventSender {
     /// disagreement between the two says nothing at all, because hooks are fail-open: no
     /// error, no log, just a widget that stays empty.
     public static func defaultSocketPath() -> String? {
-        AgentWatchPaths.applicationSupportDirectory()
-            .map {
-                AgentWatchPaths.socketURL(inDirectory: AgentWatchPaths.supportDirectory(inApplicationSupport: $0)).path
-            }
+        AgentWatchPaths.supportDirectory()
+            .map { AgentWatchPaths.socketURL(inDirectory: $0).path }
     }
 
     fileprivate static func send(_ message: Data, to socketPath: String, deadline: UInt64) throws {

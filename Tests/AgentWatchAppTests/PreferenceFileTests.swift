@@ -27,6 +27,34 @@ final class PreferenceFileTests: XCTestCase {
         XCTAssertEqual(reopened.flag(forKey: "lockWidgetSize"), true)
     }
 
+    /// `README.md` invites a person to edit this file. A file the app cannot read was read as
+    /// empty, and the next write — the defaults, at launch — went straight over it: the whole
+    /// lamp scheme gone for a typo, or for a write that was cut short. Kept aside instead, the
+    /// way the tooling installer keeps a file it is about to change.
+    func testAFileThatCannotBeReadIsKeptAsideRatherThanOverwritten() throws {
+        let directory = try makeDirectory()
+        let fileURL = directory.appendingPathComponent("settings.json")
+        let broken = #"{"widgetBackground": "slate", "lockWidgetSize": tru"#
+        try broken.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let preferences = PreferenceFile(directoryURL: directory)
+        XCTAssertNil(preferences.string(forKey: "widgetBackground"), "unreadable is not a value")
+        preferences.set("graphite", forKey: "widgetBackground")
+
+        let kept = try XCTUnwrap(preferences.unreadableFileKeptAt, "the person's own file has to survive")
+        XCTAssertEqual(try String(contentsOf: kept, encoding: .utf8), broken)
+        XCTAssertEqual(PreferenceFile(directoryURL: directory).string(forKey: "widgetBackground"), "graphite")
+    }
+
+    /// A file that is simply not there is not a file anybody wrote, so nothing is kept aside.
+    func testAMissingFileIsNotKeptAside() throws {
+        let preferences = PreferenceFile(directoryURL: try makeDirectory())
+
+        preferences.set("slate", forKey: "widgetBackground")
+
+        XCTAssertNil(preferences.unreadableFileKeptAt)
+    }
+
     /// The one thing about the format that cannot be settled by reading the code: whether a
     /// number comes back as a flag. `false` and `0` mean the same thing to a property list
     /// and different things here, and a setting that reads `0` as "off" by accident would be

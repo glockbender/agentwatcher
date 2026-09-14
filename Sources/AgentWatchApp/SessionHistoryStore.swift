@@ -39,8 +39,7 @@ final class SessionHistoryStore {
     init(fileManager: FileManager = .default, directoryURL: URL? = nil) {
         let directory =
             directoryURL
-            ?? AgentWatchPaths.applicationSupportDirectory()
-            .map { AgentWatchPaths.supportDirectory(inApplicationSupport: $0) }
+            ?? AgentWatchPaths.supportDirectory()
         fileURL = directory?.appendingPathComponent("sessions-remembered.json")
         let document = Self.read(fileURL, fileManager: fileManager)
         remembered = document.sessions

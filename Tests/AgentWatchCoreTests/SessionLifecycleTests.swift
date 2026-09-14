@@ -583,8 +583,7 @@ final class SessionLifecycleTests: XCTestCase {
             at: start.addingTimeInterval(2),
             agentProcessID: 501
         )
-        let retired = engine.retireSessionsSuperseded(by: resumed)
-        try engine.ingest(resumed)
+        let retired = try engine.receive(resumed).rowsThatLeft(.itsProcessNowRunsAnother)
 
         XCTAssertEqual(retired.map(\.id), ["claude:throwaway"])
         XCTAssertNil(engine.snapshots["claude:throwaway"])
@@ -609,7 +608,7 @@ final class SessionLifecycleTests: XCTestCase {
             agentProcessID: 501
         )
 
-        XCTAssertEqual(engine.retireSessionsSuperseded(by: newcomer), [])
+        XCTAssertEqual(try engine.receive(newcomer).rowsThatLeft(.itsProcessNowRunsAnother), [])
         XCTAssertNotNil(engine.snapshots["claude:kept"])
     }
 
@@ -628,8 +627,9 @@ final class SessionLifecycleTests: XCTestCase {
             at: start.addingTimeInterval(120),
             agentProcessID: 502
         )
-        XCTAssertEqual(engine.retireSessionsSuperseded(by: resumed), [])
-        let revived = try engine.ingest(resumed)
+        let coming = try engine.receive(resumed)
+        XCTAssertEqual(coming.rowsThatLeft(.itsProcessNowRunsAnother), [])
+        let revived = try XCTUnwrap(coming.row)
 
         XCTAssertEqual(revived.phase, .idle)
         XCTAssertEqual(revived.arrivalIndex, 0, "the row a person was looking at stays where it was")
@@ -648,7 +648,7 @@ final class SessionLifecycleTests: XCTestCase {
             agentProcessID: 501
         )
 
-        XCTAssertEqual(engine.retireSessionsSuperseded(by: other), [])
+        XCTAssertEqual(try engine.receive(other).rowsThatLeft(.itsProcessNowRunsAnother), [])
         XCTAssertNotNil(engine.snapshots["claude:alpha"])
     }
 
@@ -662,7 +662,7 @@ final class SessionLifecycleTests: XCTestCase {
 
         let anonymous = envelope(id: "beta", kind: .sessionStarted, at: start.addingTimeInterval(3))
 
-        XCTAssertEqual(engine.retireSessionsSuperseded(by: anonymous), [])
+        XCTAssertEqual(try engine.receive(anonymous).rowsThatLeft(.itsProcessNowRunsAnother), [])
         XCTAssertNotNil(engine.snapshots["claude:alpha"])
     }
 

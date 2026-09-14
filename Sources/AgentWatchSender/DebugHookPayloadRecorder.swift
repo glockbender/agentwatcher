@@ -26,12 +26,10 @@ import Foundation
             {
                 return URL(fileURLWithPath: override, isDirectory: true)
             }
-            guard let applicationSupport = AgentWatchPaths.applicationSupportDirectory(fileManager: fileManager)
-            else {
+            guard let support = AgentWatchPaths.supportDirectory(fileManager: fileManager) else {
                 return nil
             }
-            return AgentWatchPaths.supportDirectory(inApplicationSupport: applicationSupport)
-                .appendingPathComponent("debug-hook-capture", isDirectory: true)
+            return support.appendingPathComponent("debug-hook-capture", isDirectory: true)
         }
 
         public static func enable(

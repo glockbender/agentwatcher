@@ -131,12 +131,12 @@ enum JetBrainsInstallation {
     static func hasAnsweredPing(ofApplicationAt bundleURL: URL, fileManager: FileManager = .default) -> Bool {
         guard
             let dataDirectoryName = dataDirectoryName(ofApplicationAt: bundleURL, fileManager: fileManager),
-            let applicationSupport = AgentWatchPaths.applicationSupportDirectory(fileManager: fileManager)
+            let support = AgentWatchPaths.supportDirectory(fileManager: fileManager)
         else {
             return false
         }
         let reply = AgentWatchPaths.idePluginReplyFile(
-            inDirectory: AgentWatchPaths.supportDirectory(inApplicationSupport: applicationSupport),
+            inDirectory: support,
             dataDirectoryName: dataDirectoryName
         )
         return fileManager.fileExists(atPath: reply.path)

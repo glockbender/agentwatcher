@@ -276,6 +276,32 @@ final class RememberedWaitTests: XCTestCase {
         }
     }
 
+    /// A word from a session the row has moved on from must not spend the wait.
+    ///
+    /// After `/bg` the parked original goes on reporting — the end of a turn that finished in
+    /// the copy, and its own end when its terminal closes — and the engine drops every one of
+    /// those: the copy is the conversation now. The wait is set aside for the *row*, and a
+    /// message the row refuses to apply is not the row speaking for itself.
+    func testAnEventTheRowRefusesDoesNotSpendItsRememberedWait() throws {
+        var engine = SessionStateEngine()
+        var waiting = self.waiting()
+        waiting.continuedBy = ["copy"]
+        engine.restore([SessionHistory.remembered(waiting, awaiting: nil)])
+        XCTAssertNotNil(engine.rememberedWaitsAwaitingEvidence["claude:abc"], "set aside by the restore")
+
+        _ = try engine.ingest(
+            EventEnvelope(
+                source: .claude, sessionID: "abc", observedAt: waitedAt + 60, kind: .sessionEnded)
+        )
+
+        XCTAssertEqual(
+            engine.rememberedWaitsAwaitingEvidence["claude:abc"]?.awaitedActivityID,
+            "call-1",
+            "the original's parting word changed nothing on the row, so it spent nothing"
+        )
+        XCTAssertEqual(engine.snapshots["claude:abc"]?.phase, .disconnected, "and the row is where it was")
+    }
+
     private func waiting() -> SessionSnapshot {
         SessionSnapshot(
             id: "claude:abc",

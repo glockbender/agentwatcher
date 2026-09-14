@@ -370,7 +370,8 @@ class HUDSessionListView: NSView {
             background: background,
             lampScheme: lampScheme,
             onFocus: { [focus] in focus(snapshot) },
-            onRemove: model.isDismissible ? { [remove] in remove(snapshot) } : nil,
+            dismissal: model.dismissal,
+            onRemove: { [remove] in remove(snapshot) },
             onHoverChanged: onHoverChanged
         )
         row.setTitle(model.name, display: titleDisplay(model.name, in: row))

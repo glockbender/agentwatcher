@@ -93,10 +93,10 @@ final class DiscoveredProcessTests: XCTestCase {
         let discoveredIndex = try XCTUnwrap(engine.snapshots["claude:process-501-1699999100"]?.arrivalIndex)
 
         let arriving = event(sessionLabel: "abc", agentProcessID: 501)
-        let claimed = engine.claimDiscoveredRow(for: arriving)
-        let session = try engine.ingest(arriving)
+        let change = try engine.receive(arriving)
+        let session = try XCTUnwrap(change.row)
 
-        XCTAssertEqual(claimed?.id, "claude:process-501-1699999100")
+        XCTAssertEqual(change.rowsThatLeft(.claimedByItsOwnSession).map(\.id), ["claude:process-501-1699999100"])
         XCTAssertNil(engine.snapshots["claude:process-501-1699999100"])
         XCTAssertEqual(session.arrivalIndex, discoveredIndex, "the session takes the place its process held")
         XCTAssertEqual(engine.snapshots.count, 2)
@@ -130,8 +130,10 @@ final class DiscoveredProcessTests: XCTestCase {
             SessionDescription(title: "read from its own transcript"), toSessionWithID: "claude:abc")
         let arriving = event(sessionLabel: "abc", agentProcessID: 501)
 
-        XCTAssertNil(engine.claimDiscoveredRow(for: arriving), "there is no other row to take the place of")
-        let session = try engine.ingest(arriving)
+        let change = try engine.receive(arriving)
+        XCTAssertEqual(
+            change.rowsThatLeft(.claimedByItsOwnSession), [], "there is no other row to take the place of")
+        let session = try XCTUnwrap(change.row)
 
         XCTAssertEqual(session.title, "read from its own transcript")
         XCTAssertNil(
@@ -154,7 +156,6 @@ final class DiscoveredProcessTests: XCTestCase {
         // Resumed: the same session, a new process, which had a row of its own by then.
         engine.reconcileDiscoveredProcesses([process(id: 777, startedAt: now - 60)])
         let resumed = event(sessionLabel: "abc", agentProcessID: 777)
-        engine.claimDiscoveredRow(for: resumed)
         try engine.ingest(resumed)
         let laterSession = try engine.ingest(event(sessionLabel: "later", agentProcessID: 502))
 

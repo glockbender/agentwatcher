@@ -35,11 +35,11 @@ final class HUDRowModelTests: XCTestCase {
             SessionFreshnessEvaluator.defaultDisconnectAfter - 1)
         let atTheThreshold = now.addingTimeInterval(SessionFreshnessEvaluator.defaultDisconnectAfter)
 
-        XCTAssertFalse(
-            HUDRowModel(snapshot: waiting, now: justBeforeTheThreshold, showsSessionTopic: true)
-                .isDismissible)
-        XCTAssertTrue(
-            HUDRowModel(snapshot: waiting, now: atTheThreshold, showsSessionTopic: true).isDismissible)
+        XCTAssertEqual(
+            HUDRowModel(snapshot: waiting, now: justBeforeTheThreshold, showsSessionTopic: true).dismissal,
+            .notOffered(until: now + SessionFreshnessEvaluator.defaultDisconnectAfter))
+        XCTAssertEqual(
+            HUDRowModel(snapshot: waiting, now: atTheThreshold, showsSessionTopic: true).dismissal, .now)
     }
 
     /// Turning the topic off is a change to what the row draws, so it has to be a change to

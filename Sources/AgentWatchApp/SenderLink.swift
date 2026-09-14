@@ -93,8 +93,7 @@ struct SenderLink {
         if let directoryURL {
             return directoryURL
         }
-        return AgentWatchPaths.applicationSupportDirectory()
-            .map { AgentWatchPaths.supportDirectory(inApplicationSupport: $0) }
+        return AgentWatchPaths.supportDirectory()
     }
 
     /// The sender belonging to a running Agent Watch: the file beside it.

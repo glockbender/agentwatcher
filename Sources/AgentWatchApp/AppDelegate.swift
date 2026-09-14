@@ -137,6 +137,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             everyDefault.merge(owner.defaultValues) { existing, _ in existing }
         }
         preferences.seed(everyDefault)
+        // Said out loud, because the alternative is a person's settings apparently reset for
+        // no reason. The seeding above is the write that moves the old file aside.
+        if let kept = preferences.unreadableFileKeptAt {
+            recordDebug("Settings · the settings file could not be read; kept as \(kept.lastPathComponent)")
+        }
         configureStatusItem()
         // Claimed at every launch, not only at install time. Hooks name the link, so the link
         // has to name a file that exists — and the copy that just started is the one that

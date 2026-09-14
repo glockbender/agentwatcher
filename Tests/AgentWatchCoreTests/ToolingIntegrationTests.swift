@@ -106,6 +106,11 @@ final class ToolingIntegrationTests: XCTestCase {
     /// The two lists must not drift. A hook asked for but not understood pays a process
     /// launch for nothing; the reverse — an event understood but never asked for — is a fact
     /// silently lost. This catches the first, which is the one a person cannot see.
+    ///
+    /// Half of it is structural now: both lists are written in `HookEventName`, the
+    /// normalizer switches over that type exhaustively, and the socket's admission set is
+    /// derived from it — so a name nobody can read no longer compiles. What is left for this
+    /// test is the payload: a hook understood in name but refused for want of a field.
     func testEveryHookAskedForIsOneTheProtocolUnderstands() {
         for source in AgentSource.allCases {
             for event in ToolingHooks.hooks(for: source) {

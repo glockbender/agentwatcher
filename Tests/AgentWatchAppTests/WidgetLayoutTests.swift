@@ -122,7 +122,8 @@ final class WidgetLayoutTests: XCTestCase {
             background: .graphite,
             lampScheme: LampScheme(),
             onFocus: {},
-            onRemove: SessionPresence.isDismissible(snapshot, now: now) ? {} : nil
+            dismissal: SessionPresence.dismissal(of: snapshot, now: now),
+            onRemove: {}
         )
     }
 

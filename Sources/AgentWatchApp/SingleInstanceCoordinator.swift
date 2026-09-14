@@ -63,10 +63,9 @@ final class SingleInstanceCoordinator {
         if let directoryURL {
             return directoryURL
         }
-        guard let applicationSupport = AgentWatchPaths.applicationSupportDirectory() else {
+        guard let directoryURL = AgentWatchPaths.supportDirectory() else {
             return nil
         }
-        let directoryURL = AgentWatchPaths.supportDirectory(inApplicationSupport: applicationSupport)
         do {
             try FileManager.default.createDirectory(
                 at: directoryURL,

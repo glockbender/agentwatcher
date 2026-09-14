@@ -80,10 +80,14 @@ final class SessionForkTests: XCTestCase {
         try engine.ingest(event(label: "beta", kind: .sessionStarted, at: start + 10, processID: 502))
 
         let late = event(label: "beta", kind: .turnStarted, at: start + 20, processID: 502, forkedFrom: "alpha")
-        let folded = engine.foldContinuedRow(for: late)
-        let row = try engine.ingest(late)
+        let change = try engine.receive(late)
+        let row = try XCTUnwrap(change.row)
 
-        XCTAssertEqual(folded?.id, "claude:beta", "the copy's own row is the one that goes")
+        XCTAssertEqual(
+            change.rowsThatLeft(.foldedIntoTheRowItContinues).map(\.id),
+            ["claude:beta"],
+            "the copy's own row is the one that goes"
+        )
         XCTAssertEqual(row.id, "claude:alpha")
         XCTAssertEqual(row.phase, .executing)
         XCTAssertEqual(row.agentProcessID, 502)
@@ -101,9 +105,11 @@ final class SessionForkTests: XCTestCase {
         var engine = SessionStateEngine()
         try engine.ingest(event(label: "beta", kind: .sessionStarted, at: start, processID: 502))
 
-        XCTAssertNil(
-            engine.foldContinuedRow(for: event(label: "beta", kind: .turnStarted, at: start + 1, forkedFrom: "nobody")))
-        XCTAssertNil(engine.foldContinuedRow(for: event(label: "beta", kind: .turnStarted, at: start + 1)))
+        XCTAssertEqual(
+            try engine.receive(event(label: "beta", kind: .turnStarted, at: start + 1, forkedFrom: "nobody"))
+                .rowsThatLeft, [])
+        XCTAssertEqual(
+            try engine.receive(event(label: "beta", kind: .turnStarted, at: start + 1)).rowsThatLeft, [])
         XCTAssertEqual(Set(engine.snapshots.keys), ["claude:beta"])
     }
 
@@ -138,8 +144,7 @@ final class SessionForkTests: XCTestCase {
         try engine.ingest(event(label: "stub", kind: .sessionEnded, at: start + 9, processID: 502))
 
         let forkStart = event(label: "beta", kind: .sessionStarted, at: start + 10, processID: 502, forkedFrom: "alpha")
-        let retired = engine.retireSessionsSuperseded(by: forkStart)
-        try engine.ingest(forkStart)
+        let retired = try engine.receive(forkStart).rowsThatLeft(.itsProcessNowRunsAnother)
 
         XCTAssertEqual(retired.map(\.id), ["claude:stub"])
         XCTAssertEqual(Set(engine.snapshots.keys), ["claude:alpha"])
@@ -157,7 +162,7 @@ final class SessionForkTests: XCTestCase {
         try engine.ingest(event(label: "beta", kind: .sessionEnded, at: start + 20, processID: 502))
 
         let straggler = event(label: "beta", kind: .turnCompleted, at: start + 21, processID: 502)
-        XCTAssertEqual(engine.retireSessionsSuperseded(by: straggler), [])
+        XCTAssertEqual(try engine.receive(straggler).rowsThatLeft(.itsProcessNowRunsAnother), [])
         XCTAssertEqual(engine.snapshots["claude:alpha"]?.phase, .sessionClosed, "closed it stays; retired it is not")
     }
 
@@ -282,8 +287,9 @@ final class SessionForkTests: XCTestCase {
         let later = event(
             label: "beta", kind: .turnStarted, at: start + 3_600, processID: 502, clientKind: .background,
             forkedFrom: "alpha")
-        XCTAssertNil(relaunched.foldContinuedRow(for: later), "not folded back after a restart")
-        XCTAssertEqual(try relaunched.ingest(later).id, "claude:beta")
+        let after = try relaunched.receive(later)
+        XCTAssertEqual(after.rowsThatLeft, [], "not folded back after a restart")
+        XCTAssertEqual(after.row?.id, "claude:beta")
         XCTAssertEqual(relaunched.snapshots.count, 2)
     }
 
@@ -306,16 +312,17 @@ final class SessionForkTests: XCTestCase {
                 forkedFrom: "beta"))
         XCTAssertEqual(engine.snapshots["claude:alpha"]?.continuedBy, ["beta", "gamma"], "one row for the three")
 
-        let middle = try engine.ingest(
+        let spoke = try engine.receive(
             event(
                 label: "beta", kind: .turnStarted, at: start + 30, processID: 502, clientKind: .background,
                 forkedFrom: "alpha"))
+        let middle = try XCTUnwrap(spoke.row)
 
         XCTAssertEqual(middle.id, "claude:alpha")
         XCTAssertEqual(middle.agentProcessID, 502, "the row is the speaking copy's again")
         XCTAssertEqual(middle.continuedBy, ["beta"])
         XCTAssertEqual(middle.releasedCopies, ["gamma"])
-        XCTAssertEqual(engine.lastIngestNote, .released(copies: ["gamma"], rowWasClosed: false))
+        XCTAssertEqual(spoke.note, .released(copies: ["gamma"], rowWasClosed: false))
         let latest = try engine.ingest(
             event(
                 label: "gamma", kind: .turnStarted, at: start + 40, processID: 503, clientKind: .background,
@@ -334,7 +341,6 @@ final class SessionForkTests: XCTestCase {
         try engine.ingest(event(label: "beta", kind: .sessionStarted, at: start + 10, processID: 502))
 
         let end = event(label: "beta", kind: .sessionEnded, at: start + 20, processID: 502, forkedFrom: "alpha")
-        engine.foldContinuedRow(for: end)
         let row = try engine.ingest(end)
 
         XCTAssertEqual(row.id, "claude:alpha")
@@ -355,8 +361,9 @@ final class SessionForkTests: XCTestCase {
         let closed = try engine.ingest(event(label: "beta", kind: .sessionEnded, at: start + 20, processID: 502))
         XCTAssertEqual(closed.phase, .sessionClosed)
 
-        let alive = try engine.ingest(
+        let reopened = try engine.receive(
             event(label: "alpha", kind: .turnStarted, at: start + 30, processID: 501, clientKind: .cli))
+        let alive = try XCTUnwrap(reopened.row)
 
         XCTAssertEqual(alive.id, "claude:alpha")
         XCTAssertEqual(alive.phase, .executing, "a live session working, not a tombstone")
@@ -364,7 +371,7 @@ final class SessionForkTests: XCTestCase {
         XCTAssertEqual(alive.clientKind, .cli)
         XCTAssertNil(alive.continuedBy)
         XCTAssertEqual(alive.releasedCopies, ["beta"])
-        XCTAssertEqual(engine.lastIngestNote, .released(copies: ["beta"], rowWasClosed: true))
+        XCTAssertEqual(reopened.note, .released(copies: ["beta"], rowWasClosed: true))
     }
 
     /// `claude --resume <the original's id>` in a fresh terminal is the original coming back,
@@ -381,22 +388,24 @@ final class SessionForkTests: XCTestCase {
                 label: "beta", kind: .sessionStarted, at: start + 10, processID: 502, clientKind: .background,
                 forkedFrom: "alpha"))
 
-        let started = try engine.ingest(
+        let restart = try engine.receive(
             event(label: "alpha", kind: .sessionStarted, at: start + 20, processID: 601, clientKind: .cli))
+        let started = try XCTUnwrap(restart.row)
 
         XCTAssertEqual(started.agentProcessID, 502, "the row is still the copy's")
         XCTAssertEqual(started.continuedBy, ["beta"])
         XCTAssertNil(started.releasedCopies)
-        XCTAssertNil(engine.lastIngestNote)
+        XCTAssertNil(restart.note)
 
-        let turn = try engine.ingest(
+        let spoke = try engine.receive(
             event(label: "alpha", kind: .turnStarted, at: start + 30, processID: 601, clientKind: .cli))
+        let turn = try XCTUnwrap(spoke.row)
 
         XCTAssertEqual(turn.id, "claude:alpha")
         XCTAssertEqual(turn.agentProcessID, 601)
         XCTAssertNil(turn.continuedBy)
         XCTAssertEqual(turn.releasedCopies, ["beta"])
-        XCTAssertEqual(engine.lastIngestNote, .released(copies: ["beta"], rowWasClosed: false))
+        XCTAssertEqual(spoke.note, .released(copies: ["beta"], rowWasClosed: false))
     }
 
     /// Which session spoke is read from the event's label and the row's chain, not from the
@@ -552,8 +561,13 @@ final class SessionForkTests: XCTestCase {
     func testAFoldCarriesTheCopysOwnViewerAndLetGoCopiesOver() throws {
         var engine = SessionStateEngine()
         try engine.ingest(event(label: "alpha", kind: .sessionStarted, at: start, processID: 501, clientKind: .cli))
-        try engine.ingest(
+        // A background session earns its row by working — its start alone takes none — so
+        // `beta` has to work before there is a row for `gamma` to join and for the fold below
+        // to have anything to fold.
+        _ = try engine.receive(
             event(label: "beta", kind: .sessionStarted, at: start + 10, processID: 502, clientKind: .background))
+        try engine.ingest(
+            event(label: "beta", kind: .turnStarted, at: start + 11, processID: 502, clientKind: .background))
         try engine.ingest(
             event(
                 label: "gamma", kind: .sessionStarted, at: start + 20, processID: 503, clientKind: .background,
@@ -566,7 +580,6 @@ final class SessionForkTests: XCTestCase {
         let late = event(
             label: "beta", kind: .turnCompleted, at: start + 40, processID: 502, clientKind: .background,
             forkedFrom: "alpha")
-        engine.foldContinuedRow(for: late)
         let row = try engine.ingest(late)
 
         XCTAssertEqual(row.id, "claude:alpha")

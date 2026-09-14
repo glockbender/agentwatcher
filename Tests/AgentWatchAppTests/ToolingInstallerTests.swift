@@ -324,6 +324,26 @@ final class ToolingInstallerTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// The relay script names a sender, and a copy running in a sandbox owns a different
+    /// sender from the one the real folder knows about. So the folder follows the app, not
+    /// the home — unless this installer was handed a home of its own, which is what every
+    /// test above does.
+    func testTheAppsOwnFolderFollowsTheAppUnlessAHomeWasHandedIn() throws {
+        let home = try makeHome()
+
+        XCTAssertEqual(
+            ToolingInstaller(home: home).supportDirectory,
+            home.appendingPathComponent("Library/Application Support/AgentWatch", isDirectory: true),
+            "given a home, everything is under it"
+        )
+        XCTAssertEqual(
+            ToolingInstaller().supportDirectory,
+            try XCTUnwrap(AgentWatchPaths.applicationSupportDirectory())
+                .appendingPathComponent("AgentWatch", isDirectory: true),
+            "given none, the folder is the one every other store here resolves"
+        )
+    }
+
     private func makeHome() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("AgentWatchToolingTests.\(UUID().uuidString)", isDirectory: true)

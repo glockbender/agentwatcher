@@ -1,6 +1,6 @@
 import AgentWatchCore
 import AgentWatchIngress
-import AppKit
+import Foundation
 
 /// The way hook events reach the app: a local socket, and the rules for what arrives on it.
 ///

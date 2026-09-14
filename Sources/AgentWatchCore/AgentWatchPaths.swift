@@ -35,6 +35,17 @@ public enum AgentWatchPaths {
         return fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
     }
 
+    /// Agent Watch's own folder under the user's Application Support, or `nil` when the
+    /// system will not name one.
+    ///
+    /// The two steps above in one, because eleven callers were taking them by hand and each
+    /// copy is a chance to take only the first — which is how the one debug substitution this
+    /// app has ended up honoured by ten places and skipped by the eleventh.
+    public static func supportDirectory(fileManager: FileManager = .default) -> URL? {
+        applicationSupportDirectory(fileManager: fileManager)
+            .map { supportDirectory(inApplicationSupport: $0) }
+    }
+
     /// The socket the running instance listens on and a hook expects to find. One name,
     /// because one Agent Watch runs at a time — the lock beside it is what guarantees that.
     ///

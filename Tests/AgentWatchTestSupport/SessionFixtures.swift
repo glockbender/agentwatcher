@@ -71,6 +71,7 @@ public func testRequest(
     event: String,
     sessionID: String,
     agentProcessID: Int32? = nil,
+    clientKind: SessionClientKind? = nil,
     description: SessionDescription? = nil
 ) -> HookIngressRequest {
     HookIngressRequest(
@@ -78,6 +79,7 @@ public func testRequest(
         declaredEvent: event,
         payload: .object(["session_id": .string(sessionID)]),
         agentProcessID: agentProcessID,
+        clientKind: clientKind,
         description: description
     )
 }

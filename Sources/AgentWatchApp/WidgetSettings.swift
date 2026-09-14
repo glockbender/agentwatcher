@@ -1,5 +1,5 @@
 import AgentWatchCore
-import AppKit
+import Foundation
 
 /// What happens to a session once the app knows it is over.
 enum ClosedSessionRetention: Equatable {

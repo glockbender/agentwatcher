@@ -25,22 +25,60 @@ final class SessionPresenceTests: XCTestCase {
     }
 
     func testARowTheAppWillNeverRevisitOnItsOwnCanBeDismissedByHand() {
-        XCTAssertTrue(SessionPresence.isDismissible(snapshot(phase: .sessionClosed), now: now))
-        XCTAssertTrue(SessionPresence.isDismissible(snapshot(phase: .disconnected), now: now))
+        XCTAssertEqual(SessionPresence.dismissal(of: snapshot(phase: .sessionClosed), now: now), .now)
+        XCTAssertEqual(SessionPresence.dismissal(of: snapshot(phase: .disconnected), now: now), .now)
 
         // Waiting for a person is not tracked for freshness — an answer can take an hour — so
         // without the silence rule a session waiting on a completion that never came would
         // blink for attention with nothing able to clear it.
-        XCTAssertFalse(SessionPresence.isDismissible(snapshot(phase: .waitingForUser), now: now))
+        XCTAssertEqual(
+            SessionPresence.dismissal(of: snapshot(phase: .waitingForUser), now: now),
+            .notOffered(until: now + SessionFreshnessEvaluator.defaultDisconnectAfter))
         var longSilent = snapshot(phase: .waitingForUser)
         longSilent.lastObservedAt = now - SessionFreshnessEvaluator.defaultDisconnectAfter
-        XCTAssertTrue(SessionPresence.isDismissible(longSilent, now: now))
+        XCTAssertEqual(SessionPresence.dismissal(of: longSilent, now: now), .now)
 
         // A fault waits out nothing: every case above waits because the app still believes
         // the row, and a fault is the app saying it does not.
         var faulted = snapshot(phase: .executing)
         faulted.monitoringFault = .transcriptNotFound
-        XCTAssertTrue(SessionPresence.isDismissible(faulted, now: now))
+        XCTAssertEqual(SessionPresence.dismissal(of: faulted, now: now), .now)
+    }
+
+    /// The half of the answer the old `Bool` could not carry: a row whose session has
+    /// finished offers its `×` greyed, with the moment it starts working — and a row still
+    /// live offers none at all, `idle` included: resting between turns is not finished.
+    func testARowThatIsOverButStillHeldSaysWhenItsButtonStartsWorking() {
+        for phase in [SessionPhase.completed, .failed] {
+            XCTAssertEqual(
+                SessionPresence.dismissal(of: snapshot(phase: phase), now: now),
+                .notYet(at: now + SessionFreshnessEvaluator.defaultDisconnectAfter),
+                "\(phase) is over, so the button is offered — greyed until then"
+            )
+        }
+
+        for phase in [SessionPhase.planning, .executing, .waitingForChildren, .waitingForUser, .idle] {
+            XCTAssertEqual(
+                SessionPresence.dismissal(of: snapshot(phase: phase), now: now),
+                .notOffered(until: now + SessionFreshnessEvaluator.defaultDisconnectAfter),
+                "\(phase) is live work, and a button for it would promise something else"
+            )
+        }
+    }
+
+    /// Every phase lands in exactly one of the three, and the two that mean "no button now"
+    /// are never the same answer — the whole point of splitting the old `Bool` in two.
+    func testEveryPhaseGetsOneOfTheThreeAnswers() {
+        for phase in allPhases {
+            let answer = SessionPresence.dismissal(of: snapshot(phase: phase), now: now)
+            switch answer {
+            case .now:
+                XCTAssertNil(answer.becomesDismissibleAt, "\(phase) already offers a working button")
+            case .notYet(let at), .notOffered(let at):
+                XCTAssertEqual(at, now + SessionFreshnessEvaluator.defaultDisconnectAfter, "\(phase)")
+                XCTAssertEqual(answer.becomesDismissibleAt, at, "\(phase)")
+            }
+        }
     }
 
     private var allPhases: [SessionPhase] {
