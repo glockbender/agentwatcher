@@ -1,5 +1,4 @@
 import AgentWatchCore
-import AgentWatchIngress
 import AgentWatchLookup
 import AppKit
 import Darwin
