@@ -59,31 +59,18 @@ func chooseTitleDisplay(
 /// name in full.
 @MainActor
 final class HUDSessionRowView: NSStackView {
-    /// Below this a shortened name says nothing useful, and a single initial takes over.
-    /// Kept small on purpose: a truncated `AGENTS…CLAUDE.md` still identifies a session.
-    static let minimumTitleWidth: CGFloat = 52
-    static let elementSpacing: CGFloat = 4
-    static let buttonWidth: CGFloat = 22
-    /// The dismiss button, exactly this size. As tall as the row, so a row with one is no
-    /// taller than a row without.
-    static var buttonSize: NSSize { NSSize(width: buttonWidth, height: rowHeight) }
-    /// Breathing room inside the hover wash.
-    static let hoverPadding: CGFloat = 4
     /// How far a press may travel and still be a click. Beyond it the press is a drag of the
     /// widget and is handed back to the window. Four points is about what a hand does on its
     /// own between pressing and releasing.
+    ///
+    /// The one measurement here that the widget's scale leaves alone: it is about the hand,
+    /// not about the drawing, and a hand does not become steadier because the row got bigger.
     static let dragThreshold: CGFloat = 4
 
-    /// The height of a row, which every row is held to whatever it holds. It used to follow
-    /// from the buttons, the tallest thing in a row, until a row could have none; a row of
-    /// icons and labels alone came out three points shorter than one with a dismiss button.
-    /// The widget's self-sizing height reserves exactly this per row. It used to be called
-    /// `approximate`, from when the sizing only estimated; a test now measures the two
-    /// against each other.
-    static let rowHeight: CGFloat = 19
-    /// Three characters, always — the longest value the timer can print. Reserved in every
-    /// row so the lamp and everything after it stand in a straight column.
-    static let timerWidth: CGFloat = labelWidth(of: "99d", font: WidgetStyle.timerFont)
+    /// Every size this row is drawn at. The rest of what used to be listed here — the row's
+    /// height, its spacing, the width it reserves for the timer — moved onto it when those
+    /// numbers stopped being constants; `WidgetStyle` says why they could not stay `static`.
+    let style: WidgetStyle
 
     /// Everything in this row except the name, including the gap the name would sit after.
     ///
@@ -96,7 +83,7 @@ final class HUDSessionRowView: NSStackView {
     /// without a name: the budget for the name is measured on the row that will carry it,
     /// so no second row has to be built and thrown away to find it out.
     var furnitureWidth: CGFloat {
-        fittingSize.width + Self.elementSpacing
+        fittingSize.width + style.elementSpacing
     }
 
     /// Kept so the row can refresh its own timer without being rebuilt. Rebuilding the list
@@ -136,6 +123,7 @@ final class HUDSessionRowView: NSStackView {
         now: Date,
         background: WidgetBackground,
         lampScheme: LampScheme,
+        style: WidgetStyle = .standard,
         onFocus: @escaping () -> Void,
         dismissal: RowDismissal,
         onRemove: @escaping () -> Void,
@@ -145,22 +133,24 @@ final class HUDSessionRowView: NSStackView {
         self.snapshot = snapshot
         self.background = background
         self.lampScheme = lampScheme
+        self.style = style
         self.onFocus = onFocus
         self.onHoverChanged = onHoverChanged
-        timerLabel = Self.makeTimer(for: snapshot, now: now, background: background, lampScheme: lampScheme)
+        timerLabel = Self.makeTimer(
+            for: snapshot, now: now, background: background, lampScheme: lampScheme, style: style)
         shownElapsed = timerLabel.stringValue
         shownColor = timerLabel.textColor
         super.init(frame: .zero)
 
         var views: [NSView] = [
             timerLabel,
-            Self.makeLamp(lamp),
-            Self.makeSourceIcon(for: snapshot),
+            Self.makeLamp(lamp, style: style),
+            Self.makeSourceIcon(for: snapshot, style: style),
         ]
 
         // Beside the identity rather than out with the counters: it qualifies everything
         // else in the row, and a marker at the far end would be read as one more count.
-        if let faultMarker = Self.makeFaultMarker(for: snapshot, background: background) {
+        if let faultMarker = Self.makeFaultMarker(for: snapshot, background: background, style: style) {
             views.append(faultMarker)
         }
 
@@ -181,13 +171,15 @@ final class HUDSessionRowView: NSStackView {
                 Self.makeCounter(
                     image: ActivityIcon.image(for: counter.kind),
                     text: counterText(for: counter.kind, count: counter.count),
-                    background: background
+                    background: background,
+                    style: style
                 )
             )
         }
         if let context = widgetContextText(for: snapshot) {
             views.append(
-                Self.makeCounter(image: Self.contextImage, text: context, background: background)
+                Self.makeCounter(
+                    image: Self.contextImage, text: context, background: background, style: style)
             )
         }
 
@@ -198,9 +190,15 @@ final class HUDSessionRowView: NSStackView {
         if case .notOffered = dismissal {
             // Nothing to dismiss: the session is at work, or waiting for a person.
         } else {
-            let removeButton = RowDismissButton(perform: onRemove)
+            let removeButton = RowDismissButton(
+                font: style.buttonFont,
+                controlSize: style.buttonControlSize,
+                hasBezel: style.buttonHasBezel,
+                color: background.secondaryForegroundColor,
+                perform: onRemove
+            )
             removeButton.isEnabled = dismissal == .now
-            removeButton.pinSize(to: Self.buttonSize)
+            removeButton.pinSize(to: style.buttonSize)
             views.append(removeButton)
         }
 
@@ -209,11 +207,16 @@ final class HUDSessionRowView: NSStackView {
         }
         orientation = .horizontal
         alignment = .centerY
-        spacing = Self.elementSpacing
-        heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
+        spacing = style.elementSpacing
+        heightAnchor.constraint(equalToConstant: style.rowHeight).isActive = true
         // Room for the hover wash to sit around the content rather than against it. The
         // list's own inset is reduced by as much, so nothing moves.
-        edgeInsets = NSEdgeInsets(top: 1, left: Self.hoverPadding, bottom: 1, right: Self.hoverPadding)
+        edgeInsets = NSEdgeInsets(
+            top: style.rowVerticalInset,
+            left: style.hoverPadding,
+            bottom: style.rowVerticalInset,
+            right: style.hoverPadding
+        )
         beginWindowDrag = { [weak self] event in
             guard let window = self?.window, window.isMovableByWindowBackground else {
                 return false
@@ -247,7 +250,7 @@ final class HUDSessionRowView: NSStackView {
         }
         guard
             let index = arrangedSubviews.firstIndex(of: spacer),
-            let title = Self.makeTitle(title, display: display, background: background)
+            let title = Self.makeTitle(title, display: display, background: background, style: style)
         else {
             return
         }
@@ -495,18 +498,19 @@ final class HUDSessionRowView: NSStackView {
         for snapshot: SessionSnapshot,
         now: Date,
         background: WidgetBackground,
-        lampScheme: LampScheme
+        lampScheme: LampScheme,
+        style: WidgetStyle
     ) -> NSTextField {
         let elapsed = compactElapsed(now.timeIntervalSince(snapshot.lastObservedAt))
         let label = NSTextField(labelWithString: elapsed)
-        label.font = WidgetStyle.timerFont
+        label.font = style.timerFont
         label.alignment = .right
         label.textColor = timerColor(for: snapshot, now: now, background: background, lampScheme: lampScheme)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
         let insets = label.alignmentRectInsets
         label.widthAnchor.constraint(
-            equalToConstant: max(0, timerWidth - insets.left - insets.right)
+            equalToConstant: max(0, style.timerWidth - insets.left - insets.right)
         ).isActive = true
         return label
     }
@@ -537,24 +541,28 @@ final class HUDSessionRowView: NSStackView {
         }
     }
 
-    private static func makeLamp(_ appearance: SessionLampAppearance) -> NSView {
-        SessionLampView(appearance: appearance)
+    private static func makeLamp(_ appearance: SessionLampAppearance, style: WidgetStyle) -> NSView {
+        SessionLampView(appearance: appearance, diameter: style.lampDiameter)
     }
 
     /// Which agent, and nothing else. Where the session runs used to stand beside this as a
     /// second symbol and is the hover card's alone now — `SessionClientKind.displayName`
     /// records what was tried before that and why it was turned down.
-    private static func makeSourceIcon(for snapshot: SessionSnapshot) -> NSView {
+    private static func makeSourceIcon(for snapshot: SessionSnapshot, style: WidgetStyle) -> NSView {
         let icon = NSImageView()
-        icon.image = AgentIcon.image(for: snapshot.source)
+        icon.image = AgentIcon.image(for: snapshot.source, size: style.agentIconSize)
         icon.imageScaling = .scaleProportionallyDown
-        icon.pinSize(to: AgentIcon.size)
+        icon.pinSize(to: style.agentIconSize)
         return icon
     }
 
     /// The one mark that is about the widget rather than about the session: it says this row
     /// may be out of date. Spelled out in the hover card, like everything else in the row.
-    static func makeFaultMarker(for snapshot: SessionSnapshot, background: WidgetBackground) -> NSView? {
+    static func makeFaultMarker(
+        for snapshot: SessionSnapshot,
+        background: WidgetBackground,
+        style: WidgetStyle = .standard
+    ) -> NSView? {
         guard let fault = snapshot.monitoringFault else {
             return nil
         }
@@ -565,26 +573,43 @@ final class HUDSessionRowView: NSStackView {
         )
         icon.image?.isTemplate = true
         icon.contentTintColor = background.warningColor
-        icon.symbolConfiguration = .init(pointSize: 10, weight: .regular)
-        icon.pinSize(to: WidgetStyle.rowGlyph)
+        icon.symbolConfiguration = .init(pointSize: style.rowGlyphPointSize, weight: .regular)
+        // Without this the box below is not obeyed. An `NSImageView` adds size constraints of
+        // its own from the image it holds, and a symbol brings two — measured here as a
+        // required 3.5 and 6 fighting the required 7 this asks for, which Auto Layout settled
+        // at 9.5, half again the size, inside a row with no room for it. Told to scale down,
+        // the view gives way instead. It went unseen while the row was 19 points tall and
+        // anything that overran still fitted; at half that it is the row's tallest thing.
+        icon.imageScaling = .scaleProportionallyDown
+        icon.image?.size = style.rowGlyph
+        icon.pinSize(to: style.rowGlyph)
         return icon
     }
 
     /// A symbol and its number. Neither carries a tooltip: the row's hover card names every
     /// counter in words, which is one place to look instead of four small targets to find.
-    private static func makeCounter(image: NSImage?, text: String?, background: WidgetBackground) -> NSView {
+    private static func makeCounter(
+        image: NSImage?,
+        text: String?,
+        background: WidgetBackground,
+        style: WidgetStyle
+    ) -> NSView {
         let symbol = NSImageView()
         symbol.image = image
         symbol.contentTintColor = background.secondaryForegroundColor
-        symbol.symbolConfiguration = .init(pointSize: 11, weight: .regular)
-        symbol.pinSize(to: ActivityIcon.size)
+        symbol.symbolConfiguration = .init(pointSize: style.activityIconPointSize, weight: .regular)
+        // For the reason the fault marker gives: a symbol's own constraints outvote the box
+        // unless the view is told it may scale down.
+        symbol.imageScaling = .scaleProportionallyDown
+        symbol.image?.size = style.activityIconSize
+        symbol.pinSize(to: style.activityIconSize)
 
         guard let text else {
             return symbol
         }
 
         let label = NSTextField(labelWithString: text)
-        label.font = WidgetStyle.countsFont
+        label.font = style.countsFont
         label.textColor = background.foregroundColor
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
@@ -603,7 +628,8 @@ final class HUDSessionRowView: NSStackView {
     private static func makeTitle(
         _ title: String?,
         display: SessionTitleDisplay,
-        background: WidgetBackground
+        background: WidgetBackground,
+        style: WidgetStyle
     ) -> (label: NSTextField, cap: NSLayoutConstraint?)? {
         guard display != .hidden, let title, !title.isEmpty else {
             return nil
@@ -615,7 +641,7 @@ final class HUDSessionRowView: NSStackView {
             default: title
             }
         let label = NSTextField(labelWithString: shown)
-        label.font = WidgetStyle.titleFont
+        label.font = style.titleFont
         label.textColor = background.foregroundColor
         label.lineBreakMode = .byTruncatingMiddle
 
@@ -649,15 +675,56 @@ final class HUDSessionRowView: NSStackView {
 final class RowDismissButton: NSButton {
     private let perform: () -> Void
 
-    init(perform: @escaping () -> Void) {
+    /// - Parameters:
+    ///   - hasBezel: `false` where the widget is drawn too small for AppKit to draw one —
+    ///     `WidgetStyle.buttonHasBezel` decides, and says what goes wrong otherwise. The box,
+    ///     the click and the place at the end of the row are the same either way.
+    ///   - color: what the bezel-less mark is drawn in; ignored when there is a bezel, which
+    ///     takes the system's own control colour.
+    init(
+        font: NSFont = WidgetStyle.standard.buttonFont,
+        controlSize: NSControl.ControlSize = WidgetStyle.standard.buttonControlSize,
+        hasBezel: Bool = true,
+        color: NSColor? = nil,
+        perform: @escaping () -> Void
+    ) {
         self.perform = perform
         super.init(frame: .zero)
-        title = "×"
         bezelStyle = .texturedRounded
-        controlSize = .small
-        font = WidgetStyle.buttonFont
+        isBordered = hasBezel
+        self.controlSize = controlSize
+        self.font = font
+        if hasBezel {
+            title = "×"
+        } else {
+            Self.markWithASymbol(self, pointSize: font.pointSize, color: color)
+        }
         target = self
         action = #selector(run)
+    }
+
+    /// The `×` as a symbol rather than as text, for a button with no bezel.
+    ///
+    /// Not a matter of taste — measured, on both a dark and a light widget. A disabled
+    /// borderless button does not draw its title **at all**: with AppKit's own colour, with
+    /// the widget's, at full strength and faded, every one came out as bare background, so a
+    /// `×` that did not work yet was not merely faint but absent. The same button drawn with
+    /// an image is drawn in both states, and AppKit dims the disabled one itself — measured
+    /// against a light widget at 0.49 working and 0.75 not yet, where the background is 0.97.
+    ///
+    /// That matters more here than anywhere: a button that cannot work yet has to stay put
+    /// and stay visible, because the question a person asks is "why can I not close this?"
+    /// and the hover card answers it. A button that vanishes answers a different one.
+    ///
+    /// It also puts the mark in the same language as the rest of the row, which is symbols
+    /// throughout — the counters, the fault marker — and leaves the bezelled `×` of the
+    /// ordinary sizes exactly as it was.
+    private static func markWithASymbol(_ button: NSButton, pointSize: CGFloat, color: NSColor?) {
+        button.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Dismiss")
+        button.image?.isTemplate = true
+        button.imagePosition = .imageOnly
+        button.symbolConfiguration = .init(pointSize: pointSize, weight: .regular)
+        button.contentTintColor = color
     }
 
     @available(*, unavailable)

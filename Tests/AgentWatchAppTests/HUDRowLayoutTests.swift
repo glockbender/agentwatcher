@@ -720,7 +720,7 @@ final class HUDRowLayoutTests: XCTestCase {
         let closedRow = row(snapshot: closed, dismissal: .now)
 
         XCTAssertEqual(liveRow.fittingSize.height, closedRow.fittingSize.height, accuracy: 0.5)
-        XCTAssertEqual(liveRow.fittingSize.height, HUDSessionRowView.rowHeight, accuracy: 0.5)
+        XCTAssertEqual(liveRow.fittingSize.height, WidgetStyle.standard.rowHeight, accuracy: 0.5)
     }
 
     /// And the room a row reserves is enough for what it holds.
@@ -734,15 +734,220 @@ final class HUDRowLayoutTests: XCTestCase {
     /// A row without a dismiss button, because that button's height *is* `rowHeight` —
     /// everything else in a row brings a size of its own.
     func testARowReservesEnoughRoomForWhatItHolds() {
-        let laidOut = row(snapshot: snapshot())
+        // Every offered size, not only the tuned one. A row is a stack of independent sizes —
+        // two fonts, three pictures and a lamp — and the scale multiplies each of them on its
+        // own, so one of them left unscaled shows up here and nowhere else.
+        // A faulted row as well as an ordinary one: the fault marker is the only thing in a
+        // row with a size of its own that an ordinary snapshot never puts there.
+        var faulted = snapshot()
+        faulted.monitoringFault = .transcriptNotFound
 
-        let tallest = laidOut.subviews.map(\.fittingSize.height).max() ?? 0
+        for scale in WidgetSettingsStore.offeredScales {
+            let style = WidgetStyle(scale: scale)
+            for session in [snapshot(), faulted] {
+                let laidOut = row(snapshot: session, style: style)
 
-        XCTAssertGreaterThanOrEqual(
-            HUDSessionRowView.rowHeight,
-            tallest + laidOut.edgeInsets.top + laidOut.edgeInsets.bottom,
-            "something in the row is taller than the room the row reserves"
+                let tallest = laidOut.subviews.map(\.fittingSize.height).max() ?? 0
+                XCTAssertGreaterThanOrEqual(
+                    style.rowHeight,
+                    tallest + laidOut.edgeInsets.top + laidOut.edgeInsets.bottom,
+                    "at \(Int(scale * 100))% something in the row is taller than the room it reserves"
+                )
+            }
+        }
+    }
+
+    /// The one defect in the scale that drawing found and no measurement had: at twice the
+    /// size the `×` came out as a wide, thin capsule with a small glyph adrift inside it.
+    ///
+    /// AppKit refuses to draw a `.texturedRounded` bezel taller than its control size — it
+    /// centres the bezel in whatever box it is given and stretches it sideways — so a box
+    /// sized from the row instead of from the bezel grew in one direction only. What has to
+    /// hold is that the box never runs further ahead of the bezel than it does at the tuned
+    /// size, where the proportions are the ones every other number here was chosen against.
+    ///
+    /// Measured on the alignment rectangle, which is what `pinSize` constrains, against the
+    /// bare button's `intrinsicContentSize`, which is the same quantity for a button nobody
+    /// has imposed a size on. Comparing frames instead compares two different things: a
+    /// bezelled button's frame is larger than its alignment rectangle by the bezel's inset.
+    func testTheDismissButtonsBoxStaysInProportionToTheBezel() throws {
+        var closed = snapshot()
+        closed.phase = .sessionClosed
+
+        let tuned = try slackAroundTheBezel(in: WidgetStyle.standard, for: closed)
+
+        for scale in WidgetSettingsStore.offeredScales {
+            let style = WidgetStyle(scale: scale)
+            let slack = try slackAroundTheBezel(in: style, for: closed)
+            let percent = Int(scale * 100)
+
+            XCTAssertLessThanOrEqual(
+                slack.height,
+                tuned.height,
+                "at \(percent)% the box is taller above the bezel than at the tuned size"
+            )
+            XCTAssertLessThanOrEqual(
+                slack.width,
+                tuned.width,
+                "at \(percent)% the box is wider around the bezel than at the tuned size"
+            )
+        }
+    }
+
+    /// How much larger the box a row gives its `×` is than the bezel that has to fill it.
+    private func slackAroundTheBezel(in style: WidgetStyle, for session: SessionSnapshot) throws -> NSSize {
+        let laidOut = row(snapshot: session, dismissal: .now, style: style)
+        let button = try XCTUnwrap(dismissButton(in: laidOut))
+        let imposed = button.alignmentRect(forFrame: button.frame)
+        let wanted = RowDismissButton(
+            font: style.buttonFont,
+            controlSize: style.buttonControlSize,
+            perform: {}
+        ).intrinsicContentSize
+        return NSSize(width: imposed.width - wanted.width, height: imposed.height - wanted.height)
+    }
+
+    /// A `×` that does not work yet has to stay visible at every size, and plainly weaker
+    /// than one that does.
+    ///
+    /// Drawn into a bitmap and counted, because the defect this catches is invisible to every
+    /// other kind of check: a disabled borderless button does not draw its title at all, so
+    /// below the size where the bezel fits, the greyed `×` was not faint but absent — while
+    /// the view was still there, still the right size, still reporting itself as a button.
+    /// Only ink on a background answers this.
+    func testAGreyedDismissMarkIsStillDrawnAtEverySize() throws {
+        var closed = snapshot()
+        closed.phase = .sessionClosed
+
+        for scale in WidgetSettingsStore.offeredScales {
+            let style = WidgetStyle(scale: scale)
+            let percent = Int(scale * 100)
+            // Both ends of the palette: the widget's background is one of ten a person picks,
+            // and a mark that survives on graphite can still vanish on pearl.
+            for background in [WidgetBackground.graphite, .pearl] {
+                let working = try inkOfTheDismissMark(
+                    style: style, background: background, dismissal: .now)
+                let greyed = try inkOfTheDismissMark(
+                    style: style, background: background, dismissal: .notYet(at: now + 60))
+
+                XCTAssertGreaterThanOrEqual(
+                    greyed, working * Self.faintestGreyedMark,
+                    "at \(percent)% on \(background.title) the greyed × is too faint to see"
+                )
+                XCTAssertLessThan(
+                    greyed, working,
+                    "at \(percent)% on \(background.title) the greyed × is as strong as a working one"
+                )
+            }
+        }
+    }
+
+    /// The least of a working mark that a greyed one may keep and still be seen.
+    ///
+    /// Not a threshold picked to fit: measured across all seven sizes on a dark and a light
+    /// widget, the greyed mark keeps 0.49 to 0.74 of the working one, while the version that
+    /// drew its title as text kept 0.05 — visible to no one, and to no other check. A quarter
+    /// sits in the gap with room on both sides.
+    private static let faintestGreyedMark = 0.25
+
+    /// How much the `×` differs from the background it is drawn on, summed over the button.
+    ///
+    /// Zero means nothing was drawn. The button is rendered on a real opaque background rather
+    /// than on nothing: a template symbol on a transparent bitmap reads as ink whatever colour
+    /// it was given, which is exactly the question being asked.
+    private func inkOfTheDismissMark(
+        style: WidgetStyle,
+        background: WidgetBackground,
+        dismissal: RowDismissal
+    ) throws -> Double {
+        let button = RowDismissButton(
+            font: style.buttonFont,
+            controlSize: style.buttonControlSize,
+            hasBezel: style.buttonHasBezel,
+            color: background.secondaryForegroundColor,
+            perform: {}
         )
+        button.isEnabled = dismissal == .now
+        button.pinSize(to: style.buttonSize)
+
+        let canvas = NSView(frame: NSRect(origin: .zero, size: style.buttonSize))
+        canvas.wantsLayer = true
+        canvas.layer?.backgroundColor = background.color.cgColor
+        canvas.addSubview(button)
+        button.frame = canvas.bounds
+        canvas.layoutSubtreeIfNeeded()
+
+        let bitmap = try XCTUnwrap(canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds))
+        canvas.cacheDisplay(in: canvas.bounds, to: bitmap)
+        let ground = try XCTUnwrap(background.color.usingColorSpace(.deviceRGB))
+
+        var ink = 0.0
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let pixel = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                    continue
+                }
+                ink +=
+                    abs(Double(pixel.redComponent - ground.redComponent))
+                    + abs(Double(pixel.greenComponent - ground.greenComponent))
+                    + abs(Double(pixel.blueComponent - ground.blueComponent))
+            }
+        }
+        return ink
+    }
+
+    /// And the cap is a cap, not a ceiling the button sits under from the start: a larger
+    /// widget still gets a larger `×`. Without this, pinning the button to one point would
+    /// satisfy the test that measures the slack around the bezel.
+    func testTheDismissButtonStillGrowsWithTheWidget() throws {
+        var closed = snapshot()
+        closed.phase = .sessionClosed
+
+        let small = try XCTUnwrap(dismissButton(in: row(snapshot: closed, dismissal: .now, style: .standard)))
+        let large = try XCTUnwrap(
+            dismissButton(in: row(snapshot: closed, dismissal: .now, style: WidgetStyle(scale: 2)))
+        )
+
+        XCTAssertGreaterThan(large.frame.height, small.frame.height)
+        XCTAssertGreaterThan(large.frame.width, small.frame.width)
+        XCTAssertGreaterThan(
+            large.font?.pointSize ?? 0,
+            small.font?.pointSize ?? 0,
+            "the glyph inside the bezel has to grow with it"
+        )
+    }
+
+    /// The setting's whole promise: a larger scale draws a larger row, and draws every part
+    /// of it larger — not a taller box with the same small text and pictures inside it.
+    func testEveryPartOfARowGrowsWithTheScale() throws {
+        var busy = snapshot()
+        busy.activities = [SessionActivity(id: "shell", kind: .shell, startedAt: now)]
+
+        let small = row(snapshot: busy, style: .standard)
+        let large = row(snapshot: busy, style: WidgetStyle(scale: 2))
+
+        XCTAssertGreaterThan(large.fittingSize.height, small.fittingSize.height)
+
+        let smallFonts = allSubviews(of: small).compactMap { ($0 as? NSTextField)?.font?.pointSize }
+        let largeFonts = allSubviews(of: large).compactMap { ($0 as? NSTextField)?.font?.pointSize }
+        XCTAssertEqual(smallFonts.count, largeFonts.count, "the same row, drawn twice")
+        XCTAssertFalse(smallFonts.isEmpty, "the row has text to compare")
+        for (smaller, larger) in zip(smallFonts, largeFonts) {
+            XCTAssertGreaterThan(larger, smaller, "a label kept its old size")
+        }
+
+        // The pictures are asked about separately because an image view's own fitting size is
+        // the image's, not the size the row holds it to — the box is the drawn size here.
+        let smallImages = allSubviews(of: small).compactMap { ($0 as? NSImageView)?.frame.height }
+        let largeImages = allSubviews(of: large).compactMap { ($0 as? NSImageView)?.frame.height }
+        XCTAssertFalse(smallImages.isEmpty, "the row has pictures to compare")
+        for (smaller, larger) in zip(smallImages, largeImages) {
+            XCTAssertGreaterThan(larger, smaller, "a picture kept its old size")
+        }
+
+        let smallLamp = try XCTUnwrap(allSubviews(of: small).first { $0 is SessionLampView })
+        let largeLamp = try XCTUnwrap(allSubviews(of: large).first { $0 is SessionLampView })
+        XCTAssertGreaterThan(largeLamp.frame.height, smallLamp.frame.height, "the lamp kept its old size")
     }
 
     /// What Auto Layout actually placed, as opposed to the frame drawn around it.
@@ -777,8 +982,8 @@ final class HUDRowLayoutTests: XCTestCase {
         let furniture = nameless(session).furnitureWidth
         let display = chooseTitleDisplay(
             availableWidth: contentWidth - furniture,
-            fullTitleWidth: labelWidth(of: session.title ?? "", font: WidgetStyle.titleFont),
-            minimumTitleWidth: HUDSessionRowView.minimumTitleWidth
+            fullTitleWidth: labelWidth(of: session.title ?? "", font: WidgetStyle.standard.titleFont),
+            minimumTitleWidth: WidgetStyle.standard.minimumTitleWidth
         )
 
         XCTAssertEqual(display, .truncated(toWidth: contentWidth - furniture), "this name is too long to fit")
@@ -820,12 +1025,12 @@ final class HUDRowLayoutTests: XCTestCase {
     /// leaves `m` wider than `d`.
     func testEveryTimerValueTakesTheSameWidth() {
         let widths = ["0s", "59s", "9m", "59m", "1h", "23h", "99d"]
-            .map { labelWidth(of: $0, font: WidgetStyle.timerFont) }
+            .map { labelWidth(of: $0, font: WidgetStyle.standard.timerFont) }
 
-        XCTAssertEqual(widths.max() ?? 0, HUDSessionRowView.timerWidth, accuracy: 0.5)
+        XCTAssertEqual(widths.max() ?? 0, WidgetStyle.standard.timerWidth, accuracy: 0.5)
         XCTAssertLessThanOrEqual(
             (widths.max() ?? 0) - (widths.min() ?? 0),
-            labelWidth(of: "9", font: WidgetStyle.timerFont) + 0.5,
+            labelWidth(of: "9", font: WidgetStyle.standard.timerFont) + 0.5,
             "a shorter value may be one character narrower, never more"
         )
     }
@@ -852,8 +1057,8 @@ final class HUDRowLayoutTests: XCTestCase {
         let laidOut = row(titleDisplay: .fullName)
         let lamp = laidOut.arrangedSubviews.compactMap { $0 as? SessionLampView }.first
 
-        XCTAssertEqual(lamp?.frame.width ?? 0, SessionLampView.diameter, accuracy: 0.5)
-        XCTAssertEqual(lamp?.frame.height ?? 0, SessionLampView.diameter, accuracy: 0.5)
+        XCTAssertEqual(lamp?.frame.width ?? 0, WidgetStyle.standard.lampDiameter, accuracy: 0.5)
+        XCTAssertEqual(lamp?.frame.height ?? 0, WidgetStyle.standard.lampDiameter, accuracy: 0.5)
     }
 
     /// The row's only mark about the widget rather than about the session. It appears only
@@ -964,13 +1169,15 @@ final class HUDRowLayoutTests: XCTestCase {
         titleDisplay: SessionTitleDisplay = .fullName,
         onFocus: @escaping () -> Void = {},
         dismissal: RowDismissal = .notOffered(until: .distantFuture),
-        lampScheme: LampScheme = LampScheme()
+        lampScheme: LampScheme = LampScheme(),
+        style: WidgetStyle = .standard
     ) -> HUDSessionRowView {
         let view = HUDSessionRowView(
             snapshot: snapshot ?? self.snapshot(),
             now: now,
             background: .graphite,
             lampScheme: lampScheme,
+            style: style,
             onFocus: onFocus,
             dismissal: dismissal,
             onRemove: {}
@@ -988,7 +1195,7 @@ final class HUDRowLayoutTests: XCTestCase {
     private func timerLabel(in row: HUDSessionRowView) -> NSTextField? {
         row.arrangedSubviews
             .compactMap { $0 as? NSTextField }
-            .first { $0.font == WidgetStyle.timerFont }
+            .first { $0.font == WidgetStyle.standard.timerFont }
     }
 
     private func titleLabel(in row: HUDSessionRowView) -> NSTextField? {

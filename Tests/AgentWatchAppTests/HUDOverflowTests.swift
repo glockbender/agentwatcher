@@ -50,7 +50,7 @@ final class HUDOverflowTests: XCTestCase {
         let atTheTop = list.hiddenSessionCount
         XCTAssertGreaterThan(atTheTop, 1, "this size really does cut rows off")
 
-        try scroll(list, by: HUDSessionRowView.rowHeight + HUDSessionListView.rowSpacing)
+        try scroll(list, by: WidgetStyle.standard.rowHeight + WidgetStyle.standard.rowSpacing)
 
         XCTAssertEqual(list.hiddenSessionCount, atTheTop - 1)
     }
@@ -67,7 +67,7 @@ final class HUDOverflowTests: XCTestCase {
         let badge = try XCTUnwrap(firstBadge(in: list))
         XCTAssertEqual(
             scrollView.frame.maxY,
-            list.bounds.maxY - HUDSessionListView.verticalPadding,
+            list.bounds.maxY - WidgetStyle.standard.listVerticalPadding,
             accuracy: 0.5,
             "the list reaches the bottom of the widget whether or not the counter is showing"
         )
@@ -323,6 +323,44 @@ final class HUDOverflowTests: XCTestCase {
         }
     }
 
+    /// And it matches at every size the widget can be drawn at. The height the window is
+    /// given and the height its rows take are computed from the same style, so a scale that
+    /// reached one of them and not the other shows up as rows cut off by the widget's own
+    /// bottom edge.
+    func testTheSelfSizedHeightMatchesAtEverySizeOnOffer() throws {
+        for scale in WidgetSettingsStore.offeredScales {
+            let style = WidgetStyle(scale: scale)
+            let list = listView(sessionCount: 4, style: style)
+            let expected = HUDSessionListView.selfSizedHeight(
+                sessionCount: 4,
+                usageLimits: [],
+                background: .graphite,
+                style: style
+            )
+            place(list, height: expected)
+
+            let rows = allSubviews(of: list).compactMap { $0 as? HUDSessionRowView }
+            let scrollView = try XCTUnwrap(allSubviews(of: list).compactMap { $0 as? NSScrollView }.first)
+            XCTAssertEqual(
+                hiddenRowCount(rowFrames: rows.map(\.frame), visibleRect: scrollView.documentVisibleRect),
+                0,
+                "at \(Int(scale * 100))% the rows do not fit the height the widget was sized to"
+            )
+        }
+    }
+
+    /// A larger widget needs more room for the same sessions. Stated on its own because the
+    /// test above would still pass if the height stopped following the scale and every row
+    /// stopped growing with it too.
+    func testALargerWidgetAsksForMoreHeight() {
+        let small = HUDSessionListView.selfSizedHeight(
+            sessionCount: 4, usageLimits: [], background: .graphite, style: .standard)
+        let large = HUDSessionListView.selfSizedHeight(
+            sessionCount: 4, usageLimits: [], background: .graphite, style: WidgetStyle(scale: 2))
+
+        XCTAssertGreaterThan(large, small * 1.5, "four rows at twice the size are not nearly twice as tall")
+    }
+
     /// The usage block is part of that height, so a widget showing account limits has to be
     /// taller than the same list without them — by the block plus its divider, not by a
     /// guess at a label's height.
@@ -395,7 +433,8 @@ final class HUDOverflowTests: XCTestCase {
         sessionCount: Int,
         title: String? = nil,
         phase: SessionPhase = .executing,
-        usageLimits: [AgentUsageLimits] = []
+        usageLimits: [AgentUsageLimits] = [],
+        style: WidgetStyle = .standard
     ) -> HUDSessionListView {
         HUDSessionListView(
             models: rowModels(
@@ -410,6 +449,7 @@ final class HUDOverflowTests: XCTestCase {
             background: .graphite,
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
+            style: style,
             restoredScrollOffset: nil,
             onScroll: { _ in }
         )

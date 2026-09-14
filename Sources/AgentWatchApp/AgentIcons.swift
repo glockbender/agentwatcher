@@ -10,9 +10,16 @@ import AppKit
 /// must never close a Claude session, even though its icon is the right one to show.
 @MainActor
 enum AgentIcon {
-    static let size = NSSize(width: 15, height: 15)
+    /// Kept by size as well as by source: the icon is asked for at whatever size the widget
+    /// is currently drawn at, and a cache keyed by the source alone handed back the image
+    /// from the previous scale — the same object, already stamped with the old size.
+    private static var cache: [Key: NSImage] = [:]
 
-    private static var cache: [AgentSource: NSImage] = [:]
+    private struct Key: Hashable {
+        let source: AgentSource
+        let width: CGFloat
+        let height: CGFloat
+    }
 
     /// Bundle identifiers used purely to borrow an icon.
     private static func iconBundleIdentifier(for source: AgentSource) -> String {
@@ -30,14 +37,15 @@ enum AgentIcon {
         }
     }
 
-    static func image(for source: AgentSource) -> NSImage {
-        if let cached = cache[source] {
+    static func image(for source: AgentSource, size: NSSize = WidgetStyle.standard.agentIconSize) -> NSImage {
+        let key = Key(source: source, width: size.width, height: size.height)
+        if let cached = cache[key] {
             return cached
         }
 
-        let image = applicationIcon(for: source) ?? fallbackIcon(for: source)
+        let image = applicationIcon(for: source) ?? fallbackIcon(for: source, size: size)
         image.size = size
-        cache[source] = image
+        cache[key] = image
         return image
     }
 
@@ -58,7 +66,7 @@ enum AgentIcon {
 
     /// A plain brand-coloured disc. Enough to keep the two sources apart when neither
     /// desktop application is installed, which is normal for a terminal-only setup.
-    private static func fallbackIcon(for source: AgentSource) -> NSImage {
+    private static func fallbackIcon(for source: AgentSource, size: NSSize) -> NSImage {
         let image = NSImage(size: size)
         image.lockFocus()
         fallbackColor(for: source).setFill()
@@ -74,8 +82,6 @@ enum AgentIcon {
 /// the row's foreground colour, so they stayed bright against a dimmed background.
 @MainActor
 enum ActivityIcon {
-    static let size = NSSize(width: 12, height: 12)
-
     static func image(for kind: ActivityKind) -> NSImage? {
         let image = NSImage(
             systemSymbolName: symbolName(for: kind),

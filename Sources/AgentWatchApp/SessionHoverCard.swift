@@ -92,13 +92,30 @@ final class SessionHoverCard {
     /// Long enough not to flash while the pointer crosses the widget on its way elsewhere,
     /// short enough to feel like an answer rather than a wait.
     static let appearanceDelay: TimeInterval = 0.5
-    private static let padding: CGFloat = 8
-    private static let maximumWidth: CGFloat = 340
-    /// How far below the hovered row the card sits.
+    /// How far below the hovered row the card sits. Unscaled, unlike everything else about
+    /// the card: it is the distance between two windows, not part of either drawing.
     static let rowGap: CGFloat = 4
+
+    /// The size the card is drawn at, which the widget's own scale decides.
+    ///
+    /// Settable, and the one place in the widget where a style has to be pushed into a view
+    /// rather than handed to a new one: the card is a single panel that outlives every
+    /// rebuild of the list — the pointer is resting on a row while the scale changes — so it
+    /// takes the new size where a row would simply be built again.
+    var style: WidgetStyle = .standard {
+        didSet {
+            guard style.scale != oldValue.scale else {
+                return
+            }
+            applyStyle()
+        }
+    }
 
     private let panel: NSPanel
     private let label: NSTextField
+    /// Kept so the padding can follow the scale; a constraint's constant is the only part of
+    /// it that can be changed after it is activated.
+    private var paddingConstraints: [NSLayoutConstraint] = []
     /// Where the card was placed, so a change of text can be placed again. Resizing without
     /// re-placing broke the two things the placement exists for: a card that grew could run
     /// off the bottom of the screen, or cover the row it describes.
@@ -106,22 +123,24 @@ final class SessionHoverCard {
 
     init() {
         label = NSTextField(labelWithString: "")
-        label.font = WidgetStyle.secondaryFont
+        label.font = WidgetStyle.standard.secondaryFont
         label.lineBreakMode = .byWordWrapping
         label.maximumNumberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
 
+        let padding = WidgetStyle.standard.hoverCardPadding
         let effect = makeBackdrop(cornerRadius: WidgetStyle.panelCornerRadius)
         effect.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: Self.padding),
-            label.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -Self.padding),
-            label.topAnchor.constraint(equalTo: effect.topAnchor, constant: Self.padding),
-            label.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -Self.padding),
-        ])
+        paddingConstraints = [
+            label.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: padding),
+            label.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -padding),
+            label.topAnchor.constraint(equalTo: effect.topAnchor, constant: padding),
+            label.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -padding),
+        ]
+        NSLayoutConstraint.activate(paddingConstraints)
 
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: Self.maximumWidth, height: 60),
+            contentRect: NSRect(x: 0, y: 0, width: WidgetStyle.standard.hoverCardMaximumWidth, height: 60),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -143,6 +162,28 @@ final class SessionHoverCard {
         // leave, hide the card, see the pointer return, and show it again — a flicker with
         // no way out.
         panel.ignoresMouseEvents = true
+    }
+
+    /// Restates the font and the padding, and lays the card out again at the new size.
+    ///
+    /// The relaying is the point: the panel's size was worked out from the old font, so
+    /// without it a card open at the moment of the change keeps its old rectangle around new
+    /// text until the pointer leaves the row.
+    private func applyStyle() {
+        label.font = style.secondaryFont
+        let padding = style.hoverCardPadding
+        for constraint in paddingConstraints {
+            // Trailing and bottom hold the negative of the same gap.
+            constraint.constant = constraint.constant < 0 ? -padding : padding
+        }
+        guard panel.isVisible else {
+            return
+        }
+        // Cleared first, because `place` skips text it is already showing — and the text has
+        // not changed here, only the size it has to be measured at.
+        let text = label.stringValue
+        label.stringValue = ""
+        place(text: text)
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -186,7 +227,7 @@ final class SessionHoverCard {
             return
         }
         label.stringValue = text
-        label.preferredMaxLayoutWidth = Self.maximumWidth - 2 * Self.padding
+        label.preferredMaxLayoutWidth = style.hoverCardMaximumWidth - 2 * style.hoverCardPadding
 
         let size = fittingSize()
         guard size != panel.frame.size else {
@@ -199,11 +240,12 @@ final class SessionHoverCard {
     /// As wide as its longest line, up to the cap. A card fixed at the cap would stand as a
     /// wide empty rectangle behind two short lines.
     private func fittingSize() -> NSSize {
-        let available = Self.maximumWidth - 2 * Self.padding
+        let padding = style.hoverCardPadding
+        let available = style.hoverCardMaximumWidth - 2 * padding
         let text = label.sizeThatFits(NSSize(width: available, height: .greatestFiniteMagnitude))
         return NSSize(
-            width: min(ceil(text.width), available) + 2 * Self.padding,
-            height: ceil(text.height) + 2 * Self.padding
+            width: min(ceil(text.width), available) + 2 * padding,
+            height: ceil(text.height) + 2 * padding
         )
     }
 

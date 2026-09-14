@@ -10,7 +10,12 @@ final class HUDEmptyStateView: NSView {
     ///   agent is able to report to it at all. `nil` when one already can, and then the
     ///   widget says nothing about the rest: running only Claude on a machine that also has
     ///   Codex is a decision, not a half-finished setup.
-    init(background: WidgetBackground, backgroundOpacity: CGFloat, complaint: String? = nil) {
+    init(
+        background: WidgetBackground,
+        backgroundOpacity: CGFloat,
+        style: WidgetStyle = .standard,
+        complaint: String? = nil
+    ) {
         super.init(frame: .zero)
         let effectView = makeBackgroundView(for: background, opacity: backgroundOpacity)
 
@@ -20,14 +25,14 @@ final class HUDEmptyStateView: NSView {
             accessibilityDescription: nil
         )
         icon.contentTintColor = background.secondaryForegroundColor
-        icon.symbolConfiguration = .init(pointSize: 18, weight: .medium)
+        icon.symbolConfiguration = .init(pointSize: style.emptyStateIconPointSize, weight: .medium)
 
         let title = NSTextField(labelWithString: "Agent Watch")
-        title.font = WidgetStyle.emptyTitleFont
+        title.font = style.emptyTitleFont
         title.textColor = background.foregroundColor
 
         let subtitle = NSTextField(labelWithString: complaint ?? "No active sessions")
-        subtitle.font = WidgetStyle.emptySubtitleFont
+        subtitle.font = style.emptySubtitleFont
         // An empty widget that cannot explain itself is the worst state this app has, so when
         // nothing can report to it the line says that instead of the ordinary "no sessions" —
         // and says it in the colour of something to act on.
@@ -47,20 +52,20 @@ final class HUDEmptyStateView: NSView {
         let textStack = NSStackView(views: [title, subtitle])
         textStack.orientation = .vertical
         textStack.alignment = .leading
-        textStack.spacing = 3
+        textStack.spacing = style.emptyStateLineGap
 
         let contentStack = NSStackView(views: [icon, textStack])
         contentStack.orientation = .horizontal
         contentStack.alignment = .centerY
-        contentStack.spacing = 9
+        contentStack.spacing = style.emptyStateIconGap
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         effectView.addSubview(contentStack)
 
         NSLayoutConstraint.activate([
             contentStack.leadingAnchor.constraint(
-                equalTo: effectView.leadingAnchor, constant: WidgetStyle.contentInset),
+                equalTo: effectView.leadingAnchor, constant: style.contentInset),
             contentStack.trailingAnchor.constraint(
-                lessThanOrEqualTo: effectView.trailingAnchor, constant: -WidgetStyle.contentInset),
+                lessThanOrEqualTo: effectView.trailingAnchor, constant: -style.contentInset),
             contentStack.centerYAnchor.constraint(equalTo: effectView.centerYAnchor),
         ])
 

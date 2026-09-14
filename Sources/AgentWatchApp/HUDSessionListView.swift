@@ -8,12 +8,7 @@ class HUDSessionListView: NSView {
     /// Reduced by the row's own hover padding: the row carries that padding so the hover wash
     /// has room around its content, and the list gives back exactly as much. The text lands on
     /// `WidgetStyle.contentInset` either way, which is where the empty state puts its own.
-    private static let horizontalInset: CGFloat = WidgetStyle.contentInset - HUDSessionRowView.hoverPadding
-
-    static let rowSpacing: CGFloat = 4
-    /// The gap above the first row and below the last. Read by the widget's self-sizing
-    /// height as well, which is why there is one of these and not one per reader.
-    static let verticalPadding: CGFloat = 6
+    private var horizontalInset: CGFloat { style.contentInset - style.hoverPadding }
 
     /// How much clear space the `▾ N more` badge keeps from whatever is below it and from the
     /// widget's right edge. Less than the inset the rows keep, and that is the point: the
@@ -35,6 +30,7 @@ class HUDSessionListView: NSView {
     private let background: WidgetBackground
     private let lampScheme: LampScheme
     private let backgroundOpacity: CGFloat
+    private let style: WidgetStyle
     private let restoredScrollOffset: NSPoint?
     private let onScroll: (NSPoint) -> Void
     private let onHoverChanged: (HUDSessionRowView, Bool) -> Void
@@ -56,6 +52,7 @@ class HUDSessionListView: NSView {
         background: WidgetBackground,
         lampScheme: LampScheme,
         backgroundOpacity: CGFloat,
+        style: WidgetStyle = .standard,
         restoredScrollOffset: NSPoint?,
         onScroll: @escaping (NSPoint) -> Void,
         onHoverChanged: @escaping (HUDSessionRowView, Bool) -> Void = { _, _ in }
@@ -69,6 +66,7 @@ class HUDSessionListView: NSView {
         self.background = background
         self.lampScheme = lampScheme
         self.backgroundOpacity = backgroundOpacity
+        self.style = style
         self.restoredScrollOffset = restoredScrollOffset
         self.onScroll = onScroll
         self.onHoverChanged = onHoverChanged
@@ -93,7 +91,7 @@ class HUDSessionListView: NSView {
         let rowStack = FlippedStackView(views: rows)
         rowStack.orientation = .vertical
         rowStack.alignment = .leading
-        rowStack.spacing = Self.rowSpacing
+        rowStack.spacing = style.rowSpacing
         rowStack.translatesAutoresizingMaskIntoConstraints = false
 
         let scrollView = makeScrollView(documentView: rowStack)
@@ -112,15 +110,15 @@ class HUDSessionListView: NSView {
         // asks the layout engine to run while it is already running, which hung the widget
         // once — captured as `_layoutSubtreeWithOldSize:` recursing on itself. So the badge
         // is built once with its constraints and shows and hides by `isHidden` alone.
-        let overflowBadge = HUDOverflowBadge(background: background)
+        let overflowBadge = HUDOverflowBadge(background: background, style: style)
         overflowBadge.isHidden = true
         self.overflowBadge = overflowBadge
         container.addSubview(overflowBadge)
 
         var constraints = [
-            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Self.horizontalInset),
-            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Self.horizontalInset),
-            scrollView.topAnchor.constraint(equalTo: container.topAnchor, constant: Self.verticalPadding),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: horizontalInset),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -horizontalInset),
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor, constant: style.listVerticalPadding),
             // Into the widget's own border, not in line with the rows. Wherever it sits the
             // badge covers part of the bottom row, and the bottom right of a row is where its
             // `×` is — the only way to clear a session that has stopped. Out here it clears
@@ -160,16 +158,17 @@ class HUDSessionListView: NSView {
             container.addSubview(divider)
             container.addSubview(usageStack)
             constraints += [
-                divider.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Self.horizontalInset),
-                divider.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -Self.horizontalInset),
-                divider.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: Self.usageDividerGap),
-                usageStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Self.horizontalInset),
+                divider.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: horizontalInset),
+                divider.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -horizontalInset),
+                divider.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: style.usageDividerGap),
+                usageStack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: horizontalInset),
                 usageStack.trailingAnchor.constraint(
                     lessThanOrEqualTo: container.trailingAnchor,
-                    constant: -Self.horizontalInset
+                    constant: -horizontalInset
                 ),
-                usageStack.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: Self.usageDividerGap),
-                usageStack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Self.verticalPadding),
+                usageStack.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: style.usageDividerGap),
+                usageStack.bottomAnchor.constraint(
+                    equalTo: container.bottomAnchor, constant: -style.listVerticalPadding),
                 // The badge stops above the divider. What is under it there is a block of
                 // account figures — not a row, and nothing announces it — so the badge may
                 // have the gap before the separator and no more.
@@ -180,7 +179,8 @@ class HUDSessionListView: NSView {
                 // Must be an equality: the scroll view has no intrinsic height, so with only
                 // its top pinned and a `lessThanOrEqualTo` at the bottom nothing would stretch
                 // it and the list would collapse.
-                scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Self.verticalPadding),
+                scrollView.bottomAnchor.constraint(
+                    equalTo: container.bottomAnchor, constant: -style.listVerticalPadding),
                 // Nothing under the list but the widget's own edge, so the badge goes all the
                 // way down into the corner.
                 overflowBadge.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -Self.badgeInset),
@@ -204,13 +204,15 @@ class HUDSessionListView: NSView {
         atWidth width: CGFloat,
         background: WidgetBackground,
         lampScheme: LampScheme,
-        backgroundOpacity: CGFloat
+        backgroundOpacity: CGFloat,
+        style: WidgetStyle
     ) -> Bool {
         abs(width - availableWidth) < 0.5
             && usageLimits == self.usageLimits
             && background == self.background
             && lampScheme == self.lampScheme
             && backgroundOpacity == self.backgroundOpacity
+            && style.scale == self.style.scale
     }
 
     /// Shows a new set of models, rebuilding only the rows that differ.
@@ -280,7 +282,7 @@ class HUDSessionListView: NSView {
     /// constraint against the clip view did instead.
     private func widthConstraint(for row: HUDSessionRowView) -> NSLayoutConstraint {
         row.widthAnchor.constraint(
-            equalToConstant: max(availableWidth - 2 * Self.horizontalInset, row.fittingSize.width)
+            equalToConstant: max(availableWidth - 2 * horizontalInset, row.fittingSize.width)
         )
     }
 
@@ -380,6 +382,7 @@ class HUDSessionListView: NSView {
             now: now,
             background: background,
             lampScheme: lampScheme,
+            style: style,
             onFocus: { [focus] in focus(snapshot) },
             dismissal: model.dismissal,
             onRemove: { [remove] in remove(snapshot) },
@@ -400,12 +403,12 @@ class HUDSessionListView: NSView {
             return .hidden
         }
 
-        let contentWidth = availableWidth - 2 * Self.horizontalInset
+        let contentWidth = availableWidth - 2 * horizontalInset
 
         return chooseTitleDisplay(
             availableWidth: contentWidth - row.furnitureWidth,
-            fullTitleWidth: labelWidth(of: title, font: WidgetStyle.titleFont),
-            minimumTitleWidth: HUDSessionRowView.minimumTitleWidth
+            fullTitleWidth: labelWidth(of: title, font: style.titleFont),
+            minimumTitleWidth: style.minimumTitleWidth
         )
     }
 
@@ -473,7 +476,7 @@ class HUDSessionListView: NSView {
     }
 
     private func makeUsageStack() -> NSStackView? {
-        Self.makeUsageStack(for: usageLimits, background: background)
+        Self.makeUsageStack(for: usageLimits, background: background, style: style)
     }
 
     /// How tall the widget should be for this many sessions.
@@ -484,7 +487,8 @@ class HUDSessionListView: NSView {
     static func selfSizedHeight(
         sessionCount: Int,
         usageLimits: [AgentUsageLimits],
-        background: WidgetBackground
+        background: WidgetBackground,
+        style: WidgetStyle = .standard
     ) -> CGFloat {
         guard sessionCount > 0 else {
             return 0
@@ -492,8 +496,9 @@ class HUDSessionListView: NSView {
         // No trailing gap after the last row: the stack puts spacing between rows, not after
         // the final one, so counting a full row height per row would leave a blank strip.
         let rows =
-            CGFloat(sessionCount) * (HUDSessionRowView.rowHeight + rowSpacing) - rowSpacing
-        return 2 * verticalPadding + rows + usageHeight(for: usageLimits, background: background)
+            CGFloat(sessionCount) * (style.rowHeight + style.rowSpacing) - style.rowSpacing
+        return 2 * style.listVerticalPadding + rows
+            + usageHeight(for: usageLimits, background: background, style: style)
     }
 
     /// How much height the usage block needs, including the divider and the gaps around it.
@@ -501,23 +506,22 @@ class HUDSessionListView: NSView {
     /// Built and measured rather than added up. The row cap, the font and the spacing are
     /// all decided in `makeUsageStack`, and a second copy of those numbers in the sizing
     /// code went stale the moment any of them changed.
-    static func usageHeight(for usageLimits: [AgentUsageLimits], background: WidgetBackground) -> CGFloat {
-        guard let stack = makeUsageStack(for: usageLimits, background: background) else {
+    static func usageHeight(
+        for usageLimits: [AgentUsageLimits],
+        background: WidgetBackground,
+        style: WidgetStyle = .standard
+    ) -> CGFloat {
+        guard let stack = makeUsageStack(for: usageLimits, background: background, style: style) else {
             return 0
         }
         stack.layoutSubtreeIfNeeded()
-        return stack.fittingSize.height + usageDividerHeight
+        return stack.fittingSize.height + style.usageDividerHeight
     }
-
-    /// The gap above and below the separator that introduces the usage block.
-    private static let usageDividerGap: CGFloat = 4
-    /// The separator itself.
-    private static let separatorHeight: CGFloat = 1
-    private static var usageDividerHeight: CGFloat { 2 * usageDividerGap + separatorHeight }
 
     private static func makeUsageStack(
         for usageLimits: [AgentUsageLimits],
-        background: WidgetBackground
+        background: WidgetBackground,
+        style: WidgetStyle
     ) -> NSStackView? {
         let usageRows =
             usageLimits
@@ -525,7 +529,7 @@ class HUDSessionListView: NSView {
             .prefix(2)
             .map { limits -> NSTextField in
                 let label = NSTextField(labelWithString: widgetUsageText(for: limits))
-                label.font = WidgetStyle.usageFont
+                label.font = style.usageFont
                 label.textColor = background.secondaryForegroundColor
                 label.lineBreakMode = .byTruncatingTail
                 return label
@@ -537,7 +541,7 @@ class HUDSessionListView: NSView {
         let usageStack = NSStackView(views: usageRows)
         usageStack.orientation = .vertical
         usageStack.alignment = .leading
-        usageStack.spacing = 2
+        usageStack.spacing = style.points(2)
         usageStack.translatesAutoresizingMaskIntoConstraints = false
         return usageStack
     }
@@ -572,15 +576,14 @@ func orderedForDisplay(_ sessions: [SessionSnapshot]) -> [SessionSnapshot] {
 /// that swallowed those would take away more than it tells.
 @MainActor
 final class HUDOverflowBadge: NSView {
-    private static let horizontalPadding: CGFloat = 4
-    private static let verticalPadding: CGFloat = 1
-
     let label = NSTextField(labelWithString: "")
 
-    init(background: WidgetBackground) {
+    init(background: WidgetBackground, style: WidgetStyle = .standard) {
+        let horizontalPadding = style.points(4)
+        let verticalPadding = style.points(1)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        label.font = WidgetStyle.overflowFont
+        label.font = style.overflowFont
         label.textColor = background.secondaryForegroundColor
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
@@ -593,10 +596,10 @@ final class HUDOverflowBadge: NSView {
         layer?.borderColor = background.secondaryForegroundColor.withAlphaComponent(0.25).cgColor
 
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.horizontalPadding),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.horizontalPadding),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: Self.verticalPadding),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.verticalPadding),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: horizontalPadding),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -horizontalPadding),
+            label.topAnchor.constraint(equalTo: topAnchor, constant: verticalPadding),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -verticalPadding),
         ])
     }
 

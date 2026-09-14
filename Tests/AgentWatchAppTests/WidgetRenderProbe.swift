@@ -23,11 +23,30 @@ final class WidgetRenderProbe: XCTestCase {
         let directory = try XCTUnwrap(requested)
 
         try draw(listView(width: 420), named: "wide", in: directory)
+        // The same widget at every size on offer. This is the one part of the app whose whole
+        // question is how it looks, so it is drawn rather than measured: the numbers already
+        // have tests, and what they cannot answer is whether a row at 200% reads as the same
+        // widget made larger or as a row with its parts pulled apart.
+        for scale in WidgetSettingsStore.offeredScales where scale != 1 {
+            let percent = Int(scale * 100)
+            try draw(
+                listView(width: 420, style: WidgetStyle(scale: scale)),
+                named: "wide-\(percent)",
+                in: directory
+            )
+            try draw(
+                emptyState(complaint: nil, style: WidgetStyle(scale: scale)),
+                named: "empty-\(percent)",
+                in: directory
+            )
+        }
         try draw(highlightedWidget(.left), named: "edge-left", in: directory)
         try draw(highlightedWidget(.bottomRight), named: "edge-corner", in: directory)
         try draw(listView(width: 190), named: "narrow", in: directory)
         try draw(crampedList(), named: "cramped", in: directory)
         try draw(hoverCard(), named: "card", in: directory)
+        try draw(hoverCard(style: WidgetStyle(scale: 2)), named: "card-200", in: directory)
+        try draw(dismissStates(style: WidgetStyle(scale: 0.5)), named: "dismiss-50", in: directory)
         try draw(emptyState(complaint: nil), named: "empty", in: directory)
         try draw(
             emptyState(complaint: toolingComplaint(states: [.absent, .absent])),
@@ -82,13 +101,15 @@ final class WidgetRenderProbe: XCTestCase {
     }
 
     /// The settings window as it opens, with nothing chosen yet — nine lamp rows, the
-    /// palette and the opacity slider. Drawn rather than measured because a grid of colour
-    /// wells and pop-up buttons is exactly the layout that measures right and reads wrong.
+    /// palette, the opacity slider and the size slider. Drawn rather than measured because a
+    /// grid of colour wells and pop-up buttons is exactly the layout that measures right and
+    /// reads wrong.
     private func settingsWindowContent() throws -> NSView {
         let preferences = try isolatedPreferences()
         let controller = WidgetSettingsWindowController(
             backgroundStore: WidgetBackgroundStore(preferences: preferences),
-            lampSchemes: LampSchemeStore(preferences: preferences)
+            lampSchemes: LampSchemeStore(preferences: preferences),
+            settings: WidgetSettingsStore(preferences: preferences)
         )
         let view = try XCTUnwrap(controller.window?.contentView)
         // The window's own background, which `cacheDisplay` does not draw: without it the
@@ -280,13 +301,58 @@ final class WidgetRenderProbe: XCTestCase {
     /// Both empty states side by side. The one that asks for an integration is the first
     /// thing a person sees on a machine where nothing is installed, and it is the only place
     /// the app is allowed to ask for anything at all.
-    private func emptyState(complaint: String?, width: CGFloat = 420) -> HUDEmptyStateView {
-        let view = HUDEmptyStateView(background: .graphite, backgroundOpacity: 1, complaint: complaint)
-        place(view, size: NSSize(width: width, height: 64))
+    private func emptyState(
+        complaint: String?,
+        width: CGFloat = 420,
+        style: WidgetStyle = .standard
+    ) -> HUDEmptyStateView {
+        let view = HUDEmptyStateView(
+            background: .graphite, backgroundOpacity: 1, style: style, complaint: complaint)
+        place(view, size: NSSize(width: max(width, style.minimumWindowSize.width), height: style.points(64)))
         return view
     }
 
-    private func listView(width: CGFloat) -> HUDSessionListView {
+    /// Working and not-yet-working `×` side by side at a size drawn without a bezel, on a
+    /// dark widget and a light one. The one question: does a button that cannot be pressed
+    /// yet still read as a button, and plainly as a weaker one.
+    private func dismissStates(style: WidgetStyle) -> NSView {
+        let column = NSStackView()
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 0
+        column.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+
+        for background in [WidgetBackground.graphite, .pearl] {
+            let strip = NSStackView()
+            strip.orientation = .horizontal
+            strip.spacing = style.elementSpacing
+            strip.edgeInsets = NSEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
+            strip.wantsLayer = true
+            strip.layer?.backgroundColor = background.color.cgColor
+
+            for isEnabled in [true, false] {
+                let label = NSTextField(labelWithString: isEnabled ? "works" : "not yet")
+                label.font = style.titleFont
+                label.textColor = background.foregroundColor
+                let button = RowDismissButton(
+                    font: style.buttonFont,
+                    controlSize: style.buttonControlSize,
+                    hasBezel: style.buttonHasBezel,
+                    color: background.secondaryForegroundColor,
+                    perform: {}
+                )
+                button.isEnabled = isEnabled
+                button.pinSize(to: style.buttonSize)
+                strip.addArrangedSubview(label)
+                strip.addArrangedSubview(button)
+            }
+            column.addArrangedSubview(strip)
+        }
+        place(column, size: column.fittingSize)
+        return column
+    }
+
+    private func listView(width: CGFloat, style: WidgetStyle = .standard) -> HUDSessionListView {
         let list = HUDSessionListView(
             models: rowModels(sessions(), now: now),
             usageLimits: [AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 17), observedAt: now)],
@@ -297,13 +363,15 @@ final class WidgetRenderProbe: XCTestCase {
             background: .graphite,
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
+            style: style,
             restoredScrollOffset: nil,
             onScroll: { _ in }
         )
         let height = HUDSessionListView.selfSizedHeight(
             sessionCount: sessions().count,
             usageLimits: [AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 17), observedAt: now)],
-            background: .graphite
+            background: .graphite,
+            style: style
         )
         place(list, size: NSSize(width: width, height: height))
         return list
@@ -342,26 +410,29 @@ final class WidgetRenderProbe: XCTestCase {
 
     /// Built the way `SessionHoverCard` builds it, which is what makes the image worth
     /// looking at — a mock-up of a card would only prove the mock-up looks right.
-    private func hoverCard() -> NSView {
+    private func hoverCard(style: WidgetStyle = .standard) -> NSView {
         let text = hoverCardText(
             for: sessions()[0],
             now: now,
             reach: .anApplication
         )
         let label = NSTextField(labelWithString: text)
-        label.font = WidgetStyle.secondaryFont
+        label.font = style.secondaryFont
         // Wrapping, as the card itself does. Without it a long line was drawn clipped here
         // and read as a defect the card does not have.
         label.lineBreakMode = .byWordWrapping
         label.maximumNumberOfLines = 0
-        label.preferredMaxLayoutWidth = 324
-        let size = label.sizeThatFits(NSSize(width: 324, height: CGFloat.greatestFiniteMagnitude))
+        let padding = style.hoverCardPadding
+        let available = style.hoverCardMaximumWidth - 2 * padding
+        label.preferredMaxLayoutWidth = available
+        let size = label.sizeThatFits(NSSize(width: available, height: CGFloat.greatestFiniteMagnitude))
 
-        let card = NSView(frame: NSRect(x: 0, y: 0, width: size.width + 16, height: size.height + 16))
+        let card = NSView(
+            frame: NSRect(x: 0, y: 0, width: size.width + 2 * padding, height: size.height + 2 * padding))
         card.wantsLayer = true
         card.layer?.backgroundColor = NSColor(calibratedWhite: 0.13, alpha: 1).cgColor
         card.layer?.cornerRadius = WidgetStyle.panelCornerRadius
-        label.frame = NSRect(x: 8, y: 8, width: size.width, height: size.height)
+        label.frame = NSRect(x: padding, y: padding, width: size.width, height: size.height)
         card.addSubview(label)
         card.layoutSubtreeIfNeeded()
         return card

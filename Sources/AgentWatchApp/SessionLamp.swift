@@ -86,13 +86,15 @@ enum SessionLamp {
 
 @MainActor
 final class SessionLampView: NSView {
-    static let diameter: CGFloat = 9
-
     private let look: SessionLampAppearance
+    /// Given rather than fixed, so the lamp grows with the row it sits in — the ring's border
+    /// below is the one part of the drawing that does not, and says why.
+    private let diameter: CGFloat
 
-    init(appearance: SessionLampAppearance) {
+    init(appearance: SessionLampAppearance, diameter: CGFloat) {
         look = appearance
-        super.init(frame: NSRect(x: 0, y: 0, width: Self.diameter, height: Self.diameter))
+        self.diameter = diameter
+        super.init(frame: NSRect(x: 0, y: 0, width: diameter, height: diameter))
         wantsLayer = true
         setContentHuggingPriority(.required, for: .horizontal)
         setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -105,7 +107,7 @@ final class SessionLampView: NSView {
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: Self.diameter, height: Self.diameter)
+        NSSize(width: diameter, height: diameter)
     }
 
     /// Painted again on joining a window, and again whenever the backing store changes.
@@ -133,14 +135,16 @@ final class SessionLampView: NSView {
             return
         }
 
-        layer.cornerRadius = Self.diameter / 2
+        layer.cornerRadius = diameter / 2
         if look.isFilled {
             layer.backgroundColor = look.color.cgColor
             layer.borderWidth = 0
         } else {
             layer.backgroundColor = NSColor.clear.cgColor
             // Heavier than a hairline: a ring has a fraction of a disc's area, and at nine
-            // points a thin one disappears against a translucent widget.
+            // points a thin one disappears against a translucent widget. Two points at every
+            // scale, and deliberately: what this number is avoiding is a border so thin it
+            // vanishes, which only happens at the small end.
             layer.borderWidth = 2
             layer.borderColor = look.color.cgColor
         }
