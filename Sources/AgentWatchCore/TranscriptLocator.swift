@@ -13,7 +13,7 @@ import Foundation
 /// The cost of being told instead of looking is a convention this makes an assumption about.
 /// If either agent renames its transcripts, or `CLAUDE_CONFIG_DIR` moves the root, nothing is
 /// found — and that is a reported failure rather than wrong data, which is the property that
-/// makes the assumption acceptable. `docs/architecture.md` §15 records when to revisit it.
+/// makes the assumption acceptable. ADR-0001 records when to revisit it.
 public enum TranscriptLocator {
     public static func defaultRoot(for source: AgentSource, home: URL) -> URL {
         switch source {

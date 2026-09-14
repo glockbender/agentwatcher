@@ -284,7 +284,7 @@ final class SessionHostRegistry {
     /// the wording must not outrun it. What the session's own project is called is already
     /// on the card, from the session itself.
     ///
-    /// The path never leaves this function — `docs/architecture.md` §15. What comes out is
+    /// The path never leaves this function — ADR-0001. What comes out is
     /// the project's name.
     private func openProjectName(for snapshot: SessionSnapshot, in application: NSRunningApplication) -> String? {
         guard

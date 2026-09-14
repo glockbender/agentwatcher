@@ -24,7 +24,7 @@ public struct DiscoveredAgentProcess: Codable, Equatable, Sendable {
     public let startedAt: Date
     /// The name of the directory the process is working in — never the path that leads to
     /// it, which is the same rule `SessionSnapshot.projectName` follows. See
-    /// `docs/architecture.md` §15.
+    /// ADR-0001.
     public let projectName: String?
     /// Which session this process is, when a hook has said so before — see
     /// `RememberedAgentProcess`. A row that knows it is a session by name can be asked the
@@ -132,7 +132,7 @@ public struct RememberedAgentProcess: Codable, Equatable, Sendable {
     /// session's row.
     public let startedAt: Date
     /// The session's own label: its identifier put through the redaction, which is also what
-    /// the name of its transcript hashes to. `docs/architecture.md` §15.
+    /// the name of its transcript hashes to. ADR-0001.
     public let sessionLabel: String
 
     public init(source: AgentSource, processID: Int32, startedAt: Date, sessionLabel: String) {

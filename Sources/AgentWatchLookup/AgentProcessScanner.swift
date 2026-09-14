@@ -149,7 +149,7 @@ public enum AgentProcessScanner {
     ///
     /// The trim happens here rather than in a caller on purpose: this is the boundary the
     /// full path is not allowed to cross, the same discipline `ProcessSnapshot` states for
-    /// executable paths. `docs/architecture.md` §15.
+    /// executable paths. ADR-0001.
     private static func workingDirectoryName(of processID: Int32) -> String? {
         guard let path = AgentProcessLocator.workingDirectoryPath(of: processID) else {
             return nil

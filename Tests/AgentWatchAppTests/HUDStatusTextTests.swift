@@ -119,7 +119,7 @@ final class HUDStatusTextTests: XCTestCase {
         XCTAssertEqual(Set(names).count, phases.count, "each phase needs wording of its own for the tooltip")
     }
 
-    /// Colour must not be the only carrier (`docs/architecture.md` §7). Written as the rule
+    /// Colour must not be the only carrier (ADR-0003). Written as the rule
     /// rather than as the case that happened to break it: the previous version named the
     /// three greys — idle, no signal and session closed — and the defaults have since given
     /// each of those a colour of its own, which would have retired the test rather than the

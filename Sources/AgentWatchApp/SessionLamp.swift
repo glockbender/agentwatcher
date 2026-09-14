@@ -3,7 +3,7 @@ import AppKit
 
 /// The row's indicator light: what a session is doing, in one dot.
 ///
-/// Colour is never the only carrier, as `docs/architecture.md` §7 requires. Each phase also
+/// Colour is never the only carrier, as ADR-0003 requires. Each phase also
 /// has its own motion — still, a slow pulse, or an urgent blink — a closed session is drawn
 /// as a ring rather than a disc, and the row's hover card spells the phase out in words.
 struct SessionLampAppearance: Equatable {

@@ -171,7 +171,7 @@ final class SessionDescriptionResolverTests: XCTestCase {
         XCTAssertNil(SessionDescriptionResolver.claudeDescription(inTranscriptTail: tail).contextInputTokens)
     }
 
-    /// Only the directory's own name travels. See `docs/architecture.md` §15.
+    /// Only the directory's own name travels. See ADR-0001.
     func testOnlyTheLastComponentOfTheWorkingDirectoryTravels() {
         XCTAssertEqual(
             SessionDescriptionResolver.projectName(inWorkingDirectory: "/Users/x/CommonProjects/agent-watch"),

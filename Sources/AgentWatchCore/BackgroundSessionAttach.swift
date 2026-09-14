@@ -11,7 +11,7 @@ import Foundation
 /// checked without a terminal, a disk or Ghostty.
 ///
 /// The job identifier is not something the hooks carry: a session's own identifier reaches
-/// this app redacted (`docs/architecture.md` §15), and the job id is a separate, shorter name
+/// this app redacted (ADR-0001), and the job id is a separate, shorter name
 /// anyway — the one `claude agents` lists and `claude attach` takes. Claude Code writes it into
 /// its own record of the process, `~/.claude/sessions/<pid>.json`, beside the session's kind and
 /// name; that file is measured, not documented, so a record without the field is answered with

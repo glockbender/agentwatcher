@@ -96,7 +96,7 @@ public struct SessionStateEngine: Sendable {
 
     /// The row under this identifier, unless it has closed.
     ///
-    /// Closed is terminal — the state diagram in `docs/architecture.md` §7 has no edge
+    /// Closed is terminal — ADR-0002, and the state diagram has no edge
     /// leaving it — and six methods each said so in their own guard, with nothing checking
     /// that the six agreed. Said once here, so the seventh gets the rule for free.
     ///
@@ -267,7 +267,7 @@ public struct SessionStateEngine: Sendable {
             usageLimitsBySource[usageLimits.source] = usageLimits
         }
 
-        // Closed is terminal, as the state diagram in `docs/architecture.md` §7 says: no edge
+        // Closed is terminal, as ADR-0002 and the state diagram say: no edge
         // leaves it. Events do arrive out of order — the protocol is asked to survive that —
         // and a `Stop` landing after a `SessionEnd` used to put the session back to work.
         // What the late event still carries about the session is merged above; only its

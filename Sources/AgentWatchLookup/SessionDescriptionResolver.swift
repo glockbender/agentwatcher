@@ -6,7 +6,7 @@ import Foundation
 /// Both processes ask, and they reach the files by different routes. The hook process holds
 /// the raw `session_id`, `cwd` and `transcript_path` — all three are redacted before anything
 /// reaches the socket, so only the resolved values travel, and of the working directory only
-/// its last component (`docs/architecture.md` §15). The app never receives a path and finds
+/// its last component (ADR-0001). The app never receives a path and finds
 /// the transcript itself through `TranscriptLocator`. The rules for reading one live here
 /// once so that the name a session shows does not depend on which side looked.
 ///

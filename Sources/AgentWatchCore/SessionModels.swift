@@ -216,7 +216,7 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     /// the widget's decision, and it cannot make it if the model has already decided for it.
     public var title: String?
     /// The project the session is working in, as its directory's own name — never the path
-    /// that leads to it. See `docs/architecture.md` §15.
+    /// that leads to it. See ADR-0001.
     public var projectName: String?
     public var gitBranch: String?
     public var mode: SessionMode

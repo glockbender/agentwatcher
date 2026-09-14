@@ -7,7 +7,7 @@ import Foundation
 public struct KnownProject: Equatable, Sendable {
     /// Absolute, with the file's `$USER_HOME$` macro already expanded.
     ///
-    /// Kept inside this process and never published: `docs/architecture.md` §15 allows a
+    /// Kept inside this process and never published: ADR-0001 allows a
     /// project *name* to leave and no path with it. What leaves is `name`.
     public let path: String
     /// What the IDE last wrote in that project's window title, if it wrote one. It carries
@@ -174,7 +174,7 @@ public struct SessionLocator: Equatable, Sendable {
     /// The application hosting the session, as a person sees it named.
     public let applicationName: String?
     /// The name of the project **window** to look at, when one is known: the directory's
-    /// name, never its path — `docs/architecture.md` §15. Absent for a host that keeps no
+    /// name, never its path — ADR-0001. Absent for a host that keeps no
     /// project list, and for a project nothing says is open — a name here is a promise that
     /// there is a window wearing it.
     public let projectName: String?
