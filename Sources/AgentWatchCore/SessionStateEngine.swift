@@ -48,7 +48,7 @@ public struct SessionStateEngine: Sendable {
     public init() {}
 
     /// Whether this event belongs to a background session that has no row yet — and gets
-    /// none from this event.
+    /// none from this event (ADR-0005).
     ///
     /// A background session starts before it is anybody's conversation. Measured on Claude
     /// Code 2.1.270: the agents view always holds one live background session and refills it
@@ -96,7 +96,7 @@ public struct SessionStateEngine: Sendable {
 
     /// The row under this identifier, unless it has closed.
     ///
-    /// Closed is terminal — the state diagram in `docs/architecture.md` §7 has no edge
+    /// Closed is terminal — ADR-0002, and the state diagram has no edge
     /// leaving it — and six methods each said so in their own guard, with nothing checking
     /// that the six agreed. Said once here, so the seventh gets the rule for free.
     ///
@@ -113,7 +113,8 @@ public struct SessionStateEngine: Sendable {
 
     /// One event, and everything it did to the widget's rows.
     ///
-    /// The only way in. Applying an event is five steps that have to run in this order, and
+    /// The only way in (ADR-0004). Applying an event is five steps that have to run in this
+    /// order, and
     /// they used to be five public methods a caller ran itself: whether the event gets a row
     /// at all, a row the app had built from a process being handed over to the session that
     /// owns it, a closed row whose process now runs this session being retired, a copy's own
@@ -267,7 +268,7 @@ public struct SessionStateEngine: Sendable {
             usageLimitsBySource[usageLimits.source] = usageLimits
         }
 
-        // Closed is terminal, as the state diagram in `docs/architecture.md` §7 says: no edge
+        // Closed is terminal, as ADR-0002 and the state diagram say: no edge
         // leaves it. Events do arrive out of order — the protocol is asked to survive that —
         // and a `Stop` landing after a `SessionEnd` used to put the session back to work.
         // What the late event still carries about the session is merged above; only its

@@ -2,7 +2,7 @@ import AgentWatchCore
 import Foundation
 import XCTest
 
-@testable import AgentWatchSender
+@testable import AgentWatchLookup
 
 /// The on-disk shapes parsed here are undocumented internals of Claude Code and Codex.
 /// These tests pin what today's files look like so a future format change fails loudly
@@ -171,7 +171,7 @@ final class SessionDescriptionResolverTests: XCTestCase {
         XCTAssertNil(SessionDescriptionResolver.claudeDescription(inTranscriptTail: tail).contextInputTokens)
     }
 
-    /// Only the directory's own name travels. See `docs/architecture.md` §15.
+    /// Only the directory's own name travels. See ADR-0001.
     func testOnlyTheLastComponentOfTheWorkingDirectoryTravels() {
         XCTAssertEqual(
             SessionDescriptionResolver.projectName(inWorkingDirectory: "/Users/x/CommonProjects/agent-watch"),

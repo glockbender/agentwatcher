@@ -3,7 +3,7 @@ import Foundation
 /// Something that happened in a session and that no hook reports.
 ///
 /// Every case here was measured on real transcripts before it was written down; the counts
-/// are in `docs/architecture.md` §15.
+/// are in ADR-0001.
 public enum TranscriptFact: Equatable, Sendable {
     /// A tool call reported back — where the successful end of a call comes from, since
     /// `PostToolUse` is not registered with either agent.

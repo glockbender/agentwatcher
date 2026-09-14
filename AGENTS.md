@@ -8,6 +8,8 @@
 - Lifecycle facts are deterministic; LLM output must never become the source of session state.
 - Monitoring failures are fail-open and must not block an agent.
 - Avoid polling while there are no active sessions.
+- `AgentWatchLookup` asks the machine and answers; `AgentWatchSender` builds a request and
+  sends it. Neither does the other's job — that is what the two targets are for.
 
 ## Required checks
 
@@ -72,5 +74,14 @@ Keep these current as part of the change, not after it.
 - `docs/agent-integration.md` — anything about attaching to Claude Code or Codex: hooks, install
   state, the status line, what each agent reports, and the measurements behind it.
 - `docs/distribution.md` — how a release is built, signed and published.
+- `docs/adr/` — one decision per file, numbered and never renumbered. Code cites a decision as
+  `ADR-0001`, not as a section number, because a section number moves when something is inserted
+  above it. Add one only for a decision that is hard to reverse, surprising without the reason, and
+  the result of a real trade-off — including the deliberate no-s, which is what stops the next
+  review from re-suggesting them. A pointer to a passage stays a pointer: `§14` still means
+  "read this part".
+- `docs/measurements.md` — the index of what was measured against which version of Claude Code,
+  Codex or macOS. Its question is "what has to be re-checked now that the agent updated", so a new
+  measurement gets a row with the version it was taken on, and the reasoning stays where it is.
 - `README.md` — for somebody installing the app: keep it short, and put developer-only notes in
   this file instead.

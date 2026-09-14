@@ -228,7 +228,7 @@ public struct HookIngressRequest: Codable, Equatable, Sendable {
         }
         let sanitized = SessionDescription(
             title: sanitizedText(raw.title, limit: maximumSessionTitleLength),
-            // A directory's own name never contains a separator. `docs/architecture.md` §15
+            // A directory's own name never contains a separator. ADR-0001
             // promises the app never receives a path, and this is where that promise is kept
             // rather than merely intended: the field skips `HookCaptureRedactor` entirely,
             // so a sender built from another tree could otherwise put a whole path in it.

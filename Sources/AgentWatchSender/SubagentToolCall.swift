@@ -22,7 +22,7 @@ import Foundation
 /// and pass through untouched.
 ///
 /// This is the only place the question can be asked at all. The hook payload carries the
-/// transcript path, and a path never crosses the socket (`docs/architecture.md` §15), so the
+/// transcript path, and a path never crosses the socket (ADR-0001), so the
 /// app on the other side has nothing to tell one caller's tool call from another's.
 public enum SubagentToolCall {
     /// The events that say a tool call started or ended.

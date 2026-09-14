@@ -339,7 +339,7 @@ public enum AgentProcessLocator {
     ///
     /// The full path, which is why it is here and not beside the scanner's
     /// `workingDirectoryName`: that one trims to the last component because its answer goes
-    /// into an event, and `docs/architecture.md` §15 lets a project name cross that boundary
+    /// into an event, and ADR-0001 lets a project name cross that boundary
     /// and no path with it. This answer crosses nothing — the app asks it about a process on
     /// the same machine, matches it against the projects an IDE already lists, and keeps
     /// only the name it found.

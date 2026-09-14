@@ -294,7 +294,7 @@ final class SessionLifecycleTests: XCTestCase {
 
     // MARK: - A closed session stays closed
 
-    /// The state diagram in `docs/architecture.md` §7 has no edge leaving `SessionClosed`,
+    /// ADR-0002: the state diagram has no edge leaving `SessionClosed`,
     /// and the protocol is required to survive events arriving out of order — so a `Stop`
     /// landing after a `SessionEnd` must not put the session back to work.
     func testALateEventCannotReopenAClosedSession() throws {
@@ -465,7 +465,7 @@ final class SessionLifecycleTests: XCTestCase {
         XCTAssertNil(HookIngressRequest.sanitized(SessionDescription()), "nothing known is not a description")
     }
 
-    /// `docs/architecture.md` §15 promises the app never receives a path. This field skips
+    /// ADR-0001 promises the app never receives a path. This field skips
     /// the redactor entirely — it travels beside the payload, not inside it — so the promise
     /// is kept here or nowhere.
     func testAProjectNameThatIsActuallyAPathIsRefused() {

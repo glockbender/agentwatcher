@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import AgentWatchSender
+@testable import AgentWatchLookup
 
 final class AgentProcessScannerTests: XCTestCase {
     /// `launchd` is the oldest process on the machine, and the kernel lists processes newest

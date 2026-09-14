@@ -1,5 +1,5 @@
 import AgentWatchCore
-import AgentWatchSender
+import AgentWatchLookup
 import AgentWatchTestSupport
 import AppKit
 import XCTest

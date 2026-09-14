@@ -1,5 +1,5 @@
 import AgentWatchCore
-import AgentWatchSender
+import AgentWatchLookup
 import AppKit
 
 /// Owns everything about the set of live sessions: ingesting events, watching for their
@@ -8,6 +8,9 @@ import AppKit
 /// Split out of `AppDelegate` because that class cannot be instantiated in a test, and the
 /// rules here — which sessions still have a watcher, when the sweep has anything to do —
 /// are exactly the kind that go wrong quietly. `AppDelegate` keeps the menus and windows.
+///
+/// This stays in the application target on purpose; ADR-0007 says why, and the ordering
+/// rules a reader might come here looking for moved to the engine with `receive`.
 @MainActor
 final class SessionSupervisor {
     /// Slow on purpose. Retiring a closed session and demoting an unwatched one are both
