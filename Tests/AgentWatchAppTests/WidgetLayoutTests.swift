@@ -58,8 +58,8 @@ final class WidgetLayoutTests: XCTestCase {
 
         XCTAssertGreaterThan(
             quietWidth,
-            HUDSessionRowView.buttonWidth + SessionLampView.diameter,
-            "the timer and the source icon are in every row too"
+            HUDSessionRowView.timerWidth + SessionLampView.diameter,
+            "the source icon and the gaps between the parts are in every row too"
         )
         XCTAssertGreaterThan(busyWidth, quietWidth, "a client icon and a counter both take room")
     }

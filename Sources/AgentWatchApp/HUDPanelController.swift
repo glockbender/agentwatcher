@@ -95,8 +95,8 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         panel.backgroundColor = .clear
         panel.minSize = HUDFrameStore.minimumSize
         panel.hidesOnDeactivate = false
-        // Without this a panel that never becomes key sees no pointer movement, and a
-        // tooltip is a reaction to pointer movement.
+        // Without this a panel that never becomes key sees no pointer movement, and the
+        // hover card is a reaction to pointer movement.
         panel.acceptsMouseMovedEvents = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]

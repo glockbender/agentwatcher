@@ -9,8 +9,8 @@ at a glance which one is working, which one is waiting for you, and which one is
 
 It lives in the menu bar and draws one floating row per session: the phase as a coloured lamp,
 the time since the last event, the session's name and project, and how many activities are open.
-Pressing `↗` on a row brings forward the terminal tab that session runs in. Hovering it opens a
-card with everything the row cannot fit.
+Clicking a row brings forward the terminal tab that session runs in. Hovering it opens a card
+with everything the row cannot fit.
 
 Alpha: it works and is used daily, but what it shows is still moving.
 
@@ -58,8 +58,8 @@ off in the same menu.
 
 ## JetBrains IDE plugin
 
-Optional, and it changes one thing: `↗` lands on the terminal **tab** a session runs in rather than
-on the IDE window.
+Optional, and it changes one thing: a click on a row lands on the terminal **tab** a session runs in
+rather than on the IDE window.
 
 Download `agent-watch-ide-<version>.zip` from the same release — the plugin carries its own
 version number, which is not the app's — then in the IDE: Settings → Plugins → the gear →

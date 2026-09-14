@@ -57,6 +57,85 @@ final class TranscriptWatcherTests: XCTestCase {
         )
     }
 
+    /// `/bg` continues a session in a copy that writes a transcript of its own, named after
+    /// its own identifier, and the original's file stops growing. A row continued that way is
+    /// read from the copy's file from the moment the row says so — and from that file's end,
+    /// the way any newly found file is read, so the copy's history is not replayed.
+    func testARowContinuedByACopyIsReadFromTheCopysTranscript() async throws {
+        let copyUUID = "b95a16c1-8449-41f9-8487-5b3e0ad5e052"
+        let copyURL = projectDirectory.appendingPathComponent("\(copyUUID).jsonl")
+        try write(toolResult(id: "call-old"))
+        try Data("\(toolResult(id: "copy-old"))\n".utf8).write(to: copyURL)
+        let watcher = try makeWatcher()
+        watcher.update(sessions: [working()])
+        _ = try await poll(watcher)
+
+        var continued = working()
+        continued.continuedBy = [HookCaptureRedactor.label(forRawIdentifier: copyUUID)]
+        watcher.update(sessions: [continued])
+        let switched = try await poll(watcher)
+        XCTAssertTrue(switched.flatMap(\.facts).isEmpty, "the copy's history is history too")
+
+        try append(toolResult(id: "orphan"))
+        let handle = try FileHandle(forWritingTo: copyURL)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("\(toolResult(id: "copy-new"))\n".utf8))
+        try handle.close()
+        let updates = try await poll(watcher)
+
+        XCTAssertEqual(
+            updates.flatMap(\.facts),
+            [
+                .callReturned(
+                    activityID: HookCaptureRedactor.label(forRawIdentifier: "copy-new"),
+                    at: Date(timeIntervalSince1970: 1_788_574_196)
+                )
+            ],
+            "the copy's file is read; the original's, which nobody writes any more, is not"
+        )
+    }
+
+    /// The reading happens off the main thread, and a row can be told it is continued while a
+    /// read of its old file is still running. The result of that read belongs to the old
+    /// watch and must not be written into the new one — or the new watch would carry the old
+    /// file's address, never look for the copy's file, and read a file nobody writes.
+    func testAReadInFlightWhenTheRowIsContinuedDoesNotStampTheOldFileOnTheNewWatch() async throws {
+        let copyUUID = "b95a16c1-8449-41f9-8487-5b3e0ad5e052"
+        let copyURL = projectDirectory.appendingPathComponent("\(copyUUID).jsonl")
+        try write(toolResult(id: "call-old"))
+        try Data("\(toolResult(id: "copy-old"))\n".utf8).write(to: copyURL)
+        let watcher = try makeWatcher()
+        watcher.update(sessions: [working()])
+
+        // The read starts, and before it reports the row is continued by the copy.
+        let reported = expectation(description: "the read in flight reported back")
+        arrival = reported
+        inbox = []
+        watcher.poll()
+        var continued = working()
+        continued.continuedBy = [HookCaptureRedactor.label(forRawIdentifier: copyUUID)]
+        watcher.update(sessions: [continued])
+        await fulfillment(of: [reported], timeout: 2)
+        arrival = nil
+
+        _ = try await poll(watcher)
+        let handle = try FileHandle(forWritingTo: copyURL)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("\(toolResult(id: "copy-new"))\n".utf8))
+        try handle.close()
+        let updates = try await poll(watcher)
+
+        XCTAssertEqual(
+            updates.flatMap(\.facts),
+            [
+                .callReturned(
+                    activityID: HookCaptureRedactor.label(forRawIdentifier: "copy-new"),
+                    at: Date(timeIntervalSince1970: 1_788_574_196)
+                )
+            ]
+        )
+    }
+
     /// An interrupted turn delivers no hook at all. This line in the file is the only record
     /// of it anywhere, which is the reason the reader exists.
     func testItPicksUpAnEndingNoHookReports() async throws {

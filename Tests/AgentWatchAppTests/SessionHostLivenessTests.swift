@@ -111,7 +111,7 @@ final class SessionHostLivenessTests: XCTestCase {
     ///
     /// Vouching for a remembered row asked it. Deciding which application to raise did not,
     /// and walked the tree from whatever process now holds the number — so a session whose
-    /// agent had exited could hand the `↗` button a stranger's application to bring forward.
+    /// agent had exited could hand a click a stranger's application to bring forward.
     func testWhetherTheNumberIsStillTheAgentIsOneRuleBothPathsAsk() {
         XCTAssertTrue(
             SessionHostRegistry.isStillTheAgent(
@@ -168,6 +168,36 @@ final class SessionHostLivenessTests: XCTestCase {
 
         XCTAssertFalse(outcome.raised)
         XCTAssertEqual(outcome.tab, .missing("Claude Code's record of the process names no job to attach to"))
+    }
+
+    /// A background session shown in a terminal is reached the way a terminal session is:
+    /// through the terminal's process tree, never through `claude attach` — which would open
+    /// the session a second time beside the tab already showing it.
+    func testABackgroundSessionShownInATerminalIsReachedLikeATerminalSession() throws {
+        let registry = SessionHostRegistry(claudeHome: try temporaryClaudeHome()) { _ in }
+        var background = testSession(clientKind: .background, lastObservedAt: moment)
+        background.agentProcessID = 4_242
+        background.viewerProcessID = 4_243
+
+        let outcome = registry.focus(background)
+
+        XCTAssertFalse(outcome.raised, "no such process, so nothing to raise")
+        XCTAssertEqual(outcome.tab, .unaddressable, "the terminal's way, not the attach's")
+    }
+
+    /// A background session with no terminal showing it has no application, by definition of
+    /// what background means: its tree ends at `launchd`. So none is named for it — not from
+    /// a walk, and not from memory either. The memory is the trap: a hover while the terminal
+    /// still showed it remembered that terminal's application, and once the terminal was gone
+    /// the card promised to bring it forward while the click attached instead.
+    func testABackgroundSessionWithNoTerminalShowingItNamesNoApplication() throws {
+        let registry = SessionHostRegistry(claudeHome: try temporaryClaudeHome()) { _ in }
+        // This process, whose tree does reach an application on a developer's machine — the
+        // terminal or the IDE the tests run from — which is exactly what must not be named.
+        var background = testSession(clientKind: .background, lastObservedAt: Date())
+        background.agentProcessID = getpid()
+
+        XCTAssertNil(registry.locator(for: background).applicationName)
     }
 
     /// A `~/.claude` of this test's own, with the `sessions` folder Claude Code keeps there.

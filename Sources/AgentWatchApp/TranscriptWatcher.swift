@@ -82,6 +82,9 @@ final class TranscriptWatcher {
         let firstSeenAt: Date
         var nextLocateAttemptAt: Date
         var signals = TranscriptSignals()
+        /// The label the file was, or is being, looked for under — `SessionSnapshot.transcriptLabel`.
+        /// A row continued by a copy changes it, and the watch starts over on the copy's file.
+        let sessionLabel: String
     }
 
     private struct ReadJob: Sendable {
@@ -101,6 +104,10 @@ final class TranscriptWatcher {
 
     private struct ReadResult: Sendable {
         let sessionID: String
+        /// The label the file was looked for under, so that `finish` can tell a result meant
+        /// for a watch that has since been replaced — a row continued by a copy while a read
+        /// of its old file was in flight — and leave the new watch alone.
+        let sessionLabel: String
         let url: URL?
         let offset: UInt64
         let facts: [TranscriptFact]
@@ -196,8 +203,15 @@ final class TranscriptWatcher {
         let live = Set(sessions.map(\.id))
         watches = watches.filter { live.contains($0.key) }
         let moment = now()
-        for snapshot in Self.watchableSessions(sessions, now: moment) where watches[snapshot.id] == nil {
-            watches[snapshot.id] = Watch(firstSeenAt: moment, nextLocateAttemptAt: moment)
+        for snapshot in Self.watchableSessions(sessions, now: moment)
+        where watches[snapshot.id]?.sessionLabel != snapshot.transcriptLabel {
+            // A new watch for a new row — or for a row whose transcript has moved: `/bg` and
+            // `/fork` continue a session in a copy that writes a file of its own, named after
+            // its own identifier, and the original's file stops growing that moment. The copy's
+            // file is found and read from its end like any newly found file, so its history
+            // — the whole conversation so far — is not replayed.
+            watches[snapshot.id] = Watch(
+                firstSeenAt: moment, nextLocateAttemptAt: moment, sessionLabel: snapshot.transcriptLabel)
         }
         rescheduleReads()
     }
@@ -298,11 +312,12 @@ final class TranscriptWatcher {
             guard watches[snapshot.id] == nil else {
                 return nil
             }
-            watches[snapshot.id] = Watch(firstSeenAt: moment, nextLocateAttemptAt: moment)
+            watches[snapshot.id] = Watch(
+                firstSeenAt: moment, nextLocateAttemptAt: moment, sessionLabel: snapshot.transcriptLabel)
             return ReadJob(
                 sessionID: snapshot.id,
                 source: snapshot.source,
-                sessionLabel: snapshot.sessionLabel,
+                sessionLabel: snapshot.transcriptLabel,
                 root: TranscriptLocator.defaultRoot(for: snapshot.source, home: home),
                 url: nil,
                 offset: 0,
@@ -332,7 +347,7 @@ final class TranscriptWatcher {
         Self.watchableSessions(sessions, now: now()).compactMap { snapshot in
             var watch =
                 watches[snapshot.id]
-                ?? Watch(firstSeenAt: moment, nextLocateAttemptAt: moment)
+                ?? Watch(firstSeenAt: moment, nextLocateAttemptAt: moment, sessionLabel: snapshot.transcriptLabel)
             defer { watches[snapshot.id] = watch }
 
             if watch.url == nil {
@@ -346,7 +361,7 @@ final class TranscriptWatcher {
             return ReadJob(
                 sessionID: snapshot.id,
                 source: snapshot.source,
-                sessionLabel: snapshot.sessionLabel,
+                sessionLabel: snapshot.transcriptLabel,
                 root: TranscriptLocator.defaultRoot(for: snapshot.source, home: home),
                 url: watch.url,
                 offset: watch.offset,
@@ -363,7 +378,10 @@ final class TranscriptWatcher {
         defer { rescheduleReads() }
         var updates: [TranscriptUpdate] = []
         for result in results {
-            guard var watch = watches[result.sessionID] else {
+            guard var watch = watches[result.sessionID], watch.sessionLabel == result.sessionLabel else {
+                // Nobody's result: the row is gone, or its watch was replaced while the read
+                // ran and now looks for another file. Writing this file's address into the
+                // new watch would stop it from ever looking.
                 continue
             }
             watch.url = result.url
@@ -578,7 +596,7 @@ final class TranscriptWatcher {
             }
             let increment = try TranscriptReader.read(increment: data, source: job.source, observedAt: boundary)
             result = ReadResult(
-                sessionID: job.sessionID,
+                sessionID: job.sessionID, sessionLabel: job.sessionLabel,
                 url: url,
                 offset: offset + UInt64(increment.consumedByteCount),
                 facts: increment.facts.filter { $0.at > boundary },
@@ -587,7 +605,9 @@ final class TranscriptWatcher {
                 signals: result.signals.merging(increment.signals)
             )
         } catch {
-            result = ReadResult(sessionID: job.sessionID, url: nil, offset: 0, facts: [], fault: .transcriptUnreadable)
+            result = ReadResult(
+                sessionID: job.sessionID, sessionLabel: job.sessionLabel, url: nil, offset: 0, facts: [],
+                fault: .transcriptUnreadable)
         }
         return result
     }
@@ -601,7 +621,7 @@ final class TranscriptWatcher {
             )
         else {
             return ReadResult(
-                sessionID: job.sessionID,
+                sessionID: job.sessionID, sessionLabel: job.sessionLabel,
                 url: nil,
                 offset: 0,
                 facts: [],
@@ -618,7 +638,7 @@ final class TranscriptWatcher {
         // would do it in the one case where the file is already behaving oddly.
         guard let end = endOfFile(at: url) else {
             return ReadResult(
-                sessionID: job.sessionID,
+                sessionID: job.sessionID, sessionLabel: job.sessionLabel,
                 url: nil,
                 offset: 0,
                 facts: [],
@@ -631,7 +651,7 @@ final class TranscriptWatcher {
         // disturb the tail either: the offset above came from a handle of its own, and a head
         // that will not parse costs these values and nothing else.
         return ReadResult(
-            sessionID: job.sessionID,
+            sessionID: job.sessionID, sessionLabel: job.sessionLabel,
             url: url,
             offset: end,
             facts: [],
@@ -653,7 +673,7 @@ final class TranscriptWatcher {
             // that would only spend the time as well.
             guard end >= job.offset else {
                 return ReadResult(
-                    sessionID: job.sessionID,
+                    sessionID: job.sessionID, sessionLabel: job.sessionLabel,
                     url: url,
                     offset: end,
                     facts: [],
@@ -662,7 +682,7 @@ final class TranscriptWatcher {
             }
             guard end - job.offset <= UInt64(TranscriptReader.maximumIncrementByteCount) else {
                 return ReadResult(
-                    sessionID: job.sessionID,
+                    sessionID: job.sessionID, sessionLabel: job.sessionLabel,
                     url: url,
                     offset: end,
                     facts: [],
@@ -677,7 +697,7 @@ final class TranscriptWatcher {
                 observedAt: observedAt
             )
             return ReadResult(
-                sessionID: job.sessionID,
+                sessionID: job.sessionID, sessionLabel: job.sessionLabel,
                 url: url,
                 offset: job.offset + UInt64(increment.consumedByteCount),
                 facts: increment.facts,
@@ -693,7 +713,9 @@ final class TranscriptWatcher {
             // The file is dropped along with the fault, so the next attempt locates again: a
             // transcript can be deleted or moved, and a path kept forever would report the
             // same failure for a session whose file is fine somewhere else.
-            return ReadResult(sessionID: job.sessionID, url: nil, offset: 0, facts: [], fault: .transcriptUnreadable)
+            return ReadResult(
+                sessionID: job.sessionID, sessionLabel: job.sessionLabel, url: nil, offset: 0, facts: [],
+                fault: .transcriptUnreadable)
         }
     }
 

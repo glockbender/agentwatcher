@@ -45,7 +45,8 @@ public enum AgentProcessScanner {
                     source: .claude,
                     processID: processID,
                     startedAt: startedAt,
-                    projectName: workingDirectoryName(of: processID)
+                    projectName: workingDirectoryName(of: processID),
+                    clientKind: AgentProcessLocator.clientKind(ofAgentProcess: processID)
                 )
             }
             .sorted { $0.processID < $1.processID }

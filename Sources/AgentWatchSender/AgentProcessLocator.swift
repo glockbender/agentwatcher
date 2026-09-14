@@ -33,6 +33,13 @@ public enum AgentProcessLocator {
         clientKind(for: source, in: ancestorSnapshots())
     }
 
+    /// The same answer for a Claude process the scanner found, asked of that process and its
+    /// ancestors — so a row built from a process and the row its first hook builds say the
+    /// same thing about where the session runs.
+    public static func clientKind(ofAgentProcess processID: Int32) -> SessionClientKind? {
+        clientKind(for: .claude, in: ancestorSnapshots(startingAt: processID))
+    }
+
     public static func clientKind(
         for source: AgentSource,
         in ancestors: [ProcessSnapshot]
@@ -53,16 +60,95 @@ public enum AgentProcessLocator {
 
         switch source {
         case .claude:
-            guard let agent = ancestors.first(where: isClaudeProcess) else {
+            guard let agentIndex = ancestors.firstIndex(where: isClaudeProcess) else {
                 return nil
             }
-            // The same process this hook will report as the session's, asked what it is. A
-            // background session runs inside `claude bg-spare`, which the agent started for
-            // itself: no terminal above it, and so no window the widget could ever raise.
-            return isHelperCommand(argumentsOfProcess(agent.processID) ?? []) ? .background : .cli
+            // The same process this hook will report as the session's, asked what it is, and
+            // then everything above it. A background session has one of the agent's own
+            // helpers somewhere in that chain — it *is* `claude bg-spare`, or it is a session
+            // sent to the background with `/bg`, which the pty host `claude --bg-pty-host`
+            // starts as a child of its own. Either way there is no terminal above it, and so
+            // no window the widget could ever raise. Measured on 2.1.269: the host runs from
+            // `ClaudeCode.app`, not from `versions/`, so it is found by its words, not its path.
+            //
+            // Only Claude's own processes are asked, which is what "helper of the agent's"
+            // means. The words are ordinary ones, and something far above the session may
+            // have been started with them for reasons of its own — `emacs --daemon` is how
+            // Emacs is normally run, and a terminal inside it is the parent of everything
+            // typed there.
+            let runsUnderAHelper = ancestors[agentIndex...].contains { process in
+                let arguments = argumentsOfProcess(process.processID) ?? []
+                return (isClaudeProcess(process) || isTheAgentsExecutable(arguments))
+                    && isHelperCommand(arguments)
+            }
+            return runsUnderAHelper ? .background : .cli
         case .codex:
             return ancestors.contains(where: isCodexCLIProcess) ? .cli : nil
         }
+    }
+
+    /// The session this one was copied from, when it is a copy — raw, for the redactor.
+    ///
+    /// `/bg` and `/fork` continue a session in a new process under a new identifier, and the
+    /// widget would otherwise draw a second row for the same conversation. No hook field
+    /// names the original; the process's own arguments do.
+    ///
+    /// - Parameter sessionID: the session the hook is about, raw, as the payload says it.
+    ///   The copy's process runs a second, two-second session first — the one `--resume`
+    ///   always leaves behind — and its hooks read the same arguments; only the session the
+    ///   process was started for is the copy.
+    public static func currentForkedFromSessionID(forSessionID sessionID: String) -> String? {
+        guard let agent = currentClaudeProcessID(), let arguments = commandArguments(of: agent) else {
+            return nil
+        }
+        return forkedFromSessionID(arguments: arguments, forSessionID: sessionID)
+    }
+
+    /// Reads the original out of a fork's arguments: `--fork-session` says the process is a
+    /// copy, and `--resume` (or `-r`, or `--resume=…`) names what it was copied from — the
+    /// transcript file, named after the session, when Claude Code started the copy itself;
+    /// the identifier, when a person typed it. Measured on 2.1.269. A resume without
+    /// `--fork-session` keeps its identifier and is nothing to continue from.
+    ///
+    /// Only the session the process was started for is the copy, and `--session-id` is what
+    /// names it — Claude Code always passes it. The stub session `--resume` leaves behind on
+    /// the same process reads the same arguments and is nobody's continuation: aliased onto
+    /// the original's row, its start would reset the row and its end would close it two
+    /// seconds later. So a command without `--session-id` — one a person typed — continues
+    /// nothing, although it may well be a real fork: the copy then gets a row of its own,
+    /// which is one row too many at worst, where a stub read as a copy costs a live row.
+    static func forkedFromSessionID(arguments: [String], forSessionID sessionID: String) -> String? {
+        let words = commandWords(arguments)
+        guard words.contains("--fork-session"), optionValue(named: ["--session-id"], in: words) == sessionID else {
+            return nil
+        }
+        guard let resumed = optionValue(named: ["--resume", "-r"], in: words) else {
+            return nil
+        }
+        guard resumed.contains("/") else {
+            return resumed
+        }
+        let identifier = URL(fileURLWithPath: resumed).deletingPathExtension().lastPathComponent
+        return identifier.isEmpty ? nil : identifier
+    }
+
+    /// The value of an option written either as `--name value` or as `--name=value`; `nil`
+    /// when the option is absent, or has no value, or its value is another option.
+    private static func optionValue(named names: [String], in words: [String]) -> String? {
+        for (index, word) in words.enumerated() {
+            if names.contains(word) {
+                guard words.indices.contains(index + 1) else {
+                    return nil
+                }
+                let value = words[index + 1]
+                return value.isEmpty || value.hasPrefix("-") ? nil : value
+            }
+            for name in names where word.hasPrefix(name + "=") {
+                let value = String(word.dropFirst(name.count + 1))
+                return value.isEmpty ? nil : value
+            }
+        }
+        return nil
     }
 
     /// Whether this process is the Claude CLI itself.
@@ -100,10 +186,10 @@ public enum AgentProcessLocator {
     ///
     /// `attach` is on the list for a reason of its own: not a helper of the agent's but a
     /// viewer of a person's. It shows a background session in the terminal it is typed into,
-    /// and that session has a row already — the background one, whose `↗` is what opens the
-    /// viewer to begin with (`BackgroundSessionAttach`). A row for the viewer too would be
-    /// nameless, would never hear a hook of its own, and would stand beside the row it
-    /// duplicates.
+    /// and that session has a row already — the background one, and a click on that row is
+    /// what opens the viewer to begin with (`BackgroundSessionAttach`). A row for the viewer
+    /// too would be nameless, would never hear a hook of its own, and would stand beside the
+    /// row it duplicates.
     ///
     /// Asked of a process's arguments and nothing else, so the whole rule can be exercised
     /// without a machine that happens to be running one.
@@ -111,7 +197,23 @@ public enum AgentProcessLocator {
         guard let subcommand = commandWords(arguments).first else {
             return false
         }
-        return helperCommands.contains(subcommand)
+        // `claude bg-pty-host …` in one build, `claude --bg-pty-host …` in the next — the same
+        // helper, named as a word or as a flag. Measured on 2.1.269 and 2.1.270 side by side.
+        // One `--` and no more: everything else a word can start with is somebody else's.
+        let name = subcommand.hasPrefix("--") ? String(subcommand.dropFirst(2)) : subcommand
+        return helperCommands.contains(name)
+    }
+
+    /// Whether these are the arguments of a process running the agent's own program, asked of
+    /// the name it was started under — for the helpers `isClaudeProcess` does not recognise,
+    /// which know themselves by a path ending in `claude` (the pty host runs from
+    /// `ClaudeCode.app`, not from `versions/`, measured on 2.1.269) or by the name a renamed
+    /// process gives itself, `claude <something>`.
+    private static func isTheAgentsExecutable(_ arguments: [String]) -> Bool {
+        guard let program = arguments.first else {
+            return false
+        }
+        return program == "claude" || program.hasSuffix("/claude") || program.hasPrefix("claude ")
     }
 
     /// The words a process was started with, after the program itself.
@@ -151,9 +253,9 @@ public enum AgentProcessLocator {
             && !components.contains("codex.app")
     }
 
-    private static func ancestorSnapshots() -> [ProcessSnapshot] {
+    private static func ancestorSnapshots(startingAt first: Int32 = getppid()) -> [ProcessSnapshot] {
         var result: [ProcessSnapshot] = []
-        var processID = getppid()
+        var processID = first
 
         for _ in 0..<16 {
             guard processID > 1 else {

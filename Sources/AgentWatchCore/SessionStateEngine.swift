@@ -18,6 +18,24 @@ public struct SessionStateEngine: Sendable {
     /// can say whether they still hold. See `restore` and `confirmRememberedWait`.
     private var rememberedWaits: [String: SessionHistory.RememberedWait] = [:]
 
+    /// What the last `ingest` decided about which row the event belonged to, when it decided
+    /// anything out of the ordinary. The caller logs from this rather than working the rule
+    /// out again from the snapshots before and after, so the rule has one home.
+    public private(set) var lastIngestNote: IngestNote?
+    /// Set by `foldContinuedRow`, which runs before the `ingest` it belongs to.
+    private var noteForNextIngest: IngestNote?
+
+    public enum IngestNote: Equatable, Sendable {
+        /// The event's session turned out to be a copy of the row's session and joined the
+        /// row — with its own row folded in when it had one.
+        case continued(foldedOwnRow: Bool)
+        /// The row's own session, or a copy of it, took a turn or a call of its own beside
+        /// copies that had joined after it: two live sessions, so those copies were let go and
+        /// are rows of their own from here. `rowWasClosed` when the newest copy had already
+        /// ended and closed the row — then this is a session coming back, not two running.
+        case released(copies: [String], rowWasClosed: Bool)
+    }
+
     public init() {}
 
     @discardableResult
@@ -26,7 +44,9 @@ public struct SessionStateEngine: Sendable {
             throw EventIngestionError.unsupportedSchemaVersion(event.schemaVersion)
         }
 
-        let snapshotID = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
+        lastIngestNote = noteForNextIngest
+        noteForNextIngest = nil
+        let snapshotID = rowID(for: event)
         // The session is speaking for itself, so the memory of what it was waiting for has
         // nothing left to add — whatever the transcript is about to say about it is older
         // than this.
@@ -34,6 +54,47 @@ public struct SessionStateEngine: Sendable {
         var snapshot: SessionSnapshot
         if let known = snapshots[snapshotID] {
             snapshot = known
+            // A row a copy continues has more than one session behind it, and only the newest
+            // copy is the conversation now. Anything an earlier one says changes nothing here
+            // — after `/bg` the original goes on to report the end of the turn that finished
+            // in the copy, and its own end when its terminal closes — with one exception: a
+            // turn or a call of its own means it is alive after all, which is `/fork`. Two
+            // live sessions are two rows, so the copies that joined after the speaker are let
+            // go, and stay let go, since every hook of theirs goes on naming a session here.
+            // Who spoke is the event's label against the row's chain, never the process
+            // number, which a hook can arrive without. A start is deliberately not a sign of
+            // life: whether the parked terminal says one under the same identifier when a
+            // person walks back into the session is unmeasured, and reading it as life would
+            // split one conversation in two — the very thing this rule exists to stop.
+            // `docs/architecture.md` §14, "Сессию отправили в фон", has the measurements.
+            if let copies = known.continuedBy {
+                let joinedAfterSpeaker =
+                    event.sessionID == known.sessionLabel
+                    ? copies[...]
+                    : copies.firstIndex(of: event.sessionID).map { copies[($0 + 1)...] } ?? []
+                if !joinedAfterSpeaker.isEmpty {
+                    guard event.kind == .turnStarted || event.kind == .activityStarted else {
+                        return known
+                    }
+                    let kept = copies.dropLast(joinedAfterSpeaker.count)
+                    snapshot.continuedBy = kept.isEmpty ? nil : Array(kept)
+                    snapshot.releasedCopies = (snapshot.releasedCopies ?? []) + joinedAfterSpeaker
+                    snapshot.viewerProcessID = nil
+                    let wasClosed = snapshot.phase == .sessionClosed
+                    lastIngestNote = .released(copies: Array(joinedAfterSpeaker), rowWasClosed: wasClosed)
+                    if wasClosed {
+                        // Reopened exactly as a start reopens a row, which also clears the
+                        // activities the copy left open — they were never this session's. The
+                        // age is the newer of the two for the reason the end of this function
+                        // gives: a late event is evidence of life, not a younger row.
+                        snapshot = SessionReducer.reduce(
+                            snapshot,
+                            event: .sessionStarted(
+                                mode: event.mode, at: max(snapshot.lastObservedAt, event.observedAt))
+                        )
+                    }
+                }
+            }
             // A row that was found by its process and is now speaking for itself stops being
             // a row found by its process. Everything the row had is kept — its place in the
             // list, and whatever its transcript already told us — but this is the moment it
@@ -72,6 +133,13 @@ public struct SessionStateEngine: Sendable {
         }
         if let clientKind = event.clientKind {
             snapshot.clientKind = clientKind
+            // A viewer is a terminal showing a session that runs elsewhere. A session speaking
+            // from a terminal of its own again — a background one resumed in a terminal, say —
+            // has its window in `agentProcessID`, and a viewer left over from before would
+            // point the click at a process the row no longer runs on.
+            if clientKind != .background {
+                snapshot.viewerProcessID = nil
+            }
         }
         if let description = event.description {
             snapshot = Self.merged(snapshot, with: description)
@@ -181,6 +249,118 @@ public struct SessionStateEngine: Sendable {
     ///
     /// The age is excluded from that comparison on purpose. It moves for every fact, so
     /// including it would make every fact look like a disagreement and bury the real ones.
+    /// The row an event belongs to: its own session's, or the row its session continues.
+    ///
+    /// `/bg` and `/fork` copy a conversation into a new process under a new identifier, and
+    /// the copy's events arrive under that identifier. Any of them may name the original
+    /// (`forkedFromSessionID`) — the sender puts it on every event, because the app may hear
+    /// of a copy for the first time mid-conversation — and from then on the copy's identifier
+    /// is one more name for the original's row (`SessionSnapshot.continuedBy`). The original
+    /// may itself be a copy of something older, so it is looked up the same way.
+    ///
+    /// A closed original is continued only by a start. Closed is terminal and a start is the
+    /// one event that reopens it; a turn aliased onto a tombstone would be dropped as a late
+    /// event, and the copy's whole conversation would vanish with it. Such a copy gets a row
+    /// of its own instead, until a start of its own says otherwise.
+    ///
+    /// A copy that already has a row of its own is not aliased here — `foldContinuedRow`
+    /// deals with that case first, because the caller has to hear about the row that goes.
+    private mutating func rowID(for event: EventEnvelope) -> String {
+        let own = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
+        if snapshots[own] != nil {
+            return own
+        }
+        if let continued = rowContinued(by: event.sessionID, source: event.source) {
+            return continued.id
+        }
+        guard
+            let original = event.forkedFromSessionID,
+            let originalID = continuedRowID(label: original, source: event.source),
+            var row = snapshots[originalID],
+            row.phase != .sessionClosed || event.kind == .sessionStarted,
+            row.releasedCopies?.contains(event.sessionID) != true
+        else {
+            return own
+        }
+        row.continuedBy = (row.continuedBy ?? []) + [event.sessionID]
+        // A viewer shows one job, and the row is a new job's from here: the terminal that
+        // parked the copy before is not known to show this one. Dropped, and asked again.
+        row.viewerProcessID = nil
+        snapshots[originalID] = row
+        lastIngestNote = .continued(foldedOwnRow: false)
+        return originalID
+    }
+
+    /// Folds a copy's own row into the row of the session it continues, and answers with the
+    /// row that went.
+    ///
+    /// The case is a file written by a launch before this rule existed: it holds a row for the
+    /// original and a row for the copy, and the copy's next event names the original. Without
+    /// this the two would stand side by side for as long as both ran — the very thing the rule
+    /// is for. Called with the event about to be ingested, like `claimDiscoveredRow`, because
+    /// the caller holds what the engine does not: the watcher on the copy's process, which now
+    /// reports for the original's row.
+    ///
+    /// The original's row is the one kept — its place in the list, its name, everything its
+    /// transcript told it — and the event that follows brings the copy's present state to it.
+    /// A closed original is left alone unless the event is a start, for the reason `rowID`
+    /// gives.
+    @discardableResult
+    public mutating func foldContinuedRow(for event: EventEnvelope) -> SessionSnapshot? {
+        guard let original = event.forkedFromSessionID else {
+            return nil
+        }
+        let own = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
+        guard
+            let duplicate = snapshots[own],
+            let originalID = continuedRowID(label: original, source: event.source),
+            originalID != own,
+            var row = snapshots[originalID],
+            row.phase != .sessionClosed || event.kind == .sessionStarted,
+            // A copy the original let go is two rows on purpose, not the old file's two.
+            row.releasedCopies?.contains(event.sessionID) != true
+        else {
+            return nil
+        }
+        removeSession(id: own)
+        row.continuedBy = (row.continuedBy ?? []) + [event.sessionID] + (duplicate.continuedBy ?? [])
+        // What the copy's row knew goes with it: the copies it let go, which must not join
+        // this row through the copy's name once the copy's row is gone, and the terminal
+        // showing it, which is the terminal showing this row now.
+        let released = (row.releasedCopies ?? []) + (duplicate.releasedCopies ?? [])
+        row.releasedCopies = released.isEmpty ? nil : released
+        row.viewerProcessID = duplicate.viewerProcessID
+        snapshots[originalID] = row
+        noteForNextIngest = .continued(foldedOwnRow: true)
+        return duplicate
+    }
+
+    /// The row a session label names: its own, or the one it continues.
+    private func continuedRowID(label: String, source: AgentSource) -> String? {
+        let own = SessionSnapshot.id(source: source, sessionLabel: label)
+        return snapshots[own]?.id ?? rowContinued(by: label, source: source)?.id
+    }
+
+    private func rowContinued(by sessionLabel: String, source: AgentSource) -> SessionSnapshot? {
+        snapshots.values.first { $0.source == source && $0.continuedBy?.contains(sessionLabel) == true }
+    }
+
+    /// Records which terminal process shows this session, or that none does.
+    ///
+    /// Told rather than found: which process is attached to a background job is Claude
+    /// Code's registry and the process list, and both are the application's to read. What
+    /// the engine keeps is the answer, on the row, so the file remembers it and the widget
+    /// draws from it. A closed row is left alone — nothing is reached through it either way.
+    @discardableResult
+    public mutating func setViewer(processID: Int32?, forSessionWithID id: String) -> SessionSnapshot? {
+        guard var snapshot = snapshots[id], snapshot.phase != .sessionClosed else {
+            return nil
+        }
+        snapshot.viewerProcessID = processID
+        snapshots[id] = snapshot
+        return snapshot
+    }
+
     @discardableResult
     public mutating func apply(_ fact: TranscriptFact, toSessionWithID id: String) -> SessionSnapshot? {
         guard let previous = snapshots[id], previous.phase != .sessionClosed else {
@@ -503,10 +683,13 @@ public struct SessionStateEngine: Sendable {
         // process number for good — and macOS hands those out again. The next agent to land
         // on the number of a session closed earlier that day would get no row at all, with
         // nothing left to clear it.
+        // The terminal showing a background session is claimed with it: a live `claude`
+        // process with no hooks of its own, which is exactly what a scan would otherwise take
+        // for an agent nobody has heard from.
         let claimedProcessIDs = Set(
             snapshots.values
                 .filter { $0.discoveredProcess == nil && $0.phase != .sessionClosed }
-                .compactMap(\.agentProcessID)
+                .flatMap { [$0.agentProcessID, $0.viewerProcessID].compactMap { $0 } }
         )
         let wanted = Dictionary(
             processes
@@ -592,10 +775,21 @@ public struct SessionStateEngine: Sendable {
         guard let processID = event.agentProcessID else {
             return []
         }
-        let arrivingID = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
+        // The event's own row, and the row it continues: a copy's late `Stop` after the copy's
+        // own `SessionEnd` arrives on the same process under the copy's identifier, and must
+        // not turn this rule against the row it belongs to.
+        var protected: Set<String> = [SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)]
+        if let continued = continuedRowID(label: event.sessionID, source: event.source) {
+            protected.insert(continued)
+        }
+        if let original = event.forkedFromSessionID,
+            let continued = continuedRowID(label: original, source: event.source)
+        {
+            protected.insert(continued)
+        }
         let superseded = snapshots.values
             .filter { snapshot in
-                snapshot.id != arrivingID
+                !protected.contains(snapshot.id)
                     && snapshot.source == event.source
                     && snapshot.phase == .sessionClosed
                     && snapshot.agentProcessID == processID

@@ -38,40 +38,48 @@ func chooseTitleDisplay(
     return .truncated(toWidth: availableWidth)
 }
 
-/// One session, laid out as `[focus] [timer] [lamp] [icons] [name] [counts] [dismiss]`.
+/// One session, laid out as `[timer] [lamp] [icons] [name] [counts] [dismiss]`.
 ///
-/// The focus button leads the row so that everything after it lines up into columns down the
-/// list. The dismiss button stays at the far end instead of joining it: it exists only for a
-/// session that has stopped, and reserving its width in every row put a visible hole between
-/// the button and the timer for the sake of an alignment nothing else needed.
+/// The row is itself the way back to the session: a click anywhere on it brings the session
+/// forward. It used to carry a `↗` button for that at its start, and the button was the one
+/// thing on the row a person had to aim at; the row is the larger target and was already the
+/// thing being read. The dismiss button stays at the far end as a button: it exists only for
+/// a session that has stopped, and a click that both removes a row and brings its session
+/// forward would be two actions on one press.
+///
+/// The timer leads the row at a fixed width, so everything after it lines up into columns
+/// down the list.
 ///
 /// Everything up to the name has a width of its own; only the name gives way, so a narrow
 /// widget never turns a count or a timer into something ambiguous.
 ///
-/// Every picture in the row carries its own tooltip, because a picture that cannot be read
-/// is worse than the word it replaced. The name is the exception in both directions: it
-/// explains itself when it is fully visible and gets no tooltip then, and it keeps one
-/// whenever anything was cut away.
+/// Nothing in the row carries a tooltip of its own. The hover card explains the whole row in
+/// words — every counter, the fault marker, how far a click will reach — which is one place to
+/// look instead of a dozen small targets to find, and the one thing that names a shortened
+/// name in full.
 @MainActor
 final class HUDSessionRowView: NSStackView {
     /// Below this a shortened name says nothing useful, and a single initial takes over.
     /// Kept small on purpose: a truncated `AGENTS…CLAUDE.md` still identifies a session.
     static let minimumTitleWidth: CGFloat = 52
     static let elementSpacing: CGFloat = 4
-    /// Tighter than the rest of the row. A bezelled button already carries visible padding
-    /// inside its own edge, so the ordinary gap after it read as a hole.
-    static let buttonGap: CGFloat = 2
     static let buttonWidth: CGFloat = 22
-    /// A row's two action buttons, both exactly this size. As tall as the row, because they
-    /// are what makes it that tall.
+    /// The dismiss button, exactly this size. As tall as the row, so a row with one is no
+    /// taller than a row without.
     static var buttonSize: NSSize { NSSize(width: buttonWidth, height: rowHeight) }
     /// Breathing room inside the hover wash.
     static let hoverPadding: CGFloat = 4
+    /// How far a press may travel and still be a click. Beyond it the press is a drag of the
+    /// widget and is handed back to the window. Four points is about what a hand does on its
+    /// own between pressing and releasing.
+    static let dragThreshold: CGFloat = 4
 
-    /// The height of a row, which is the height of its buttons — they are the tallest thing
-    /// in it. Both the buttons and the widget's self-sizing height are held to this, so a row
-    /// is exactly as tall as the space reserved for it. It used to be called `approximate`,
-    /// from when the sizing only estimated; a test now measures the two against each other.
+    /// The height of a row, which every row is held to whatever it holds. It used to follow
+    /// from the buttons, the tallest thing in a row, until a row could have none; a row of
+    /// icons and labels alone came out three points shorter than one with a dismiss button.
+    /// The widget's self-sizing height reserves exactly this per row. It used to be called
+    /// `approximate`, from when the sizing only estimated; a test now measures the two
+    /// against each other.
     static let rowHeight: CGFloat = 19
     /// Three characters, always — the longest value the timer can print. Reserved in every
     /// row so the lamp and everything after it stand in a straight column.
@@ -92,14 +100,28 @@ final class HUDSessionRowView: NSStackView {
     }
 
     /// Kept so the row can refresh its own timer without being rebuilt. Rebuilding the list
-    /// on every tick destroyed the view under the pointer twice a second, and a tooltip needs
-    /// roughly a second of hovering over a view that is still there to appear at all.
+    /// on every tick destroyed the view under the pointer twice a second, and the hover card
+    /// needs half a second of hovering over a view that is still there to appear at all.
     let snapshot: SessionSnapshot
     private let background: WidgetBackground
     private let timerLabel: NSTextField
     /// What the timer currently reads, so a tick that changes nothing writes nothing.
     private var shownElapsed: String
     private var shownColor: NSColor?
+
+    private let onFocus: () -> Void
+    /// What assistive technology hears the row called: the session's name as given to
+    /// `setTitle`, whatever length the row itself could show of it.
+    private var accessibleName: String?
+    /// Where the press landed, in the row's coordinates, while it is still a click in the
+    /// making. Cleared by the release and by a drag; a release the row never saw pressed is
+    /// not a click.
+    private var pressStart: NSPoint?
+    /// Hands a press that travelled to the window as a drag, and says whether the window took
+    /// it. It does not when the widget's position is locked, or when there is no window — and
+    /// then the press is still a click: the lock exists to stop a stray drag, not the click.
+    /// A closure so a test can state the answer without a window to drag.
+    var beginWindowDrag: (NSEvent) -> Bool = { _ in false }
 
     private let onHoverChanged: (HUDSessionRowView, Bool) -> Void
     private var hoverTracking: NSTrackingArea?
@@ -119,6 +141,7 @@ final class HUDSessionRowView: NSStackView {
         let lamp = SessionLamp.appearance(for: snapshot, scheme: lampScheme)
         self.snapshot = snapshot
         self.background = background
+        self.onFocus = onFocus
         self.onHoverChanged = onHoverChanged
         timerLabel = Self.makeTimer(for: snapshot, now: now, background: background)
         shownElapsed = timerLabel.stringValue
@@ -126,7 +149,6 @@ final class HUDSessionRowView: NSStackView {
         super.init(frame: .zero)
 
         var views: [NSView] = [
-            Self.makeFocusButton(for: snapshot, onFocus: onFocus),
             timerLabel,
             Self.makeLamp(lamp),
             Self.makeSourceIcon(for: snapshot),
@@ -170,7 +192,7 @@ final class HUDSessionRowView: NSStackView {
         }
 
         if let onRemove {
-            let removeButton = RowActionButton(.dismiss, perform: onRemove)
+            let removeButton = RowDismissButton(perform: onRemove)
             removeButton.pinSize(to: Self.buttonSize)
             views.append(removeButton)
         }
@@ -181,11 +203,16 @@ final class HUDSessionRowView: NSStackView {
         orientation = .horizontal
         alignment = .centerY
         spacing = Self.elementSpacing
+        heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
         // Room for the hover wash to sit around the content rather than against it. The
         // list's own inset is reduced by as much, so nothing moves.
         edgeInsets = NSEdgeInsets(top: 1, left: Self.hoverPadding, bottom: 1, right: Self.hoverPadding)
-        if let focusButton = views.first {
-            setCustomSpacing(Self.buttonGap, after: focusButton)
+        beginWindowDrag = { [weak self] event in
+            guard let window = self?.window, window.isMovableByWindowBackground else {
+                return false
+            }
+            window.performDrag(with: event)
+            return true
         }
     }
 
@@ -208,6 +235,9 @@ final class HUDSessionRowView: NSStackView {
             return
         }
         hasTitle = true
+        if display != .hidden {
+            accessibleName = title?.nonEmpty
+        }
         guard
             let index = arrangedSubviews.firstIndex(of: spacer),
             let title = Self.makeTitle(title, display: display, background: background)
@@ -238,42 +268,20 @@ final class HUDSessionRowView: NSStackView {
         return spacer
     }
 
-    /// Pressable for every session.
-    ///
-    /// A decision rather than an omission: a grey control would
-    /// say "this session cannot be reached", which is nearly never true — the host is usually
-    /// running, and when it is not, the row's card says so in a sentence a person can act on.
-    /// Where the host is only holds while nothing moves, so a button greyed on that answer
-    /// greys rows that are perfectly reachable a second later.
-    ///
-    /// `SessionPresence.canBeBroughtForward` is where an exception would be named; there is
-    /// none today — a background session's press opens a terminal tab instead of raising a
-    /// window. Were one to come back, the button would stay in place for it rather than
-    /// disappear: the row would otherwise lose its first column and stop lining up with every
-    /// other row, and the card would say why it is grey.
-    ///
-    /// No tooltip: the card is the one thing that explains a row.
-    private static func makeFocusButton(for snapshot: SessionSnapshot, onFocus: @escaping () -> Void) -> NSButton {
-        let button = RowActionButton(.focus, perform: onFocus)
-        button.isEnabled = SessionPresence.canBeBroughtForward(snapshot)
-        button.pinSize(to: buttonSize)
-        return button
-    }
-
     /// `.activeAlways` is the whole point: the widget is hovered while another application
     /// is in front, and a tracking area that only worked in the key window would report
     /// nothing exactly when the card is wanted.
     ///
-    /// The area covers the row's information, not its buttons. Aiming at a button is aiming
-    /// at a button — a card opening under the pointer there would be in the way of the very
-    /// click it interrupted.
+    /// The area covers the row up to its dismiss button, not the button itself. Aiming at a
+    /// button is aiming at a button — a card opening under the pointer there would be in the
+    /// way of the very click it interrupted.
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let hoverTracking {
             removeTrackingArea(hoverTracking)
         }
         let area = NSTrackingArea(
-            rect: Self.hoverRect(in: bounds, avoiding: buttonFrames()),
+            rect: Self.hoverRect(in: bounds, before: dismissButtonFrame()),
             options: [.mouseEnteredAndExited, .activeAlways],
             owner: self
         )
@@ -281,24 +289,135 @@ final class HUDSessionRowView: NSStackView {
         hoverTracking = area
     }
 
-    private func buttonFrames() -> [NSRect] {
-        arrangedSubviews.compactMap { $0 as? RowActionButton }.map(\.frame)
+    /// Present only on a row that can be dismissed; the one part of a row that is not the row.
+    private var dismissButton: RowDismissButton? {
+        arrangedSubviews.lazy.compactMap { $0 as? RowDismissButton }.first
     }
 
-    /// What is left of a row once its buttons are taken out of it.
+    private func dismissButtonFrame() -> NSRect? {
+        dismissButton?.frame
+    }
+
+    /// What is left of a row once its dismiss button is taken out of it.
     ///
-    /// The buttons sit at the two ends, so the answer is the span between them. Kept free of
-    /// any view so the arithmetic can be checked without building a window.
-    static func hoverRect(in bounds: NSRect, avoiding buttonFrames: [NSRect]) -> NSRect {
-        guard !buttonFrames.isEmpty else {
+    /// The button sits at the trailing end, so the answer is everything before it. Kept free
+    /// of any view so the arithmetic can be checked without building a window.
+    static func hoverRect(in bounds: NSRect, before buttonFrame: NSRect?) -> NSRect {
+        guard let buttonFrame else {
             return bounds
         }
-        let leading = buttonFrames.filter { $0.midX < bounds.midX }.map(\.maxX).max() ?? bounds.minX
-        let trailing = buttonFrames.filter { $0.midX >= bounds.midX }.map(\.minX).min() ?? bounds.maxX
-        guard trailing > leading else {
+        guard buttonFrame.minX > bounds.minX else {
             return .zero
         }
-        return NSRect(x: leading, y: bounds.minY, width: trailing - leading, height: bounds.height)
+        return NSRect(x: bounds.minX, y: bounds.minY, width: buttonFrame.minX - bounds.minX, height: bounds.height)
+    }
+
+    /// The widget's panel never becomes key, so every click on it is a "first" click, and a
+    /// view that declined those would never see one.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    /// Every part of the row is the row, for a click. Left to AppKit, a label or an image
+    /// view takes the press for itself — measured: the name, the timer, the lamp and both
+    /// icons all did — and a click over the name would go nowhere. The dismiss button is the
+    /// one part that keeps its own click.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else {
+            return nil
+        }
+        if let dismissButton, hit.isDescendant(of: dismissButton) {
+            return hit
+        }
+        return self
+    }
+
+    /// The widget moves when its background is dragged, and a see-through view agrees to
+    /// that by default. One press then does two things at once: the row hears it, and the
+    /// window starts a drag with it. Measured in the running app with the default: a click
+    /// that did not travel at all still shifted the widget while it brought the session
+    /// forward. Refusing here keeps a click a click; `mouseDragged` hands a press that does
+    /// travel back to the window, so the widget still moves when it is meant to.
+    override var mouseDownCanMoveWindow: Bool {
+        false
+    }
+
+    /// A click is a press and a release inside the same row. Fired on the release, the way a
+    /// button fires, so a press that changes its mind and leaves the row does nothing.
+    ///
+    /// The second press of a double-click is not a second click. The first is still being
+    /// carried out — for a background session that is a terminal tab being opened, and the
+    /// rule that stops a second tab looks for the first tab's process, which takes longer to
+    /// appear than the gap between two presses.
+    override func mouseDown(with event: NSEvent) {
+        guard event.clickCount <= 1 else {
+            pressStart = nil
+            return
+        }
+        pressStart = convert(event.locationInWindow, from: nil)
+    }
+
+    /// A press that travels is a move of the widget, as a press anywhere else on it would
+    /// have been, and from then on it is not a click. Only when the widget can actually move:
+    /// with the position locked nothing is dragged, and the press stays a click — a button
+    /// fires on release inside its bounds however far the finger wandered, and so does this.
+    override func mouseDragged(with event: NSEvent) {
+        guard let pressStart else {
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        guard hypot(point.x - pressStart.x, point.y - pressStart.y) > Self.dragThreshold else {
+            return
+        }
+        guard beginWindowDrag(event) else {
+            return
+        }
+        self.pressStart = nil
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard pressStart != nil else {
+            return
+        }
+        pressStart = nil
+        guard bounds.contains(convert(event.locationInWindow, from: nil)) else {
+            return
+        }
+        onFocus()
+    }
+
+    // MARK: - Accessibility
+
+    /// One element, and a button: the `↗` was one, and a row that took over its click takes
+    /// over being something assistive technology can name and press. Its parts are read
+    /// through the hover card, not one by one.
+    override func isAccessibilityElement() -> Bool {
+        true
+    }
+
+    override func accessibilityRole() -> NSAccessibility.Role? {
+        .button
+    }
+
+    /// Nothing but the `×`, and only where there is one. Left to AppKit a row that calls
+    /// itself one element still hands out a child per label and per picture — measured, five
+    /// of them on a row that has stopped — so the row would be a button with the parts of a
+    /// button inside it. The dismiss button is the exception for the same reason it keeps its
+    /// own click: it is a second action, and an action reachable only by pointing at it is an
+    /// action some people do not have.
+    override func accessibilityChildren() -> [Any]? {
+        dismissButton.map { [$0] } ?? []
+    }
+
+    /// The session's name in full, or the bare fact of a session when the name is hidden by
+    /// the setting or not known yet.
+    override func accessibilityLabel() -> String? {
+        accessibleName ?? "Session"
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        onFocus()
+        return true
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -419,7 +538,9 @@ final class HUDSessionRowView: NSStackView {
     }
 
     private static func makeClientIcon(for snapshot: SessionSnapshot, background: WidgetBackground) -> NSView? {
-        guard let clientKind = snapshot.clientKind, let image = SessionClientIcon.image(for: clientKind) else {
+        // Where the session is read, not where it runs: a background session on screen in a
+        // terminal wears the terminal's icon, because that is what a click on the row reaches.
+        guard let clientKind = snapshot.hostKind, let image = SessionClientIcon.image(for: clientKind) else {
             return nil
         }
         let icon = NSImageView()
@@ -477,9 +598,7 @@ final class HUDSessionRowView: NSStackView {
     }
 
     /// The name, at whatever length it was granted, plus the constraint that enforces it.
-    ///
-    /// A tooltip appears only when something was cut away. Repeating a name the reader can
-    /// already see would train them to ignore the tooltips that do carry something.
+    /// A shortened name is spelled out in full by the hover card, never by a tooltip.
     private static func makeTitle(
         _ title: String?,
         display: SessionTitleDisplay,
@@ -521,25 +640,18 @@ final class HUDSessionRowView: NSStackView {
     }
 }
 
-/// The small bezelled button a row uses for both of its actions.
+/// The small bezelled `×` at the end of a row that has stopped.
 ///
-/// One type rather than two that differed by a single character and the name of a callback.
+/// The one button left on a row. There used to be two of one type, told apart by a single
+/// character; the other, `↗`, became the row itself.
 @MainActor
-final class RowActionButton: NSButton {
-    enum Action: String {
-        case focus = "↗"
-        case dismiss = "×"
-    }
-
-    /// Read by the row's tests to tell the two buttons apart; the row itself never asks.
-    let rowAction: Action
+final class RowDismissButton: NSButton {
     private let perform: () -> Void
 
-    init(_ rowAction: Action, perform: @escaping () -> Void) {
-        self.rowAction = rowAction
+    init(perform: @escaping () -> Void) {
         self.perform = perform
         super.init(frame: .zero)
-        title = rowAction.rawValue
+        title = "×"
         bezelStyle = .texturedRounded
         controlSize = .small
         font = WidgetStyle.buttonFont

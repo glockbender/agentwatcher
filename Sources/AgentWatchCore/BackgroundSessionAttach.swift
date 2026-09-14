@@ -6,9 +6,9 @@ import Foundation
 /// `launchd` above that — so there is no terminal tab anywhere to bring forward, and the
 /// process tree will never grow one. What there is instead is a door: `claude attach <job id>`
 /// shows the session in whatever terminal it is typed into, and `Ctrl+Z` there drops back to
-/// the shell with the session still running. So `↗` opens a fresh terminal tab and types that
-/// line, and the rules for what gets typed live here, where they can be checked without a
-/// terminal, a disk or Ghostty.
+/// the shell with the session still running. So a click on the row opens a fresh terminal
+/// tab and types that line, and the rules for what gets typed live here, where they can be
+/// checked without a terminal, a disk or Ghostty.
 ///
 /// The job identifier is not something the hooks carry: a session's own identifier reaches
 /// this app redacted (`docs/architecture.md` §15), and the job id is a separate, shorter name
@@ -39,6 +39,77 @@ public enum BackgroundSessionAttach {
             return nil
         }
         return jobID
+    }
+
+    /// The terminal process that shows this job, or `nil` when no live one does.
+    ///
+    /// `/bg` does not free the terminal it was typed in: the interactive process stays, its own
+    /// record names the job in `parkedJobId`, and the session is on screen right there — so
+    /// that terminal is the session's window, and a click on the row belongs to it, not to a
+    /// fresh tab with `claude attach`. Measured on 2.1.269, and undocumented like the rest of
+    /// the record: the docs speak of the terminal as freed, and of `parkedJobId` not at all.
+    ///
+    /// Only an interactive record counts. The job's own record names the job as `jobId` and
+    /// is no viewer of itself. And only a live process: the file outlives its process, so a
+    /// record alone says "showed it once", never "shows it now". The number is read as
+    /// Claude Code writes it, a number, and in the quoted spelling older records used.
+    /// - Parameter isProcessAlive: whether the process with this number is running, and is
+    ///   the one the record is about — the record's own start time is passed along so a
+    ///   number handed out again can be told from the original. `nil` when the record has
+    ///   none.
+    public static func viewerProcessID(
+        ofJob jobID: String,
+        inSessionRecords records: [Data],
+        isProcessAlive: (Int32, Date?) -> Bool
+    ) -> Int32? {
+        for data in records {
+            guard
+                let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                record["kind"] as? String == "interactive",
+                record["parkedJobId"] as? String == jobID,
+                let processID = processID(in: record),
+                isProcessAlive(processID, startedAt(in: record))
+            else {
+                continue
+            }
+            return processID
+        }
+        return nil
+    }
+
+    /// The record's start of the process: the kernel's own reading first (`procStart`, the
+    /// spelling of `ps -o lstart` — `Sat Sep 12 09:53:31 2026`, a single-digit day padded with
+    /// a space — in UTC, measured three hours behind the local `ps` on eight records), and
+    /// Claude Code's clock (`startedAt`, milliseconds since 1970, 0–3 s later on the same
+    /// records) for a record without it. The kernel's is exact and nothing rewrites it.
+    private static func startedAt(in record: [String: Any]) -> Date? {
+        if let text = record["procStart"] as? String,
+            let date = kernelStartFormatter.date(from: text.split(separator: " ").joined(separator: " "))
+        {
+            return date
+        }
+        guard let milliseconds = record["startedAt"] as? Double else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: milliseconds / 1_000)
+    }
+
+    private static let kernelStartFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+        return formatter
+    }()
+
+    private static func processID(in record: [String: Any]) -> Int32? {
+        if let number = record["pid"] as? Int, let processID = Int32(exactly: number) {
+            return processID
+        }
+        if let text = record["pid"] as? String {
+            return Int32(text)
+        }
+        return nil
     }
 
     /// Letters, digits, `_` and `-`, and nothing else — a shell reads none of those specially.

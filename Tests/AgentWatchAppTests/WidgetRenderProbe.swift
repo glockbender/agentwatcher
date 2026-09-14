@@ -238,8 +238,8 @@ final class WidgetRenderProbe: XCTestCase {
             )
         ]
 
-        // An agent with no window of its own. Its `↗` is offered like every other row's — the
-        // press opens a terminal tab — and the crossed-out window icon is what says the
+        // An agent with no window of its own. Its row answers a click like every other — the
+        // click opens a terminal tab — and the crossed-out window icon is what says the
         // difference; this is the only place that icon can be looked at beside the other two.
         var headless = session(10, "Ночная проверка по расписанию", .executing, secondsAgo: 12)
         headless.clientKind = .background

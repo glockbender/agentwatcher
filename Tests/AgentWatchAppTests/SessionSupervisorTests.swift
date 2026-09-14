@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchSender
 import AgentWatchTestSupport
 import AppKit
 import XCTest
@@ -968,6 +969,43 @@ final class SessionSupervisorTests: XCTestCase {
         return directory
     }
 
+    /// A hook from a copy of `original`, as the sender names it: the original in every event.
+    private func copyRequest(
+        event: String, sessionID: String, of original: String, agentProcessID: Int32
+    ) -> HookIngressRequest {
+        HookIngressRequest(
+            source: .claude,
+            declaredEvent: event,
+            payload: .object([
+                "session_id": .string(sessionID), "forked_from_session_id": .string(original),
+            ]),
+            agentProcessID: agentProcessID,
+            clientKind: .background
+        )
+    }
+
+    /// Claude Code's own records of its processes, `~/.claude/sessions/<pid>.json`, under a
+    /// home of the test's own.
+    private func writeSessionRecords(in home: URL, _ records: [Int32: String]) throws {
+        let sessions =
+            home
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
+        for (processID, record) in records {
+            try Data(record.utf8).write(to: sessions.appendingPathComponent("\(processID).json"))
+        }
+    }
+
+    /// The number of a process that has already exited: a child run to completion.
+    private func exitedProcessID() throws -> Int32 {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try child.run()
+        child.waitUntilExit()
+        return child.processIdentifier
+    }
+
     private func makeDirectory() throws -> URL {
         try FileManager.default.url(
             for: .itemReplacementDirectory,
@@ -998,6 +1036,439 @@ final class SessionSupervisorTests: XCTestCase {
             notable.contains { $0.contains("closed session dropped") },
             "a row that leaves has to be in the log; \(notable)"
         )
+    }
+
+    /// `/bg` continues a session in a copy under a new identifier. Its hooks arrive naming the
+    /// original, and the whole path — redaction on arrival, the engine, the process pairing —
+    /// has to agree that they are the original's row: one row, now on the copy's process, and
+    /// one line in the log saying so, since a row that silently changes its process and its
+    /// kind of place is a row a person cannot check against.
+    func testASessionSentToTheBackgroundKeepsItsRow() throws {
+        var log: [String] = []
+        let supervisor = try makeSupervisor(
+            onNotableEvent: { log.append($0) },
+            agentProcessStartedAt: { _ in Date(timeIntervalSince1970: 3_900) }
+        )
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 501))
+        let copy = HookIngressRequest(
+            source: .claude,
+            declaredEvent: "SessionStart",
+            payload: .object([
+                "session_id": .string("beta"),
+                "forked_from_session_id": .string("alpha"),
+                "source": .string("fork"),
+            ]),
+            agentProcessID: 502,
+            clientKind: .background
+        )
+
+        supervisor.ingest(copy)
+        supervisor.ingest(
+            HookIngressRequest(
+                source: .claude,
+                declaredEvent: "UserPromptSubmit",
+                payload: .object(["session_id": .string("beta"), "forked_from_session_id": .string("alpha")]),
+                agentProcessID: 502,
+                clientKind: .background
+            )
+        )
+
+        XCTAssertEqual(supervisor.sessions.count, 1, "one conversation, one row")
+        let row = try XCTUnwrap(supervisor.sessions.first)
+        XCTAssertEqual(row.agentProcessID, 502)
+        XCTAssertEqual(row.clientKind, .background)
+        XCTAssertEqual(row.phase, .executing, "the copy's turn is the row's turn")
+        XCTAssertEqual(
+            log.filter { $0.contains("continued") }.count,
+            1,
+            "said once, when the copy joins — not on every event it sends afterwards: \(log)"
+        )
+    }
+
+    /// The launch that brings this rule in finds the file of the launch before it: a row for
+    /// the original and a row for the copy, remembered as two sessions. The copy's next hook
+    /// names the original, and the two rows become one — the original's, now on the copy's
+    /// process — with the copy's own row gone, its watcher with it, and one line saying so.
+    func testTwoRowsRememberedForOneConversationBecomeOneOnTheCopysNextHook() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let settings = try makeSettings()
+        let original = getpid()
+        let copy = getppid()
+
+        let before = try makeSupervisor(
+            now: { Date() },
+            history: SessionHistoryStore(directoryURL: directory),
+            settings: settings
+        )
+        before.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: original))
+        // What the old sender said about the copy: a session of its own, nothing about alpha.
+        before.ingest(testRequest(event: "SessionStart", sessionID: "beta", agentProcessID: copy))
+        XCTAssertEqual(before.sessions.count, 2)
+        before.stop()
+
+        var log: [String] = []
+        let after = try makeSupervisor(
+            now: { Date() },
+            onNotableEvent: { log.append($0) },
+            history: SessionHistoryStore(directoryURL: directory),
+            settings: settings
+        )
+        after.start()
+        defer { after.stop() }
+        XCTAssertEqual(after.sessions.count, 2, "the file of the old launch is taken as it is")
+
+        after.ingest(
+            HookIngressRequest(
+                source: .claude,
+                declaredEvent: "UserPromptSubmit",
+                payload: .object(["session_id": .string("beta"), "forked_from_session_id": .string("alpha")]),
+                agentProcessID: copy,
+                clientKind: .background
+            )
+        )
+
+        let rows = after.sessions
+        XCTAssertEqual(rows.count, 1, "one conversation, one row: \(rows.map(\.id))")
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(row.id, try XCTUnwrap(before.sessions.first { $0.agentProcessID == original }).id)
+        XCTAssertEqual(row.agentProcessID, copy)
+        XCTAssertEqual(row.clientKind, .background)
+        XCTAssertTrue(row.phase.claimsWork, "the copy's turn is the row's turn")
+        XCTAssertEqual(log.filter { $0.contains("continued") }.count, 1, "\(log)")
+    }
+
+    /// `/bg` leaves the terminal it was typed in showing the session: the interactive process
+    /// stays alive and Claude Code's record of it names the job as parked. Measured on 2.1.269
+    /// — the terminal that parked the job was the only interactive process attached to the
+    /// daemon, and no `claude attach` ran anywhere. That terminal is where a person finds the
+    /// session, so the row is reached through it, and the log says so once.
+    func testTheTerminalThatSentTheSessionToTheBackgroundIsWhereTheRowIsReached() throws {
+        let home = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try writeSessionRecords(
+            in: home,
+            [
+                501: #"{"pid":501,"kind":"interactive","name":"agent-watch-31","parkedJobId":"job1"}"#,
+                502: #"{"pid":502,"kind":"bg","jobId":"job1"}"#,
+            ])
+        var log: [String] = []
+        let supervisor = try makeSupervisor(
+            onNotableEvent: { log.append($0) },
+            home: home,
+            agentProcessStartedAt: { _ in Date(timeIntervalSince1970: 3_900) }
+        )
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 501))
+
+        supervisor.ingest(copyRequest(event: "SessionStart", sessionID: "beta", of: "alpha", agentProcessID: 502))
+        supervisor.ingest(copyRequest(event: "UserPromptSubmit", sessionID: "beta", of: "alpha", agentProcessID: 502))
+
+        let row = try XCTUnwrap(supervisor.sessions.first)
+        XCTAssertEqual(supervisor.sessions.count, 1)
+        XCTAssertEqual(row.viewerProcessID, 501, "the terminal that parked the job shows it")
+        XCTAssertEqual(row.hostKind, .cli)
+        XCTAssertEqual(row.agentProcessID, 502)
+        XCTAssertEqual(
+            log.filter { $0.contains("on screen in the terminal that sent it to the background") }.count, 1, "\(log)")
+    }
+
+    /// The copy's process first runs the two-second session `--resume` always leaves behind,
+    /// and that stub's hooks come first: a background session that names no original. The
+    /// terminal is not claimed for it — that would be a line in the log about a row that is
+    /// retired a moment later, and the note "said once" would be said twice — and the copy's
+    /// own start claims it once.
+    func testTheStubTheCopysProcessRunsFirstDoesNotClaimTheTerminal() throws {
+        let home = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try writeSessionRecords(
+            in: home,
+            [
+                501: #"{"pid":501,"kind":"interactive","parkedJobId":"job1"}"#,
+                502: #"{"pid":502,"kind":"bg","jobId":"job1"}"#,
+            ])
+        var log: [String] = []
+        let supervisor = try makeSupervisor(
+            onNotableEvent: { log.append($0) },
+            home: home,
+            agentProcessStartedAt: { _ in Date(timeIntervalSince1970: 3_900) }
+        )
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 501))
+        let original = try XCTUnwrap(supervisor.sessions.first)
+
+        let stubRequest = { (event: String) in
+            HookIngressRequest(
+                source: .claude, declaredEvent: event, payload: .object(["session_id": .string("stub")]),
+                agentProcessID: 502, clientKind: .background)
+        }
+        supervisor.ingest(stubRequest("SessionStart"))
+        let stub = try XCTUnwrap(supervisor.sessions.first { $0.agentProcessID == 502 })
+        XCTAssertNil(stub.viewerProcessID, "a start that names no original claims no terminal")
+        XCTAssertTrue(log.allSatisfy { !$0.contains("on screen in the terminal") }, "\(log)")
+        supervisor.ingest(stubRequest("SessionEnd"))
+
+        supervisor.ingest(copyRequest(event: "SessionStart", sessionID: "beta", of: "alpha", agentProcessID: 502))
+
+        XCTAssertEqual(supervisor.sessions.map(\.id), [original.id], "the stub is retired, the copy joins")
+        XCTAssertEqual(supervisor.sessions.first?.viewerProcessID, 501)
+        XCTAssertEqual(
+            log.filter { $0.contains("on screen in the terminal that sent it to the background") }.count, 1, "\(log)")
+    }
+
+    /// After `/bg` a person can go back to the original in the same terminal and keep working
+    /// there: the original speaks for itself, the copy is a row of its own — and the terminal
+    /// now runs the original, whatever its record still says about the parked job (whether
+    /// Claude Code clears `parkedJobId` then is not measured). A process that runs another
+    /// row's conversation is nobody's viewer: the copy's row is a background one, with its door.
+    func testATerminalRunningAnotherRowIsNobodysViewer() throws {
+        let home = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try writeSessionRecords(
+            in: home,
+            [
+                501: #"{"pid":501,"kind":"interactive","parkedJobId":"job1"}"#,
+                502: #"{"pid":502,"kind":"bg","jobId":"job1"}"#,
+            ])
+        var log: [String] = []
+        let supervisor = try makeSupervisor(
+            onNotableEvent: { log.append($0) },
+            home: home,
+            agentProcessStartedAt: { _ in Date(timeIntervalSince1970: 3_900) }
+        )
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 501))
+        supervisor.ingest(copyRequest(event: "SessionStart", sessionID: "beta", of: "alpha", agentProcessID: 502))
+        XCTAssertEqual(supervisor.sessions.first?.viewerProcessID, 501)
+
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha", agentProcessID: 501))
+        supervisor.ingest(copyRequest(event: "UserPromptSubmit", sessionID: "beta", of: "alpha", agentProcessID: 502))
+
+        XCTAssertEqual(supervisor.sessions.count, 2, "two live sessions, two rows: \(supervisor.sessions.map(\.id))")
+        let copy = try XCTUnwrap(supervisor.sessions.first { $0.agentProcessID == 502 })
+        XCTAssertNil(copy.viewerProcessID, "the terminal runs the original now")
+        XCTAssertEqual(copy.hostKind, .background)
+        XCTAssertEqual(
+            log.filter { $0.contains("on screen in the terminal that sent it to the background") }.count, 1, "\(log)")
+    }
+
+    /// The terminal closing does not end the session — it runs on in its own process — but it
+    /// does take the window away. The row is a background one again from that moment, and the
+    /// log says what a click does now.
+    func testTheTerminalClosingMakesTheRowABackgroundOneAgain() throws {
+        let terminal = Process()
+        terminal.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        terminal.arguments = ["30"]
+        try terminal.run()
+        defer { terminal.terminate() }
+        let copy = getpid()
+        let home = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try writeSessionRecords(
+            in: home,
+            [
+                terminal.processIdentifier:
+                    #"{"pid":\#(terminal.processIdentifier),"kind":"interactive","parkedJobId":"job1"}"#,
+                copy: #"{"pid":\#(copy),"kind":"bg","jobId":"job1"}"#,
+            ])
+        var log: [String] = []
+        let supervisor = try makeSupervisor(
+            onNotableEvent: { log.append($0) }, home: home, agentProcessStartedAt: AgentProcessLocator.startTime(of:))
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: terminal.processIdentifier))
+        supervisor.ingest(copyRequest(event: "SessionStart", sessionID: "beta", of: "alpha", agentProcessID: copy))
+        XCTAssertEqual(supervisor.sessions.first?.viewerProcessID, terminal.processIdentifier)
+
+        terminal.terminate()
+        terminal.waitUntilExit()
+        let deadline = Date().addingTimeInterval(3)
+        while supervisor.sessions.first?.viewerProcessID != nil, Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+
+        let row = try XCTUnwrap(supervisor.sessions.first)
+        XCTAssertNil(row.viewerProcessID)
+        XCTAssertEqual(row.hostKind, .background)
+        XCTAssertEqual(row.phase, .idle, "the session runs on; only its window went")
+        XCTAssertEqual(log.filter { $0.contains("its terminal is gone") }.count, 1, "\(log)")
+    }
+
+    /// The viewer is remembered with the row, and vouched for again on the next launch like
+    /// the agent itself: a terminal closed while the app was down is no viewer, and the row
+    /// comes back as a background one, with `claude attach` behind the click.
+    func testARememberedViewerThatIsGoneIsDroppedOnRestore() throws {
+        // Real numbers, because a restored row is vouched for by the real process table: this
+        // process stands in for the copy, and a child that has already exited for the terminal.
+        let copy = getpid()
+        let terminal = try exitedProcessID()
+        let home = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try writeSessionRecords(
+            in: home,
+            [
+                terminal: #"{"pid":\#(terminal),"kind":"interactive","parkedJobId":"job1"}"#,
+                copy: #"{"pid":\#(copy),"kind":"bg","jobId":"job1"}"#,
+            ])
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let settings = try makeSettings()
+        let before = try makeSupervisor(
+            now: { Date() },
+            history: SessionHistoryStore(directoryURL: directory),
+            settings: settings,
+            home: home,
+            // Both alive at the first launch, as far as the viewer lookup is concerned.
+            agentProcessStartedAt: { _ in Date(timeIntervalSince1970: 3_900) }
+        )
+        before.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: terminal))
+        before.ingest(copyRequest(event: "SessionStart", sessionID: "beta", of: "alpha", agentProcessID: copy))
+        XCTAssertEqual(before.sessions.first?.viewerProcessID, terminal)
+        before.stop()
+
+        var log: [String] = []
+        let after = try makeSupervisor(
+            now: { Date() },
+            onNotableEvent: { log.append($0) },
+            history: SessionHistoryStore(directoryURL: directory),
+            settings: settings,
+            home: home,
+            agentProcessStartedAt: AgentProcessLocator.startTime(of:)
+        )
+        after.start()
+        defer { after.stop() }
+
+        let row = try XCTUnwrap(after.sessions.first)
+        XCTAssertEqual(after.sessions.count, 1)
+        XCTAssertNil(row.viewerProcessID)
+        XCTAssertEqual(row.hostKind, .background)
+        XCTAssertEqual(row.agentProcessID, copy, "the row itself is vouched for by the copy")
+        XCTAssertEqual(log.filter { $0.contains("its terminal is gone") }.count, 1, "\(log)")
+    }
+
+    /// The same launch with the terminal still there keeps the row reachable through it.
+    func testARememberedViewerStillThereIsKeptOnRestore() throws {
+        let copy = getpid()
+        let terminal = getppid()
+        let home = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try writeSessionRecords(
+            in: home,
+            [
+                terminal: #"{"pid":\#(terminal),"kind":"interactive","parkedJobId":"job1"}"#,
+                copy: #"{"pid":\#(copy),"kind":"bg","jobId":"job1"}"#,
+            ])
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let settings = try makeSettings()
+        let before = try makeSupervisor(
+            now: { Date() }, history: SessionHistoryStore(directoryURL: directory), settings: settings,
+            home: home, agentProcessStartedAt: AgentProcessLocator.startTime(of:))
+        before.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: terminal))
+        before.ingest(copyRequest(event: "SessionStart", sessionID: "beta", of: "alpha", agentProcessID: copy))
+        before.stop()
+
+        let after = try makeSupervisor(
+            now: { Date() }, history: SessionHistoryStore(directoryURL: directory), settings: settings,
+            home: home, agentProcessStartedAt: AgentProcessLocator.startTime(of:))
+        after.start()
+        defer { after.stop() }
+
+        XCTAssertEqual(after.sessions.first?.viewerProcessID, terminal)
+        XCTAssertEqual(after.sessions.first?.hostKind, .cli)
+    }
+
+    /// A copy the sender could not trace — `source: "fork"` on its start and no original named
+    /// — is a row of its own, and the log says why, so a second row for one conversation never
+    /// appears in silence.
+    func testACopyWithNoNamedOriginalIsARowOfItsOwnAndSaysSo() throws {
+        var log: [String] = []
+        let supervisor = try makeSupervisor(onNotableEvent: { log.append($0) })
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: 501))
+
+        supervisor.ingest(
+            HookIngressRequest(
+                source: .claude,
+                declaredEvent: "SessionStart",
+                payload: .object(["session_id": .string("beta"), "source": .string("fork")]),
+                agentProcessID: 502
+            )
+        )
+
+        XCTAssertEqual(supervisor.sessions.count, 2)
+        XCTAssertEqual(log.filter { $0.contains("copy of a session this app cannot name") }.count, 1, "\(log)")
+    }
+
+    /// After `/fork` the copy often ends first, and its end closes the row — then the person
+    /// keeps typing in the session itself. The row comes back for it, with the watch that will
+    /// report its death armed again, and the journal says what happened rather than claiming
+    /// two sessions run side by side.
+    func testASessionWhoseCopyClosedTheRowComesBackWhenItSpeaks() throws {
+        var clock = start
+        var log: [String] = []
+        // This process stands in for the session's own, so that the watch on it is a real one
+        // and the sweep below can tell an armed watch from none.
+        let terminal = ProcessInfo.processInfo.processIdentifier
+        let supervisor = try makeSupervisor(now: { clock }, onNotableEvent: { log.append($0) })
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: terminal))
+        supervisor.ingest(copyRequest(event: "SessionStart", sessionID: "beta", of: "alpha", agentProcessID: 502))
+        supervisor.ingest(copyRequest(event: "SessionEnd", sessionID: "beta", of: "alpha", agentProcessID: 502))
+        let closed = try XCTUnwrap(supervisor.sessions.first)
+        XCTAssertEqual(closed.phase, .sessionClosed)
+
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha", agentProcessID: terminal))
+
+        let row = try XCTUnwrap(supervisor.sessions.first)
+        XCTAssertEqual(supervisor.sessions.count, 1, "one row, and it is the session's own again")
+        XCTAssertEqual(row.id, closed.id)
+        XCTAssertEqual(row.phase, .executing)
+        XCTAssertEqual(row.agentProcessID, terminal)
+        XCTAssertEqual(log.filter { $0.contains("reopened") }.count, 1, "\(log)")
+        XCTAssertTrue(log.allSatisfy { !$0.contains("works on beside") }, "the copy is dead, not working: \(log)")
+
+        // Closing the row took its watch away with it. If the reopen did not arm one again,
+        // nothing would ever report this session's death — and the sweep, which spares only
+        // the sessions a watcher vouches for, would demote it after half an hour.
+        clock = start.addingTimeInterval(SessionFreshnessEvaluator.defaultDisconnectAfter + 1)
+        supervisor.runMaintenance()
+
+        XCTAssertEqual(supervisor.sessions.first?.phase, .executing, "a watcher vouches for it again")
+    }
+
+    /// The app may start with no memory of the session while `/bg` has already run, and then
+    /// the scan builds a row for the parked terminal too: a live `claude` with nothing heard
+    /// from it. A row like that runs no conversation the app knows of, and must not keep the
+    /// terminal from being the copy's viewer — or the copy's row would stay a background one
+    /// on every hook, beside a nameless row for the terminal, for good. Named as the viewer,
+    /// the terminal is claimed, and the next scan withdraws its row.
+    func testARowTheScanBuiltForTheParkedTerminalDoesNotBlockTheViewer() throws {
+        let home = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try writeSessionRecords(
+            in: home,
+            [
+                501: #"{"pid":501,"kind":"interactive","parkedJobId":"job1"}"#,
+                502: #"{"pid":502,"kind":"bg","jobId":"job1"}"#,
+            ])
+        let startedAt = Date(timeIntervalSince1970: 3_900)
+        let supervisor = try makeSupervisor(
+            home: home,
+            liveAgentProcesses: {
+                [
+                    DiscoveredAgentProcess(source: .claude, processID: 501, startedAt: startedAt, projectName: "p"),
+                    DiscoveredAgentProcess(
+                        source: .claude, processID: 502, startedAt: startedAt, projectName: "p", clientKind: .background
+                    ),
+                ]
+            },
+            agentProcessStartedAt: { _ in startedAt }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        XCTAssertEqual(supervisor.sessions.count, 2, "a row per process found, nothing heard from either")
+
+        supervisor.ingest(copyRequest(event: "SessionStart", sessionID: "beta", of: "alpha", agentProcessID: 502))
+
+        let copy = try XCTUnwrap(supervisor.sessions.first { $0.agentProcessID == 502 })
+        XCTAssertEqual(copy.viewerProcessID, 501, "the terminal shows it, whatever row the scan gave the terminal")
+        supervisor.discoverAgentProcesses()
+        XCTAssertEqual(supervisor.sessions.map(\.agentProcessID), [502], "the terminal's own row is withdrawn")
     }
 
     private func makeSupervisor(

@@ -207,7 +207,7 @@ class HUDSessionListView: NSView {
     /// Answers whether anything changed. The widget lays out either way; the tests read it.
     ///
     /// The rows that stay are the same objects they were, which is the point: the pointer
-    /// keeps the row it was resting on, the tooltip that was counting down survives, and the
+    /// keeps the row it was resting on, the hover card that was counting down survives, and the
     /// scroll position is never touched because the scroll view itself is never replaced.
     @discardableResult
     func apply(models newModels: [HUDRowModel], now: Date) -> Bool {
@@ -295,7 +295,7 @@ class HUDSessionListView: NSView {
     /// actually read differently.
     ///
     /// The list used to be rebuilt from scratch twice a second, which destroyed whatever the
-    /// pointer was resting on and cancelled the tooltip that was about to appear. Only the
+    /// pointer was resting on and cancelled the hover card that was about to open. Only the
     /// timer changes between events, and a row can restate its own.
     ///
     /// The count is what makes the guard inside `HUDSessionRowView.refreshTimer` observable:

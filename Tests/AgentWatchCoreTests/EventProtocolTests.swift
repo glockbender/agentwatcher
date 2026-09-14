@@ -588,6 +588,59 @@ final class EventProtocolTests: XCTestCase {
         XCTAssertEqual(finished.phase, .completed)
     }
 
+    /// A fork's hooks name the session it continues, and the envelope carries that name on
+    /// every event rather than on the start alone: the app may not have been running when the
+    /// fork started, and the first event it hears is then the one that has to say so.
+    func testAForkNamesTheSessionItContinues() throws {
+        let fork: JSONValue = .object([
+            "session_id": .string("id_fork"),
+            "forked_from_session_id": .string("id_original"),
+        ])
+
+        for event in ["SessionStart", "UserPromptSubmit", "Stop"] {
+            let envelope = try HookEventNormalizer.normalize(
+                source: .claude, declaredEvent: event, payload: fork, observedAt: start)
+            XCTAssertEqual(envelope.forkedFromSessionID, "id_original", event)
+        }
+
+        let plain = try HookEventNormalizer.normalize(
+            source: .claude,
+            declaredEvent: "SessionStart",
+            payload: .object(["session_id": .string("id_session")]),
+            observedAt: start
+        )
+        XCTAssertNil(plain.forkedFromSessionID)
+    }
+
+    /// The documented mark of a copy is `source: "fork"` on its start. Carried so that a copy
+    /// whose original the sender could not name is at least said out loud, rather than drawn
+    /// as a second row in silence. Only a start says it; the word means nothing elsewhere.
+    func testAStartSaysWhetherTheSessionIsACopy() throws {
+        let copy = try HookEventNormalizer.normalize(
+            source: .claude,
+            declaredEvent: "SessionStart",
+            payload: .object(["session_id": .string("id_fork"), "source": .string("fork")]),
+            observedAt: start
+        )
+        XCTAssertTrue(copy.startedAsCopy)
+
+        let fresh = try HookEventNormalizer.normalize(
+            source: .claude,
+            declaredEvent: "SessionStart",
+            payload: .object(["session_id": .string("id_session"), "source": .string("startup")]),
+            observedAt: start
+        )
+        XCTAssertFalse(fresh.startedAsCopy)
+
+        let turn = try HookEventNormalizer.normalize(
+            source: .claude,
+            declaredEvent: "UserPromptSubmit",
+            payload: .object(["session_id": .string("id_fork"), "source": .string("fork")]),
+            observedAt: start
+        )
+        XCTAssertFalse(turn.startedAsCopy)
+    }
+
     func testEventEnvelopeRoundTripsThroughJSON() throws {
         let event = EventEnvelope(
             source: .codex,

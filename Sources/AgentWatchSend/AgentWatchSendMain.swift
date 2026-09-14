@@ -168,8 +168,23 @@ enum AgentWatchSendMain {
             payload: payload,
             agentProcessID: options.source == .claude ? AgentProcessLocator.currentClaudeProcessID() : nil,
             clientKind: AgentProcessLocator.currentClientKind(for: options.source),
-            description: description
+            description: description,
+            // On every hook, not only the start: the app may not have been running when the
+            // copy started, and the first event it hears has to be the one that says so.
+            forkedFromSessionID: options.source == .claude
+                ? sessionID(in: payload).flatMap(AgentProcessLocator.currentForkedFromSessionID(forSessionID:))
+                : nil
         )
+    }
+
+    /// The session the hook is about, raw, before anything is redacted. Read here only to be
+    /// compared with the process's own arguments; it leaves this process redacted like every
+    /// other identifier.
+    private static func sessionID(in payload: JSONValue) -> String? {
+        guard case let .object(fields) = payload, case let .string(id)? = fields["session_id"] else {
+            return nil
+        }
+        return id
     }
 
     /// A closed input counts as ready: the last `read` then returns zero and ends the loop.

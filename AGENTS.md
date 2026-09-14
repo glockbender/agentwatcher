@@ -47,6 +47,14 @@ can be tested in `AgentWatchCoreTests` without launching an application.
   a file that did not exist.
 - When Xcode is installed but `xcode-select -p` still points at the Command Line Tools:
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer task verify`.
+- **A click on the widget is checked with a real mouse event, not by calling `mouseDown`.**
+  The widget moves when its background is dragged, and by default AppKit lets one press both
+  reach a see-through view and start that drag — a click then also shifts the widget, which a
+  test that calls `mouseDown` cannot notice. Run a debug copy with `AGENT_WATCH_SUPPORT_DIR`
+  pointing at a scratch directory (see the end-to-end script for the launch), find its widget
+  among the process's windows — both copies open at the same place, and the widget is not
+  always window 1 — and post the click with `CGEventPost`: System Events' `click at` did not
+  reach the row.
 - **`task e2e-update` runs a throwaway copy beside yours and presses its dialogs itself.** It
   relies on two overrides a debug build has and a release build does not: the state directory
   from `AGENT_WATCH_SUPPORT_DIR` and the release address from `AGENT_WATCH_RELEASE_URL`. Your own

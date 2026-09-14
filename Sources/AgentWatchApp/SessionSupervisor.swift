@@ -56,8 +56,20 @@ final class SessionSupervisor {
     /// restart shows every running agent again.
     private var dismissedRowIDs: Set<String> = []
 
-    private lazy var hostRegistry = SessionHostRegistry { [weak self] sessionID in
-        self?.handleAgentProcessExit(sessionID: sessionID)
+    private lazy var hostRegistry = SessionHostRegistry(
+        claudeHome: claudeHome,
+        onAgentProcessExit: { [weak self] sessionID in
+            self?.handleAgentProcessExit(sessionID: sessionID)
+        },
+        onViewerProcessExit: { [weak self] sessionID in
+            self?.handleViewerProcessExit(sessionID: sessionID)
+        }
+    )
+
+    /// Claude Code's own folder under the home this app was given, where it keeps a record of
+    /// every process it runs.
+    private var claudeHome: URL {
+        home.appendingPathComponent(".claude", isDirectory: true)
     }
 
     private lazy var transcripts = TranscriptWatcher(
@@ -147,7 +159,10 @@ final class SessionSupervisor {
         }
 
         let restored = engine.restore(remembered.filter { hostRegistry.isHostAlive($0) })
-        for snapshot in restored {
+        for remembered in restored {
+            // Vouched for again like the agent itself: a terminal closed while the app was
+            // down is no viewer, and the file's word for it would point the click at nothing.
+            let snapshot = refreshViewer(of: remembered, evenIfKnown: true)
             // The same call an event makes, and for the same reason: this is what will report
             // the session's death. Without it a restored row could never leave — its phase
             // claims no work, so the sweep has nothing to demote and nothing to retire.
@@ -209,16 +224,16 @@ final class SessionSupervisor {
         hostRegistry.locator(for: snapshot)
     }
 
-    /// A press that reached nothing is said out loud rather than swallowed.
+    /// A click that reached nothing is said out loud rather than swallowed.
     ///
-    /// The button is always pressable, so "nothing happened" is a state a person can now
+    /// The row always answers a click, so "nothing happened" is a state a person can now
     /// arrive at, and an app whose whole job is noticing things should not be silent about
-    /// its own. The card said as much before the press; this is the record afterwards.
+    /// its own. The card said as much before the click; this is the record afterwards.
     @discardableResult
     func focus(_ snapshot: SessionSnapshot) -> Bool {
         let outcome = hostRegistry.focus(snapshot)
         if !outcome.raised {
-            // With the reason when there is one: a background session's press can fail on the
+            // With the reason when there is one: a background session's click can fail on the
             // way to its terminal — no record of the process, no job in it, Ghostty declining
             // — and "nothing to bring forward" alone would hide which.
             if case .missing(let reason) = outcome.tab {
@@ -242,7 +257,7 @@ final class SessionSupervisor {
         heard.record(request.source, at: now())
 
         let event: EventEnvelope
-        let snapshot: SessionSnapshot
+        var snapshot: SessionSnapshot
         do {
             event = try HookIngressProcessor.normalize(request, observedAt: now())
             // Before the session is created, so it can take the place of the row the app
@@ -260,7 +275,48 @@ final class SessionSupervisor {
                 hostRegistry.forget(retired)
                 onNotableEvent("\(Self.label(retired)) · closed session dropped; its process now runs another")
             }
+            // Before the session is created too, and for the same reason as the two above: a
+            // copy that already has a row of its own — the file of a launch before this rule
+            // existed remembers the original and the copy as two sessions — folds into the
+            // original's row here. Its watcher goes with it; the original's watcher moves to
+            // the copy's process in `associate` below.
+            if let folded = engine.foldContinuedRow(for: event) {
+                hostRegistry.forget(folded)
+            }
             snapshot = try engine.ingest(event)
+            // Not on a start that names no original: the copy's process first runs the
+            // two-second session `--resume` leaves behind, and claiming the terminal for that
+            // stub is a line in the log about a row retired a moment later, followed by the
+            // same line for the copy. Any later hook of a row asks again.
+            if event.kind != .sessionStarted || event.forkedFromSessionID != nil {
+                snapshot = refreshViewer(of: snapshot)
+            }
+            // Said once, when it happens — a row that silently changed its process and the kind
+            // of place it runs in, or that silently split in two, would be one a person cannot
+            // check against. The engine says what it decided; every later event of the copy
+            // lands on the row without a word.
+            switch engine.lastIngestNote {
+            case let .continued(foldedOwnRow):
+                let place = event.clientKind == .background ? "in the background" : "in another process"
+                let folding = foldedOwnRow ? "; the copy's own row folded in" : ""
+                onNotableEvent("\(Self.label(snapshot)) · continued \(place) by a copy of the session\(folding)")
+            case let .released(copies, rowWasClosed):
+                // Two different things, and the difference is the whole news. Either the row
+                // has split — the session and its copy both run — or the copy had ended and
+                // closed the row, and the session behind it turns out to be alive.
+                onNotableEvent(Self.releaseNote(for: snapshot, copies: copies, rowWasClosed: rowWasClosed))
+            case nil:
+                // The documented mark of a copy, with nothing to join: the sender could not
+                // name the original — a spelling of the arguments it does not know, or a copy
+                // made without new arguments at all. Said out loud, because the alternative is
+                // a second row for one conversation appearing in silence, which is the very
+                // thing the rule above exists to stop.
+                if event.kind == .sessionStarted, event.startedAsCopy, event.forkedFromSessionID == nil {
+                    onNotableEvent(
+                        "\(Self.label(snapshot)) · started as a copy of a session this app cannot name; a row of its own"
+                    )
+                }
+            }
         } catch {
             // Said out loud rather than dropped. This app's whole job is to notice things,
             // and until now the one thing it never reported was its own failure to understand
@@ -276,6 +332,112 @@ final class SessionSupervisor {
         transcripts.noteHook(at: event.observedAt)
         publish()
         return event
+    }
+
+    /// Records which terminal shows a background session, asked of Claude Code's registry.
+    ///
+    /// `/bg` leaves the terminal it was typed in showing the session (`SessionSnapshot
+    /// .viewerProcessID`), and the registry is the one place that says which: the record of
+    /// the interactive process names the job as parked. Asked on the row's own events while
+    /// no viewer is known — the exit watch takes a known one away when its process ends, and
+    /// a person may open the session in a terminal again at any time — and on restore
+    /// regardless, because the file's answer is from another launch. A row built from a
+    /// process is left alone: it has no hooks, and its process is all it is.
+    ///
+    /// Said out loud when the answer changes, in the words the card will use, because a row
+    /// that silently changed what a click on it does is one a person cannot check against.
+    private func refreshViewer(of snapshot: SessionSnapshot, evenIfKnown: Bool = false) -> SessionSnapshot {
+        guard snapshot.clientKind == .background, snapshot.discoveredProcess == nil,
+            snapshot.phase != .sessionClosed
+        else {
+            return snapshot
+        }
+        guard evenIfKnown || snapshot.viewerProcessID == nil else {
+            return snapshot
+        }
+        let viewer = viewerProcessID(of: snapshot)
+        guard viewer != snapshot.viewerProcessID,
+            let updated = engine.setViewer(processID: viewer, forSessionWithID: snapshot.id)
+        else {
+            return snapshot
+        }
+        onNotableEvent(
+            viewer != nil
+                ? "\(Self.label(updated)) · on screen in the terminal that sent it to the background; a click goes there"
+                : Self.viewerGoneNote(for: updated))
+        return updated
+    }
+
+    /// The terminal showing a background session has closed. The session runs on — its own
+    /// process is what the row lives and dies with — but the window is gone, and a click on
+    /// the row opens the session again rather than raising it.
+    private func handleViewerProcessExit(sessionID: String) {
+        guard
+            engine.snapshots[sessionID]?.viewerProcessID != nil,
+            let snapshot = engine.setViewer(processID: nil, forSessionWithID: sessionID)
+        else {
+            return
+        }
+        hostRegistry.associate(snapshot)
+        publish()
+        onNotableEvent(Self.viewerGoneNote(for: snapshot))
+    }
+
+    private static func releaseNote(for snapshot: SessionSnapshot, copies: [String], rowWasClosed: Bool) -> String {
+        guard !rowWasClosed else {
+            return
+                "\(label(snapshot)) · reopened: the copy that closed this row had ended, and the session itself works on"
+        }
+        return copies.count == 1
+            ? "\(label(snapshot)) · works on beside its copy; the copy is a row of its own from here on"
+            : "\(label(snapshot)) · works on beside its copies; they are rows of their own from here on"
+    }
+
+    private static func viewerGoneNote(for snapshot: SessionSnapshot) -> String {
+        "\(label(snapshot)) · its terminal is gone; a click now opens it with `claude attach`"
+    }
+
+    /// The terminal process attached to this session's job, from Claude Code's records of
+    /// its processes, or `nil` when none is running.
+    private func viewerProcessID(of snapshot: SessionSnapshot) -> Int32? {
+        guard
+            let agentProcessID = snapshot.agentProcessID,
+            let own = try? Data(
+                contentsOf: BackgroundSessionAttach.sessionRecordURL(
+                    claudeHome: claudeHome, agentProcessID: agentProcessID)),
+            let jobID = BackgroundSessionAttach.jobID(inSessionRecord: own)
+        else {
+            return nil
+        }
+        let sessions = claudeHome.appendingPathComponent("sessions", isDirectory: true)
+        let records =
+            ((try? FileManager.default.contentsOfDirectory(at: sessions, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "json" }
+            .compactMap { try? Data(contentsOf: $0) }
+        // A process that runs another row's conversation is nobody's viewer. After `/bg` a
+        // person can go back to the original in that same terminal and work on there — the
+        // original speaks for itself, the copy becomes a row of its own — and whether Claude
+        // Code clears `parkedJobId` then is not measured; the record is not what settles it.
+        // A row the scan built from the process is not a conversation the app knows of: the
+        // app may have started with no memory of the session `/bg` was typed in, and then the
+        // terminal is a live `claude` with nothing heard from it. Named as the viewer it is
+        // claimed, and the next scan withdraws that row.
+        let runningAnotherRow = Set(
+            engine.snapshots.values
+                .filter { $0.id != snapshot.id && $0.phase != .sessionClosed && $0.discoveredProcess == nil }
+                .compactMap(\.agentProcessID))
+        return BackgroundSessionAttach.viewerProcessID(ofJob: jobID, inSessionRecords: records) {
+            processID, recordedStart in
+            guard !runningAnotherRow.contains(processID), let startedAt = agentProcessStartedAt(processID) else {
+                return false
+            }
+            // A number handed out again belongs to a stranger. Claude Code writes its own
+            // reading of the start into the record; the two clocks are compared loosely.
+            guard let recordedStart else {
+                return true
+            }
+            return abs(startedAt.timeIntervalSince(recordedStart)) < 60
+        }
     }
 
     func remove(_ snapshot: SessionSnapshot) {

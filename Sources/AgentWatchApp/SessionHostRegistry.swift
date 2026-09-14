@@ -8,41 +8,83 @@ import Darwin
 final class SessionHostRegistry {
     private struct SessionHost {
         let agentProcessID: Int32
-        let applicationProcessID: pid_t?
+        var applicationProcessID: pid_t?
+        /// The terminal showing a background session, as last watched. Compared on every
+        /// `associate` so the watch moves when the viewer does and is not remade on every hook.
+        var viewerProcessID: Int32?
     }
 
     private let onAgentProcessExit: (String) -> Void
+    private let onViewerProcessExit: (String) -> Void
     /// Claude Code's own folder, where it keeps a record of every process it runs — the one
     /// place a background session's job identifier can be read from. A parameter so a test
     /// can point it at a folder of its own.
     private let claudeHome: URL
     private var hosts: [String: SessionHost] = [:]
-    private lazy var exitWatcher = SessionProcessExitWatcher { [weak self] sessionID in
-        self?.onAgentProcessExit(sessionID)
+    private lazy var exitWatcher = SessionProcessExitWatcher { [weak self] key in
+        if let sessionID = Self.sessionID(ofViewerWatch: key) {
+            self?.onViewerProcessExit(sessionID)
+        } else {
+            self?.onAgentProcessExit(key)
+        }
     }
 
+    /// - Parameter onViewerProcessExit: the terminal showing a background session has closed.
+    ///   The session runs on; only its window went, so this is reported apart from the
+    ///   agent's own exit.
     init(
         claudeHome: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude", isDirectory: true),
-        onAgentProcessExit: @escaping (String) -> Void
+        onAgentProcessExit: @escaping (String) -> Void,
+        onViewerProcessExit: @escaping (String) -> Void = { _ in }
     ) {
         self.claudeHome = claudeHome
         self.onAgentProcessExit = onAgentProcessExit
+        self.onViewerProcessExit = onViewerProcessExit
+    }
+
+    /// The viewer's watch shares the watcher with the agent's, under a key of its own.
+    private static let viewerWatchSuffix = "\u{1}viewer"
+
+    private static func viewerWatchKey(for sessionID: String) -> String {
+        sessionID + viewerWatchSuffix
+    }
+
+    private static func sessionID(ofViewerWatch key: String) -> String? {
+        key.hasSuffix(viewerWatchSuffix) ? String(key.dropLast(viewerWatchSuffix.count)) : nil
     }
 
     func associate(_ snapshot: SessionSnapshot) {
         guard snapshot.source == .claude, let agentProcessID = snapshot.agentProcessID else {
             return
         }
-        guard hosts[snapshot.id]?.agentProcessID != agentProcessID else {
+        if hosts[snapshot.id]?.agentProcessID != agentProcessID {
+            hosts[snapshot.id] = SessionHost(
+                agentProcessID: agentProcessID,
+                applicationProcessID: hostApplicationProcessID(for: agentProcessID),
+                viewerProcessID: hosts[snapshot.id]?.viewerProcessID
+            )
+            exitWatcher.watch(sessionID: snapshot.id, processID: agentProcessID)
+        }
+        watchViewer(of: snapshot)
+    }
+
+    /// The terminal showing a background session is watched like the agent itself, so that
+    /// its closing takes the window away from the row — without ending the session, which
+    /// runs on in its own process. The watch follows the viewer: a new one is watched, a
+    /// gone one unwatched, and an unchanged one left alone.
+    private func watchViewer(of snapshot: SessionSnapshot) {
+        guard var host = hosts[snapshot.id], host.viewerProcessID != snapshot.viewerProcessID else {
             return
         }
-
-        hosts[snapshot.id] = SessionHost(
-            agentProcessID: agentProcessID,
-            applicationProcessID: hostApplicationProcessID(for: agentProcessID)
-        )
-        exitWatcher.watch(sessionID: snapshot.id, processID: agentProcessID)
+        host.viewerProcessID = snapshot.viewerProcessID
+        hosts[snapshot.id] = host
+        let key = Self.viewerWatchKey(for: snapshot.id)
+        if let viewerProcessID = snapshot.viewerProcessID {
+            exitWatcher.watch(sessionID: key, processID: viewerProcessID)
+        } else {
+            exitWatcher.unwatch(sessionID: key)
+        }
     }
 
     /// Everything that can honestly be said about where this session is, asked now.
@@ -61,12 +103,14 @@ final class SessionHostRegistry {
             projectName: openProjectName(for: snapshot, in: application),
             // Only a session running in a terminal has a tab, and only such a tab carries
             // the session's name — the agent writes it there itself. A desktop client has
-            // no tab to name. See `docs/session-focus-research.md`.
-            tabName: snapshot.clientKind == .cli ? snapshot.title?.nonEmpty : nil
+            // no tab to name. See `docs/session-focus-research.md`. By where the session is
+            // read rather than where it runs: a background session on screen in a terminal
+            // has that terminal's tab.
+            tabName: snapshot.hostKind == .cli ? snapshot.title?.nonEmpty : nil
         )
     }
 
-    /// What one press achieved.
+    /// What one click achieved.
     ///
     /// Two answers rather than one, because the two steps can disagree: the host is raised
     /// by us and we know whether that worked, while the tab is selected by the IDE itself
@@ -79,8 +123,8 @@ final class SessionHostRegistry {
 
     /// Brings the session's host forward, then asks its IDE for the tab.
     ///
-    /// The caller is told rather than left to guess: with the button always pressable, a
-    /// press that could do nothing has to be distinguishable from one that did something.
+    /// The caller is told rather than left to guess: with the row always answering a click,
+    /// a click that could do nothing has to be distinguishable from one that did something.
     ///
     /// The order is deliberate. The plugin's own focus is written on the assumption that the
     /// application is already forward — it picks the right *window* and leaves the raising
@@ -96,8 +140,10 @@ final class SessionHostRegistry {
     func focus(_ snapshot: SessionSnapshot) -> FocusOutcome {
         // A background session has no application anywhere above it and never will — its
         // tree ends at `launchd` — so there is no host to raise. What it has is a door, and
-        // the press opens that instead.
-        if snapshot.clientKind == .background {
+        // the click opens that instead. Unless a terminal is showing it already: then the
+        // terminal is the host, reached below like any other, and the door would only open
+        // the session a second time beside it.
+        if snapshot.hostKind == .background {
             return attachInTerminal(snapshot)
         }
         guard let application = application(for: snapshot) else {
@@ -203,7 +249,9 @@ final class SessionHostRegistry {
         of snapshot: SessionSnapshot,
         in application: NSRunningApplication
     ) -> TabFocusAttempt {
-        guard let bundleURL = application.bundleURL, let agentProcessID = snapshot.agentProcessID else {
+        // The plugin looks for the tab whose shell is an ancestor of this process: the
+        // terminal showing a background session, where there is one.
+        guard let bundleURL = application.bundleURL, let agentProcessID = snapshot.hostProcessID else {
             return .unaddressable
         }
         let decision = JetBrainsFocus.decision(
@@ -242,7 +290,7 @@ final class SessionHostRegistry {
     private func openProjectName(for snapshot: SessionSnapshot, in application: NSRunningApplication) -> String? {
         guard
             let bundleURL = application.bundleURL,
-            let agentProcessID = snapshot.agentProcessID,
+            let agentProcessID = snapshot.hostProcessID,
             let workingDirectory = AgentProcessLocator.workingDirectoryPath(of: agentProcessID)
         else {
             return nil
@@ -267,6 +315,7 @@ final class SessionHostRegistry {
     func forgetSession(id: String) {
         hosts.removeValue(forKey: id)
         exitWatcher.unwatch(sessionID: id)
+        exitWatcher.unwatch(sessionID: Self.viewerWatchKey(for: id))
     }
 
     /// The same question, asked of the running system.
@@ -335,7 +384,17 @@ final class SessionHostRegistry {
     /// raising. The agent's own desktop application last, for a client that runs no process
     /// of its own to walk up from.
     private func application(for snapshot: SessionSnapshot) -> NSRunningApplication? {
-        if let agentProcessID = snapshot.agentProcessID,
+        // A background session with no terminal showing it has no application, by definition
+        // of what background means: its tree ends at `launchd`. None is named — not from a
+        // walk, and not from memory either. The memory is the trap: a hover while a terminal
+        // still showed the session remembered that terminal's application, and once the
+        // terminal was gone the card promised to bring it forward while the click attached.
+        guard snapshot.hostKind != .background else {
+            return nil
+        }
+        // From the process the session is read in: its own, or the terminal showing a
+        // background one — the copy's own tree ends at `launchd` and would answer nothing.
+        if let agentProcessID = snapshot.hostProcessID,
             // Before walking it: the tree under a reused number belongs to a stranger, and
             // the answer would be an application this session was never in.
             Self.isStillTheAgent(
@@ -351,13 +410,11 @@ final class SessionHostRegistry {
             // would put the session into `watchedSessionIDs`, which the engine reads as
             // "somebody will report this session's death", without arming the watch that
             // would report it: the session would stop being demoted and have nobody left to
-            // retire it.
-            if hosts[snapshot.id] != nil {
-                hosts[snapshot.id] = SessionHost(
-                    agentProcessID: agentProcessID,
-                    applicationProcessID: applicationProcessID
-                )
-            }
+            // retire it. Only the application is updated: the record's process numbers are
+            // what the watches are keyed on, and the process walked from here may be the
+            // viewer's, not the agent's — written over the agent's it would have `associate`
+            // tear down and re-arm both watches on the next hook after every hover.
+            hosts[snapshot.id]?.applicationProcessID = applicationProcessID
             return application
         }
 

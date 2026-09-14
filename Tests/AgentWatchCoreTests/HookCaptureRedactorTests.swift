@@ -34,6 +34,32 @@ final class HookCaptureRedactorTests: XCTestCase {
         )
     }
 
+    /// The original a fork was copied from has to land on the very label its own row already
+    /// carries, or the two can never be matched. Both keys hold a session identifier, so both
+    /// go the same way — and the documented `source` of such a start, `fork`, is kept as a
+    /// word rather than redacted.
+    func testTheSessionAForkContinuesIsLabelledLikeAnySessionIdentifier() throws {
+        let original = "ab007d7a-9ae2-4888-8b57-2920b3cc1bb9"
+        let fromTheHook = try HookCaptureRedactor.redact(
+            declaredEvent: "SessionStart",
+            payload: .object([
+                "session_id": .string("b95a16c1-8449-41f9-8487-5b3e0ad5e052"),
+                "forked_from_session_id": .string(original),
+                "source": .string("fork"),
+            ])
+        )
+        let fromTheApp = try HookCaptureRedactor.redact(
+            declaredEvent: fromTheHook.declaredEvent,
+            payload: fromTheHook.payload
+        )
+
+        guard case let .object(fields) = fromTheApp.payload else {
+            return XCTFail("Expected an object payload")
+        }
+        XCTAssertEqual(fields["forked_from_session_id"], .string(HookCaptureRedactor.label(forRawIdentifier: original)))
+        XCTAssertEqual(fields["source"], .string("fork"))
+    }
+
     func testRedactsSensitiveContentAndKeepsSafeTechnicalValues() throws {
         let input = try XCTUnwrap(
             """

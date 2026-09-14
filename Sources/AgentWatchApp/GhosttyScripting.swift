@@ -10,7 +10,7 @@ import Foundation
 /// terminal identifier that has been checked to be a `UUID`.
 ///
 /// Synchronous, on the caller's thread, and that is a choice about one moment: the first
-/// press shows the system's «Agent Watch wants to control Ghostty» dialog, which is modal
+/// click shows the system's «Agent Watch wants to control Ghostty» dialog, which is modal
 /// anyway. Two Apple events to a local application take milliseconds after that.
 enum GhosttyScripting {
     static let bundleIdentifier = "com.mitchellh.ghostty"
@@ -102,8 +102,8 @@ enum GhosttyScripting {
     }
 
     /// One script, run and answered. An error — a refused permission most of all — is a
-    /// `nil` here and a "window only" press for the person, never a thrown exception: this
-    /// runs on a button they pressed, and monitoring that interrupts is worse than
+    /// `nil` here and a "window only" click for the person, never a thrown exception: this
+    /// runs on a row they clicked, and monitoring that interrupts is worse than
     /// monitoring that quietly does less.
     private static func run(_ source: String) -> NSAppleEventDescriptor? {
         guard let script = NSAppleScript(source: source) else {

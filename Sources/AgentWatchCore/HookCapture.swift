@@ -231,6 +231,10 @@ public enum HookCaptureRedactor {
 
     private static let identifierKeys: Set<String> = [
         "session_id",
+        // The session a fork was copied from, added by the sender from the process's own
+        // arguments. A session identifier like the one above, and labelled the same way, so
+        // the engine can match it against the row that identifier already has.
+        "forked_from_session_id",
         "turn_id",
         "thread_id",
         "conversation_id",
@@ -344,7 +348,9 @@ public enum HookCaptureRedactor {
                 "danger-full-access",
             ]
         case "source":
-            ["startup", "resume", "clear", "compact"]
+            // `fork` is the documented start of a session copied with `--fork-session`, which
+            // is how `/bg` and `/fork` continue a conversation in a new process.
+            ["startup", "resume", "clear", "compact", "fork"]
         case "tool_name":
             [
                 "AskUserQuestion", "Bash", "Edit", "ExitPlanMode", "Glob", "Grep", "NotebookEdit", "Read", "Skill",

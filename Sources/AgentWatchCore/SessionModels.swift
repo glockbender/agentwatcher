@@ -13,10 +13,10 @@ public enum SessionClientKind: String, Codable, Sendable {
     /// A session the agent runs for itself, in a pty of its own rather than in a terminal:
     /// Claude Code's background sessions, hosted by `claude bg-pty-host`.
     ///
-    /// A third place rather than a flavour of `cli`, because it answers the widget's `↗`
+    /// A third place rather than a flavour of `cli`, because it answers a click on its row
     /// differently from both others. A terminal session and a desktop one have a window to
     /// bring forward; this one never had and never will — its process tree ends at `launchd`,
-    /// measured, with no application anywhere above it. Its `↗` opens a terminal tab with
+    /// measured, with no application anywhere above it. Its click opens a terminal tab with
     /// `claude attach` instead (`BackgroundSessionAttach`).
     case background
 }
@@ -267,6 +267,64 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     /// build still reads. A non-optional field would have thrown, and the read fails open —
     /// one launch would have quietly emptied the file.
     public var discoveredProcess: DiscoveredAgentProcess?
+    /// The labels of the sessions that continue this one, oldest first.
+    ///
+    /// `/bg` and `/fork` copy a conversation into a new process under a new session
+    /// identifier — measured on Claude Code 2.1.269, the copy runs as `claude --fork-session
+    /// --resume <the original's transcript>` and sends hooks under its own identifier. Those
+    /// hooks belong to this row, and this is how the engine knows: `SessionStateEngine.rowID`
+    /// reads it on every event. On the row rather than in a map beside the engine, so the
+    /// alias is written to the file with the row and survives a restart.
+    ///
+    /// Optional for the reason `discoveredProcess` gives: a file written before this field
+    /// existed must still read.
+    public var continuedBy: [String]?
+
+    /// The labels of copies this row let go: sessions that once continued it and are rows of
+    /// their own now, because a session before them in the chain — the original, or a copy
+    /// copied in turn — took a turn of its own after they joined (`/fork`, or `/bg` followed
+    /// by work in the original). Every hook of a copy names the session it was copied from,
+    /// so the name alone would join a let-go copy again on its very next hook; this is what
+    /// stops it, and it is on the row so the file keeps it and a restart does not fold the
+    /// two back into one. Oldest first, never trimmed — a handful of identifiers at most.
+    ///
+    /// Optional for the reason `discoveredProcess` gives: a file written before this field
+    /// existed must still read.
+    public var releasedCopies: [String]?
+
+    /// The label the session's transcript is currently written under: the newest copy's, or
+    /// the session's own. A copy writes a transcript of its own, named after its own
+    /// identifier, and the original's file stops growing the moment the copy starts.
+    public var transcriptLabel: String {
+        continuedBy?.last ?? sessionLabel
+    }
+
+    /// The terminal process a background session is on screen in, when one is.
+    ///
+    /// `/bg` runs the session on in a process of its own, and that process is what
+    /// `agentProcessID` names: it is what the hooks come from and what the row lives and dies
+    /// with. But the terminal `/bg` was typed in is not freed — measured on 2.1.269, the
+    /// interactive process stays alive, attached to the job, and the session is on screen
+    /// right there. That terminal is where a person finds the session, so the click and the
+    /// icon belong to it while it is there, and to `claude attach` once it is gone. Only the
+    /// app can tell (it is Claude Code's registry and a process list, §14 of the
+    /// architecture), and it says so through `SessionStateEngine.setViewer`.
+    ///
+    /// Optional for the reason `discoveredProcess` gives: a file written before this field
+    /// existed must still read.
+    public var viewerProcessID: Int32?
+
+    /// The kind of place a click on the row reaches: the terminal showing a background
+    /// session, where there is one, and otherwise the kind of the process itself.
+    public var hostKind: SessionClientKind? {
+        clientKind == .background && viewerProcessID != nil ? .cli : clientKind
+    }
+
+    /// The process a click walks up from to find the session's window: the terminal showing
+    /// a background session, where there is one, and otherwise the agent's own.
+    public var hostProcessID: Int32? {
+        clientKind == .background ? viewerProcessID ?? agentProcessID : agentProcessID
+    }
 
     public init(
         id: String,

@@ -9,7 +9,7 @@ import XCTest
 ///
 /// This is what the diff is for, and it is worth measuring rather than trusting: a rebuilt
 /// row is a new view, so it loses the pointer that was resting on it, the highlight that
-/// went with it, and the tooltip that was about to appear. Rebuilding all of them for every
+/// went with it, and the hover card that was about to open. Rebuilding all of them for every
 /// event is what made those three need rescuing by hand.
 @MainActor
 final class HUDRowReuseTests: XCTestCase {
@@ -260,7 +260,7 @@ final class HUDRowReuseTests: XCTestCase {
     }
 
     private func hasDismissButton(_ view: NSView) -> Bool {
-        if let button = view as? RowActionButton, button.rowAction == .dismiss {
+        if view is RowDismissButton {
             return true
         }
         return view.subviews.contains { hasDismissButton($0) }

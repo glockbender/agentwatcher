@@ -74,8 +74,8 @@ jobs:
 
           ## JetBrains IDE plugin
 
-          The \`agent-watch-ide-*.zip\` attached here, when one is, is optional: it makes the
-          ↗ press land on the terminal tab a session runs in rather than on the IDE window.
+          The \`agent-watch-ide-*.zip\` attached here, when one is, is optional: it makes a
+          click on a row land on the terminal tab a session runs in rather than on the IDE window.
           Install it inside the IDE — Settings → Plugins → the gear → Install Plugin from Disk.
           The Tooling window lists every JetBrains IDE it finds and opens that page for the one
           you pick, with the file's path already copied.

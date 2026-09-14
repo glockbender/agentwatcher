@@ -336,9 +336,9 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertTrue(hidden.contains("Claude Code"), "everything else the card knows still stands")
     }
 
-    /// The button is always pressable, so the card is where a person learns how far one
-    /// press gets them — and, when the host is gone, that it gets them nowhere.
-    func testTheCardSaysHowFarTheFocusButtonReaches() {
+    /// The row always answers a click, so the card is where a person learns how far one
+    /// click gets them — and, when the host is gone, that it gets them nowhere.
+    func testTheCardSaysHowFarAClickReaches() {
         var live = snapshot()
         live.phase = .executing
 
@@ -347,7 +347,7 @@ final class HUDRowLayoutTests: XCTestCase {
         )
         XCTAssertTrue(
             hoverCardText(for: live, now: now, locator: SessionLocator(applicationName: "Ghostty"))
-                .contains("↗ brings Ghostty forward")
+                .contains("Click brings Ghostty forward")
         )
         XCTAssertTrue(
             hoverCardText(
@@ -375,50 +375,28 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertFalse(hint.contains("Fix the widget"))
     }
 
-    /// The card must not open over a button: aiming at a button is aiming at a button, and a
-    /// card appearing under the pointer there would be in the way of the click it interrupted.
-    func testTheHoverAreaLeavesTheButtonsAlone() {
+    /// The card must not open over the dismiss button: aiming at a button is aiming at a
+    /// button, and a card appearing under the pointer there would be in the way of the click
+    /// it interrupted. Everything before the button is the row's own target and is hovered.
+    func testTheHoverAreaRunsFromTheRowsEdgeToTheDismissButton() {
         let bounds = NSRect(x: 0, y: 0, width: 300, height: 20)
-        let focus = NSRect(x: 0, y: 0, width: 22, height: 19)
         let dismiss = NSRect(x: 278, y: 0, width: 22, height: 19)
 
-        let both = HUDSessionRowView.hoverRect(in: bounds, avoiding: [focus, dismiss])
-        XCTAssertEqual(both, NSRect(x: 22, y: 0, width: 256, height: 20))
-        XCTAssertFalse(both.intersects(focus))
-        XCTAssertFalse(both.intersects(dismiss))
+        let area = HUDSessionRowView.hoverRect(in: bounds, before: dismiss)
+        XCTAssertEqual(area, NSRect(x: 0, y: 0, width: 278, height: 20))
+        XCTAssertFalse(area.intersects(dismiss))
 
-        // A live session has no dismiss button, so the span runs to the row's own edge.
-        XCTAssertEqual(
-            HUDSessionRowView.hoverRect(in: bounds, avoiding: [focus]),
-            NSRect(x: 22, y: 0, width: 278, height: 20)
-        )
+        // A live session has no dismiss button, so the whole row is hovered.
+        XCTAssertEqual(HUDSessionRowView.hoverRect(in: bounds, before: nil), bounds)
     }
 
-    /// A row squeezed until its buttons meet has no information left to explain, and a
-    /// hover area of negative width would be a rectangle AppKit cannot use.
-    func testARowWithNoRoomBetweenItsButtonsOffersNoHoverArea() {
-        let bounds = NSRect(x: 0, y: 0, width: 40, height: 20)
-        let focus = NSRect(x: 0, y: 0, width: 22, height: 19)
-        let dismiss = NSRect(x: 18, y: 0, width: 22, height: 19)
+    /// A row squeezed until nothing is left before its dismiss button has no information left
+    /// to explain, and a hover area of negative width would be a rectangle AppKit cannot use.
+    func testARowWithNoRoomBeforeItsDismissButtonOffersNoHoverArea() {
+        let bounds = NSRect(x: 0, y: 0, width: 20, height: 20)
+        let dismiss = NSRect(x: 0, y: 0, width: 22, height: 19)
 
-        XCTAssertEqual(HUDSessionRowView.hoverRect(in: bounds, avoiding: [focus, dismiss]), .zero)
-    }
-
-    /// Laid out for real: what the row installs has to be the span, not the whole row.
-    func testTheInstalledTrackingAreaMatchesTheSpanBetweenTheButtons() throws {
-        var closed = snapshot()
-        closed.phase = .sessionClosed
-        let laidOut = row(snapshot: closed, onRemove: {})
-        laidOut.updateTrackingAreas()
-
-        let area = try XCTUnwrap(laidOut.trackingAreas.first { $0.options.contains(.mouseEnteredAndExited) })
-        let buttons = laidOut.arrangedSubviews.compactMap { $0 as? RowActionButton }
-
-        XCTAssertEqual(buttons.count, 2)
-        XCTAssertGreaterThan(area.rect.width, 0)
-        for button in buttons {
-            XCTAssertFalse(area.rect.intersects(button.frame), "\(button.rowAction) is inside the hover area")
-        }
+        XCTAssertEqual(HUDSessionRowView.hoverRect(in: bounds, before: dismiss), .zero)
     }
 
     /// The card is opened by a tracking area, and a tracking area that only worked in the
@@ -450,39 +428,223 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertEqual(reported, [true, false])
     }
 
-    /// Whatever the row says, the way back to the session is pressable.
+    /// The whole row is the way back to the session. A press and a release inside it are one
+    /// click, and the click is what brings the session forward.
+    func testAClickOnTheRowBringsTheSessionForward() throws {
+        var focused = 0
+        let laidOut = row(onFocus: { focused += 1 })
+        let inside = NSPoint(x: laidOut.bounds.midX, y: laidOut.bounds.midY)
+
+        laidOut.mouseDown(with: try mouseEvent(.leftMouseDown, at: inside))
+        laidOut.mouseUp(with: try mouseEvent(.leftMouseUp, at: inside))
+
+        XCTAssertEqual(focused, 1)
+    }
+
+    /// A click lands on whatever the pointer is over — a label, the lamp, an icon — and every
+    /// one of those is the row's for this purpose. Only the dismiss button keeps its own click:
+    /// a press that both removed a row and brought its session forward would be two actions.
+    func testAClickAnywhereButTheDismissButtonIsTheRows() throws {
+        var closed = snapshot()
+        closed.phase = .sessionClosed
+        let laidOut = row(snapshot: closed, onRemove: {})
+        let dismiss = try XCTUnwrap(laidOut.arrangedSubviews.last as? RowDismissButton)
+
+        for part in laidOut.arrangedSubviews where part !== dismiss && part.frame.width > 0 {
+            let over = NSPoint(x: part.frame.midX, y: part.frame.midY)
+            XCTAssertTrue(laidOut.hitTest(over) === laidOut, "\(type(of: part)) took the click")
+        }
+        XCTAssertTrue(
+            laidOut.hitTest(NSPoint(x: dismiss.frame.midX, y: dismiss.frame.midY)) === dismiss,
+            "the dismiss button keeps its own click"
+        )
+    }
+
+    /// The widget moves when its background is dragged, and AppKit lets a press on any
+    /// see-through view start that drag as well as reach the view. Measured in the running
+    /// app with the default: a click that did not travel shifted the widget while it brought
+    /// the session forward. A row has to refuse, and no test that calls `mouseDown` by hand
+    /// can see the difference — only a real click on a running copy can.
+    func testAPressOnARowIsNotAWindowDrag() {
+        XCTAssertFalse(row().mouseDownCanMoveWindow)
+    }
+
+    /// Refusing the drag must not take the gesture away: a press that travels is still a move
+    /// of the widget, handed back to the window, and it is no longer a click.
+    func testAPressThatTravelsBecomesADragAndNotAClick() throws {
+        var focused = 0
+        let laidOut = row(onFocus: { focused += 1 })
+        var dragsBegun = 0
+        laidOut.beginWindowDrag = { _ in
+            dragsBegun += 1
+            return true
+        }
+        let start = NSPoint(x: laidOut.bounds.midX, y: laidOut.bounds.midY)
+        let travelled = NSPoint(x: start.x + HUDSessionRowView.dragThreshold + 1, y: start.y)
+
+        laidOut.mouseDown(with: try mouseEvent(.leftMouseDown, at: start))
+        laidOut.mouseDragged(with: try mouseEvent(.leftMouseDragged, at: travelled))
+        laidOut.mouseUp(with: try mouseEvent(.leftMouseUp, at: travelled))
+
+        XCTAssertEqual(dragsBegun, 1, "the press was handed to the window once")
+        XCTAssertEqual(focused, 0)
+    }
+
+    /// The lock exists to stop a stray drag, not the click. With the widget's position locked
+    /// no drag can begin, so a press that drifts is still a click — the way a button fires on
+    /// release inside its bounds however far the finger wandered.
+    func testAPressThatTravelsOnALockedWidgetIsStillAClick() throws {
+        var focused = 0
+        let laidOut = row(onFocus: { focused += 1 })
+        laidOut.beginWindowDrag = { _ in false }
+        let start = NSPoint(x: laidOut.bounds.midX, y: laidOut.bounds.midY)
+        let travelled = NSPoint(x: start.x + HUDSessionRowView.dragThreshold + 1, y: start.y)
+
+        laidOut.mouseDown(with: try mouseEvent(.leftMouseDown, at: start))
+        laidOut.mouseDragged(with: try mouseEvent(.leftMouseDragged, at: travelled))
+        laidOut.mouseUp(with: try mouseEvent(.leftMouseUp, at: travelled))
+
+        XCTAssertEqual(focused, 1)
+    }
+
+    /// A hand is not perfectly still. A press that moves less than the threshold is a click,
+    /// and the widget does not move under it — the window is not even asked, which is what a
+    /// row with no window to drag cannot show by itself.
+    func testAPressThatBarelyMovesIsStillAClickAndMovesNothing() throws {
+        var focused = 0
+        let laidOut = row(onFocus: { focused += 1 })
+        var dragsBegun = 0
+        laidOut.beginWindowDrag = { _ in
+            dragsBegun += 1
+            return true
+        }
+        let start = NSPoint(x: laidOut.bounds.midX, y: laidOut.bounds.midY)
+        let jittered = NSPoint(x: start.x + 1, y: start.y + 1)
+
+        laidOut.mouseDown(with: try mouseEvent(.leftMouseDown, at: start))
+        laidOut.mouseDragged(with: try mouseEvent(.leftMouseDragged, at: jittered))
+        laidOut.mouseUp(with: try mouseEvent(.leftMouseUp, at: jittered))
+
+        XCTAssertEqual(dragsBegun, 0, "the window was never asked to move")
+        XCTAssertEqual(focused, 1)
+    }
+
+    /// A double-click is one intention, not two. The second press arrives while the first is
+    /// still being carried out — for a background session that is a terminal tab being opened
+    /// — and answering it as well would open the session twice.
+    func testADoubleClickBringsTheSessionForwardOnce() throws {
+        var focused = 0
+        let laidOut = row(onFocus: { focused += 1 })
+        let inside = NSPoint(x: laidOut.bounds.midX, y: laidOut.bounds.midY)
+
+        laidOut.mouseDown(with: try mouseEvent(.leftMouseDown, at: inside))
+        laidOut.mouseUp(with: try mouseEvent(.leftMouseUp, at: inside))
+        laidOut.mouseDown(with: try mouseEvent(.leftMouseDown, at: inside, clickCount: 2))
+        laidOut.mouseUp(with: try mouseEvent(.leftMouseUp, at: inside, clickCount: 2))
+
+        XCTAssertEqual(focused, 1)
+    }
+
+    /// The `↗` was a button, and a button is something assistive technology can name and
+    /// press. The row takes that over with the click: it is one element, a button, named
+    /// after the session, and pressing it brings the session forward.
+    func testTheRowIsAButtonToAssistiveTechnology() {
+        var focused = 0
+        let laidOut = row(onFocus: { focused += 1 })
+
+        XCTAssertTrue(laidOut.isAccessibilityElement())
+        XCTAssertEqual(laidOut.accessibilityRole(), .button)
+        XCTAssertEqual(laidOut.accessibilityLabel(), snapshot().title)
+        XCTAssertTrue(laidOut.accessibilityPerformPress())
+        XCTAssertEqual(focused, 1)
+        XCTAssertEqual(
+            laidOut.accessibilityChildren()?.count, 0,
+            "one element: the timer, the lamp and the icons are read through the card, not one by one")
+    }
+
+    /// The one part of a row that is not the row keeps its own place in that reading too: a
+    /// session that has stopped can be dismissed, and a control nobody can reach by keyboard
+    /// or by VoiceOver is a control some people do not have.
+    func testTheDismissButtonIsTheRowsOnlyAccessibilityChild() throws {
+        var closed = snapshot()
+        closed.phase = .sessionClosed
+        let laidOut = row(snapshot: closed, onRemove: {})
+
+        let children = try XCTUnwrap(laidOut.accessibilityChildren())
+
+        XCTAssertEqual(children.count, 1, "\(children)")
+        XCTAssertTrue(children.first as? NSView === laidOut.arrangedSubviews.last)
+    }
+
+    /// A press that leaves the row before it is released has changed its mind, the way a
+    /// press on any button does. Nothing is brought forward.
+    func testAPressReleasedOutsideTheRowIsNotAClick() throws {
+        var focused = 0
+        let laidOut = row(onFocus: { focused += 1 })
+        let inside = NSPoint(x: laidOut.bounds.midX, y: laidOut.bounds.midY)
+        let outside = NSPoint(x: laidOut.bounds.midX, y: laidOut.bounds.maxY + 30)
+
+        laidOut.mouseDown(with: try mouseEvent(.leftMouseDown, at: inside))
+        laidOut.mouseUp(with: try mouseEvent(.leftMouseUp, at: outside))
+
+        XCTAssertEqual(focused, 0)
+    }
+
+    /// The card may open anywhere on the row except over `×`. The row itself is the target
+    /// now, so it has no leading button to keep clear of; the dismiss button is still one,
+    /// and a card opening under a pointer aimed at it would be in the way of that click.
+    func testTheHoverAreaIsTheRowUpToTheDismissButton() throws {
+        var closed = snapshot()
+        closed.phase = .sessionClosed
+        let laidOut = row(snapshot: closed, onRemove: {})
+        laidOut.updateTrackingAreas()
+
+        let area = try XCTUnwrap(laidOut.trackingAreas.first { $0.options.contains(.mouseEnteredAndExited) })
+        let dismiss = try XCTUnwrap(laidOut.arrangedSubviews.last as? RowDismissButton)
+
+        XCTAssertEqual(area.rect.minX, laidOut.bounds.minX)
+        XCTAssertEqual(area.rect.maxX, dismiss.frame.minX, accuracy: 0.5)
+        XCTAssertFalse(area.rect.intersects(dismiss.frame))
+    }
+
+    /// Whatever the row says, a click on it is answered.
     ///
-    /// It used not to be. The button was greyed from an answer resolved once, when the
-    /// session was first associated with an application, and never asked again — so a row
+    /// It used not to be. The way back was a button, greyed from an answer resolved once, when
+    /// the session was first associated with an application, and never asked again — so a row
     /// could sit dead for hours with its application plainly running, and the oldest row in
     /// the widget was the likeliest to be the dead one.
-    func testTheFocusButtonIsPressableInEveryPhase() throws {
+    func testARowIsClickableInEveryPhase() throws {
         for phase in SessionPhase.allCases {
             var session = snapshot()
             session.phase = phase
-            let button = try XCTUnwrap(row(snapshot: session).arrangedSubviews.first as? RowActionButton)
+            var focused = 0
+            let laidOut = row(snapshot: session, onFocus: { focused += 1 })
+            let inside = NSPoint(x: laidOut.bounds.midX, y: laidOut.bounds.midY)
 
-            XCTAssertEqual(button.rowAction, .focus, "\(phase)")
-            XCTAssertTrue(button.isEnabled, "\(phase)")
+            laidOut.mouseDown(with: try mouseEvent(.leftMouseDown, at: inside))
+            laidOut.mouseUp(with: try mouseEvent(.leftMouseUp, at: inside))
+
+            XCTAssertEqual(focused, 1, "\(phase)")
         }
     }
 
-    /// A background session has no window, and its button is pressable all the same: a press
-    /// opens the session in a new terminal tab. The button keeps its place and width like
-    /// every other row's, because the columns after it line up down the whole list.
-    func testABackgroundSessionsFocusButtonIsPressableAndStaysWhereItIs() throws {
+    /// A background session has no window, and a click on its row is answered all the same: it
+    /// opens the session in a new terminal tab.
+    func testAClickOnABackgroundSessionsRowIsAnswered() throws {
         var background = snapshot()
         background.phase = .executing
         background.clientKind = .background
+        var focused = 0
+        let laidOut = row(snapshot: background, onFocus: { focused += 1 })
+        let inside = NSPoint(x: laidOut.bounds.midX, y: laidOut.bounds.midY)
 
-        let button = try XCTUnwrap(row(snapshot: background).arrangedSubviews.first as? RowActionButton)
+        laidOut.mouseDown(with: try mouseEvent(.leftMouseDown, at: inside))
+        laidOut.mouseUp(with: try mouseEvent(.leftMouseUp, at: inside))
 
-        XCTAssertEqual(button.rowAction, .focus)
-        XCTAssertTrue(button.isEnabled)
-        XCTAssertEqual(placed(button).width, HUDSessionRowView.buttonWidth, accuracy: 0.5)
+        XCTAssertEqual(focused, 1)
     }
 
-    /// A press that opens a tab rather than raising a window is a different promise, and the
+    /// A click that opens a tab rather than raising a window is a different promise, and the
     /// card is where a person reads which one they are about to get.
     func testTheCardSaysABackgroundSessionOpensInANewTerminalTab() {
         var background = snapshot()
@@ -491,15 +653,47 @@ final class HUDRowLayoutTests: XCTestCase {
 
         let card = hoverCardText(for: background, now: now, locator: .nowhere)
 
-        XCTAssertTrue(card.contains("↗ opens it in a new Ghostty tab"), card)
+        XCTAssertTrue(card.contains("Click opens it in a new Ghostty tab"), card)
         XCTAssertTrue(card.contains("no window of its own"), card)
         XCTAssertTrue(card.contains("Background"), "the identity line names the place too")
     }
 
-    /// The columns after the focus button line up down the list, so the button itself may
-    /// not change width with the phase — and the dismiss button, which does come and go,
-    /// has to stay out of the way at the far end.
-    func testTheLeadingButtonIsTheSameWidthInEveryRow() throws {
+    /// The same session while the terminal that sent it to the background still shows it: the
+    /// card promises that terminal, as it would for any terminal session, and says nothing
+    /// about a door.
+    func testTheCardOfABackgroundSessionShownInATerminalPromisesThatTerminal() {
+        var shown = snapshot()
+        shown.phase = .executing
+        shown.clientKind = .background
+        shown.viewerProcessID = 4_243
+
+        let card = hoverCardText(
+            for: shown, now: now,
+            locator: SessionLocator(applicationName: "Ghostty", projectName: nil, tabName: shown.title))
+
+        XCTAssertTrue(card.contains("Click brings Ghostty forward"), card)
+        XCTAssertFalse(card.contains("claude attach"), card)
+        XCTAssertTrue(card.contains("Claude Code · CLI"), "the identity line names where it is read: \(card)")
+    }
+
+    /// And the row wears the terminal's icon, not the crossed-out window.
+    func testTheIconOfABackgroundSessionShownInATerminalIsTheTerminals() throws {
+        var shown = snapshot()
+        shown.phase = .executing
+        shown.clientKind = .background
+        shown.viewerProcessID = 4_243
+
+        let laidOut = row(snapshot: shown)
+        let descriptions = laidOut.subviews.compactMap { ($0 as? NSImageView)?.image?.accessibilityDescription }
+
+        XCTAssertTrue(descriptions.contains("CLI"), "\(descriptions)")
+        XCTAssertFalse(descriptions.contains("Background"), "\(descriptions)")
+    }
+
+    /// The timer leads every row at one width, so the lamp and everything after it stand in a
+    /// straight column down the list — and the dismiss button, which comes and goes with the
+    /// phase, has to stay out of the way at the far end.
+    func testTheTimerLeadsEveryRowSoTheColumnsLineUp() throws {
         var live = snapshot()
         live.phase = .executing
         var closed = snapshot()
@@ -508,45 +702,58 @@ final class HUDRowLayoutTests: XCTestCase {
         let liveRow = row(snapshot: live, onRemove: nil)
         let closedRow = row(snapshot: closed, onRemove: {})
 
-        let liveButton = try XCTUnwrap(liveRow.arrangedSubviews.first as? RowActionButton)
-        let closedButton = try XCTUnwrap(closedRow.arrangedSubviews.first as? RowActionButton)
-        XCTAssertEqual(liveButton.rowAction, .focus)
-        XCTAssertEqual(placed(liveButton).width, placed(closedButton).width, accuracy: 0.5)
-        XCTAssertEqual(placed(liveButton).width, HUDSessionRowView.buttonWidth, accuracy: 0.5)
+        let liveTimer = try XCTUnwrap(liveRow.arrangedSubviews.first as? NSTextField)
+        let closedTimer = try XCTUnwrap(closedRow.arrangedSubviews.first as? NSTextField)
+        XCTAssertEqual(placed(liveTimer).minX, placed(closedTimer).minX, accuracy: 0.5)
+        XCTAssertEqual(placed(liveTimer).width, placed(closedTimer).width, accuracy: 0.5)
 
         XCTAssertNil(
-            liveRow.arrangedSubviews.first { ($0 as? RowActionButton)?.rowAction == .dismiss },
+            liveRow.arrangedSubviews.first { $0 is RowDismissButton },
             "a live session has nothing to dismiss"
         )
-        XCTAssertEqual(
-            (closedRow.arrangedSubviews.last as? RowActionButton)?.rowAction,
-            .dismiss,
-            "the dismiss button belongs at the end of the row, not next to the focus button"
+        XCTAssertTrue(
+            closedRow.arrangedSubviews.last is RowDismissButton,
+            "the dismiss button belongs at the end of the row"
         )
     }
 
-    /// The gap the user saw: a slot held open for a button that was not there.
-    func testALiveRowLeavesNoHoleWhereTheDismissButtonWouldBe() throws {
+    /// The dismiss button used to be one of two things that gave a row its height. With one of
+    /// them gone, a row with the button must still be exactly as tall as a row without, or the
+    /// rows of a list would stand at different heights from the space reserved for them.
+    func testARowIsAsTallWithADismissButtonAsWithout() {
         var live = snapshot()
         live.phase = .executing
+        var closed = snapshot()
+        closed.phase = .sessionClosed
 
-        let laidOut = row(snapshot: live, titleDisplay: .hidden, onRemove: nil)
-        let button = try XCTUnwrap(laidOut.arrangedSubviews.first as? RowActionButton)
-        let timer = try XCTUnwrap(laidOut.arrangedSubviews.dropFirst().first)
+        let liveRow = row(snapshot: live, onRemove: nil)
+        let closedRow = row(snapshot: closed, onRemove: {})
 
-        // Measured between alignment rectangles, which is what a stack's spacing separates —
-        // the frames themselves reach a point or two further out on each side.
-        XCTAssertEqual(
-            placed(timer).minX - placed(button).maxX,
-            HUDSessionRowView.buttonGap,
-            accuracy: 0.5
-        )
-        XCTAssertLessThan(HUDSessionRowView.buttonGap, HUDSessionRowView.elementSpacing)
+        XCTAssertEqual(liveRow.fittingSize.height, closedRow.fittingSize.height, accuracy: 0.5)
+        XCTAssertEqual(liveRow.fittingSize.height, HUDSessionRowView.rowHeight, accuracy: 0.5)
     }
 
     /// What Auto Layout actually placed, as opposed to the frame drawn around it.
     private func placed(_ view: NSView) -> NSRect {
         view.alignmentRect(forFrame: view.frame)
+    }
+
+    /// A mouse event at a point in the row's own coordinates. The rows here have no window,
+    /// so window coordinates and the row's coordinates are the same thing.
+    private func mouseEvent(_ type: NSEvent.EventType, at location: NSPoint, clickCount: Int = 1) throws -> NSEvent {
+        try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: type,
+                location: location,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                eventNumber: 0,
+                clickCount: clickCount,
+                pressure: 0
+            )
+        )
     }
 
     /// The point of the budget: a row given the width the widget has must fit inside it.
@@ -681,6 +888,7 @@ final class HUDRowLayoutTests: XCTestCase {
     private func row(
         snapshot: SessionSnapshot? = nil,
         titleDisplay: SessionTitleDisplay = .fullName,
+        onFocus: @escaping () -> Void = {},
         onRemove: (() -> Void)? = nil
     ) -> HUDSessionRowView {
         let view = HUDSessionRowView(
@@ -688,7 +896,7 @@ final class HUDRowLayoutTests: XCTestCase {
             now: now,
             background: .graphite,
             lampScheme: LampScheme(),
-            onFocus: {},
+            onFocus: onFocus,
             onRemove: onRemove
         )
         view.setTitle((snapshot ?? self.snapshot()).title, display: titleDisplay)

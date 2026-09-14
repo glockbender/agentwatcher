@@ -5,7 +5,7 @@ import AppKit
 ///
 /// Colour is never the only carrier, as `docs/architecture.md` §7 requires. Each phase also
 /// has its own motion — still, a slow pulse, or an urgent blink — a closed session is drawn
-/// as a ring rather than a disc, and the row's tooltip still spells the phase out in words.
+/// as a ring rather than a disc, and the row's hover card spells the phase out in words.
 struct SessionLampAppearance: Equatable {
     enum Motion: String, CaseIterable, Equatable {
         /// Nothing is happening and nothing is wrong.
@@ -32,7 +32,7 @@ struct SessionLampAppearance: Equatable {
     var motion: Motion
     /// A ring instead of a disc, for a session that has ended.
     let isFilled: Bool
-    /// The wording the tooltip uses, since the dot itself cannot be read aloud.
+    /// The wording the card and the settings window use, since a dot cannot be read aloud.
     let name: String
 }
 

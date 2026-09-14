@@ -50,32 +50,6 @@ final class SessionPresenceTests: XCTestCase {
         ]
     }
 
-    /// No kind of session is out of reach. A background session used to be the one
-    /// exception — no window, so a grey button — until `claude attach` gave it a door: `↗`
-    /// opens it in a new terminal tab instead. Every other kind keeps a pressable button
-    /// because where its host is can change between two presses and a grey button cannot.
-    func testEveryKindOfSessionCanBeBroughtForward() {
-        var session = snapshot(phase: .executing)
-
-        session.clientKind = .background
-        XCTAssertTrue(
-            SessionPresence.canBeBroughtForward(session),
-            "a background session is reached by attaching, not by raising a window"
-        )
-
-        session.clientKind = .cli
-        XCTAssertTrue(SessionPresence.canBeBroughtForward(session))
-
-        session.clientKind = .desktop
-        XCTAssertTrue(SessionPresence.canBeBroughtForward(session))
-
-        session.clientKind = nil
-        XCTAssertTrue(
-            SessionPresence.canBeBroughtForward(session),
-            "a session that never said where it runs is not a session known to be unreachable"
-        )
-    }
-
     private func snapshot(phase: SessionPhase) -> SessionSnapshot {
         testSession(mode: .standard, phase: phase, lastObservedAt: now)
     }

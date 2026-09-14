@@ -79,6 +79,50 @@ final class UnixSocketIngressTests: XCTestCase {
         XCTAssertNotEqual(receivedRequest.payload, .object(["session_id": .string("session")]))
     }
 
+    /// The original a fork was copied from travels inside the payload, so that it is
+    /// redacted on the way out exactly as `session_id` is and lands on the label the original
+    /// row already carries. It is put there by the sender, not read from the hook — no hook
+    /// field names it.
+    func testTheSenderPutsTheContinuedSessionIntoThePayloadRedacted() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let socketPath = directoryURL.appendingPathComponent("agent-watch.sock").path
+        let results = IngressResults()
+        let received = expectation(description: "fork event arrives")
+        let ingress = UnixSocketIngress(socketPath: socketPath) { result in
+            results.append(result)
+            received.fulfill()
+        }
+        try ingress.start()
+        defer { ingress.stop() }
+
+        let original = "ab007d7a-9ae2-4888-8b57-2920b3cc1bb9"
+        let request = try XCTUnwrap(
+            RedactedHookIngressRequest.make(
+                source: .claude,
+                declaredEvent: "SessionStart",
+                payload: .object(["session_id": .string("b95a16c1-8449-41f9-8487-5b3e0ad5e052")]),
+                forkedFromSessionID: original
+            ))
+        try HookEventSender.send(request, to: socketPath)
+
+        wait(for: [received], timeout: 1)
+        let receivedRequest = try XCTUnwrap(results.snapshot().first).get()
+        guard case let .object(fields) = receivedRequest.payload else {
+            return XCTFail("Expected an object payload")
+        }
+        let onceRedacted = try HookCaptureRedactor.redact(
+            declaredEvent: "SessionStart",
+            payload: .object(["session_id": .string(original)])
+        )
+        guard case let .object(expected) = onceRedacted.payload else {
+            return XCTFail("Expected an object payload")
+        }
+        XCTAssertEqual(fields["forked_from_session_id"], expected["session_id"], "labelled exactly like a session id")
+        XCTAssertNotEqual(fields["forked_from_session_id"], .string(original), "never raw across the socket")
+    }
+
     func testLocalControlSenderDeliversRevealRequestToIngress() throws {
         let directoryURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }

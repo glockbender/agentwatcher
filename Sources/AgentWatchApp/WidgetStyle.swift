@@ -66,9 +66,9 @@ extension NSView {
     ///
     /// The size has to be imposed from outside for the pictures in a row: an application icon
     /// carries several representations and an image view sizes itself from the largest of
-    /// them, whatever `NSImage.size` was set to — measured at 32 points, taller than the row. A button is here for the opposite reason —
-    /// everything in a row lines up into columns, and a button that sized itself to its own
-    /// glyph would break every column after it.
+    /// them, whatever `NSImage.size` was set to — measured at 32 points, taller than the row. The
+    /// row's `×` is here for the opposite reason: a button that sized itself to its own glyph
+    /// would be a different width on every row it appears on.
     func pinSize(to size: NSSize) {
         translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([

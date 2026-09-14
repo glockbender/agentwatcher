@@ -4,8 +4,8 @@ import AppKit
 /// The activity counters a row shows, in a fixed order so they never swap places between
 /// two refreshes.
 ///
-/// Returned as counts rather than as one string: each counter carries its own symbol and
-/// its own tooltip, and a single label could explain none of them.
+/// Returned as counts rather than as one string: each counter carries its own symbol, and
+/// a single label could explain none of them.
 func activityCounts(for snapshot: SessionSnapshot) -> [(kind: ActivityKind, count: Int)] {
     let grouped = Dictionary(grouping: snapshot.activities, by: \.kind)
     // Compaction first, then the advisor: while either runs the session is doing nothing
@@ -179,7 +179,7 @@ func statusLineActionTitle(state: StatusLineState) -> String? {
 /// The second sentence is there because the button it names is not on every row: `Check`
 /// belongs to a running IDE only, and a button that is absent explains nothing by itself.
 let idePluginPurpose =
-    "Takes the ↗ press to the session's terminal tab, not just to the IDE window. Optional. "
+    "Takes a click on a session's row to its terminal tab, not just to the IDE window. Optional. "
     + "Check asks an IDE whether the plugin answers now, and needs that IDE running."
 
 /// Said rather than left blank: an empty list means either no IDE here or an IDE somewhere
@@ -530,7 +530,9 @@ func hoverCardText(
 ) -> String {
     let identity = [
         AgentIcon.name(for: snapshot.source),
-        snapshot.clientKind.map(SessionClientIcon.name(for:)),
+        // Where the session is read rather than where it runs: a background session on
+        // screen in a terminal says `CLI`, because that terminal is what a click reaches.
+        snapshot.hostKind.map(SessionClientIcon.name(for:)),
         // Whose thread this is belongs with what it is rather than on a line of its own. A
         // person reading the top of the card is asking one question, and "Codex · Desktop ·
         // subagent Darwin · working" answers all of it at once.
@@ -562,14 +564,13 @@ func hoverCardText(
     // keep exactly the promise the rows had just stopped keeping.
     let name = showsSessionTopic ? snapshot.title?.nonEmpty : nil
 
-    // Said here rather than on the button, which carries no tooltip of its own: the line
-    // tells a person how far one press gets them, and at the two finer levels where to look
-    // for the rest of the way. For a background session it says that the press opens a tab
-    // rather than raising one, which is a different promise.
+    // The line tells a person how far one click on the row gets them, and at the two finer
+    // levels where to look for the rest of the way. For a background session it says that
+    // the click opens a tab rather than raising one, which is a different promise.
     let focus = focusHint(
         locator,
         namesTheSessionAbove: name != nil,
-        runsWithoutAWindow: snapshot.clientKind == .background
+        runsWithoutAWindow: snapshot.hostKind == .background
     )
 
     return [
@@ -590,9 +591,9 @@ func hoverCardText(
     .joined(separator: "\n")
 }
 
-/// What one press of `↗` will actually reach, in one line.
+/// What one click on the row will actually reach, in one line.
 ///
-/// Deliberately the weaker claim. A press does now reach the tab itself — through the plugin
+/// Deliberately the weaker claim. A click does now reach the tab itself — through the plugin
 /// in a JetBrains IDE, through AppleScript in Ghostty — but neither route is certain: the
 /// plugin may not be installed, and a tab may be named after two sessions at once. So the
 /// line promises the part that always happens and names the rest, which is what a person
@@ -607,14 +608,14 @@ func focusHint(
     }
     guard let application = locator.applicationName else {
         // Two different absences, and the difference is what a person does next. A host that
-        // is gone may come back; a background session never had a window at all, so its
-        // press opens one — a terminal tab with `claude attach` typed into it — and the line
+        // is gone may come back; a background session never had a window at all, so a click
+        // opens one — a terminal tab with `claude attach` typed into it — and the line
         // names the command so that a person can do the same by hand anywhere else.
         return runsWithoutAWindow
-            ? "↗ opens it in a new Ghostty tab with `claude attach` — a background session has no window of its own"
+            ? "Click opens it in a new Ghostty tab with `claude attach` — a background session has no window of its own"
             : "No window to bring forward"
     }
-    let brings = "↗ brings \(application) forward"
+    let brings = "Click brings \(application) forward"
     // Pointed at the card's own first line rather than repeated here, and only when that
     // line is there: with the topic switched off the card must not say the name by the back
     // door, and a card that pointed at a line it had just been told to drop would point at
@@ -733,7 +734,7 @@ extension SessionPhase {
         }
     }
 
-    /// When the phase happens and what it means, for the row's tooltip.
+    /// When the phase happens and what it means, for the lamp's row in the settings window.
     var explanation: String {
         switch self {
         case .idle:

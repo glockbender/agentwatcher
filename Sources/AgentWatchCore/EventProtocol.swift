@@ -78,6 +78,15 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
     public let clientKind: SessionClientKind?
     public let contextTelemetry: SessionContextTelemetry?
     public let usageLimits: AgentUsageLimits?
+    /// The session this one was copied from, when it is a copy — `/bg` and `/fork` continue a
+    /// conversation in a new process under a new identifier. Labelled like `sessionID`, so it
+    /// can be matched against the row the original already has. On every event, not only the
+    /// start: the app may hear of a fork for the first time mid-conversation.
+    public let forkedFromSessionID: String?
+    /// Whether a start said the session is a copy — `source: "fork"`, the documented mark of
+    /// `--fork-session`. Only a start carries it. Kept so that a copy whose original the
+    /// sender could not name is said out loud rather than drawn as a second row in silence.
+    public let startedAsCopy: Bool
 
     public init(
         schemaVersion: Int = EventEnvelope.currentSchemaVersion,
@@ -95,7 +104,9 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
         agentProcessID: Int32? = nil,
         clientKind: SessionClientKind? = nil,
         contextTelemetry: SessionContextTelemetry? = nil,
-        usageLimits: AgentUsageLimits? = nil
+        usageLimits: AgentUsageLimits? = nil,
+        forkedFromSessionID: String? = nil,
+        startedAsCopy: Bool = false
     ) {
         self.schemaVersion = schemaVersion
         self.source = source
@@ -113,6 +124,8 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
         self.clientKind = clientKind
         self.contextTelemetry = contextTelemetry
         self.usageLimits = usageLimits
+        self.forkedFromSessionID = forkedFromSessionID
+        self.startedAsCopy = startedAsCopy
     }
 }
 
@@ -313,6 +326,7 @@ public enum HookEventNormalizer {
         }
 
         let mode = sessionMode(from: string("permission_mode", in: fields))
+        let forkedFromSessionID = string("forked_from_session_id", in: fields)
         // Everything every branch has in common, filled once. Spelling out seven identical
         // arguments a dozen times over is where a field quietly stops being copied — the same
         // reason `SessionDescription` groups its four.
@@ -324,7 +338,8 @@ public enum HookEventNormalizer {
             outlivesItsCall: Bool = false,
             userInputRequestKind: UserInputRequestKind? = nil,
             contextTelemetry: SessionContextTelemetry? = nil,
-            usageLimits: AgentUsageLimits? = nil
+            usageLimits: AgentUsageLimits? = nil,
+            startedAsCopy: Bool = false
         ) -> EventEnvelope {
             EventEnvelope(
                 source: source,
@@ -341,7 +356,9 @@ public enum HookEventNormalizer {
                 agentProcessID: agentProcessID,
                 clientKind: clientKind,
                 contextTelemetry: contextTelemetry,
-                usageLimits: usageLimits
+                usageLimits: usageLimits,
+                forkedFromSessionID: forkedFromSessionID,
+                startedAsCopy: startedAsCopy
             )
         }
 
@@ -356,7 +373,7 @@ public enum HookEventNormalizer {
                 usageLimits: usageLimits(source: source, fields: fields, observedAt: observedAt)
             )
         case "SessionStart":
-            return envelope(.sessionStarted)
+            return envelope(.sessionStarted, startedAsCopy: string("source", in: fields) == "fork")
         case "SessionEnd":
             return envelope(.sessionEnded)
         case "UserPromptSubmit":

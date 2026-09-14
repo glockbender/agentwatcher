@@ -31,19 +31,26 @@ public struct DiscoveredAgentProcess: Codable, Equatable, Sendable {
     /// same questions any other session can: which file it writes, and therefore what it is
     /// called.
     public let knownSessionLabel: String?
+    /// The kind of place the process runs in, as the scanner saw it — the same question the
+    /// sender answers for a hook, asked of the same process tree, so a row built here and the
+    /// row a hook builds cannot disagree about whether a click raises a window or attaches.
+    /// Optional so that a record without it still reads; `nil` means the ordinary answer.
+    public let clientKind: SessionClientKind?
 
     public init(
         source: AgentSource,
         processID: Int32,
         startedAt: Date,
         projectName: String?,
-        knownSessionLabel: String? = nil
+        knownSessionLabel: String? = nil,
+        clientKind: SessionClientKind? = nil
     ) {
         self.source = source
         self.processID = processID
         self.startedAt = startedAt
         self.projectName = projectName
         self.knownSessionLabel = knownSessionLabel
+        self.clientKind = clientKind
     }
 
     /// The same process, now known to be a particular session.
@@ -53,7 +60,8 @@ public struct DiscoveredAgentProcess: Codable, Equatable, Sendable {
             processID: processID,
             startedAt: startedAt,
             projectName: projectName,
-            knownSessionLabel: sessionLabel
+            knownSessionLabel: sessionLabel,
+            clientKind: clientKind
         )
     }
 
@@ -100,7 +108,7 @@ public struct DiscoveredAgentProcess: Codable, Equatable, Sendable {
             phase: .disconnected,
             lastObservedAt: startedAt,
             agentProcessID: processID,
-            clientKind: .cli,
+            clientKind: clientKind ?? .cli,
             discoveredProcess: self
         )
     }

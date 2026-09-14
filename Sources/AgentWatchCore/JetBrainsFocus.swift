@@ -17,7 +17,7 @@ public enum JetBrainsFocusRefusal: String, Equatable, Sendable {
     /// The `jetbrains://` scheme belongs to the JetBrains daemon, not to any IDE — measured
     /// on this machine, where it is claimed by the daemon helper and by Toolbox. Without it
     /// the address goes nowhere *and says nothing*, which is the worst shape a failure can
-    /// take: the button would look as though it had worked.
+    /// take: the click would look as though it had worked.
     case daemonMissing
 
     /// The plugin has never answered from this IDE, so there is nothing at the far end.
@@ -34,7 +34,7 @@ public enum JetBrainsFocusRefusal: String, Equatable, Sendable {
 /// core: the four preconditions are four file-system questions, and a rule about their
 /// answers is tested without a disk or an IDE.
 public enum JetBrainsFocus {
-    /// What one press of the focus button should do, once the host has been raised.
+    /// What one click on a session's row should do, once the host has been raised.
     public enum Decision: Equatable, Sendable {
         case ask(URL)
         case decline(JetBrainsFocusRefusal)

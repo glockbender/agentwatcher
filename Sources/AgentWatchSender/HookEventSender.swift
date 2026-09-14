@@ -163,14 +163,24 @@ public enum LocalControlSender {
 public struct RedactedHookIngressRequest: Sendable {
     fileprivate let ingressRequest: HookIngressRequest
 
+    /// - Parameter forkedFromSessionID: the session this one was copied from, raw, as the
+    ///   process's own arguments name it. Put into the payload rather than beside it so the
+    ///   redactor labels it exactly as it labels `session_id` — the only way it can ever be
+    ///   matched against the original's row on the other side.
     public static func make(
         source: AgentSource,
         declaredEvent: String,
         payload: JSONValue,
         agentProcessID: Int32? = nil,
         clientKind: SessionClientKind? = nil,
-        description: SessionDescription? = nil
+        description: SessionDescription? = nil,
+        forkedFromSessionID: String? = nil
     ) -> RedactedHookIngressRequest? {
+        var payload = payload
+        if let forkedFromSessionID, case var .object(fields) = payload {
+            fields["forked_from_session_id"] = .string(forkedFromSessionID)
+            payload = .object(fields)
+        }
         guard
             let captured = try? HookCaptureRedactor.redact(
                 declaredEvent: declaredEvent,

@@ -9,6 +9,21 @@ import XCTest
 final class DiscoveredProcessTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
+    /// A copy sent to the background with `/bg` can be running before this app hears a hook
+    /// from it, and the scanner then builds its row. That row has to say the same thing the
+    /// sender would — background, no window, a click attaches — or the click on it looks for a
+    /// window that does not exist while `claude attach` would have worked.
+    func testARowBuiltFromAProcessCarriesTheKindOfPlaceTheScannerSaw() {
+        let inTheAgentsPty = DiscoveredAgentProcess(
+            source: .claude, processID: 502, startedAt: Date(timeIntervalSince1970: 100), projectName: "x",
+            clientKind: .background)
+        XCTAssertEqual(inTheAgentsPty.row(arrivalIndex: 0).clientKind, .background)
+
+        let inATerminal = DiscoveredAgentProcess(
+            source: .claude, processID: 501, startedAt: Date(timeIntervalSince1970: 100), projectName: "x")
+        XCTAssertEqual(inATerminal.row(arrivalIndex: 0).clientKind, .cli, "the ordinary answer stands by default")
+    }
+
     /// The case the whole feature exists for: the app was not running when the agent
     /// started, so no hook is coming until the session takes another turn — and a session
     /// waiting for a person may never take one.
