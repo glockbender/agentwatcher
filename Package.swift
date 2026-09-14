@@ -41,8 +41,9 @@ let package = Package(
             name: "AgentWatchLookup",
             dependencies: ["AgentWatchCore"]
         ),
-        // The socket server, and nothing else. It is a separate target so that a listening
-        // socket never enters AgentWatchCore, where state has to stay testable without one.
+        // The socket server, and nothing else — one file, and deliberately its own target so
+        // that a listening socket never enters AgentWatchCore, where state has to stay
+        // testable without one. docs/adr/0006-the-socket-server-stays-out-of-core.md.
         .target(
             name: "AgentWatchIngress",
             dependencies: ["AgentWatchCore"]

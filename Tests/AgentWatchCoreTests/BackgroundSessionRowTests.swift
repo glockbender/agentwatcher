@@ -4,7 +4,7 @@ import XCTest
 
 @testable import AgentWatchCore
 
-/// A background session that has done nothing is not a conversation yet.
+/// A background session that has done nothing is not a conversation yet (ADR-0005).
 ///
 /// Measured on Claude Code 2.1.270: the agents view always holds one live background
 /// session and refills it from a pre-warmed process the instant the current one settles.
