@@ -88,23 +88,54 @@ public enum SessionPhase: String, Codable, CaseIterable, Sendable {
     case disconnected
     case sessionClosed
 
-    /// Whether the session says work is under way right now.
+    /// What this phase means to a person, in the four states worth acting on.
     ///
-    /// The one question two different rules were each answering with their own switch, in
-    /// exactly opposite directions — whether quiet is accounted for, and whether age is worth
-    /// tracking. Both are this, and nothing checked that the two agreed. The compiler forces
-    /// a new phase to be classified once, here.
+    /// The one place a phase is classified. Three rules were each answering a piece of this
+    /// question with a switch of their own, in exactly opposite directions — whether quiet is
+    /// accounted for, whether age is worth tracking, and which of four cells a count belongs
+    /// in — and nothing checked that they agreed. The compiler forces a new phase to be
+    /// classified once, here, and everything else reads the answer.
+    public var attention: SessionAttention {
+        switch self {
+        // `failed` joins `waitingForUser` because both stop until a person looks. The
+        // difference between them matters in the row, which says what happened; it does not
+        // matter to the question "is there anything for me right now".
+        case .waitingForUser, .failed: .needsPerson
+        case .planning, .executing, .waitingForChildren: .working
+        case .completed: .done
+        case .idle, .disconnected: .quiet
+        case .sessionClosed: .closed
+        }
+    }
+
+    /// Whether the session says work is under way right now.
     ///
     /// The three that claim work are also the three where quiet means nothing by itself: a
     /// build runs for minutes without a word. The other six explain their own silence — the
     /// turn ended, a person is being waited for, the session is closed or lost, or it is at
     /// rest between turns.
     public var claimsWork: Bool {
-        switch self {
-        case .planning, .executing, .waitingForChildren: true
-        case .idle, .waitingForUser, .completed, .failed, .disconnected, .sessionClosed: false
-        }
+        attention == .working
     }
+}
+
+/// Whether a session wants the person, and if not, why not.
+///
+/// Four answers plus an end, deliberately coarser than `SessionPhase`: `planning` and
+/// `executing` are a real difference in the widget's row and no difference at all to somebody
+/// deciding whether to look. Named for the question rather than for what reads it — the menu
+/// bar counts these, but they are a fact about the session, not about a status item.
+public enum SessionAttention: String, CaseIterable, Sendable {
+    /// Nothing moves here until a person answers, or at least looks.
+    case needsPerson
+    /// Work is under way, with nothing to do but wait.
+    case working
+    /// The turn ended and the work is done.
+    case done
+    /// Alive, with nothing to act on.
+    case quiet
+    /// Over. Counted nowhere — see ADR-0002.
+    case closed
 }
 
 public enum UserInputRequestKind: String, Codable, Sendable {
