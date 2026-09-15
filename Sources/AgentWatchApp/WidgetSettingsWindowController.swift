@@ -21,6 +21,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     private let backgroundStore: WidgetBackgroundStore
     private let lampSchemes: LampSchemeStore
     private let settings: WidgetSettingsStore
+    private let rowLayouts: RowLayoutStore
     private let shortcuts: WidgetShortcutController
     /// What the last key press was refused for, shown in place of the status until something
     /// else happens. Transient on purpose: it is about the press, not about the setting.
@@ -41,16 +42,32 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     private(set) var shortcutRecorder: ShortcutRecorderButton?
     private(set) var shortcutClearButton: NSButton?
     private(set) var shortcutStatusLabel: NSTextField?
+    /// One control per part, by part, so a test operates the row it means rather than the
+    /// third checkbox from the top.
+    private(set) var partBoxes: [RowPart: NSButton] = [:]
+    private(set) var moveUpButtons: [RowPart: NSButton] = [:]
+    private(set) var moveDownButtons: [RowPart: NSButton] = [:]
+    private(set) var variantButtons: [RowPart: NSPopUpButton] = [:]
+    private(set) var flexibleButtons: [RowPart: NSButton] = [:]
+    private(set) var dismissColumnBox: NSButton?
+    /// The sample: a real row, built the way the widget builds one. Not a drawing of a row —
+    /// a drawing would have to be kept in step with the widget by hand, and the first time it
+    /// drifted the window would be teaching somebody the wrong thing.
+    private(set) var sampleRow: HUDSessionRowView?
+    private let sampleHolder = NSStackView()
+    private let partsGrid = NSGridView(numberOfColumns: 5, rows: 0)
 
     init(
         backgroundStore: WidgetBackgroundStore,
         lampSchemes: LampSchemeStore,
         settings: WidgetSettingsStore,
+        rowLayouts: RowLayoutStore,
         shortcuts: WidgetShortcutController
     ) {
         self.backgroundStore = backgroundStore
         self.lampSchemes = lampSchemes
         self.settings = settings
+        self.rowLayouts = rowLayouts
         self.shortcuts = shortcuts
 
         let window = NSWindow(
@@ -65,6 +82,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         window.isReleasedWhenClosed = false
         super.init(window: window)
 
+        let rowLayout = makeRowLayoutSection()
         let lamp = makeLampGrid()
         let palette = makeBackgroundGrid()
         let opacity = makeOpacityRow()
@@ -73,13 +91,17 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         // The rules are as wide as the widest thing they separate, measured from the sections
         // themselves. A constant here decided the window's width instead, and left a strip of
         // empty window to the right of every control.
-        let ruleWidth = [lamp, palette, opacity, size, shortcut].map(\.fittingSize.width).max() ?? 0
+        let ruleWidth =
+            [rowLayout, lamp, palette, opacity, size, shortcut].map(\.fittingSize.width).max() ?? 0
 
         let content = NSStackView()
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = 14
         content.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
+        content.addView(Self.makeSectionTitle("Row layout"), in: .top)
+        content.addView(rowLayout, in: .top)
+        content.addView(Self.makeRule(width: ruleWidth), in: .top)
         content.addView(Self.makeSectionTitle("Lamp"), in: .top)
         content.addView(lamp, in: .top)
         content.addView(makeResetButton(), in: .top)
@@ -153,6 +175,353 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         showCurrentValues()
         showWindow(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: - The row layout
+
+    /// The sample first, then the controls that change it.
+    ///
+    /// A person placing a part is asking "what will my row look like", and the answer is a
+    /// row — not a list of names they have to assemble in their head. The parts that a
+    /// session may have nothing to put in are underlined in the sample, because a row built
+    /// from one session would quietly leave them out and they could not be placed at all.
+    private func makeRowLayoutSection() -> NSView {
+        sampleHolder.orientation = .vertical
+        sampleHolder.alignment = .leading
+        sampleHolder.edgeInsets = NSEdgeInsets(top: 5, left: 4, bottom: 5, right: 4)
+        sampleHolder.wantsLayer = true
+        sampleHolder.layer?.cornerRadius = WidgetStyle.rowCornerRadius
+        sampleHolder.layer?.backgroundColor = backgroundStore.selected.color.cgColor
+
+        partsGrid.rowSpacing = 4
+        partsGrid.columnSpacing = 10
+        partsGrid.xPlacement = .leading
+
+        let keepColumn = NSButton(
+            checkboxWithTitle: "Keep the × column on every row",
+            target: self,
+            action: #selector(dismissColumnChanged(_:))
+        )
+        keepColumn.toolTip = """
+            A session still at work has no × to press, so without the column what a row ends \
+            with sits further right than a finished session's.
+            """
+        dismissColumnBox = keepColumn
+
+        let reset = NSButton(title: "Use the app's own row", target: self, action: #selector(resetRowLayout))
+        reset.bezelStyle = .rounded
+        reset.toolTip = "Puts back the row this app draws when nobody has changed it."
+
+        let section = NSStackView(views: [sampleHolder, partsGrid, keepColumn, reset])
+        section.orientation = .vertical
+        section.alignment = .leading
+        section.spacing = 8
+        return section
+    }
+
+    /// Rebuilds the sample and the grid from the template as it now stands.
+    ///
+    /// Everything at once rather than the one control that was touched: switching a part off
+    /// can move the part that gives way, and moving a part changes which arrows are still
+    /// available. Cheap — thirteen rows of controls, rebuilt when a person clicks.
+    private func showRowLayout() {
+        let layout = rowLayouts.layout
+        showSampleRow(layout)
+
+        partBoxes.removeAll()
+        moveUpButtons.removeAll()
+        moveDownButtons.removeAll()
+        variantButtons.removeAll()
+        flexibleButtons.removeAll()
+        while partsGrid.numberOfRows > 0 {
+            partsGrid.removeRow(at: 0)
+        }
+
+        let ordered = Self.orderedParts(of: layout)
+        for (index, part) in ordered.enumerated() {
+            partsGrid.addRow(with: makePartRow(part, at: index, in: ordered, layout: layout))
+        }
+        partsGrid.column(at: 0).width = 132
+        partsGrid.column(at: 2).width = 132
+    }
+
+    /// Every part, in the order the row draws them, with the ones left out after them. A part
+    /// switched off has no place in the row, and the end of the list is the honest place for
+    /// "not in the row at all".
+    private static func orderedParts(of layout: RowLayout) -> [RowPart] {
+        layout.parts + RowPart.allCases.filter { !layout.parts.contains($0) }
+    }
+
+    private func makePartRow(
+        _ part: RowPart,
+        at index: Int,
+        in ordered: [RowPart],
+        layout: RowLayout
+    ) -> [NSView] {
+        let isShown = layout.shows(part)
+
+        // The gap has no checkbox: a row without one has no right edge. It keeps its arrows.
+        let name: NSView
+        if part == .gap {
+            let label = NSTextField(labelWithString: "↔  \(part.settingsName)")
+            label.font = WidgetStyle.standard.titleFont
+            label.textColor = .secondaryLabelColor
+            name = label
+        } else {
+            let box = NSButton(
+                checkboxWithTitle: part.settingsName,
+                target: self,
+                action: #selector(partShownChanged(_:))
+            )
+            box.state = isShown ? .on : .off
+            box.tag = Self.tag(of: part)
+            partBoxes[part] = box
+            name = box
+        }
+        name.toolTip = part.appearsWhen
+
+        let when = NSTextField(labelWithString: part.appearsWhen)
+        when.font = WidgetStyle.standard.secondaryFont
+        when.textColor = .tertiaryLabelColor
+        when.lineBreakMode = .byTruncatingTail
+        when.toolTip = part.appearsWhen
+        when.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        return [name, when, makeChoiceCell(part, isShown: isShown, layout: layout)]
+            + makeArrowCells(part, at: index, in: ordered)
+    }
+
+    /// What this part shows, or — for a part made of text with no choices — whether it is the
+    /// one that gives way.
+    private func makeChoiceCell(_ part: RowPart, isShown: Bool, layout: RowLayout) -> NSView {
+        if !part.variantTitles.isEmpty {
+            let choice = NSPopUpButton()
+            choice.addItems(withTitles: part.variantTitles)
+            choice.selectItem(at: Self.variantIndex(of: part, in: layout))
+            choice.target = self
+            choice.action = #selector(variantChanged(_:))
+            choice.tag = Self.tag(of: part)
+            choice.isEnabled = isShown
+            variantButtons[part] = choice
+            return choice
+        }
+        guard part.canGiveWay else {
+            return NSView()
+        }
+        let radio = NSButton(
+            radioButtonWithTitle: "gives way",
+            target: self,
+            action: #selector(flexibleChanged(_:))
+        )
+        radio.state = layout.flexible == part ? .on : .off
+        radio.tag = Self.tag(of: part)
+        radio.isEnabled = isShown
+        radio.toolTip = """
+            The one part that narrows when the widget does. Every other part keeps its width, \
+            so a count or a timer never becomes something ambiguous.
+            """
+        flexibleButtons[part] = radio
+        return radio
+    }
+
+    private func makeArrowCells(_ part: RowPart, at index: Int, in ordered: [RowPart]) -> [NSView] {
+        let up = NSButton(title: "↑", target: self, action: #selector(movePartEarlier(_:)))
+        up.bezelStyle = .rounded
+        up.tag = Self.tag(of: part)
+        up.isEnabled = index > 0
+        up.toolTip = "Move this part one place earlier in the row"
+        moveUpButtons[part] = up
+
+        let down = NSButton(title: "↓", target: self, action: #selector(movePartLater(_:)))
+        down.bezelStyle = .rounded
+        down.tag = Self.tag(of: part)
+        down.isEnabled = index < ordered.count - 1
+        down.toolTip = "Move this part one place later in the row"
+        moveDownButtons[part] = down
+
+        return [up, down]
+    }
+
+    /// The sample, rebuilt: a row is given its parts once, at construction, so showing a new
+    /// template means a new row.
+    private func showSampleRow(_ layout: RowLayout) {
+        sampleRow.map(sampleHolder.removeView)
+        let background = backgroundStore.selected
+        sampleHolder.layer?.backgroundColor = background.color.cgColor
+        let row = HUDSessionRowView(
+            snapshot: Self.sampleSession,
+            now: Self.sampleSession.lastObservedAt.addingTimeInterval(4),
+            background: background,
+            lampScheme: lampSchemes.scheme,
+            layout: layout,
+            onFocus: {},
+            // The sample carries a × so that the column can be seen and placed. It presses
+            // nothing: there is no row to remove, and a button here that did something would
+            // be the one control in this window that is not about the drawing.
+            dismissal: .now,
+            onRemove: {}
+        )
+        let text = layout.flexible.flatMap { rowPartText($0, for: Self.sampleSession, layout: layout) }
+        row.setFlexibleText(text, display: .fullName)
+        sampleHolder.addView(row, in: .top)
+        sampleRow = row
+    }
+
+    /// One session that has something for every part, including the ones a real session
+    /// almost never fills. A sample built from an ordinary session would silently leave the
+    /// fault marker and the thread out, and then they could not be placed at all.
+    private static let sampleSession: SessionSnapshot = {
+        var sample = SessionSnapshot(
+            id: "codex:sample",
+            source: .codex,
+            arrivalIndex: 0,
+            title: "Port the probe to the new API",
+            projectName: "agent-watch",
+            gitBranch: "row-format",
+            mode: .unknown,
+            phase: .executing,
+            activities: [
+                SessionActivity(id: "a", kind: .shell, startedAt: .distantPast),
+                SessionActivity(id: "b", kind: .tool, startedAt: .distantPast),
+            ],
+            lastObservedAt: .distantPast,
+            clientKind: .cli
+        )
+        sample.modelName = "gpt-5-codex"
+        sample.reasoningEffort = "high"
+        sample.threadKind = .subagent
+        sample.threadNickname = "Darwin"
+        sample.monitoringFault = .transcriptNotFound
+        sample.contextTelemetry = .init(totalInputTokens: 212_000, usedPercentage: 63)
+        return sample
+    }()
+
+    @objc private func partShownChanged(_ sender: NSButton) {
+        guard let part = Self.part(ofTag: sender.tag) else {
+            return
+        }
+        var parts = rowLayouts.layout.parts
+        if sender.state == .on {
+            // In front of the gap: a part switched on joins what the row reads first, which
+            // is where a person looking for it will look.
+            parts.insert(part, at: parts.firstIndex(of: .gap) ?? parts.count)
+        } else {
+            parts.removeAll { $0 == part }
+        }
+        store(parts: parts)
+    }
+
+    @objc private func movePartEarlier(_ sender: NSButton) {
+        movePart(ofTag: sender.tag, by: -1)
+    }
+
+    @objc private func movePartLater(_ sender: NSButton) {
+        movePart(ofTag: sender.tag, by: 1)
+    }
+
+    /// Moves within the whole list — the parts in the row followed by the parts left out — so
+    /// that the last arrow down does not disappear into a part that is not drawn.
+    private func movePart(ofTag tag: Int, by step: Int) {
+        guard let part = Self.part(ofTag: tag) else {
+            return
+        }
+        var ordered = Self.orderedParts(of: rowLayouts.layout)
+        guard
+            let from = ordered.firstIndex(of: part),
+            ordered.indices.contains(from + step)
+        else {
+            return
+        }
+        ordered.swapAt(from, from + step)
+        store(parts: ordered.filter(rowLayouts.layout.shows))
+    }
+
+    @objc private func variantChanged(_ sender: NSPopUpButton) {
+        guard let part = Self.part(ofTag: sender.tag) else {
+            return
+        }
+        let chosen = sender.indexOfSelectedItem
+        let layout = rowLayouts.layout
+        rowLayouts.setLayout(
+            RowLayout(
+                parts: layout.parts,
+                flexible: layout.flexible,
+                counterKinds: layout.counterKinds,
+                nameStyle: part == .name ? (chosen == 1 ? .title : .fallback) : layout.nameStyle,
+                modelStyle: part == .model ? (chosen == 1 ? .effort : .plain) : layout.modelStyle,
+                contextStyle: part == .context
+                    ? [.percent, .tokens, .both][min(chosen, 2)] : layout.contextStyle,
+                reservesDismissColumn: layout.reservesDismissColumn
+            )
+        )
+        showRowLayout()
+    }
+
+    @objc private func flexibleChanged(_ sender: NSButton) {
+        guard let part = Self.part(ofTag: sender.tag) else {
+            return
+        }
+        store(parts: rowLayouts.layout.parts, flexible: part)
+    }
+
+    @objc private func dismissColumnChanged(_ sender: NSButton) {
+        let layout = rowLayouts.layout
+        rowLayouts.setLayout(
+            RowLayout(
+                parts: layout.parts,
+                flexible: layout.flexible,
+                counterKinds: layout.counterKinds,
+                nameStyle: layout.nameStyle,
+                modelStyle: layout.modelStyle,
+                contextStyle: layout.contextStyle,
+                reservesDismissColumn: sender.state == .on
+            )
+        )
+        showRowLayout()
+    }
+
+    @objc func resetRowLayout() {
+        rowLayouts.setLayout(.standard)
+        showRowLayout()
+    }
+
+    /// Writes a new order, keeping everything the order does not decide.
+    private func store(parts: [RowPart], flexible: RowPart? = nil) {
+        let layout = rowLayouts.layout
+        rowLayouts.setLayout(
+            RowLayout(
+                parts: parts,
+                flexible: flexible ?? layout.flexible,
+                counterKinds: layout.counterKinds,
+                nameStyle: layout.nameStyle,
+                modelStyle: layout.modelStyle,
+                contextStyle: layout.contextStyle,
+                reservesDismissColumn: layout.reservesDismissColumn
+            )
+        )
+        showRowLayout()
+    }
+
+    private static func variantIndex(of part: RowPart, in layout: RowLayout) -> Int {
+        switch part {
+        case .name: layout.nameStyle == .title ? 1 : 0
+        case .model: layout.modelStyle == .effort ? 1 : 0
+        case .context:
+            switch layout.contextStyle {
+            case .percent: 0
+            case .tokens: 1
+            case .both: 2
+            }
+        default: 0
+        }
+    }
+
+    private static func tag(of part: RowPart) -> Int {
+        (RowPart.allCases.firstIndex(of: part) ?? 0) + 1
+    }
+
+    private static func part(ofTag tag: Int) -> RowPart? {
+        RowPart.allCases.indices.contains(tag - 1) ? RowPart.allCases[tag - 1] : nil
     }
 
     // MARK: - The lamp
@@ -498,6 +867,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             colorWells[phase]?.color = look.color
             motionButtons[phase]?.selectItem(at: Self.index(of: look.motion))
         }
+        showRowLayout()
         showSelectedBackground()
         showOpacity()
         showScale()

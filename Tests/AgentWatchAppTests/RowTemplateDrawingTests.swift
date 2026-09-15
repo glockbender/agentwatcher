@@ -50,7 +50,38 @@ final class RowTemplateDrawingTests: XCTestCase {
         )
     }
 
-    private func makeRow(_ snapshot: SessionSnapshot, layout: RowLayout) -> HUDSessionRowView {
+    // MARK: - The dismiss button's column
+
+    /// A session still at work gets no dismiss button at all, so without the column its
+    /// counters sit a button-width further right than a finished session's and the two do not
+    /// line up down the list. Measured rather than reasoned about: `furnitureWidth` is what
+    /// the name budget is taken from, and it is the row laying itself out.
+    func testKeepingTheColumnLinesUpAWorkingRowWithAFinishedOne() {
+        let session = testSession(title: "Fix the row", lastObservedAt: now)
+        let keepsColumn = RowLayout(parts: RowLayout.standard.parts, reservesDismissColumn: true)
+
+        let working = makeRow(session, layout: keepsColumn, dismissal: .notOffered(until: now + 1_800))
+        let finished = makeRow(session, layout: keepsColumn, dismissal: .now)
+
+        XCTAssertEqual(working.furnitureWidth, finished.furnitureWidth, accuracy: 0.5)
+    }
+
+    /// And with the column given up, the two really do differ — otherwise the test above
+    /// would pass for a reason that has nothing to do with the setting.
+    func testGivingTheColumnUpLeavesTheWorkingRowWiderInside() {
+        let session = testSession(title: "Fix the row", lastObservedAt: now)
+
+        let working = makeRow(session, layout: .standard, dismissal: .notOffered(until: now + 1_800))
+        let finished = makeRow(session, layout: .standard, dismissal: .now)
+
+        XCTAssertLessThan(working.furnitureWidth, finished.furnitureWidth)
+    }
+
+    private func makeRow(
+        _ snapshot: SessionSnapshot,
+        layout: RowLayout,
+        dismissal: RowDismissal? = nil
+    ) -> HUDSessionRowView {
         HUDSessionRowView(
             snapshot: snapshot,
             now: now,
@@ -58,7 +89,7 @@ final class RowTemplateDrawingTests: XCTestCase {
             lampScheme: LampScheme(),
             layout: layout,
             onFocus: {},
-            dismissal: .notOffered(until: now + 1_800),
+            dismissal: dismissal ?? .notOffered(until: now + 1_800),
             onRemove: {}
         )
     }

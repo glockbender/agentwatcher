@@ -190,7 +190,17 @@ final class HUDSessionRowView: NSStackView {
         // question a person asks is "why can I not close this?" — and the hover card is
         // where that one is answered, in words, with the moment it starts working.
         if case .notOffered = dismissal {
-            // Nothing to dismiss: the session is at work, or waiting for a person.
+            // Nothing to dismiss: the session is at work, or waiting for a person. The
+            // column can still be held open, so that what a row ends with — a counter, a
+            // percentage — stands in the same place whether or not the session has stopped.
+            // Empty rather than a disabled button: there is no action here to explain, and a
+            // button nobody can ever press is a question the hover card would have to answer.
+            if layout.reservesDismissColumn {
+                let heldOpen = NSView()
+                heldOpen.translatesAutoresizingMaskIntoConstraints = false
+                heldOpen.pinSize(to: style.buttonSize)
+                views.append(heldOpen)
+            }
         } else {
             let removeButton = RowDismissButton(
                 font: style.buttonFont,

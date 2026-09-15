@@ -558,3 +558,83 @@ extension SessionPhase {
         }
     }
 }
+
+/// How the settings window talks about one part of a row.
+///
+/// Every switch here is exhaustive, so a part cannot be added without being named and without
+/// saying when it appears — which is the question the window exists to answer for somebody
+/// placing a part they have never seen in a row.
+extension RowPart {
+    var settingsName: String {
+        switch self {
+        case .timer: "Elapsed"
+        case .lamp: "Lamp"
+        case .agent: "Agent"
+        case .fault: "Problem"
+        case .name: "Name"
+        case .project: "Project"
+        case .branch: "Branch"
+        case .model: "Model"
+        case .host: "Runs in"
+        case .thread: "Thread"
+        case .counters: "Counters"
+        case .context: "Context"
+        case .gap: "Gap"
+        }
+    }
+
+    /// When a row has anything to draw here.
+    ///
+    /// Some parts are in every row and some are in almost none, and the name alone does not
+    /// say which. Without this the fault marker is the trap: placed from a sample row it
+    /// looks like an ordinary part, and then never appears again.
+    var appearsWhen: String {
+        switch self {
+        case .timer, .lamp, .agent:
+            "In every row."
+        case .gap:
+            """
+            In every row. Everything after it sits at the right edge, and a row has exactly \
+            one.
+            """
+        case .fault:
+            """
+            Only when this app has lost track of the session — rare, and the mark that says \
+            the row may be out of date.
+            """
+        case .name:
+            """
+            Whenever the agent has named the session. Until it does, the row falls back to \
+            the project, unless you choose Name only.
+            """
+        case .project:
+            "Whenever the session is working in a directory."
+        case .branch:
+            "Only in a git repository."
+        case .model:
+            "Once the session's transcript names the model."
+        case .host:
+            """
+            Once the session says where it runs — a terminal, the desktop app, or the \
+            background.
+            """
+        case .thread:
+            "Only a Codex subagent or a review thread. A person's own session says nothing here."
+        case .counters:
+            "Only while the session has work to count."
+        case .context:
+            "Only when the agent reports how much of its context is used."
+        }
+    }
+
+    /// What this part can be asked to show, and what each choice is called. Empty where there
+    /// is nothing to choose.
+    var variantTitles: [String] {
+        switch self {
+        case .name: ["Name, else project", "Name only"]
+        case .model: ["Name", "Name · effort"]
+        case .context: ["Percent", "Tokens", "Percent · tokens"]
+        case .timer, .lamp, .agent, .fault, .project, .branch, .host, .thread, .counters, .gap: []
+        }
+    }
+}

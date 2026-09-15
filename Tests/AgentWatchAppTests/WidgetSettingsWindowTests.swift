@@ -60,6 +60,7 @@ final class WidgetSettingsWindowTests: XCTestCase {
             backgroundStore: WidgetBackgroundStore(preferences: preferences),
             lampSchemes: lampSchemes,
             settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences),
             shortcuts: FakeShortcutRegistrar.controller(for: settings)
         )
 
@@ -309,6 +310,7 @@ final class WidgetSettingsWindowTests: XCTestCase {
             backgroundStore: WidgetBackgroundStore(preferences: preferences),
             lampSchemes: LampSchemeStore(preferences: preferences),
             settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences),
             shortcuts: shortcuts
         )
         return (window, shortcuts)
@@ -339,6 +341,7 @@ final class WidgetSettingsWindowTests: XCTestCase {
                 backgroundStore: backgroundStore,
                 lampSchemes: lampSchemes,
                 settings: settings,
+                rowLayouts: RowLayoutStore(preferences: preferences),
                 shortcuts: shortcuts
             ),
             lampSchemes,

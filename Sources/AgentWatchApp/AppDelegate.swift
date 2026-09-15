@@ -103,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         backgroundStore: backgroundStore,
         lampSchemes: lampSchemes,
         settings: settings,
+        rowLayouts: rowLayouts,
         shortcuts: shortcuts
     )
     private let debugLog = EventDebugLog()

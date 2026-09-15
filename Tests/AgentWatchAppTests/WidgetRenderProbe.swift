@@ -130,6 +130,7 @@ final class WidgetRenderProbe: XCTestCase {
             backgroundStore: WidgetBackgroundStore(preferences: preferences),
             lampSchemes: LampSchemeStore(preferences: preferences),
             settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences),
             shortcuts: FakeShortcutRegistrar.controller(for: settings)
         )
         let view = try XCTUnwrap(controller.window?.contentView)
