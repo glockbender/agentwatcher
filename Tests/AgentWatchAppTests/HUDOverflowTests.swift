@@ -70,7 +70,7 @@ final class HUDOverflowTests: XCTestCase {
         let atTheTop = list.hiddenSessions
         XCTAssertGreaterThan(atTheTop.below, 1, "this size really does cut rows off")
 
-        try scroll(list, by: HUDSessionRowView.rowHeight + HUDSessionListView.rowSpacing)
+        try scroll(list, by: WidgetStyle.standard.rowHeight + WidgetStyle.standard.rowSpacing)
 
         XCTAssertEqual(list.hiddenSessions.below, atTheTop.below - 1)
         XCTAssertEqual(list.hiddenSessions.above, atTheTop.above + 1)
@@ -94,6 +94,57 @@ final class HUDOverflowTests: XCTestCase {
         XCTAssertFalse(properly.overflowBadgeBelow.isHidden)
     }
 
+    /// The two features have to hold together: the badge answers for what is cut off, and the
+    /// scale changes how tall a row is. The allowance is a fraction of the row's own frame, so
+    /// it follows the scale without being told — 3.6 points at half size, 11.4 at double.
+    /// Stated at every size on offer, because a fraction swapped for a count of points would
+    /// pass at 100% and be wrong everywhere else.
+    func testTheAllowanceFollowsTheSizeThePersonChose() {
+        for scale in WidgetSettingsStore.offeredScales {
+            let style = WidgetStyle(scale: scale)
+            let fits = HUDSessionListView.selfSizedHeight(
+                sessionCount: 4, usageLimits: [], background: .graphite, style: style
+            )
+            let allowance = style.rowHeight * hiddenRowFraction
+            let percent = Int(scale * 100)
+
+            let under = listView(sessionCount: 8, style: style)
+            place(under, height: fits - (allowance - 1))
+            let over = listView(sessionCount: 8, style: style)
+            place(over, height: fits - (allowance + 1))
+
+            XCTAssertEqual(
+                over.hiddenSessions.below,
+                under.hiddenSessions.below + 1,
+                "at \(percent)% the row clipped past the allowance counts and the one under it does not"
+            )
+        }
+    }
+
+    /// A widget at double size holds fewer rows in the same height, so the two badges come
+    /// closest to each other at the largest size — and they must not meet, because one
+    /// capsule sitting on another reads as neither.
+    func testTheTwoCountersNeverMeetAtAnySize() throws {
+        for scale in WidgetSettingsStore.offeredScales {
+            let style = WidgetStyle(scale: scale)
+            let fits = HUDSessionListView.selfSizedHeight(
+                sessionCount: 8, usageLimits: [], background: .graphite, style: style
+            )
+            let list = listView(sessionCount: 8, style: style)
+            place(list, height: fits * 0.6)
+            try scroll(list, by: style.rowHeight + style.rowSpacing)
+            let percent = Int(scale * 100)
+
+            XCTAssertGreaterThan(list.hiddenSessions.above, 0, "at \(percent)% rows really are above")
+            XCTAssertGreaterThan(list.hiddenSessions.below, 0, "at \(percent)% rows really are below")
+            XCTAssertFalse(
+                list.overflowBadgeAbove.convert(list.overflowBadgeAbove.bounds, to: list)
+                    .intersects(list.overflowBadgeBelow.convert(list.overflowBadgeBelow.bounds, to: list)),
+                "at \(percent)% the two capsules overlap"
+            )
+        }
+    }
+
     /// The counter used to sit under the list and take a strip of height from it, so it was
     /// partly the cause of what it reported: while it was there the widget showed one row
     /// fewer. As a badge over the list it costs the rows nothing.
@@ -106,7 +157,7 @@ final class HUDOverflowTests: XCTestCase {
         let badge = list.overflowBadgeBelow
         XCTAssertEqual(
             scrollView.frame.maxY,
-            list.bounds.maxY - HUDSessionListView.verticalPadding,
+            list.bounds.maxY - WidgetStyle.standard.listVerticalPadding,
             accuracy: 0.5,
             "the list reaches the bottom of the widget whether or not the counter is showing"
         )
@@ -155,7 +206,7 @@ final class HUDOverflowTests: XCTestCase {
     func testBothCountersCanStandAtOnceWithoutMeeting() throws {
         let list = listView(sessionCount: 20)
         place(list, height: 120)
-        try scroll(list, by: 3 * (HUDSessionRowView.rowHeight + HUDSessionListView.rowSpacing))
+        try scroll(list, by: 3 * (WidgetStyle.standard.rowHeight + WidgetStyle.standard.rowSpacing))
 
         XCTAssertGreaterThan(list.hiddenSessions.above, 0)
         XCTAssertGreaterThan(list.hiddenSessions.below, 0)
@@ -167,42 +218,50 @@ final class HUDOverflowTests: XCTestCase {
         )
     }
 
-    /// The badge lands where a row keeps its `×`, and that button is the only way to clear a
-    /// session that has stopped. Covering it whole takes the gesture away; this leaves most of
-    /// it showing.
-    func testTheCounterLeavesTheDismissButtonShowing() throws {
-        let list = listView(sessionCount: 8, phase: .sessionClosed)
-        place(list, height: 80)
-        let badge = list.overflowBadgeBelow
-        XCTAssertFalse(badge.isHidden, "this size really does cut rows off")
+    /// A badge lands where a row keeps its `×`, and that button is the only way to clear a
+    /// session that has stopped. What has to survive is the mark, not the box around it: the
+    /// bezel is 22 points at full size and the `×` drawn inside it is 16, so a badge can take a
+    /// third of the bezel and none of the mark. Counted in ink on a bitmap, because the mark
+    /// is the button's title and has no frame of its own to ask.
+    ///
+    /// The bar is in two parts, and both halves are measurements rather than preferences. From
+    /// full size up at least half the mark stays showing under either badge: 56, 57, 50, 55
+    /// and 62 per cent at the five sizes from 100 to 200, so the bar is "not less than half"
+    /// and 150 % is the size that sits exactly on it. Below full size the badge keeps
+    /// floors the row does not — `NSTextField` will not let the label shrink past its text —
+    /// so at 75 % 46 % of the mark is left and at half size 25 %. Deliberately left there: the
+    /// badge takes no clicks, so the `×` under it is still pressed, and what a small widget
+    /// loses is a glance, not a gesture.
+    func testEitherCounterLeavesTheDismissMarkShowing() throws {
+        for scale in WidgetSettingsStore.offeredScales {
+            let style = WidgetStyle(scale: scale)
+            let fits = HUDSessionListView.selfSizedHeight(
+                sessionCount: 8, usageLimits: [], background: .graphite, style: style
+            )
+            let list = listView(sessionCount: 8, phase: .sessionClosed, style: style)
+            place(list, height: fits * 0.6)
+            try scroll(list, by: style.rowHeight + style.rowSpacing)
+            let percent = Int(scale * 100)
+            let whole = try wholeRowsInView(of: list)
 
-        let button = try XCTUnwrap(fullyVisibleDismissButtons(in: list).last)
-        let covered = badge.convert(badge.bounds, to: list).intersection(button)
+            for (badge, row) in [
+                (list.overflowBadgeAbove, whole.first),
+                (list.overflowBadgeBelow, whole.last),
+            ] {
+                XCTAssertFalse(badge.isHidden, "at \(percent)% this size really does cut rows off")
+                let mark = try XCTUnwrap(dismissMarkInk(of: try XCTUnwrap(row), in: list))
+                let left = mark.height - badge.convert(badge.bounds, to: list).intersection(mark).height
 
-        XCTAssertGreaterThan(
-            button.height - covered.height,
-            button.height / 2,
-            "over half the button has to stay in sight to be aimed at"
-        )
-    }
-
-    /// And the counter above answers for the same button on the row it lands on. Scrolled by
-    /// a whole row, so the topmost row in view is a whole one and really is underneath it.
-    func testTheCounterAboveLeavesTheDismissButtonShowing() throws {
-        let list = listView(sessionCount: 8, phase: .sessionClosed)
-        place(list, height: 80)
-        try scroll(list, by: HUDSessionRowView.rowHeight + HUDSessionListView.rowSpacing)
-        let badge = list.overflowBadgeAbove
-        XCTAssertFalse(badge.isHidden, "the list really is scrolled past a row")
-
-        let button = try XCTUnwrap(fullyVisibleDismissButtons(in: list).first)
-        let covered = badge.convert(badge.bounds, to: list).intersection(button)
-
-        XCTAssertGreaterThan(
-            button.height - covered.height,
-            button.height / 2,
-            "over half the button has to stay in sight to be aimed at"
-        )
+                XCTAssertGreaterThan(left, 0, "at \(percent)% the mark is wholly covered")
+                if scale >= 1 {
+                    XCTAssertGreaterThanOrEqual(
+                        left,
+                        mark.height / 2,
+                        "at \(percent)% half the mark has to stay in sight"
+                    )
+                }
+            }
+        }
     }
 
     /// The badge drops into the border below the list. Where there is an account usage block
@@ -257,18 +316,61 @@ final class HUDOverflowTests: XCTestCase {
         try scroll(list, by: document.bounds.height - scrollView.documentVisibleRect.maxY)
     }
 
-    /// The `×` of every row that is wholly in view, top to bottom, in the list's own
-    /// coordinates. The first and the last of them are the rows the two badges land on, and
-    /// the buttons they can take away.
-    private func fullyVisibleDismissButtons(in list: HUDSessionListView) throws -> [NSRect] {
+    /// Every row that is wholly in view, top to bottom. The first and the last of them are the
+    /// rows the two badges land on.
+    private func wholeRowsInView(of list: HUDSessionListView) throws -> [HUDSessionRowView] {
         let scrollView = try XCTUnwrap(firstScrollView(in: list))
         let visible = scrollView.documentVisibleRect
-        return list.rows
-            .filter { visible.contains($0.frame) }
-            .compactMap { row in
-                allSubviews(of: row).compactMap { $0 as? RowDismissButton }.first
-            }
-            .map { $0.convert($0.bounds, to: list) }
+        return list.rows.filter { visible.contains($0.frame) }
+    }
+
+    /// The box the row's `×` mark actually occupies, in the list's own coordinates.
+    ///
+    /// Counted in ink rather than asked of a view: with a bezel the mark is the button's
+    /// title, which has no frame to read, and the bezel is half again as tall as the mark
+    /// inside it. The button is drawn on its own, so no badge can erase the ink being
+    /// measured.
+    private func dismissMarkInk(of row: HUDSessionRowView, in list: HUDSessionListView) throws -> NSRect? {
+        let button = try XCTUnwrap(allSubviews(of: row).compactMap { $0 as? RowDismissButton }.first)
+        let bounds = button.bounds
+        guard let rep = button.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        button.cacheDisplay(in: bounds, to: rep)
+
+        // The corner is the button's own background; ink is anything far enough from it.
+        guard let corner = rep.colorAt(x: 0, y: 0) else { return nil }
+        var top: Int?
+        var bottom: Int?
+        for y in 0..<rep.pixelsHigh
+        where (0..<rep.pixelsWide).contains(where: { x in
+            guard let pixel = rep.colorAt(x: x, y: y) else { return false }
+            return colourDistance(pixel, corner) > 0.18
+        }) {
+            if top == nil { top = y }
+            bottom = y
+        }
+        guard let top, let bottom else { return nil }
+
+        // The bitmap counts down from the top; the button's own coordinates count up.
+        let perPixel = bounds.height / CGFloat(rep.pixelsHigh)
+        return button.convert(
+            NSRect(
+                x: bounds.minX,
+                y: bounds.maxY - CGFloat(bottom + 1) * perPixel,
+                width: bounds.width,
+                height: CGFloat(bottom - top + 1) * perPixel
+            ),
+            to: list
+        )
+    }
+
+    private func colourDistance(_ a: NSColor, _ b: NSColor) -> CGFloat {
+        guard
+            let left = a.usingColorSpace(.deviceRGB),
+            let right = b.usingColorSpace(.deviceRGB)
+        else { return 0 }
+        return abs(left.redComponent - right.redComponent)
+            + abs(left.greenComponent - right.greenComponent)
+            + abs(left.blueComponent - right.blueComponent)
     }
 
     /// The complaint this answers: after a few resizes the widget claimed sessions were
@@ -409,6 +511,44 @@ final class HUDOverflowTests: XCTestCase {
         }
     }
 
+    /// And it matches at every size the widget can be drawn at. The height the window is
+    /// given and the height its rows take are computed from the same style, so a scale that
+    /// reached one of them and not the other shows up as rows cut off by the widget's own
+    /// bottom edge.
+    func testTheSelfSizedHeightMatchesAtEverySizeOnOffer() throws {
+        for scale in WidgetSettingsStore.offeredScales {
+            let style = WidgetStyle(scale: scale)
+            let list = listView(sessionCount: 4, style: style)
+            let expected = HUDSessionListView.selfSizedHeight(
+                sessionCount: 4,
+                usageLimits: [],
+                background: .graphite,
+                style: style
+            )
+            place(list, height: expected)
+
+            let rows = allSubviews(of: list).compactMap { $0 as? HUDSessionRowView }
+            let scrollView = try XCTUnwrap(allSubviews(of: list).compactMap { $0 as? NSScrollView }.first)
+            XCTAssertEqual(
+                hiddenRows(rowFrames: rows.map(\.frame), visibleRect: scrollView.documentVisibleRect),
+                .none,
+                "at \(Int(scale * 100))% the rows do not fit the height the widget was sized to"
+            )
+        }
+    }
+
+    /// A larger widget needs more room for the same sessions. Stated on its own because the
+    /// test above would still pass if the height stopped following the scale and every row
+    /// stopped growing with it too.
+    func testALargerWidgetAsksForMoreHeight() {
+        let small = HUDSessionListView.selfSizedHeight(
+            sessionCount: 4, usageLimits: [], background: .graphite, style: .standard)
+        let large = HUDSessionListView.selfSizedHeight(
+            sessionCount: 4, usageLimits: [], background: .graphite, style: WidgetStyle(scale: 2))
+
+        XCTAssertGreaterThan(large, small * 1.5, "four rows at twice the size are not nearly twice as tall")
+    }
+
     /// The usage block is part of that height, so a widget showing account limits has to be
     /// taller than the same list without them — by the block plus its divider, not by a
     /// guess at a label's height.
@@ -481,7 +621,8 @@ final class HUDOverflowTests: XCTestCase {
         sessionCount: Int,
         title: String? = nil,
         phase: SessionPhase = .executing,
-        usageLimits: [AgentUsageLimits] = []
+        usageLimits: [AgentUsageLimits] = [],
+        style: WidgetStyle = .standard
     ) -> HUDSessionListView {
         HUDSessionListView(
             models: rowModels(
@@ -496,6 +637,7 @@ final class HUDOverflowTests: XCTestCase {
             background: .graphite,
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
+            style: style,
             restoredScrollOffset: nil,
             onScroll: { _ in }
         )

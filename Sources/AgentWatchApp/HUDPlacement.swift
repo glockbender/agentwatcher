@@ -64,6 +64,9 @@ final class HUDFrameStore: PreferenceDefaults {
     /// Low enough that a single-session widget is not padded out to fill it, and no lower
     /// than the empty state: the widget sizes itself to this height when it has nothing to
     /// show, so a smaller minimum would let a drag clip the one thing left on screen.
+    ///
+    /// The tuned size's floor, and the one a fresh file is written with. What the widget is
+    /// actually held to follows the scale — see `minimumSize` below.
     static let minimumSize = NSSize(width: 200, height: 56)
     /// What a widget that has never been resized is. Wide enough for a session name, and as
     /// short as the widget is allowed to be, because the height is about to be recomputed
@@ -79,6 +82,16 @@ final class HUDFrameStore: PreferenceDefaults {
     }
 
     private let preferences: PreferenceFile
+
+    /// The floor in force, which the scale moves: the empty state needs less room at half
+    /// size and more at double, and `WidgetStyle.minimumWindowSize` is where that is decided.
+    ///
+    /// Kept here as well as on the window because both clamp, and they have to agree. While
+    /// the scale only went up they always did — the window's floor was never below this one,
+    /// so this clamp never bit. Going down it would have: a widget dragged to 150 points at
+    /// half size is legal for the window and was rounded up to 200 on the way into the file,
+    /// so it sprang back to a size nobody chose on the next launch.
+    var minimumSize = HUDFrameStore.minimumSize
 
     /// The size and whether it is in force. The origin is not here: where the widget goes
     /// depends on the screen, so there is no answer to write until it has actually been put
@@ -114,7 +127,7 @@ final class HUDFrameStore: PreferenceDefaults {
         else {
             return Self.defaultSize
         }
-        return Self.clamped(NSSize(width: width, height: height))
+        return clamped(NSSize(width: width, height: height))
     }
 
     /// Whether the height follows the number of sessions. Off the moment a size is chosen by
@@ -144,7 +157,7 @@ final class HUDFrameStore: PreferenceDefaults {
     /// here rather than at the call site: they are one rule, and a caller that saved a size
     /// without ending the following would have the next refresh undo the drag.
     func save(_ size: NSSize) {
-        let clamped = Self.clamped(size)
+        let clamped = clamped(size)
         preferences.set(Double(clamped.width), forKey: Key.width)
         preferences.set(Double(clamped.height), forKey: Key.height)
         preferences.set(false, forKey: Key.sizeFollowsSessions)
@@ -159,7 +172,7 @@ final class HUDFrameStore: PreferenceDefaults {
         preferences.set(true, forKey: Key.sizeFollowsSessions)
     }
 
-    static func clamped(_ size: NSSize) -> NSSize {
+    func clamped(_ size: NSSize) -> NSSize {
         NSSize(
             width: max(size.width, minimumSize.width),
             height: max(size.height, minimumSize.height)

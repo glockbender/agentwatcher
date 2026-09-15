@@ -16,7 +16,7 @@ final class HUDRowEdgeTests: XCTestCase {
     /// `HUDSessionListView.horizontalInset` is private; this is the visible width for a
     /// widget of a given width, and the assertions below would fail if it drifted.
     private func visibleWidth(forWidgetWidth width: CGFloat) -> CGFloat {
-        width - 2 * (WidgetStyle.contentInset - HUDSessionRowView.hoverPadding)
+        width - 2 * (WidgetStyle.standard.contentInset - WidgetStyle.standard.hoverPadding)
     }
 
     func testEveryRowThatFitsIsAsWideAsTheVisibleArea() {
@@ -43,7 +43,7 @@ final class HUDRowEdgeTests: XCTestCase {
         let alignment = button.map { $0.alignmentRect(forFrame: $0.frame) }
         XCTAssertEqual(
             alignment?.maxX ?? 0,
-            (row?.frame.width ?? 0) - HUDSessionRowView.hoverPadding,
+            (row?.frame.width ?? 0) - WidgetStyle.standard.hoverPadding,
             accuracy: 0.5
         )
     }

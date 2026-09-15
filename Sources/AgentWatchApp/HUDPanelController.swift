@@ -16,6 +16,10 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     private var background: WidgetBackground
     private var lampScheme: LampScheme
     private var backgroundOpacity: CGFloat
+    /// Every size the widget is drawn at. Replaced whole by `setScale`, the way the
+    /// background is: a new size is a new set of views rather than a number pushed into the
+    /// ones on screen.
+    private var style: WidgetStyle
     private let frameStore: HUDFrameStore
     private let settings: WidgetSettingsStore
     /// Survives the wholesale rebuild of the content view controller on every refresh,
@@ -42,6 +46,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         background: WidgetBackground,
         lampScheme: LampScheme,
         backgroundOpacity: CGFloat,
+        style: WidgetStyle = .standard,
         frameStore: HUDFrameStore,
         settings: WidgetSettingsStore
     ) {
@@ -51,8 +56,14 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         self.background = background
         self.lampScheme = lampScheme
         self.backgroundOpacity = backgroundOpacity
+        self.style = style
         self.frameStore = frameStore
         self.settings = settings
+        // The floor before the size is read, not at the first refresh: the panel below is
+        // created from what the store gives back, and a store still holding the tuned size's
+        // floor rounds a smaller saved size up. The widget then opens larger than it was left
+        // and stays there — a size a person chose is never recomputed.
+        frameStore.minimumSize = style.minimumWindowSize
         // `.resizable` is kept although the widget performs its own resize: it is what macOS
         // derives the window's `AXResizable` trait from, and a window manager that lays out
         // other windows reads that trait. Not measured against a particular one.
@@ -85,15 +96,17 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             HUDEmptyStateView(
                 background: background,
                 backgroundOpacity: backgroundOpacity,
+                style: style,
                 complaint: state.complaint
             )
         )
+        hoverCard.style = style
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.minSize = HUDFrameStore.minimumSize
+        panel.minSize = style.minimumWindowSize
         panel.hidesOnDeactivate = false
         // Without this a panel that never becomes key sees no pointer movement, and the
         // hover card is a reaction to pointer movement.
@@ -174,6 +187,53 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         refreshContent()
     }
 
+    /// Draws the widget at a new size, now.
+    ///
+    /// Everything on screen is rebuilt: a row reads its fonts and its height once, when it is
+    /// built, so a scale that only changed the next row to arrive would leave a person
+    /// dragging the slider and watching nothing happen.
+    ///
+    /// The window's floor moves with it and is enforced here rather than left to the next
+    /// resize. A widget already at the old minimum is below the new one the moment the scale
+    /// grows, and macOS does not grow a window to meet a minimum it has just been given — so
+    /// the rows would be laid out inside a window too short to show them.
+    func setScale(_ scale: CGFloat) {
+        guard scale != style.scale else {
+            return
+        }
+        style = WidgetStyle(scale: scale)
+        hoverCard.style = style
+        refreshContent()
+    }
+
+    /// Keeps the window at least as large as the current size needs.
+    ///
+    /// Here rather than in `setScale`, so it covers the two other ways a widget can find
+    /// itself under its own floor: a launch reading a scale already saved, and
+    /// `Reset Widget Size`, which writes the size a fresh install has whatever scale is in
+    /// force. `minSize` alone does not do it — macOS does not grow a window to meet a minimum
+    /// it has just been handed — so the rows would be laid out inside a window too short to
+    /// show them.
+    ///
+    /// Deliberately without `frameStore.save`: growing to meet a floor is the app's doing,
+    /// and a saved size is by definition one a person chose — saving it would end the widget
+    /// sizing itself to its sessions, which is how a fresh install behaves. `windowDidResize`
+    /// remembers the size when the size really is the person's.
+    private func enforceMinimumSize(of panel: HUDPanel) {
+        panel.minSize = style.minimumWindowSize
+        // The same floor on the way into the file. The window and the store both clamp, and a
+        // size legal for one and rounded up by the other springs back on the next launch.
+        frameStore.minimumSize = style.minimumWindowSize
+        let grown = NSSize(
+            width: max(panel.frame.width, style.minimumWindowSize.width),
+            height: max(panel.frame.height, style.minimumWindowSize.height)
+        )
+        guard grown != panel.frame.size else {
+            return
+        }
+        panel.setContentSize(grown)
+    }
+
     func shutdown() {
         endHover()
         freshnessTimer?.invalidate()
@@ -192,11 +252,13 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         // and assigning a content view *controller* would resize the window to the new
         // view's fitting size — which for a scroll view with no intrinsic height is the
         // window minimum, and collapsed the widget on every refresh.
+        enforceMinimumSize(of: panel)
         if state.sessions.isEmpty {
             container.setBody(
                 HUDEmptyStateView(
                     background: background,
                     backgroundOpacity: backgroundOpacity,
+                    style: style,
                     complaint: state.complaint
                 )
             )
@@ -233,7 +295,8 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 atWidth: width,
                 background: background,
                 lampScheme: lampScheme,
-                backgroundOpacity: backgroundOpacity
+                backgroundOpacity: backgroundOpacity,
+                style: style
             )
         {
             listView.apply(models: models, now: moment)
@@ -251,6 +314,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 background: background,
                 lampScheme: lampScheme,
                 backgroundOpacity: backgroundOpacity,
+                style: style,
                 restoredScrollOffset: savedScrollOffset,
                 onScroll: { [weak self] offset in
                     self?.savedScrollOffset = offset
@@ -391,12 +455,13 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         let listHeight = HUDSessionListView.selfSizedHeight(
             sessionCount: min(state.sessions.count, Self.maximumAutoSizedRowCount),
             usageLimits: state.usageLimits,
-            background: background
+            background: background,
+            style: style
         )
         // Never shorter than the widget's own minimum, which is the height the empty state
         // needs: a one-row list that came out shorter would leave the widget below the size
         // a person is allowed to drag it to.
-        let floor = HUDFrameStore.minimumSize.height
+        let floor = style.minimumWindowSize.height
         let height = state.sessions.isEmpty ? floor : max(floor, listHeight)
         // Only when it actually changes. Resizing and repositioning a window are requests to
         // the window server, and this runs on every event — asking it to make the window the

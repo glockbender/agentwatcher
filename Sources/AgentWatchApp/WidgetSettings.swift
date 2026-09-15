@@ -31,6 +31,7 @@ enum WidgetSetting {
     case background
     case backgroundOpacity
     case lampScheme
+    case scale
 }
 
 /// Widget preferences that are not about colour.
@@ -55,12 +56,31 @@ final class WidgetSettingsStore: PreferenceDefaults {
     /// stops feeling live.
     static let offeredTranscriptPollIntervals: [TimeInterval?] = [3, 5, 10, nil]
 
+    /// How much larger or smaller than its tuned size the widget may be drawn.
+    ///
+    /// Both ways round 1, in equal quarter steps. The range started at 1 and went up, on the
+    /// reasoning that every number in `WidgetStyle` was chosen at 1 and drawing below it only
+    /// makes the widget worse; the owner asked for the other half, and a widget that is
+    /// glanced at rather than read is a fair thing to want smaller. So the tuned size is the
+    /// middle of the range now, not its floor.
+    static let minimumScale: CGFloat = 0.5
+    static let maximumScale: CGFloat = 2
+    /// What a widget nobody has touched is drawn at. Its own constant, not the floor: while
+    /// the range only went up, the two were the same number, and turning the range downwards
+    /// silently made a fresh install open at half size.
+    static let defaultScale: CGFloat = 1
+    /// The stops the slider snaps to. Discrete because the difference between 112% and 115%
+    /// is nothing anybody can see, and a value that lands on a quarter keeps every scaled
+    /// number a whole point without rounding deciding it.
+    static let offeredScales: [CGFloat] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+
     private enum Key {
         static let locksPosition = "lockWidgetPosition"
         static let locksSize = "lockWidgetSize"
         static let closedSessionRetention = "closedSessionRetentionSeconds"
         static let showsSessionTopic = "showsSessionTopic"
         static let transcriptPollInterval = "transcriptPollIntervalSeconds"
+        static let scale = "widgetScale"
     }
 
     private let preferences: PreferenceFile
@@ -72,6 +92,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.closedSessionRetention: .number(Self.defaultClosedSessionRetention),
             Key.showsSessionTopic: .bool(true),
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
+            Key.scale: .number(Double(Self.defaultScale)),
         ]
     }
 
@@ -121,6 +142,34 @@ final class WidgetSettingsStore: PreferenceDefaults {
         // gets there is an edited preferences file, and quietly reading a file every tenth of
         // a second because a number was mistyped is worse than not reading it.
         return (1...60).contains(stored) ? stored : nil
+    }
+
+    /// How much larger than its tuned size the widget draws itself.
+    ///
+    /// Clamped rather than refused, unlike the poll interval: a scale out of range is a
+    /// number that still means something — larger, or smaller — where a mistyped interval is
+    /// a file read at a rate nobody chose.
+    var scale: CGFloat {
+        guard let stored = preferences.number(forKey: Key.scale) else {
+            return Self.defaultScale
+        }
+        return normalizedScale(CGFloat(stored))
+    }
+
+    /// Writes nothing when the value has not moved, which no other setter here has to care
+    /// about: this one is behind a slider that fires on every frame of a drag, and each write
+    /// rebuilds every row in the widget.
+    func setScale(_ scale: CGFloat) {
+        let normalized = normalizedScale(scale)
+        guard normalized != self.scale else {
+            return
+        }
+        preferences.set(Double(normalized), forKey: Key.scale)
+        onChange?(.scale)
+    }
+
+    private func normalizedScale(_ scale: CGFloat) -> CGFloat {
+        min(max(scale, Self.minimumScale), Self.maximumScale)
     }
 
     func setTranscriptPollInterval(_ interval: TimeInterval?) {

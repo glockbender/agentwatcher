@@ -86,12 +86,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         background: backgroundStore.selected,
         lampScheme: lampSchemes.scheme,
         backgroundOpacity: backgroundStore.opacity,
+        style: WidgetStyle(scale: settings.scale),
         frameStore: frameStore,
         settings: settings
     )
     private lazy var settingsWindow: WidgetSettingsWindowController = WidgetSettingsWindowController(
         backgroundStore: backgroundStore,
-        lampSchemes: lampSchemes
+        lampSchemes: lampSchemes,
+        settings: settings
     )
     private let debugLog = EventDebugLog()
     private lazy var debugController = EventDebugWindowController(initialEntries: debugLog.recentEntries())
@@ -622,6 +624,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // live widget reach full invisibility while the saved setting did not — so the
             // widget would reappear on the next launch.
             hudController.setBackgroundOpacity(backgroundStore.opacity)
+        case .scale:
+            // Read back for the reason the opacity gives above: the store clamps, and a
+            // control that passed its own raw value would draw the widget at a size the saved
+            // setting does not hold — so the next launch would show a different widget.
+            hudController.setScale(settings.scale)
         }
     }
 

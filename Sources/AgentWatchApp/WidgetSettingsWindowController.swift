@@ -16,6 +16,7 @@ import AppKit
 final class WidgetSettingsWindowController: NSWindowController {
     private let backgroundStore: WidgetBackgroundStore
     private let lampSchemes: LampSchemeStore
+    private let settings: WidgetSettingsStore
 
     /// The controls, kept so a change made elsewhere — the reset button, or the store
     /// clamping a value — can be shown without rebuilding the window.
@@ -27,10 +28,17 @@ final class WidgetSettingsWindowController: NSWindowController {
     private(set) var backgroundButtons: [WidgetBackground: NSButton] = [:]
     private(set) var opacitySlider: NSSlider?
     private(set) var opacityLabel: NSTextField?
+    private(set) var scaleSlider: NSSlider?
+    private(set) var scaleLabel: NSTextField?
 
-    init(backgroundStore: WidgetBackgroundStore, lampSchemes: LampSchemeStore) {
+    init(
+        backgroundStore: WidgetBackgroundStore,
+        lampSchemes: LampSchemeStore,
+        settings: WidgetSettingsStore
+    ) {
         self.backgroundStore = backgroundStore
         self.lampSchemes = lampSchemes
+        self.settings = settings
 
         let window = NSWindow(
             // Replaced by the content's own fitting size below; a window needs some rect to
@@ -47,10 +55,11 @@ final class WidgetSettingsWindowController: NSWindowController {
         let lamp = makeLampGrid()
         let palette = makeBackgroundGrid()
         let opacity = makeOpacityRow()
+        let size = makeScaleRow()
         // The rules are as wide as the widest thing they separate, measured from the sections
         // themselves. A constant here decided the window's width instead, and left a strip of
         // empty window to the right of every control.
-        let ruleWidth = [lamp, palette, opacity].map(\.fittingSize.width).max() ?? 0
+        let ruleWidth = [lamp, palette, opacity, size].map(\.fittingSize.width).max() ?? 0
 
         let content = NSStackView()
         content.orientation = .vertical
@@ -66,6 +75,9 @@ final class WidgetSettingsWindowController: NSWindowController {
         content.addView(Self.makeRule(width: ruleWidth), in: .top)
         content.addView(Self.makeSectionTitle("Opacity"), in: .top)
         content.addView(opacity, in: .top)
+        content.addView(Self.makeRule(width: ruleWidth), in: .top)
+        content.addView(Self.makeSectionTitle("Size"), in: .top)
+        content.addView(size, in: .top)
 
         let container = NSView()
         container.addSubview(content)
@@ -134,7 +146,7 @@ final class WidgetSettingsWindowController: NSWindowController {
             motionButtons[phase] = motion
 
             let name = NSTextField(labelWithString: phase.settingsName)
-            name.font = WidgetStyle.titleFont
+            name.font = WidgetStyle.standard.titleFont
 
             // On all three, because a person hovers whichever part of the row they are about
             // to change, and the explanation is what tells them whether it is the right row.
@@ -157,7 +169,7 @@ final class WidgetSettingsWindowController: NSWindowController {
     private static let phaseColumnWidth: CGFloat = {
         let longest =
             SessionPhase.allCases
-            .map { $0.settingsName.size(withAttributes: [.font: WidgetStyle.titleFont]).width }
+            .map { $0.settingsName.size(withAttributes: [.font: WidgetStyle.standard.titleFont]).width }
             .max() ?? 0
         return longest.rounded(.up) + 4
     }()
@@ -216,7 +228,7 @@ final class WidgetSettingsWindowController: NSWindowController {
 
     private func addBackgroundRow(_ backgrounds: [WidgetBackground], titled title: String, to grid: NSGridView) {
         let label = NSTextField(labelWithString: title)
-        label.font = WidgetStyle.secondaryFont
+        label.font = WidgetStyle.standard.secondaryFont
         label.textColor = .secondaryLabelColor
 
         var views: [NSView] = [label]
@@ -263,7 +275,7 @@ final class WidgetSettingsWindowController: NSWindowController {
         opacitySlider = slider
 
         let readout = NSTextField(labelWithString: "")
-        readout.font = WidgetStyle.secondaryFont
+        readout.font = WidgetStyle.standard.secondaryFont
         readout.alignment = .right
         readout.widthAnchor.constraint(equalToConstant: 44).isActive = true
         opacityLabel = readout
@@ -279,6 +291,48 @@ final class WidgetSettingsWindowController: NSWindowController {
         showOpacity()
     }
 
+    // MARK: - The size
+
+    /// How large the widget draws everything it holds.
+    ///
+    /// A slider that snaps to its tick marks rather than a menu of percentages. The widget is
+    /// on screen while this window is open and every step redraws it, so the control is the
+    /// preview: a person drags until the rows look right instead of choosing a number and
+    /// checking afterwards. Snapping is what keeps that honest — the steps are far enough
+    /// apart that each one is a visible change, where a free slider offers hundreds of
+    /// positions that mostly look identical.
+    private func makeScaleRow() -> NSView {
+        let scales = WidgetSettingsStore.offeredScales
+        let slider = NSSlider(
+            value: Double(settings.scale),
+            minValue: Double(WidgetSettingsStore.minimumScale),
+            maxValue: Double(WidgetSettingsStore.maximumScale),
+            target: self,
+            action: #selector(scaleChanged(_:))
+        )
+        slider.numberOfTickMarks = scales.count
+        slider.allowsTickMarkValuesOnly = true
+        slider.isContinuous = true
+        slider.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        scaleSlider = slider
+
+        let readout = NSTextField(labelWithString: "")
+        readout.font = WidgetStyle.standard.secondaryFont
+        readout.alignment = .right
+        readout.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        scaleLabel = readout
+
+        let row = NSStackView(views: [slider, readout])
+        row.orientation = .horizontal
+        row.spacing = 8
+        return row
+    }
+
+    @objc private func scaleChanged(_ sender: NSSlider) {
+        settings.setScale(CGFloat(sender.doubleValue))
+        showScale()
+    }
+
     // MARK: - Showing what is stored
 
     private func showCurrentValues() {
@@ -290,6 +344,7 @@ final class WidgetSettingsWindowController: NSWindowController {
         }
         showSelectedBackground()
         showOpacity()
+        showScale()
     }
 
     private func showSelectedBackground() {
@@ -305,6 +360,12 @@ final class WidgetSettingsWindowController: NSWindowController {
         let opacity = backgroundStore.opacity
         opacitySlider?.doubleValue = Double(opacity)
         opacityLabel?.stringValue = "\(Int((opacity * 100).rounded()))%"
+    }
+
+    private func showScale() {
+        let scale = settings.scale
+        scaleSlider?.doubleValue = Double(scale)
+        scaleLabel?.stringValue = "\(Int((scale * 100).rounded()))%"
     }
 
     /// A phase needs a snapshot to become a lamp, and the window has no sessions. Only the
