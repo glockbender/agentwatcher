@@ -224,9 +224,10 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// The sample first, then the controls that change it.
     ///
     /// A person placing a part is asking "what will my row look like", and the answer is a
-    /// row — not a list of names they have to assemble in their head. The parts that a
-    /// session may have nothing to put in are underlined in the sample, because a row built
-    /// from one session would quietly leave them out and they could not be placed at all.
+    /// row — not a list of names they have to assemble in their head. What the sample cannot
+    /// answer is the part a session happens to have nothing to put in: it is simply not there,
+    /// and no drawing can show an absence. That is what the `appears` column beside each part
+    /// is for, and why the sample session has something for every one of them.
     private func makeRowLayoutSection() -> NSView {
         sampleHolder.orientation = .vertical
         sampleHolder.alignment = .leading
