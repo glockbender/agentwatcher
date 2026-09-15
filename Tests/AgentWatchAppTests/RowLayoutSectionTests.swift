@@ -20,6 +20,21 @@ final class RowLayoutSectionTests: XCTestCase {
         }
     }
 
+    /// Found by drawing the window: given the whole sentence, the column squeezed it to `Ir`
+    /// and `C` — a column whose job is to warn that a part is rare, saying nothing at all.
+    /// The width is stated in the grid now, and this keeps the wording inside it: the column
+    /// holds about twenty characters at the row font, and the sentence stays in the tooltip.
+    func testTheColumnBesideAPartSaysWhenItAppearsInWordsThatFit() {
+        for part in RowPart.allCases {
+            XCTAssertLessThanOrEqual(
+                part.appearsWhenBriefly.count,
+                20,
+                "\(part) would be cut off in the column"
+            )
+            XCTAssertFalse(part.appearsWhen.isEmpty, "\(part) explains nothing on hover")
+        }
+    }
+
     func testUncheckingAPartTakesItOutOfTheTemplate() throws {
         let (window, rowLayouts) = try makeWindow()
         let context = try XCTUnwrap(window.partBoxes[.context])
@@ -113,6 +128,27 @@ final class RowLayoutSectionTests: XCTestCase {
 
         XCTAssertEqual(rowLayouts.layout, .standard)
         XCTAssertEqual(window.partBoxes[.context]?.state, .on)
+    }
+
+    /// The sample is drawn on the widget's own background, so choosing another one has to
+    /// redraw it. Otherwise the window shows a row on a background the widget no longer has —
+    /// and the whole reason the sample is a real row is that it does not lie about the widget.
+    func testChoosingAnotherBackgroundRedrawsTheSample() throws {
+        let preferences = try isolatedPreferences()
+        let settings = WidgetSettingsStore(preferences: preferences)
+        let backgroundStore = WidgetBackgroundStore(preferences: preferences)
+        let window = WidgetSettingsWindowController(
+            backgroundStore: backgroundStore,
+            lampSchemes: LampSchemeStore(preferences: preferences),
+            settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences),
+            shortcuts: FakeShortcutRegistrar.controller(for: settings)
+        )
+        let mint = try XCTUnwrap(window.backgroundButtons[.mint])
+
+        mint.performClick(nil)
+
+        XCTAssertEqual(window.sampleRow?.drawnOn, .mint)
     }
 
     private func makeWindow() throws -> (WidgetSettingsWindowController, RowLayoutStore) {

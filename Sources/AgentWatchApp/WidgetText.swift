@@ -627,6 +627,26 @@ extension RowPart {
         }
     }
 
+    /// The same answer in a few words, for the column beside the checkbox.
+    ///
+    /// Two lengths rather than one, and found by drawing the window: given the sentence, the
+    /// column squeezed it to `Ir` and `C` — a column whose whole job is to warn that a part
+    /// is rare, saying nothing at all. The sentence stays, one hover away.
+    var appearsWhenBriefly: String {
+        switch self {
+        case .timer, .lamp, .agent, .gap: "always"
+        case .fault: "only with a problem"
+        case .name: "once it is named"
+        case .project: "almost always"
+        case .branch: "only in a git repo"
+        case .model: "once it is known"
+        case .host: "almost always"
+        case .thread: "only a subagent"
+        case .counters: "only while at work"
+        case .context: "when reported"
+        }
+    }
+
     /// What this part can be asked to show, and what each choice is called. Empty where there
     /// is nothing to choose.
     var variantTitles: [String] {

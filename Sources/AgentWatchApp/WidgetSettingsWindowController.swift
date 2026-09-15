@@ -241,8 +241,12 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         for (index, part) in ordered.enumerated() {
             partsGrid.addRow(with: makePartRow(part, at: index, in: ordered, layout: layout))
         }
-        partsGrid.column(at: 0).width = 132
-        partsGrid.column(at: 2).width = 132
+        // Every column stated, for the reason the lamp grid states its own: left to itself
+        // the grid gave the slack to the widest cell and squeezed the rest. Measured by
+        // drawing the window — the middle column had been cut to two characters.
+        partsGrid.column(at: 0).width = 104
+        partsGrid.column(at: 1).width = 118
+        partsGrid.column(at: 2).width = 168
     }
 
     /// Every part, in the order the row draws them, with the ones left out after them. A part
@@ -280,7 +284,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         }
         name.toolTip = part.appearsWhen
 
-        let when = NSTextField(labelWithString: part.appearsWhen)
+        let when = NSTextField(labelWithString: part.appearsWhenBriefly)
         when.font = WidgetStyle.standard.secondaryFont
         when.textColor = .tertiaryLabelColor
         when.lineBreakMode = .byTruncatingTail
@@ -715,6 +719,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             return
         }
         lampSchemes.setColor(sender.color, for: phase)
+        showRowLayout()
     }
 
     @objc private func motionChanged(_ sender: NSPopUpButton) {
@@ -726,6 +731,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             return
         }
         lampSchemes.setMotion(motion, for: phase)
+        showRowLayout()
     }
 
     @objc func resetLamp() {
@@ -783,6 +789,9 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         }
         backgroundStore.select(background)
         showSelectedBackground()
+        // The sample is a real row, drawn on the widget's background and with its lamp, and a
+        // row takes both at construction. So every control that changes either redraws it.
+        showRowLayout()
     }
 
     // MARK: - The transparency

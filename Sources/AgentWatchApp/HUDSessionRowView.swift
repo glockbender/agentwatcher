@@ -93,6 +93,10 @@ final class HUDSessionRowView: NSStackView {
     /// on every tick destroyed the view under the pointer twice a second, and the hover card
     /// needs half a second of hovering over a view that is still there to appear at all.
     let snapshot: SessionSnapshot
+    /// Which background this row was drawn against. A row is given its colours once, at
+    /// construction, so anything showing a row has to rebuild it when the background changes —
+    /// and this is how a test can tell whether it did.
+    var drawnOn: WidgetBackground { background }
     private let background: WidgetBackground
     /// Kept because the timer's colour follows it, not only the lamp's — see `timerColor`.
     private let lampScheme: LampScheme
