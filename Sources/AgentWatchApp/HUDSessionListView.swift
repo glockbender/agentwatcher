@@ -113,6 +113,17 @@ class HUDSessionListView: NSView {
         self.scrollView = scrollView
         container.addSubview(scrollView)
 
+        // The rows' own frame, watched for one thing only: the moment they have a height to
+        // be scrolled within. `restoreScrollOffsetIfNeeded` says why that moment and not
+        // `layout()`.
+        rowStack.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(rowsResized),
+            name: NSView.frameDidChangeNotification,
+            object: rowStack
+        )
+
         // Over the list rather than under it. In the flow the counter took a strip of height
         // away from the very thing it reports on — the widget showed one row fewer for as
         // long as it was there, so it was partly the cause of what it announced. As a badge
@@ -342,8 +353,16 @@ class HUDSessionListView: NSView {
             }
     }
 
+    @objc private func rowsResized() {
+        restoreScrollOffsetIfNeeded()
+    }
+
     override func layout() {
         super.layout()
+        // A fallback, not the way it happens: the rows' frame change is what restores the
+        // place, and measured it always arrives first. Kept because it costs nothing — the
+        // height guard turns this into a return until there are rows — and because the order
+        // AppKit sizes a stack view in is not ours to promise.
         restoreScrollOffsetIfNeeded()
         updateOverflowIndicator()
     }
@@ -359,21 +378,53 @@ class HUDSessionListView: NSView {
         updateOverflowIndicator()
     }
 
-    /// Restores the scroll position after the first layout, not during `loadView`.
+    /// Puts a rebuilt list back where the one before it was left, once there are rows to be
+    /// scrolled within.
     ///
-    /// Scrolling before the document view has been laid out is undone by that layout, and
-    /// the resulting bounds change would be reported back as a scroll to the top — so the
-    /// remembered offset was not merely ignored, it was overwritten with zero. The observer
-    /// is attached only afterwards for the same reason.
+    /// Driven by the rows' frame rather than by `layout()`, and that is the fix: a parent
+    /// lays out before its children, so at `layout()` time the rows are still zero-high and
+    /// the clip view clamps the offset away to nothing. Measured — asked for 46 points, the
+    /// clip view took it while the document stood at 0, and the pass that followed sized the
+    /// rows to 180 and put the offset back to zero, by which time the one shot was spent. So
+    /// every rebuild of the list — a width drag, the size slider, a change of palette, the
+    /// usage block arriving — dropped a scrolled list to the top. The rows' frame change is
+    /// the moment they get their height, and it arrives inside that same pass, so nothing is
+    /// drawn at the top first.
+    ///
+    /// Still one shot, and it is spent on a restore that could happen: a list with no rows
+    /// yet has nothing to scroll and nothing to report, and waits.
+    ///
+    /// The offset is held to what the rows can reach, by the clip view's own
+    /// `constrainBoundsRect`. Measured, because the obvious assumption is wrong:
+    /// `NSClipView.scroll(to:)` does not clamp. Asked for 4000 points of a list 65 points
+    /// long it went to 4000, leaving the widget showing nothing at all. A list that has grown
+    /// shorter since it was left — the sessions that made it that long have ended — lands as
+    /// far down as it now goes, rather than refusing and staying at the top.
+    ///
+    /// The observer that reports scrolling back is attached only afterwards, and for the same
+    /// reason: attached first, the restore's own bounds change would be reported as a scroll
+    /// by the person and would overwrite the very offset being restored.
     private func restoreScrollOffsetIfNeeded() {
-        guard !hasRestoredScrollOffset, let scrollView else {
+        guard
+            !hasRestoredScrollOffset,
+            let scrollView,
+            let rows = scrollView.documentView,
+            rows.frame.height > 0
+        else {
             return
         }
         hasRestoredScrollOffset = true
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSView.frameDidChangeNotification,
+            object: rows
+        )
 
         if let restoredScrollOffset {
-            scrollView.contentView.scroll(to: restoredScrollOffset)
-            scrollView.reflectScrolledClipView(scrollView.contentView)
+            let clip = scrollView.contentView
+            let wanted = NSRect(origin: restoredScrollOffset, size: clip.bounds.size)
+            clip.scroll(to: clip.constrainBoundsRect(wanted).origin)
+            scrollView.reflectScrolledClipView(clip)
         }
         NotificationCenter.default.addObserver(
             self,

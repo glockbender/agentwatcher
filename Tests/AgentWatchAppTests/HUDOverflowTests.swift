@@ -145,6 +145,136 @@ final class HUDOverflowTests: XCTestCase {
         }
     }
 
+    /// The widget keeps the place a scrolled list was left at, and hands it to the list it
+    /// builds next. The complaint this answers: it did not keep it. Dragging the widget's
+    /// width, moving the size slider, changing the palette — anything that makes the list
+    /// afresh rather than reusing it — dropped a scrolled list back to the top.
+    ///
+    /// The cause was the moment, not the intent: the offset was applied from `layout()`, and
+    /// a parent lays out before its children, so the rows still had no height and the clip
+    /// view clamped the offset to nothing. The one-shot flag was spent by then, so no later
+    /// pass tried again.
+    func testTheListOpensWhereItWasLeft() throws {
+        let oneRow = WidgetStyle.standard.rowHeight + WidgetStyle.standard.rowSpacing
+
+        let list = listView(sessionCount: 8, restoredScrollOffset: NSPoint(x: 0, y: 2 * oneRow))
+        place(list, height: 80)
+
+        let scrollView = try XCTUnwrap(firstScrollView(in: list))
+        XCTAssertEqual(
+            scrollView.documentVisibleRect.minY,
+            2 * oneRow,
+            accuracy: 0.5,
+            "the list has to open two rows down, where it was left"
+        )
+    }
+
+    /// The whole chain a rebuild really goes through, in the arrangement the widget uses: the
+    /// list inside `HUDContentContainer`, scrolled by a person, then swapped for a new one
+    /// built from the offset that was reported back. The unit above checks the new list alone;
+    /// this checks that the old one does not report a scroll of its own while it is being
+    /// taken down, after the controller has already read the offset — which would hand the
+    /// next list a place nobody was at.
+    func testARebuiltListOpensWhereThePersonLeftTheOneBefore() throws {
+        let oneRow = WidgetStyle.standard.rowHeight + WidgetStyle.standard.rowSpacing
+        var saved: NSPoint?
+        let container = HUDContentContainer()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 80),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = container
+
+        func build(offset: NSPoint?) -> HUDSessionListView {
+            HUDSessionListView(
+                models: rowModels((0..<8).map { session(index: $0) }, now: now),
+                usageLimits: [],
+                now: now,
+                availableWidth: 400,
+                focus: { _ in },
+                remove: { _ in },
+                background: .graphite,
+                lampScheme: LampScheme(),
+                backgroundOpacity: 1,
+                restoredScrollOffset: offset,
+                onScroll: { saved = $0 }
+            )
+        }
+
+        let before = build(offset: nil)
+        container.setBody(before)
+        window.setContentSize(NSSize(width: 400, height: 80))
+        container.layoutSubtreeIfNeeded()
+        try scroll(before, by: 2 * oneRow)
+        XCTAssertEqual(saved?.y ?? -1, 2 * oneRow, accuracy: 0.5, "the scroll is reported back to be kept")
+
+        // What the controller does: read the remembered place, then swap the body for a list
+        // built from it.
+        let after = build(offset: saved)
+        container.setBody(after)
+        container.layoutSubtreeIfNeeded()
+
+        let scrollView = try XCTUnwrap(firstScrollView(in: after))
+        XCTAssertEqual(
+            scrollView.documentVisibleRect.minY,
+            2 * oneRow,
+            accuracy: 0.5,
+            "the rebuilt list opens where the person left the one before it"
+        )
+        XCTAssertEqual(saved?.y ?? -1, 2 * oneRow, accuracy: 0.5, "and the place survives the swap")
+    }
+
+    /// And the counters have to agree with it on the first layout, without waiting for a
+    /// wheel: two rows behind the view is two rows the upper capsule has to be reporting
+    /// before anybody touches the widget.
+    func testBothCountersAgreeWithTheRestoredPlace() {
+        let oneRow = WidgetStyle.standard.rowHeight + WidgetStyle.standard.rowSpacing
+        let fromTheTop = listView(sessionCount: 8)
+        place(fromTheTop, height: 80)
+
+        let list = listView(sessionCount: 8, restoredScrollOffset: NSPoint(x: 0, y: 2 * oneRow))
+        place(list, height: 80)
+
+        XCTAssertEqual(list.hiddenSessions.above, 2, "two rows were scrolled past before the rebuild")
+        XCTAssertFalse(list.overflowBadgeAbove.isHidden)
+        XCTAssertEqual(list.hiddenSessions.below, fromTheTop.hiddenSessions.below - 2)
+    }
+
+    /// A place the list can no longer reach — the sessions that made it that long have gone
+    /// — must not leave the list stuck, nor stop it reporting where it is scrolled to
+    /// afterwards. It lands as far down as it can and carries on.
+    func testAPlaceTheListCanNoLongerReachStillLeavesItWorking() throws {
+        var reported: [NSPoint] = []
+        let list = HUDSessionListView(
+            models: rowModels((0..<3).map { session(index: $0) }, now: now),
+            usageLimits: [],
+            now: now,
+            availableWidth: 400,
+            focus: { _ in },
+            remove: { _ in },
+            background: .graphite,
+            lampScheme: LampScheme(),
+            backgroundOpacity: 1,
+            restoredScrollOffset: NSPoint(x: 0, y: 4_000),
+            onScroll: { reported.append($0) }
+        )
+        place(list, height: 60)
+        let scrollView = try XCTUnwrap(firstScrollView(in: list))
+        let document = try XCTUnwrap(scrollView.documentView)
+
+        XCTAssertEqual(
+            scrollView.documentVisibleRect.maxY,
+            document.frame.height,
+            accuracy: 0.5,
+            "as far down as three rows go, and no further"
+        )
+
+        try scroll(list, by: -10)
+        XCTAssertFalse(reported.isEmpty, "and a scroll after that is still reported back")
+    }
+
     /// The counter used to sit under the list and take a strip of height from it, so it was
     /// partly the cause of what it reported: while it was there the widget showed one row
     /// fewer. As a badge over the list it costs the rows nothing.
@@ -617,12 +747,53 @@ final class HUDOverflowTests: XCTestCase {
         )
     }
 
+    /// The restore now happens inside the rows' own frame change, which AppKit delivers in the
+    /// middle of a layout pass — and scrolling a clip view there is the sort of thing that
+    /// asks the layout engine to run while it is already running. That is what hung the widget
+    /// once, captured as `_layoutSubtreeWithOldSize:` recursing on itself, so it is counted
+    /// rather than assumed.
+    func testRestoringThePlaceDoesNotSetOffAnotherLayoutPass() {
+        let oneRow = WidgetStyle.standard.rowHeight + WidgetStyle.standard.rowSpacing
+        let list = CountingListView(
+            models: rowModels((0..<20).map { session(index: $0) }, now: now),
+            usageLimits: [],
+            now: now,
+            availableWidth: 300,
+            focus: { _ in },
+            remove: { _ in },
+            background: .graphite,
+            lampScheme: LampScheme(),
+            backgroundOpacity: 1,
+            restoredScrollOffset: NSPoint(x: 0, y: 5 * oneRow),
+            onScroll: { _ in }
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 120),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = list
+
+        list.layoutPasses = 0
+        list.layoutSubtreeIfNeeded()
+        list.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(list.hiddenSessions.above, 5, "the place really was restored in this pass")
+        XCTAssertLessThanOrEqual(
+            list.layoutPasses,
+            4,
+            "two asked-for passes, at most one more each — beyond that a pass is causing the next"
+        )
+    }
+
     private func listView(
         sessionCount: Int,
         title: String? = nil,
         phase: SessionPhase = .executing,
         usageLimits: [AgentUsageLimits] = [],
-        style: WidgetStyle = .standard
+        style: WidgetStyle = .standard,
+        restoredScrollOffset: NSPoint? = nil
     ) -> HUDSessionListView {
         HUDSessionListView(
             models: rowModels(
@@ -638,7 +809,7 @@ final class HUDOverflowTests: XCTestCase {
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             style: style,
-            restoredScrollOffset: nil,
+            restoredScrollOffset: restoredScrollOffset,
             onScroll: { _ in }
         )
     }
