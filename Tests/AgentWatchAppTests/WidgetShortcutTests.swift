@@ -16,6 +16,30 @@ final class WidgetShortcutTests: XCTestCase {
         XCTAssertNil(WidgetShortcut(keyCode: 13, modifiers: []))
     }
 
+    /// The one key that may stand alone. Nobody types `F13` into a document, and `F13`–`F19` are
+    /// there on a full keyboard with nothing else asking for them — which is exactly why people
+    /// reach for them as shortcuts.
+    func testAFunctionKeyIsAllowedWithNothingHeldDown() throws {
+        let shortcut = try XCTUnwrap(WidgetShortcut(keyCode: 96, modifiers: []))
+
+        XCTAssertEqual(shortcut.displayed, "F5")
+    }
+
+    /// The exception stops at the function keys. An arrow reaches the app through the same kind
+    /// of code point, and letting one stand alone would take every arrow press on the machine —
+    /// including the ones moving a cursor through this very sentence.
+    func testAnArrowStillNeedsSomethingHeldDown() {
+        XCTAssertNil(WidgetShortcut(keyCode: 123, modifiers: []))
+    }
+
+    func testTheFunctionKeysReachF19() throws {
+        let thirteen = try XCTUnwrap(WidgetShortcut(keyCode: 105, modifiers: []))
+        let nineteen = try XCTUnwrap(WidgetShortcut(keyCode: 80, modifiers: []))
+
+        XCTAssertEqual(thirteen.displayed, "F13")
+        XCTAssertEqual(nineteen.displayed, "F19")
+    }
+
     func testAShortcutIsWrittenTheWayMacOSPrintsIt() throws {
         let shortcut = try XCTUnwrap(WidgetShortcut(keyCode: 13, modifiers: [.option, .command]))
 

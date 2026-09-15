@@ -38,15 +38,21 @@ struct WidgetShortcut: Equatable {
     /// row or beside the menu line, and a shortcut a person cannot read back is one they cannot
     /// change on purpose.
     ///
-    /// The modifier is this app's rule, not the system's: `RegisterEventHotKey` takes a bare
-    /// `F5` and answers `noErr` — measured. An F-key would be a fair thing to allow, since
-    /// nobody types one into a document. It is refused anyway, so that the sentence under the
-    /// recorder is one rule with no exception to explain. `fn` cannot be part of that exception
-    /// either way: Carbon's modifier mask has bits for `⌘⇧⌥⌃` and the right-hand halves of
-    /// them, and none for `fn`. What `fn` decides is which event the hardware produces at all —
-    /// `F5` or screen brightness — before any of this is reached.
+    /// Function keys are the exception, and the only one: nobody types `F13` into a document, so
+    /// taking it from the whole machine costs nothing, and `F13`–`F19` sit on a full keyboard
+    /// with nothing else asking for them. The system was never the obstacle here —
+    /// `RegisterEventHotKey` takes a bare `F5` and answers `noErr`, measured.
+    ///
+    /// The exception stops there. An arrow reaches this app through the same kind of code point
+    /// but is pressed constantly, so it keeps the rule.
+    ///
+    /// `fn` is not part of any of this and cannot be: Carbon's modifier mask has bits for
+    /// `⌘⇧⌥⌃` and the right-hand halves of them, and none for `fn`. What `fn` decides is which
+    /// event the hardware produces at all — `F5` or screen brightness — before a shortcut is
+    /// ever matched. Somebody who records `F5` pressed whatever produces `F5` on their machine,
+    /// and will press it the same way again.
     init?(keyCode: UInt16, modifiers: Modifiers) {
-        guard !modifiers.isEmpty, let key = Self.keys[keyCode] else {
+        guard let key = Self.keys[keyCode], !modifiers.isEmpty || key.standsAlone else {
             return nil
         }
         self.keyCode = keyCode
@@ -130,23 +136,33 @@ struct WidgetShortcut: Equatable {
     private struct Key: Equatable {
         let label: String
         let menuCharacter: String
+        /// Whether this key may be a shortcut with nothing held down.
+        ///
+        /// Kept here, beside the key, rather than as a list of codes somewhere else: the rule is
+        /// a property of the key, and a second list would be a second place to forget.
+        let standsAlone: Bool
 
         /// For keys whose name on screen is already the character a menu wants, give or take
         /// the case — every letter and every digit.
         init(_ label: String) {
-            self.label = label
-            menuCharacter = label.lowercased()
+            self.init(label, menu: label.lowercased())
         }
 
-        init(_ label: String, menu: String) {
+        init(_ label: String, menu: String, standsAlone: Bool = false) {
             self.label = label
             menuCharacter = menu
+            self.standsAlone = standsAlone
         }
 
         /// Keys with no printable character of their own reach a menu as a code point from the
         /// private range AppKit reserves for them.
         init(_ label: String, function: Int) {
             self.init(label, menu: String(format: "%C", function))
+        }
+
+        /// The one kind of key a shortcut may be made of on its own.
+        static func functionKey(_ label: String, _ code: Int) -> Key {
+            Key(label, menu: String(format: "%C", code), standsAlone: true)
         }
     }
 
@@ -166,12 +182,16 @@ struct WidgetShortcut: Equatable {
         16: Key("Y"), 6: Key("Z"),
         29: Key("0"), 18: Key("1"), 19: Key("2"), 20: Key("3"), 21: Key("4"), 23: Key("5"),
         22: Key("6"), 26: Key("7"), 28: Key("8"), 25: Key("9"),
-        122: Key("F1", function: NSF1FunctionKey), 120: Key("F2", function: NSF2FunctionKey),
-        99: Key("F3", function: NSF3FunctionKey), 118: Key("F4", function: NSF4FunctionKey),
-        96: Key("F5", function: NSF5FunctionKey), 97: Key("F6", function: NSF6FunctionKey),
-        98: Key("F7", function: NSF7FunctionKey), 100: Key("F8", function: NSF8FunctionKey),
-        101: Key("F9", function: NSF9FunctionKey), 109: Key("F10", function: NSF10FunctionKey),
-        103: Key("F11", function: NSF11FunctionKey), 111: Key("F12", function: NSF12FunctionKey),
+        122: .functionKey("F1", NSF1FunctionKey), 120: .functionKey("F2", NSF2FunctionKey),
+        99: .functionKey("F3", NSF3FunctionKey), 118: .functionKey("F4", NSF4FunctionKey),
+        96: .functionKey("F5", NSF5FunctionKey), 97: .functionKey("F6", NSF6FunctionKey),
+        98: .functionKey("F7", NSF7FunctionKey), 100: .functionKey("F8", NSF8FunctionKey),
+        101: .functionKey("F9", NSF9FunctionKey), 109: .functionKey("F10", NSF10FunctionKey),
+        103: .functionKey("F11", NSF11FunctionKey), 111: .functionKey("F12", NSF12FunctionKey),
+        105: .functionKey("F13", NSF13FunctionKey), 107: .functionKey("F14", NSF14FunctionKey),
+        113: .functionKey("F15", NSF15FunctionKey), 106: .functionKey("F16", NSF16FunctionKey),
+        64: .functionKey("F17", NSF17FunctionKey), 79: .functionKey("F18", NSF18FunctionKey),
+        80: .functionKey("F19", NSF19FunctionKey),
         49: Key("Space", menu: " "), 36: Key("Return", menu: "\r"), 48: Key("Tab", menu: "\t"),
         123: Key("←", function: NSLeftArrowFunctionKey),
         124: Key("→", function: NSRightArrowFunctionKey),

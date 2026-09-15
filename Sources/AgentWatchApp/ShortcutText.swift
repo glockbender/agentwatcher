@@ -18,13 +18,19 @@ let shortcutRecordingButton = "Press a combination…"
 /// line after a press this app will not take. One sentence in both places, because a person who
 /// reads it after a refusal is asking the same question as one who reads it before.
 ///
+/// Both of its awkward parts are there on purpose.
+///
+/// The exception for function keys is stated, not left to be discovered: a person told to hold
+/// one of four modifiers, who then finds `F13` accepted on its own, has been told something
+/// untrue about their own keyboard.
+///
 /// Punctuation is named as missing rather than merely left off the list. Somebody reaching for
 /// `⌥⌘,` — the combination every Mac uses for settings — would otherwise be refused with no way
 /// to tell whether the modifiers or the key were the problem, and would try again with the same
 /// key and different modifiers.
 let shortcutAcceptedKeys =
-    "Hold ⌃, ⌥, ⇧ or ⌘ and press a letter, a digit, a function key or an arrow. "
-    + "Punctuation is not offered: it moves between keyboard layouts."
+    "A function key works alone. Anything else needs ⌃, ⌥, ⇧ or ⌘ held with a letter, a digit "
+    + "or an arrow. Punctuation is not offered: it moves between keyboard layouts."
 
 @MainActor
 func shortcutStatusLine(_ status: WidgetShortcutController.Status) -> String {

@@ -38,6 +38,14 @@ final class ShortcutTextTests: XCTestCase {
         XCTAssertTrue(shortcutAcceptedKeys.lowercased().contains("layout"))
     }
 
+    /// The one exception to the rule about modifiers has to be in the sentence that states the
+    /// rule. Somebody who reads "hold one of these four" and then finds `F13` accepted on its own
+    /// has been told something untrue about their own keyboard.
+    func testTheSentenceSaysAFunctionKeyNeedsNothingHeldDown() {
+        XCTAssertTrue(shortcutAcceptedKeys.lowercased().contains("function key"))
+        XCTAssertTrue(shortcutAcceptedKeys.lowercased().contains("alone"))
+    }
+
     /// The window measures the room for its status line from this list. A shortened list would
     /// measure less room, and the sentence that did not fit would lose its tail with nothing to
     /// say so — which is the defect this whole list was added to fix.

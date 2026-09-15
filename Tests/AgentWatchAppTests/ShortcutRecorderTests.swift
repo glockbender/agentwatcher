@@ -34,6 +34,20 @@ final class ShortcutRecorderTests: XCTestCase {
         XCTAssertEqual(recorded, .recorded(try XCTUnwrap(WidgetShortcut(keyCode: 96, modifiers: [.control, .shift]))))
     }
 
+    /// AppKit puts `.function` in the modifier set of every F-key press. The recorder has to
+    /// drop it rather than treat it as something held down — otherwise `F13` would arrive as a
+    /// combination with one modifier and record as a different shortcut than the one pressed.
+    func testAFunctionKeyRecordsOnItsOwn() throws {
+        let recorder = ShortcutRecorderButton()
+        var recorded: ShortcutRecording?
+        recorder.onRecording = { recorded = $0 }
+        recorder.startRecording()
+
+        recorder.keyDown(with: try press(keyCode: 105, flags: [.function]))
+
+        XCTAssertEqual(recorded, .recorded(try XCTUnwrap(WidgetShortcut(keyCode: 105, modifiers: []))))
+    }
+
     func testEscapeLeavesTheCombinationAsItWas() throws {
         let recorder = ShortcutRecorderButton()
         var recorded: ShortcutRecording?
