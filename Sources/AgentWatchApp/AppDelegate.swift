@@ -168,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         supervisor.start()
         ingress.start()
         // After the widget is on screen: the shortcut's whole job is to take it away again.
-        shortcuts.apply()
+        applyShortcut()
         updater.checkAfterLaunch()
     }
 
@@ -268,9 +268,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         highlightItem.target = self
         menu.addItem(highlightItem)
-        // No key equivalent. This application is an accessory and is never the active one,
-        // so a shortcut printed beside a status-item menu line would answer nothing anywhere
-        // but inside the open menu — a promise the menu cannot keep.
+        // No key equivalent. This application is an accessory and is never the active one, so a
+        // shortcut printed here would answer nothing anywhere but inside the open menu — a
+        // promise the menu cannot keep. The line above it is the exception, and it earns the
+        // exception: something registered that combination with the system, which is what
+        // `WidgetShortcutController` is for. Nothing else here has asked to be worth that.
         let settingsItem = NSMenuItem(
             title: "Widget Settings…",
             action: #selector(showSettings),
@@ -644,8 +646,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // setting does not hold — so the next launch would show a different widget.
             hudController.setScale(settings.scale)
         case .toggleShortcut:
-            shortcuts.apply()
+            applyShortcut()
         }
+    }
+
+    /// Registers the combination and writes down what came of it.
+    ///
+    /// Said out loud because the failure is otherwise invisible: the menu deliberately prints
+    /// nothing when the combination does not work, and the settings window is a place a person
+    /// has to already suspect something before they open it.
+    private func applyShortcut() {
+        shortcuts.apply()
+        recordDebug("Shortcut · \(shortcutStatusLine(shortcuts.status))")
     }
 
     private func recordDebug(_ message: String) {

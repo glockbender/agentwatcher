@@ -12,6 +12,9 @@ the time since the last event, the session's name and project, and how many acti
 Clicking a row brings forward the terminal tab that session runs in. Hovering it opens a card
 with everything the row cannot fit.
 
+`⌥⌘W` shows and hides it from wherever you are. That combination is taken system-wide on the first
+launch; `Widget Settings…` records a different one, or clears it.
+
 Alpha: it works and is used daily, but what it shows is still moving.
 
 ## Install
