@@ -51,7 +51,7 @@ final class SessionSilenceTests: XCTestCase {
     func testASessionThatClaimsWorkWithNothingRunningIsAFault() {
         let stalled = snapshot(phase: .executing)
 
-        XCTAssertTrue(SessionSilence.isUnexplained(stalled, now: start + 120))
+        XCTAssertTrue(SessionSilence.isUnexplained(stalled, now: start + SessionSilence.defaultUnexplainedAfter))
     }
 
     /// A turn spent thinking rather than calling anything looks exactly like the fault, and
@@ -59,7 +59,25 @@ final class SessionSilenceTests: XCTestCase {
     func testThinkingIsGivenTimeBeforeItCountsAsAFault() {
         let thinking = snapshot(phase: .executing)
 
-        XCTAssertFalse(SessionSilence.isUnexplained(thinking, now: start + 119))
+        XCTAssertFalse(SessionSilence.isUnexplained(thinking, now: start + SessionSilence.defaultUnexplainedAfter - 1))
+    }
+
+    /// The number itself, and the measurement it answers to.
+    ///
+    /// An advisor call runs on the model's own side: no hook announces it, and the record of
+    /// it reaches the transcript only when it returns, backdated to when it began. So the
+    /// session claims work, runs nothing the app can see and writes nothing, for as long as
+    /// the call takes — 236 seconds for the one measured on Claude Code 2.1.272. Two minutes
+    /// put a warning triangle on that healthy session every time.
+    ///
+    /// Three minutes is still short of that longest call, deliberately: the triangle is
+    /// delayed rather than abolished, because a threshold set past every honest pause would
+    /// also be a threshold that never reports a session the app has genuinely lost.
+    func testTwoMinutesOfAnAdvisorCallIsNotYetAFault() {
+        let consulting = snapshot(phase: .executing)
+
+        XCTAssertEqual(SessionSilence.defaultUnexplainedAfter, 180)
+        XCTAssertFalse(SessionSilence.isUnexplained(consulting, now: start + 150))
     }
 
     func testAnIdleSessionIsNeverAFaultHoweverLongItSits() {

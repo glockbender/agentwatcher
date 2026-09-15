@@ -381,6 +381,31 @@ final class SessionSupervisorTests: XCTestCase {
         XCTAssertNotEqual(logged.last, raised, "and it does not read like the fault it ended")
     }
 
+    /// What the read failed at belongs in the log line and nowhere else. The row keeps the
+    /// sentence a person can act on, and `MonitoringFault` keeps the four cases the widget
+    /// knows how to draw — this is for the evening afterwards, when the only question left is
+    /// which step failed.
+    func testAFaultLineCarriesWhatTheReadFailedAt() throws {
+        var logged: [String] = []
+        let supervisor = try makeSupervisor(onNotableEvent: { logged.append($0) })
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha"))
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "alpha"))
+        let session = try XCTUnwrap(supervisor.sessions.first)
+
+        supervisor.applyTranscript([
+            TranscriptUpdate(
+                sessionID: session.id,
+                facts: [],
+                fault: .transcriptUnreadable,
+                faultDetail: "open: NSCocoaErrorDomain 257"
+            )
+        ])
+
+        let raised = try XCTUnwrap(logged.last)
+        XCTAssertTrue(raised.hasSuffix("transcript unreadable · open: NSCocoaErrorDomain 257"), raised)
+        XCTAssertEqual(supervisor.sessions.first?.monitoringFault, .transcriptUnreadable)
+    }
+
     /// The same for a fault, and this is the line where it matters most: "unexplained
     /// silence" with no session named is an entry nobody can act on.
     func testAFaultLineNamesTheSessionItBelongsTo() throws {

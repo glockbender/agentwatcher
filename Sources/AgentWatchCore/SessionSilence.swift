@@ -18,7 +18,7 @@ public enum SessionSilence {
     ///
     /// The unexplained cases are the ones where the session claims to be busy — planning,
     /// executing, waiting on subtasks. Quiet there is normal for minutes at a time and is not
-    /// a fault by itself, but two minutes of it with nothing running is.
+    /// a fault by itself, but three minutes of it with nothing running is.
     public static func isExpected(_ snapshot: SessionSnapshot) -> Bool {
         !snapshot.phase.claimsWork
     }
@@ -39,10 +39,16 @@ public enum SessionSilence {
         snapshot.phase.claimsWork || snapshot.phase == .waitingForUser
     }
 
-    /// Two minutes. A turn spent thinking rather than calling anything is real and can run
-    /// long, so the threshold is set well past what that takes; two minutes of a session that
-    /// claims to be working with nothing running under it is not a pause anyone recognises.
-    public static let defaultUnexplainedAfter: TimeInterval = 120
+    /// Three minutes. A turn spent thinking rather than calling anything is real and can run
+    /// long, so the threshold is set well past what that takes.
+    ///
+    /// Two of them were not past it. An advisor call is silent to both sources at once — no
+    /// hook announces it and its transcript record lands only when it returns — and one was
+    /// measured at 236 seconds, so every long consultation flagged a healthy session. Three
+    /// minutes still does not cover that call: it delays the warning rather than abolishing
+    /// it, because a threshold past every honest pause never reports a real loss either.
+    /// `docs/measurements.md` holds the measurement.
+    public static let defaultUnexplainedAfter: TimeInterval = 180
 
     /// True when a session's quiet is accounted for by nothing at all.
     ///

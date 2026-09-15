@@ -9,6 +9,11 @@ struct TranscriptUpdate: Sendable {
     /// What the app is no longer sure of, or `nil` when the read went normally. Replaces
     /// whatever the session carried, so a fault that has cleared is cleared here.
     let fault: MonitoringFault?
+    /// Which step of the read failed and what the system called it, for the log line.
+    ///
+    /// Deliberately not part of the session's state: the row shows the sentence a person can
+    /// act on, and this answers the question that comes later — which step, and what error.
+    let faultDetail: String?
     /// When the newest line this read picked up was written, or `nil` when the file did not
     /// grow. Set even when nothing in those lines was a fact: growth is proof of life, and
     /// that is the whole difference between a session thinking and a session lost.
@@ -31,6 +36,7 @@ struct TranscriptUpdate: Sendable {
         sessionID: String,
         facts: [TranscriptFact],
         fault: MonitoringFault?,
+        faultDetail: String? = nil,
         newestRecordAt: Date? = nil,
         signals: TranscriptSignals = TranscriptSignals(),
         description: SessionDescription? = nil,
@@ -39,6 +45,7 @@ struct TranscriptUpdate: Sendable {
         self.sessionID = sessionID
         self.facts = facts
         self.fault = fault
+        self.faultDetail = faultDetail
         self.newestRecordAt = newestRecordAt
         self.signals = signals
         self.description = description
@@ -112,6 +119,7 @@ final class TranscriptWatcher {
         let offset: UInt64
         let facts: [TranscriptFact]
         let fault: MonitoringFault?
+        var faultDetail: String?
         var newestRecordAt: Date?
         var signals = TranscriptSignals()
         /// What the session calls itself, read only when catching up. See `catchUp`.
@@ -404,6 +412,7 @@ final class TranscriptWatcher {
                     sessionID: result.sessionID,
                     facts: result.facts,
                     fault: result.fault,
+                    faultDetail: result.faultDetail,
                     newestRecordAt: result.newestRecordAt,
                     signals: watch.signals,
                     description: result.description,
@@ -469,6 +478,44 @@ final class TranscriptWatcher {
             }
             return read(job, at: url, observedAt: observedAt)
         }
+    }
+
+    /// Which step of a read failed, and what the system called the failure.
+    ///
+    /// Carried to the debug log and nowhere else. `transcriptUnreadable` says what a person
+    /// can act on — the file could not be read — while one failed read books a minute of
+    /// back-off, so the triangle it raises outlives the event by that minute. This is what
+    /// makes the event itself answerable afterwards.
+    private struct ReadStepFailure: Error {
+        let step: String
+        let underlying: Error
+
+        /// Domain and code, and never `localizedDescription`: that one quotes the file's
+        /// path, and a path is what this app keeps out of its own records — the same rule
+        /// that keeps one off the socket.
+        var summary: String {
+            let error = underlying as NSError
+            return "\(step): \(error.domain) \(error.code)"
+        }
+    }
+
+    /// Runs one step of a read under a name, so that a failure says which step it was.
+    private nonisolated static func step<T>(_ name: String, _ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch {
+            throw ReadStepFailure(step: name, underlying: error)
+        }
+    }
+
+    /// What a caught read error is called in the log. An error from outside a named step is
+    /// still worth its domain and code.
+    private nonisolated static func detail(of error: Error) -> String {
+        guard let failure = error as? ReadStepFailure else {
+            let error = error as NSError
+            return "\(error.domain) \(error.code)"
+        }
+        return failure.summary
     }
 
     /// Where each session's file stands, and the two questions a restart has to ask of it.
@@ -578,14 +625,14 @@ final class TranscriptWatcher {
             return result
         }
         do {
-            let handle = try FileHandle(forReadingFrom: url)
+            let handle = try step("open") { try FileHandle(forReadingFrom: url) }
             defer { try? handle.close() }
-            let end = try handle.seekToEnd()
+            let end = try step("size") { try handle.seekToEnd() }
             let start =
                 end > UInt64(TranscriptReader.maximumIncrementByteCount)
                 ? end - UInt64(TranscriptReader.maximumIncrementByteCount) : 0
-            try handle.seek(toOffset: start)
-            var data = try handle.read(upToCount: Int(end - start)) ?? Data()
+            try step("seek") { try handle.seek(toOffset: start) }
+            var data = try step("read") { try handle.read(upToCount: Int(end - start)) ?? Data() }
             var offset = start
             if start > 0 {
                 // The cap can land inside a record. Never parse that fragment as a new line.
@@ -595,7 +642,9 @@ final class TranscriptWatcher {
                 data = Data(data.dropFirst(skipped))
                 offset += UInt64(skipped)
             }
-            let increment = try TranscriptReader.read(increment: data, source: job.source, observedAt: boundary)
+            let increment = try step("parse") {
+                try TranscriptReader.read(increment: data, source: job.source, observedAt: boundary)
+            }
             result = ReadResult(
                 sessionID: job.sessionID, sessionLabel: job.sessionLabel,
                 url: url,
@@ -608,7 +657,7 @@ final class TranscriptWatcher {
         } catch {
             result = ReadResult(
                 sessionID: job.sessionID, sessionLabel: job.sessionLabel, url: nil, offset: 0, facts: [],
-                fault: .transcriptUnreadable)
+                fault: .transcriptUnreadable, faultDetail: detail(of: error))
         }
         return result
     }
@@ -637,13 +686,17 @@ final class TranscriptWatcher {
         // So a file whose end cannot be found is not a file to start reading. Treating an
         // unknown size as zero would do exactly what the paragraph above forbids, and it
         // would do it in the one case where the file is already behaving oddly.
-        guard let end = endOfFile(at: url) else {
+        let end: UInt64
+        do {
+            end = try endOfFile(at: url)
+        } catch {
             return ReadResult(
                 sessionID: job.sessionID, sessionLabel: job.sessionLabel,
                 url: nil,
                 offset: 0,
                 facts: [],
-                fault: .transcriptUnreadable
+                fault: .transcriptUnreadable,
+                faultDetail: detail(of: error)
             )
         }
         // The one moment the head of the file is worth reading. What it holds — the branch
@@ -663,9 +716,9 @@ final class TranscriptWatcher {
 
     private nonisolated static func read(_ job: ReadJob, at url: URL, observedAt: Date) -> ReadResult {
         do {
-            let handle = try FileHandle(forReadingFrom: url)
+            let handle = try step("open") { try FileHandle(forReadingFrom: url) }
             defer { try? handle.close() }
-            let end = try handle.seekToEnd()
+            let end = try step("size") { try handle.seekToEnd() }
 
             // Two ways the saved offset stops meaning anything: the file was replaced or
             // truncated under us, or more has arrived than a live session can produce
@@ -691,12 +744,11 @@ final class TranscriptWatcher {
                 )
             }
 
-            try handle.seek(toOffset: job.offset)
-            let increment = try TranscriptReader.read(
-                increment: try handle.readToEnd() ?? Data(),
-                source: job.source,
-                observedAt: observedAt
-            )
+            try step("seek") { try handle.seek(toOffset: job.offset) }
+            let data = try step("read") { try handle.readToEnd() ?? Data() }
+            let increment = try step("parse") {
+                try TranscriptReader.read(increment: data, source: job.source, observedAt: observedAt)
+            }
             return ReadResult(
                 sessionID: job.sessionID, sessionLabel: job.sessionLabel,
                 url: url,
@@ -716,7 +768,7 @@ final class TranscriptWatcher {
             // same failure for a session whose file is fine somewhere else.
             return ReadResult(
                 sessionID: job.sessionID, sessionLabel: job.sessionLabel, url: nil, offset: 0, facts: [],
-                fault: .transcriptUnreadable)
+                fault: .transcriptUnreadable, faultDetail: detail(of: error))
         }
     }
 
@@ -732,12 +784,10 @@ final class TranscriptWatcher {
         return TranscriptReader.readOpening(head, source: source)
     }
 
-    private nonisolated static func endOfFile(at url: URL) -> UInt64? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else {
-            return nil
-        }
+    private nonisolated static func endOfFile(at url: URL) throws -> UInt64 {
+        let handle = try step("open") { try FileHandle(forReadingFrom: url) }
         defer { try? handle.close() }
-        return try? handle.seekToEnd()
+        return try step("size") { try handle.seekToEnd() }
     }
 
     // MARK: - Timer
