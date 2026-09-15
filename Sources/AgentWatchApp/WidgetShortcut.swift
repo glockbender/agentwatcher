@@ -6,7 +6,7 @@ import AppKit
 /// instead of a string. A code names a place on the keyboard — 13 is where `W` sits on a US
 /// layout — and that is what the system registers. Storing the letter would leave the shortcut
 /// dead as soon as somebody switched to a layout that prints something else on that key.
-/// [ADR-0008](../../docs/adr/0008-the-global-shortcut-goes-through-carbon.md).
+/// [ADR-0009](../../docs/adr/0009-the-global-shortcut-goes-through-carbon.md).
 struct WidgetShortcut: Equatable {
     /// The keys held down alongside the one that is pressed.
     ///

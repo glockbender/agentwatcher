@@ -34,7 +34,7 @@ protocol GlobalShortcutRegistering: AnyObject {
 }
 
 /// The one file that talks to Carbon, and the reason is in
-/// [ADR-0008](../../docs/adr/0008-the-global-shortcut-goes-through-carbon.md): this application
+/// [ADR-0009](../../docs/adr/0009-the-global-shortcut-goes-through-carbon.md): this application
 /// is never the active one, and `RegisterEventHotKey` is the only way it can hear a key press
 /// without asking for permission to read everything the person types.
 @MainActor
