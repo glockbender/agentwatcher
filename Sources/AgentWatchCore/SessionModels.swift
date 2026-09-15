@@ -328,8 +328,13 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     /// Reported whole by every `Stop` and believed whole, which is what makes it a
     /// correction rather than a tally: Claude Code sends the full live list each time.
     ///
-    /// Optional for the reason `discoveredProcess` gives: a memory file written before this
-    /// field existed must still read. `nil` there means the same as empty.
+    /// Optional, and `nil` is not an empty list. Only a `Stop` ever writes a list here;
+    /// everything else — a turn starting, a session starting or closing — puts it back to
+    /// `nil`, which says no `Stop` has spoken since. An empty list is the opposite claim: one
+    /// spoke, and said nothing is running. A row draws the difference — with nothing reported
+    /// it falls back to the background calls this app counted for itself, and an empty list
+    /// overrules them — so a memory file written before this field existed reads as `nil` and
+    /// is drawn from those calls, which is the honest answer for it.
     public var backgroundWork: [BackgroundWorkKind]?
 
     /// The terminal process a background session is on screen in, when one is.

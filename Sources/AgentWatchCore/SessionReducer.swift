@@ -52,7 +52,9 @@ public enum SessionReducer {
             next.userInputRequestKind = nil
             next.awaitedActivityID = nil
             next.activities = []
-            next.backgroundWork = []
+            // Nothing reported rather than nothing running — see `turnStarted` below, where
+            // the difference between the two is spelled out.
+            next.backgroundWork = nil
             next.lastObservedAt = observedAt
 
         case let .turnStarted(mode, observedAt):
@@ -83,7 +85,14 @@ public enum SessionReducer {
             // just given: the end of background work is itself what starts the next turn.
             // A person typing while it runs clears the list early here too, and the next
             // `Stop` puts back whatever is still going.
-            next.backgroundWork = []
+            //
+            // Back to nothing reported, not to an empty list. The two are different claims —
+            // `nil` says no `Stop` has spoken since, `[]` says one spoke and said there was
+            // nothing — and the difference is what a row draws: with nothing reported it
+            // falls back to the background calls this app counted for itself, and an empty
+            // list overrules them. Emptied here, a shell started in this very turn was drawn
+            // by nobody until the turn ended.
+            next.backgroundWork = nil
             // `unknown` is not `standard`. A turn whose mode nobody stated is still work in
             // progress, and calling it planning would be a claim; `executing` says only what
             // is known — a turn is running.
@@ -204,7 +213,7 @@ public enum SessionReducer {
             next.userInputRequestKind = nil
             next.awaitedActivityID = nil
             next.activities = []
-            next.backgroundWork = []
+            next.backgroundWork = nil
             next.lastObservedAt = observedAt
         }
 

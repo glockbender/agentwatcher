@@ -115,7 +115,6 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
         startedAsCopy: Bool = false,
         backgroundWork: [BackgroundWorkKind]? = nil
     ) {
-        self.backgroundWork = backgroundWork
         self.schemaVersion = schemaVersion
         self.source = source
         self.sessionID = sessionID
@@ -134,6 +133,7 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
         self.usageLimits = usageLimits
         self.forkedFromSessionID = forkedFromSessionID
         self.startedAsCopy = startedAsCopy
+        self.backgroundWork = backgroundWork
     }
 }
 

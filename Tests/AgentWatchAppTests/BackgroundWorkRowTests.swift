@@ -149,4 +149,71 @@ final class BackgroundWorkRowTests: XCTestCase {
         XCTAssertEqual(activityCounts(for: completed).count, 0)
         XCTAssertFalse(hoverCardText(for: completed, now: start).contains("in the background"))
     }
+
+    // MARK: - Through the engine, the way a live session arrives
+
+    /// The rows above are built from fixtures, and a fixture can hold a shape the engine
+    /// never produces. These two are driven by the hooks themselves.
+    ///
+    /// The shape in question is the empty list. A turn starting clears what the last one left
+    /// running, and that clearing used to be an empty list rather than nothing at all — which
+    /// a row reads as the session saying "nothing is running". So between `UserPromptSubmit`
+    /// and the `Stop` that reports one, the background shell was counted for nobody: not for
+    /// an old sender, not for a new one.
+    func testABackgroundCommandIsCountedWhileTheTurnThatStartedItRunsOn() throws {
+        var engine = SessionStateEngine()
+        _ = try engine.ingest(try hook("SessionStart"))
+        _ = try engine.ingest(try hook("UserPromptSubmit"))
+
+        let working = try engine.ingest(try backgroundShellCall())
+
+        XCTAssertEqual(activityCounts(for: working).map(\.kind), [.backgroundTask])
+        XCTAssertTrue(
+            hoverCardText(for: working, now: start).contains("still running in the background: 1 task"),
+            "the card said nothing about the command the turn had just started"
+        )
+    }
+
+    /// And the `Stop` that ends the turn replaces the app's own count with the session's word
+    /// for the kind — the same one command, named rather than merely numbered.
+    func testTheStopThatEndsTheTurnNamesTheCommandItLeftRunning() throws {
+        var engine = SessionStateEngine()
+        _ = try engine.ingest(try hook("SessionStart"))
+        _ = try engine.ingest(try hook("UserPromptSubmit"))
+        _ = try engine.ingest(try backgroundShellCall())
+
+        let completed = try engine.ingest(try hook("Stop", backgroundWork: [.shell]))
+
+        XCTAssertEqual(activityCounts(for: completed).map(\.count), [1], "one command, counted once")
+        XCTAssertTrue(
+            hoverCardText(for: completed, now: start)
+                .contains("still running in the background: 1 shell command")
+        )
+    }
+
+    private func backgroundShellCall() throws -> EventEnvelope {
+        try hook(
+            "PreToolUse",
+            fields: ["tool_use_id": .string("call"), "tool_name": .string("Bash")],
+            toolRunsInBackground: true
+        )
+    }
+
+    private func hook(
+        _ event: String,
+        fields: [String: JSONValue] = [:],
+        toolRunsInBackground: Bool? = nil,
+        backgroundWork: [BackgroundWorkKind]? = nil
+    ) throws -> EventEnvelope {
+        var payload = fields
+        payload["session_id"] = .string("id_session")
+        return try HookEventNormalizer.normalize(
+            source: .claude,
+            declaredEvent: event,
+            payload: .object(payload),
+            observedAt: start,
+            toolRunsInBackground: toolRunsInBackground,
+            backgroundWork: backgroundWork
+        )
+    }
 }

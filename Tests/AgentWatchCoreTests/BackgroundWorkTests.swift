@@ -78,6 +78,10 @@ final class BackgroundWorkTests: XCTestCase {
     /// the moment the list stops being true. The same bound the reducer already uses to sweep
     /// a background shell — measured on this project's own event log, a session begins a turn
     /// within a second of its background task reporting in.
+    ///
+    /// Back to nothing reported, and not to an empty list: only a `Stop` ever states what is
+    /// running, and an empty list is a statement. Emptied here, the row read it as the session
+    /// saying nothing was running and stopped counting a shell started in that very turn.
     func testTheNextTurnClearsTheWorkTheLastOneLeft() throws {
         var engine = SessionStateEngine()
         _ = try engine.ingest(
@@ -99,7 +103,7 @@ final class BackgroundWorkTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(working.backgroundWork, [])
+        XCTAssertNil(working.backgroundWork)
     }
 
     /// Anything running as this user can write to the socket, so a list arriving over it is
