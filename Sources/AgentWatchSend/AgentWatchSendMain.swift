@@ -142,14 +142,6 @@ enum AgentWatchSendMain {
     #endif
 
     private static func makeRequest(options: Options, payload: JSONValue) -> RedactedHookIngressRequest? {
-        // First, before the transcript is read for a description: a tool call made inside a
-        // subagent is not the session's own work, and every one of them would land on the
-        // session's row and stay there for ever. `SubagentToolCall` carries the measurements.
-        // This is the only place that can tell — the path it judges by never leaves here.
-        guard !SubagentToolCall.fired(declaredEvent: options.event, payload: payload) else {
-            return nil
-        }
-
         let description: SessionDescription?
         if options.source == .codex {
             let codexSession = SessionDescriptionResolver.resolveCodexSession(payload: payload)
