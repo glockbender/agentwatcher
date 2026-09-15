@@ -297,6 +297,52 @@ final class WidgetSettingsWindowTests: XCTestCase {
         }
     }
 
+    // MARK: - The window against the screen it opens on
+
+    /// Measured, not reasoned about: the window opened 1290 points tall on a screen with 1079
+    /// to give, was not resizable and had no scroller — so `Size` and `Shortcut` sat below the
+    /// bottom edge with no way to reach them. The cap and the scroller come together: a window
+    /// that stops at the screen is only honest if what is past the cap can still be scrolled to.
+    func testTheWindowIsNoTallerThanTheScreenLeavesRoomFor() throws {
+        let controller = try makeWindow().controller
+        let window = try XCTUnwrap(controller.window)
+
+        // The screen itself rather than the cap: the cap is the mechanism, and what has to
+        // hold is that the window opens inside the room the screen has.
+        XCTAssertLessThanOrEqual(
+            window.frame.height,
+            NSScreen.main?.visibleFrame.height ?? 900
+        )
+    }
+
+    func testWhatThatCapCutsOffCanStillBeScrolledTo() throws {
+        let controller = try makeWindow().controller
+        let scroll = try XCTUnwrap(
+            controller.window?.contentView as? NSScrollView,
+            "the content is capped by the screen, so it has to scroll"
+        )
+
+        XCTAssertTrue(scroll.hasVerticalScroller)
+        XCTAssertNotNil(scroll.documentView)
+    }
+
+    /// The other half of the same measurement: the window came up 492 points wide around
+    /// content that wanted 512, because its size was taken before `showCurrentValues` filled
+    /// the row layout's grid in. The section then lost its left margin and its last column ran
+    /// past the right edge.
+    func testTheWindowIsWideEnoughForEveryControlInIt() throws {
+        let controller = try makeWindow().controller
+        let content = try XCTUnwrap(controller.window?.contentView)
+        let document = (content as? NSScrollView)?.documentView ?? content
+        document.layoutSubtreeIfNeeded()
+
+        XCTAssertGreaterThanOrEqual(
+            document.frame.width,
+            document.fittingSize.width,
+            "the window is narrower than its own controls, and something is cut off"
+        )
+    }
+
     /// For the tests that are about the shortcut itself rather than about the window: the window
     /// does not hand its collaborators back, and it should not have to grow a way to just for a
     /// test.

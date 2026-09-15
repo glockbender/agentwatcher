@@ -49,13 +49,17 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     private(set) var moveDownButtons: [RowPart: NSButton] = [:]
     private(set) var variantButtons: [RowPart: NSPopUpButton] = [:]
     private(set) var flexibleButtons: [RowPart: NSButton] = [:]
+    /// The six kinds the counter block can count, by kind. One menu item each.
+    private(set) var counterKindItems: [ActivityKind: NSMenuItem] = [:]
     private(set) var dismissColumnBox: NSButton?
     /// The sample: a real row, built the way the widget builds one. Not a drawing of a row —
     /// a drawing would have to be kept in step with the widget by hand, and the first time it
     /// drifted the window would be teaching somebody the wrong thing.
     private(set) var sampleRow: HUDSessionRowView?
+    /// The same sample as a session still at work, which is the row with no × in it.
+    private(set) var sampleWorkingRow: HUDSessionRowView?
     private let sampleHolder = NSStackView()
-    private let partsGrid = NSGridView(numberOfColumns: 5, rows: 0)
+    private let partsGrid = NSGridView(numberOfColumns: 6, rows: 0)
 
     init(
         backgroundStore: WidgetBackgroundStore,
@@ -74,7 +78,10 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             // Replaced by the content's own fitting size below; a window needs some rect to
             // be born with.
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 500),
-            styleMask: [.titled, .closable],
+            // Resizable since the content outgrew a screen: the row layout's thirteen rows
+            // took the window past the height a laptop has to give, and a window with a
+            // scroller a person cannot enlarge is worse than one they can.
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -88,6 +95,12 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         let opacity = makeOpacityRow()
         let size = makeScaleRow()
         let shortcut = makeShortcutRow()
+        // The one section whose controls do not exist until the template is read: the grid is
+        // built row by row from the parts. Measured the other way round — filled in after the
+        // window was sized, it left the window twenty points narrower than its own controls,
+        // and the section lost its left margin while its last column ran past the right edge.
+        // Everything else is filled by `showCurrentValues` below, which changes no widths.
+        showRowLayout()
         // The rules are as wide as the widest thing they separate, measured from the sections
         // themselves. A constant here decided the window's width instead, and left a strip of
         // empty window to the right of every control.
@@ -119,13 +132,35 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         content.addView(shortcut, in: .top)
         content.addView(makeShortcutStatusLabel(width: ruleWidth), in: .top)
 
-        let container = NSView()
-        container.addSubview(content)
-        content.pinToEdges(of: container)
-        window.contentView = container
+        // In a scroll view rather than straight in the window, for the reason the tooling
+        // window is: the content is taller than a screen. Measured — 1290 points of controls
+        // against the 1079 a laptop leaves, with `Size` and `Shortcut` below the bottom edge
+        // and no way to reach them, because a window is not moved above the menu bar.
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.documentView = content
+        content.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+            content.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
+            content.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+        ])
+        window.contentView = scroll
         // Sized to its content rather than to the number above: the lamp grid's height comes
         // from nine rows of controls whose size is the system's to decide, not this file's.
-        window.setContentSize(content.fittingSize)
+        //
+        // The right margin is added by hand, the way the tooling window adds its own: a
+        // vertical stack aligned to its leading edge pins nothing to the other one, so its
+        // fitting width is the left inset plus the widest section, and the section's last
+        // column would sit flush against the window's edge.
+        let fitting = content.fittingSize
+        let width = fitting.width + content.edgeInsets.right
+        window.contentMinSize = NSSize(width: width, height: 240)
+        window.setContentSize(
+            NSSize(width: width, height: min(fitting.height, Self.tallestUsefulWindow)))
         // The window is the only place a failed registration can be seen, so it listens rather
         // than reading the status once at construction: the combination may be taken by
         // something that starts up after this window did.
@@ -135,6 +170,13 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         }
         window.delegate = self
         showCurrentValues()
+    }
+
+    /// As tall as the screen leaves room for, and no taller — the same rule the tooling
+    /// window follows. Past this the sections are reached by scrolling, which is the one
+    /// thing a window taller than the screen cannot offer.
+    static var tallestUsefulWindow: CGFloat {
+        (NSScreen.main?.visibleFrame.height ?? 900) * 0.9
     }
 
     /// Closing the window in the middle of a recording is a change of mind like any other, and
@@ -233,9 +275,15 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         moveDownButtons.removeAll()
         variantButtons.removeAll()
         flexibleButtons.removeAll()
+        counterKindItems.removeAll()
         while partsGrid.numberOfRows > 0 {
             partsGrid.removeRow(at: 0)
         }
+
+        // A caption row, because two of the columns cannot say what they are on their own: a
+        // bare radio button means nothing, and `only in a git repo` beside a part could be
+        // read as a warning rather than as an answer to "when does this show up".
+        partsGrid.addRow(with: Self.makeColumnCaptions())
 
         for (index, part) in Self.orderedParts(of: layout).enumerated() {
             // The row's own parts come first, and the ones left out after them, so an arrow
@@ -244,12 +292,23 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             let group = layout.shows(part) ? 0..<shownCount : shownCount..<RowPart.allCases.count
             partsGrid.addRow(with: makePartRow(part, at: index, within: group, layout: layout))
         }
-        // Every column stated, for the reason the lamp grid states its own: left to itself
-        // the grid gave the slack to the widest cell and squeezed the rest. Measured by
-        // drawing the window — the middle column had been cut to two characters.
+        // The columns that hold text are stated, for the reason the lamp grid states its own:
+        // left to itself the grid gave the slack to the widest cell and squeezed the rest —
+        // drawn, the `appears` column had been cut to two characters. The arrows and the
+        // radio are left to their own size, which is the size of a button.
         partsGrid.column(at: 0).width = 104
-        partsGrid.column(at: 1).width = 118
-        partsGrid.column(at: 2).width = 168
+        partsGrid.column(at: 3).width = 118
+        partsGrid.column(at: 4).width = 168
+    }
+
+    /// What each column is, said once at the top rather than in every row.
+    private static func makeColumnCaptions() -> [NSView] {
+        ["", "", "", "appears", "shows", "gives way"].map { caption in
+            let label = NSTextField(labelWithString: caption)
+            label.font = WidgetStyle.standard.secondaryFont
+            label.textColor = .tertiaryLabelColor
+            return label
+        }
     }
 
     /// Every part, in the order the row draws them, with the ones left out after them. A part
@@ -294,35 +353,92 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         when.toolTip = part.appearsWhen
         when.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        return [name, when, makeChoiceCell(part, isShown: isShown, layout: layout)]
-            + makeArrowCells(part, at: index, within: group)
+        // The arrows beside the part they move, not at the far end of the row: drawn with the
+        // choices between them, a part and its own arrows sat two hundred points apart and the
+        // eye had to walk back along an empty line to pair them up.
+        return [name] + makeArrowCells(part, at: index, within: group)
+            + [when, makeChoiceCell(part, isShown: isShown, layout: layout)]
+            + [makeFlexibleCell(part, isShown: isShown, layout: layout)]
     }
 
-    /// What this part shows, or — for a part made of text with no choices — whether it is the
-    /// one that gives way.
+    /// What this part shows, for the parts that can be asked for more than one thing.
     private func makeChoiceCell(_ part: RowPart, isShown: Bool, layout: RowLayout) -> NSView {
-        if !part.variantTitles.isEmpty {
-            let choice = NSPopUpButton()
-            choice.addItems(withTitles: part.variantTitles)
-            choice.selectItem(at: Self.variantIndex(of: part, in: layout))
-            choice.target = self
-            choice.action = #selector(variantChanged(_:))
-            choice.tag = Self.tag(of: part)
-            choice.isEnabled = isShown
-            variantButtons[part] = choice
-            return choice
+        if part == .counters {
+            return makeCounterKindsButton(isShown: isShown, layout: layout)
         }
+        guard !part.variantTitles.isEmpty else {
+            return NSView()
+        }
+        let choice = NSPopUpButton()
+        choice.addItems(withTitles: part.variantTitles)
+        choice.selectItem(at: Self.variantIndex(of: part, in: layout))
+        choice.target = self
+        choice.action = #selector(variantChanged(_:))
+        choice.tag = Self.tag(of: part)
+        choice.isEnabled = isShown
+        variantButtons[part] = choice
+        return choice
+    }
+
+    /// The kinds of work the counter block counts, as one pull-down with a mark beside each.
+    ///
+    /// One control rather than six rows of their own: the counters are one part of the row —
+    /// they are placed together and moved together — and six near-identical rows in the grid
+    /// would bury the twelve parts among them. A pull-down also has room for the words
+    /// (`background tasks`, not an icon), which is what tells the six kinds apart at all.
+    private func makeCounterKindsButton(isShown: Bool, layout: RowLayout) -> NSView {
+        let button = NSPopUpButton()
+        // A pull-down rather than a list of alternatives: these are six independent marks,
+        // not one choice out of six, and a pull-down's first item is its title.
+        button.pullsDown = true
+        button.isEnabled = isShown
+        button.toolTip = """
+            Which kinds of work the block counts. Switch them all off and it counts them all \
+            again: a block drawing nothing looks exactly like a session with no work.
+            """
+
+        let menu = NSMenu()
+        menu.addItem(withTitle: Self.counterKindsTitle(layout.counterKinds), action: nil, keyEquivalent: "")
+        for kind in ActivityKind.allCases {
+            let item = NSMenuItem(
+                title: kind.settingsName,
+                action: #selector(counterKindChanged(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.state = layout.counterKinds.contains(kind) ? .on : .off
+            item.representedObject = kind.rawValue
+            menu.addItem(item)
+            counterKindItems[kind] = item
+        }
+        button.menu = menu
+        return button
+    }
+
+    /// The pull-down's own line, which is all a closed menu shows.
+    private static func counterKindsTitle(_ kinds: Set<ActivityKind>) -> String {
+        kinds.count == ActivityKind.allCases.count
+            ? "All kinds"
+            : "\(kinds.count) of \(ActivityKind.allCases.count) kinds"
+    }
+
+    /// Whether this part is the one that narrows, for every part that has anything to give up.
+    ///
+    /// Its own column rather than shared with the choice above: a part can need both, and the
+    /// name — which is what gives way until somebody says otherwise — is exactly such a part.
+    /// Sharing the cell left the name with no radio at all, so the row could be taken off the
+    /// name and never put back except by resetting the whole template.
+    private func makeFlexibleCell(_ part: RowPart, isShown: Bool, layout: RowLayout) -> NSView {
         guard part.canGiveWay else {
             return NSView()
         }
-        let radio = NSButton(
-            radioButtonWithTitle: "gives way",
-            target: self,
-            action: #selector(flexibleChanged(_:))
-        )
+        // The column's caption says what it is, so the button itself says nothing: thirteen
+        // rows repeating "gives way" is a word to read thirteen times and a wider window.
+        let radio = NSButton(radioButtonWithTitle: "", target: self, action: #selector(flexibleChanged(_:)))
         radio.state = layout.flexible == part ? .on : .off
         radio.tag = Self.tag(of: part)
         radio.isEnabled = isShown
+        radio.setAccessibilityTitle("\(part.settingsName) gives way")
         radio.toolTip = """
             The one part that narrows when the widget does. Every other part keeps its width, \
             so a count or a timer never becomes something ambiguous.
@@ -354,42 +470,84 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
 
     /// The sample, rebuilt: a row is given its parts once, at construction, so showing a new
     /// template means a new row.
+    /// Two rows, because one of the settings here is about the difference between them.
+    ///
+    /// A session still at work has no `×` to press, so `Keep the × column` shows up only as a
+    /// comparison: with it, the two rows end in the same place; without it, the working row's
+    /// last part sits a button further right. One sample row could not show that at all — the
+    /// checkbox redrew an identical row and looked broken.
     private func showSampleRow(_ layout: RowLayout) {
+        sampleWorkingRow.map(sampleHolder.removeView)
         sampleRow.map(sampleHolder.removeView)
         let background = backgroundStore.selected
         sampleHolder.layer?.backgroundColor = background.color.cgColor
+
+        let working = makeSampleRow(
+            Self.sampleSession,
+            // Long enough that the row is plainly at work rather than a session that has just
+            // spoken, and short of every threshold that would change the lamp.
+            dismissal: .notOffered(until: Self.sampleSession.lastObservedAt.addingTimeInterval(1_800)),
+            layout: layout,
+            background: background
+        )
+        // The finished one carries a × so that the column can be seen and placed. It presses
+        // nothing: there is no row to remove, and a button here that did something would be
+        // the one control in this window that is not about the drawing.
+        let finished = makeSampleRow(
+            Self.finishedSampleSession,
+            dismissal: .now,
+            layout: layout,
+            background: background
+        )
+        sampleHolder.addView(working, in: .top)
+        sampleHolder.addView(finished, in: .top)
+        sampleWorkingRow = working
+        sampleRow = finished
+    }
+
+    private func makeSampleRow(
+        _ snapshot: SessionSnapshot,
+        dismissal: RowDismissal,
+        layout: RowLayout,
+        background: WidgetBackground
+    ) -> HUDSessionRowView {
         let row = HUDSessionRowView(
-            snapshot: Self.sampleSession,
-            now: Self.sampleSession.lastObservedAt.addingTimeInterval(4),
+            snapshot: snapshot,
+            now: snapshot.lastObservedAt.addingTimeInterval(4),
             background: background,
             lampScheme: lampSchemes.scheme,
             layout: layout,
             onFocus: {},
-            // The sample carries a × so that the column can be seen and placed. It presses
-            // nothing: there is no row to remove, and a button here that did something would
-            // be the one control in this window that is not about the drawing.
-            dismissal: .now,
+            dismissal: dismissal,
             onRemove: {}
         )
-        let text = layout.flexible.flatMap { rowPartText($0, for: Self.sampleSession, layout: layout) }
-        row.setFlexibleText(text, display: .fullName)
-        sampleHolder.addView(row, in: .top)
-        sampleRow = row
+        row.setFlexibleText(
+            layout.flexible.flatMap { rowPartText($0, for: snapshot, layout: layout) },
+            display: .fullName
+        )
+        return row
     }
 
     /// One session that has something for every part, including the ones a real session
     /// almost never fills. A sample built from an ordinary session would silently leave the
     /// fault marker and the thread out, and then they could not be placed at all.
-    private static let sampleSession: SessionSnapshot = {
+    private static let sampleSession = makeSampleSession(id: "codex:sample", phase: .executing)
+
+    /// The same session, finished. The same parts on purpose — the pair is there so two rows
+    /// can be compared with each other, and rows made of different parts compare nothing.
+    private static let finishedSampleSession = makeSampleSession(
+        id: "codex:sample-finished", phase: .completed)
+
+    private static func makeSampleSession(id: String, phase: SessionPhase) -> SessionSnapshot {
         var sample = SessionSnapshot(
-            id: "codex:sample",
+            id: id,
             source: .codex,
             arrivalIndex: 0,
             title: "Port the probe to the new API",
             projectName: "agent-watch",
             gitBranch: "row-format",
             mode: .unknown,
-            phase: .executing,
+            phase: phase,
             activities: [
                 SessionActivity(id: "a", kind: .shell, startedAt: .distantPast),
                 SessionActivity(id: "b", kind: .tool, startedAt: .distantPast),
@@ -404,7 +562,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         sample.monitoringFault = .transcriptNotFound
         sample.contextTelemetry = .init(totalInputTokens: 212_000, usedPercentage: 63)
         return sample
-    }()
+    }
 
     @objc private func partShownChanged(_ sender: NSButton) {
         guard let part = Self.part(ofTag: sender.tag) else {
@@ -464,6 +622,25 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
                 contextStyle: part == .context ? [.percent, .tokens, .both][min(chosen, 2)] : nil
             )
         )
+        showRowLayout()
+    }
+
+    /// The mark beside the item is what was stored, and AppKit does not flip it for a press —
+    /// so the press means "the other way round from what you see".
+    @objc private func counterKindChanged(_ sender: NSMenuItem) {
+        guard
+            let raw = sender.representedObject as? String,
+            let kind = ActivityKind(rawValue: raw)
+        else {
+            return
+        }
+        var kinds = rowLayouts.layout.counterKinds
+        if sender.state == .on {
+            kinds.remove(kind)
+        } else {
+            kinds.insert(kind)
+        }
+        rowLayouts.setLayout(rowLayouts.layout.changing(counterKinds: kinds))
         showRowLayout()
     }
 

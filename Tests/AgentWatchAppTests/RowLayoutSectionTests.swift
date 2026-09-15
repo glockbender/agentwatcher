@@ -117,6 +117,96 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertEqual(rowLayouts.layout.flexible, .branch)
     }
 
+    /// The name is what gives way until somebody says otherwise, so the row it sits in has to
+    /// offer the choice — with the radio shared with the variant list, the name had none, and
+    /// a person who moved "gives way" to the branch could not move it back.
+    func testEveryPartThatCanGiveWayIsOfferedTheChoice() throws {
+        let (window, _) = try makeWindow()
+
+        for part in RowPart.allCases where part.canGiveWay {
+            XCTAssertNotNil(window.flexibleButtons[part], "\(part) can give way and cannot be chosen")
+        }
+        XCTAssertEqual(window.flexibleButtons[.name]?.state, .on, "and the one that does is on")
+    }
+
+    func testChoosingTheNameAsThePartThatGivesWayIsStored() throws {
+        let (window, rowLayouts) = try makeWindow()
+        let branch = try XCTUnwrap(window.partBoxes[.branch])
+        branch.state = .on
+        branch.sendAction(branch.action, to: branch.target)
+        let toTheBranch = try XCTUnwrap(window.flexibleButtons[.branch])
+        toTheBranch.sendAction(toTheBranch.action, to: toTheBranch.target)
+
+        let backToTheName = try XCTUnwrap(window.flexibleButtons[.name])
+        backToTheName.sendAction(backToTheName.action, to: backToTheName.target)
+
+        XCTAssertEqual(rowLayouts.layout.flexible, .name)
+    }
+
+    // MARK: - Which kinds the counter block counts
+
+    /// Six kinds in one menu rather than six rows of their own: they are one part of the row,
+    /// they are chosen together, and six almost identical rows would bury the twelve parts.
+    func testTheCounterBlockOffersEveryKindItCanCount() throws {
+        let (window, _) = try makeWindow()
+
+        for kind in ActivityKind.allCases {
+            let item = try XCTUnwrap(window.counterKindItems[kind], "\(kind) cannot be chosen")
+            XCTAssertEqual(item.state, .on, "everything is counted until something is switched off")
+        }
+    }
+
+    func testSwitchingAKindOffIsStored() throws {
+        let (window, rowLayouts) = try makeWindow()
+        // Pressed the way a person presses it: the mark beside the item says it is counted,
+        // and the press means "stop counting it". AppKit does not flip that mark itself.
+        let shell = try XCTUnwrap(window.counterKindItems[.shell])
+
+        press(shell)
+
+        XCTAssertFalse(rowLayouts.layout.counterKinds.contains(.shell))
+        XCTAssertTrue(rowLayouts.layout.counterKinds.contains(.tool), "the kind beside it is untouched")
+    }
+
+    /// Switching the last one off would leave a part that draws nothing and cannot say why —
+    /// indistinguishable from a session with no work. The value repairs that to "count them
+    /// all", and the menu has to show what was really stored rather than the empty choice.
+    func testSwitchingEveryKindOffCountsThemAllAgain() throws {
+        let (window, rowLayouts) = try makeWindow()
+
+        for kind in ActivityKind.allCases {
+            // Looked up again on every turn: each press rebuilds the menu, so the item from
+            // the turn before belongs to a menu nobody can see any more.
+            let item = try XCTUnwrap(window.counterKindItems[kind])
+            press(item)
+        }
+
+        XCTAssertEqual(rowLayouts.layout.counterKinds, Set(ActivityKind.allCases))
+        XCTAssertEqual(window.counterKindItems[.shell]?.state, .on)
+    }
+
+    /// The checkbox is about the row that has no `×` — a session still at work — so one sample
+    /// row cannot show it at all. With two, the effect is the thing a person came to see: what
+    /// the rows end with lines up, or it does not.
+    func testTheSampleShowsWhatKeepingTheDismissColumnDoes() throws {
+        let (window, _) = try makeWindow()
+        let working = try XCTUnwrap(window.sampleWorkingRow)
+        let finished = try XCTUnwrap(window.sampleRow)
+
+        XCTAssertLessThan(working.fittingSize.width, finished.fittingSize.width)
+
+        let keep = try XCTUnwrap(window.dismissColumnBox)
+        keep.state = .on
+        keep.sendAction(keep.action, to: keep.target)
+
+        XCTAssertEqual(
+            try XCTUnwrap(window.sampleWorkingRow).fittingSize.width,
+            try XCTUnwrap(window.sampleRow).fittingSize.width,
+            accuracy: 0.5,
+            "the column is held open, so the two rows end in the same place"
+        )
+    }
+
     func testKeepingTheDismissColumnIsStored() throws {
         let (window, rowLayouts) = try makeWindow()
         let keep = try XCTUnwrap(window.dismissColumnBox)
@@ -173,6 +263,15 @@ final class RowLayoutSectionTests: XCTestCase {
         mint.performClick(nil)
 
         XCTAssertEqual(window.sampleRow?.drawnOn, .mint)
+    }
+
+    /// A menu item has no `sendAction` of its own — the menu sends it. Pressed the way
+    /// AppKit presses it: the action, to the target, from the item.
+    private func press(_ item: NSMenuItem) {
+        guard let action = item.action else {
+            return XCTFail("\(item.title) does nothing")
+        }
+        NSApp.sendAction(action, to: item.target, from: item)
     }
 
     private func makeWindow() throws -> (WidgetSettingsWindowController, RowLayoutStore) {

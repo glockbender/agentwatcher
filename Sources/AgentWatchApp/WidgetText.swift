@@ -648,13 +648,32 @@ extension RowPart {
     }
 
     /// What this part can be asked to show, and what each choice is called. Empty where there
-    /// is nothing to choose.
+    /// is nothing to choose — the counter block is the exception with a list of its own, in
+    /// `ActivityKind.settingsName`.
     var variantTitles: [String] {
         switch self {
         case .name: ["Name, else project", "Name only"]
         case .model: ["Name", "Name · effort"]
         case .context: ["Percent", "Tokens", "Percent · tokens"]
         case .timer, .lamp, .agent, .fault, .project, .branch, .host, .thread, .counters, .gap: []
+        }
+    }
+}
+
+/// How the settings window names one kind of work the counter block counts.
+///
+/// The same nouns the hover card uses, in the plural and without a number: a person choosing
+/// what to count is choosing a kind, not looking at one session. Two spellings of one kind —
+/// `tool calls` here and `tool call` there — would read as two different things counted.
+extension ActivityKind {
+    var settingsName: String {
+        switch self {
+        case .shell: "Shell commands"
+        case .subagent: "Subagents"
+        case .backgroundTask: "Background tasks"
+        case .compaction: "Compacting context"
+        case .advisor: "Asking the advisor"
+        case .tool: "Tool calls"
         }
     }
 }

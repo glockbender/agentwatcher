@@ -148,7 +148,11 @@ final class WidgetRenderProbe: XCTestCase {
             rowLayouts: RowLayoutStore(preferences: preferences),
             shortcuts: FakeShortcutRegistrar.controller(for: settings)
         )
-        let view = try XCTUnwrap(controller.window?.contentView)
+        // The document rather than the window's own view: the content scrolls now — it is
+        // taller than a screen — and drawing the window would draw as much of it as the
+        // screen happens to allow.
+        let scroll = try XCTUnwrap(controller.window?.contentView as? NSScrollView)
+        let view = try XCTUnwrap(scroll.documentView)
         // The window's own background, which `cacheDisplay` does not draw: without it the
         // labels come out white on nothing and the image reads as a window with no text.
         view.wantsLayer = true
