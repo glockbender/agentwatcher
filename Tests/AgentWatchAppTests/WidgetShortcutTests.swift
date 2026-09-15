@@ -10,6 +10,16 @@ final class WidgetShortcutTests: XCTestCase {
         XCTAssertEqual(WidgetShortcut(stored: shortcut.stored), shortcut)
     }
 
+    /// A key with nothing held down has no separator in its stored form at all — `96`, not
+    /// `+96`. The parser reads the last part as the code and the rest as modifiers, so a lone
+    /// part has to come back as a shortcut with no modifiers rather than as nothing.
+    func testAKeyWithNothingHeldDownSurvivesItsStoredForm() throws {
+        let shortcut = try XCTUnwrap(WidgetShortcut(keyCode: 96, modifiers: []))
+
+        XCTAssertEqual(shortcut.stored, "96")
+        XCTAssertEqual(WidgetShortcut(stored: "96"), shortcut)
+    }
+
     /// A bare letter would be taken from every application on the machine, this one included —
     /// typing `w` anywhere would hide the widget instead of writing a `w`.
     func testAKeyWithNoModifierIsRefused() {
@@ -72,11 +82,15 @@ final class WidgetShortcutTests: XCTestCase {
         XCTAssertEqual(shortcut.menuModifierMask, [.option, .command])
     }
 
+    /// The code point, not the formula that builds it. Asserting against
+    /// `String(format: "%C", NSF5FunctionKey)` — which is what the source does — would pass just
+    /// as well if that formula started producing nothing at all, and an empty key equivalent is
+    /// a menu line with no shortcut printed on it.
     func testAFunctionKeyReachesTheMenuAsItsOwnCharacter() throws {
         let shortcut = try XCTUnwrap(WidgetShortcut(keyCode: 96, modifiers: [.control]))
 
         XCTAssertEqual(shortcut.displayed, "⌃F5")
-        XCTAssertEqual(shortcut.menuKeyEquivalent, String(format: "%C", NSF5FunctionKey))
+        XCTAssertEqual(shortcut.menuKeyEquivalent.unicodeScalars.map(\.value), [0xF708])
     }
 
     /// Caps Lock and the `fn` key arrive in the same set as `⌘`, and neither is something a
