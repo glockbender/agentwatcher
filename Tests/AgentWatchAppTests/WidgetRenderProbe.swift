@@ -44,6 +44,18 @@ final class WidgetRenderProbe: XCTestCase {
         try draw(highlightedWidget(.bottomRight), named: "edge-corner", in: directory)
         try draw(listView(width: 190), named: "narrow", in: directory)
         try draw(crampedList(), named: "cramped", in: directory)
+        try draw(crampedListScrolledIntoTheMiddle(), named: "cramped-mid", in: directory)
+        try draw(
+            crampedListScrolledIntoTheMiddle(style: WidgetStyle(scale: 0.5)),
+            named: "cramped-mid-50",
+            in: directory
+        )
+        try draw(
+            crampedListScrolledIntoTheMiddle(style: WidgetStyle(scale: 2)),
+            named: "cramped-mid-200",
+            in: directory
+        )
+        try draw(listShortByAWhisker(), named: "cramped-whisker", in: directory)
         try draw(hoverCard(), named: "card", in: directory)
         try draw(hoverCard(style: WidgetStyle(scale: 2)), named: "card-200", in: directory)
         // The card for a finished session that left work running: the line under the lamp's
@@ -393,12 +405,52 @@ final class WidgetRenderProbe: XCTestCase {
         return list
     }
 
-    /// A widget too short for its sessions, which is the only state where the `▾ N more`
-    /// badge is on screen. Drawn because the badge lies over a row: what it has to prove is
-    /// that it reads as a separate mark rather than as part of the row it covers.
-    private func crampedList() -> HUDSessionListView {
+    /// A widget too short for its sessions, which is the only state where a `+N` badge is on
+    /// screen. Drawn because a badge lies over a row: what it has to prove is that it reads
+    /// as a separate mark rather than as part of the row it covers.
+    private func crampedList(style: WidgetStyle = .standard) -> HUDSessionListView {
+        let list = listView(width: 420, style: style)
+        place(list, size: NSSize(width: 420, height: style.points(150)))
+        list.layoutSubtreeIfNeeded()
+        return list
+    }
+
+    /// A widget three points shorter than its rows need, which is the case the badge must NOT
+    /// stand up for: the last row is clipped by three points of its nineteen and reads whole,
+    /// so a counter over it would promise a session that is already on screen.
+    private func listShortByAWhisker() -> HUDSessionListView {
         let list = listView(width: 420)
-        place(list, size: NSSize(width: 420, height: 150))
+        // The usage block has to be in this sum. Left out of it, the widget comes up short by
+        // the whole block rather than by three points, and the scene proves nothing.
+        let fits = HUDSessionListView.selfSizedHeight(
+            sessionCount: list.rows.count,
+            usageLimits: [AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 17), observedAt: now)],
+            background: .graphite
+        )
+        place(list, size: NSSize(width: 420, height: fits - 3))
+        list.layoutSubtreeIfNeeded()
+        list.layoutSubtreeIfNeeded()
+        return list
+    }
+
+    /// The same widget scrolled off the top, which is where both badges stand at once. The
+    /// upper one is the thing to look at: it lies over the first row in view, and what it has
+    /// to prove is the same claim as the lower one — a mark on the list, not part of a name.
+    ///
+    /// Drawn at half and at double size as well. Half is where the measurement says the upper
+    /// badge leaves the least of the row's `×` showing, a quarter of it, and a number that
+    /// small is one to look at rather than only to assert.
+    private func crampedListScrolledIntoTheMiddle(style: WidgetStyle = .standard) -> HUDSessionListView {
+        let list = crampedList(style: style)
+        func scrollView(_ view: NSView) -> NSScrollView? {
+            if let found = view as? NSScrollView { return found }
+            return view.subviews.lazy.compactMap { scrollView($0) }.first
+        }
+        guard let scroll = scrollView(list) else { return list }
+        let twoRows = 2 * (style.rowHeight + style.rowSpacing)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: twoRows))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        list.layoutSubtreeIfNeeded()
         list.layoutSubtreeIfNeeded()
         return list
     }

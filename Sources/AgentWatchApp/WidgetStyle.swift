@@ -68,8 +68,8 @@ struct WidgetStyle {
     var usageFont: NSFont { .systemFont(ofSize: points(11), weight: .medium) }
     /// The hover card.
     var secondaryFont: NSFont { .systemFont(ofSize: points(11)) }
-    /// The `▾ N more` badge. Smaller than anything else here: it lies over a row rather than
-    /// beside one, so it has to read as a mark on the list instead of as another line of it.
+    /// The `+N` badges. Smaller than anything else here: they lie over a row rather than
+    /// beside one, so they have to read as a mark on the list instead of as another line of it.
     var overflowFont: NSFont { .systemFont(ofSize: points(9), weight: .medium) }
     /// The empty state, which is read from further away than a row.
     var emptyTitleFont: NSFont { .systemFont(ofSize: points(14), weight: .semibold) }

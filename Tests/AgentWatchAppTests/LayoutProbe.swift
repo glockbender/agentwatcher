@@ -32,7 +32,8 @@ final class LayoutProbe: XCTestCase {
             window.setContentSize(NSSize(width: 300, height: height))
             list.layoutSubtreeIfNeeded()
             let elapsed = Int(-started.timeIntervalSinceNow * 1000)
-            print("PROBE height=\(Int(height)) hidden=\(list.hiddenSessionCount) \(elapsed) мс")
+            let hidden = list.hiddenSessions
+            print("PROBE height=\(Int(height)) hidden=↑\(hidden.above)/↓\(hidden.below) \(elapsed) мс")
         }
     }
 }
