@@ -124,6 +124,14 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         stopRecordingShortcut()
     }
 
+    /// And leaving for another application, which is neither of the above: the window stays
+    /// open with the recorder still focused, and no key press is coming. Recoverable where the
+    /// other two are not — the person can come back and press something — but until they do,
+    /// the shortcut is registered and silent.
+    func windowDidResignKey(_ notification: Notification) {
+        stopRecordingShortcut()
+    }
+
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         nil

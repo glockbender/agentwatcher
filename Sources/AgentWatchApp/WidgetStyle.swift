@@ -36,9 +36,9 @@ struct WidgetStyle {
     /// Each of them is read off a real label, a real image view or a real button, because
     /// AppKit is the only authority on what it will draw — the reasoning is beside each one
     /// below. That makes them the expensive part of this type by a distance: measured at 125%,
-    /// one `rowHeight` costs 341 µs and one `buttonSize` 691 µs, against 1,9 ms for building a
+    /// one `rowHeight` costs 341 µs and one `buttonSize` 691 µs, against 1.9 ms for building a
     /// whole row. Left as computed properties they were taken again for every row of every
-    /// rebuild, so over half the cost of drawing the list was re-deriving five numbers that
+    /// rebuild, so over half the cost of drawing the list was re-deriving four numbers that
     /// had not changed. A width drag rebuilds the whole list per frame, which is where that
     /// showed.
     ///

@@ -253,6 +253,23 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertFalse(recorder.isRecording)
     }
 
+    /// And the third way out: leaving for another application without touching this window at
+    /// all. Recoverable, unlike the other two — the person can come back and press a key — but
+    /// until they do, the shortcut is registered and silent, which is the state this whole
+    /// group of tests exists to forbid.
+    func testLeavingForAnotherApplicationMidRecordingLetsTheCombinationSpeakAgain() throws {
+        let (controller, shortcuts) = try makeWindowKeepingItsShortcuts()
+        let recorder = try XCTUnwrap(controller.shortcutRecorder)
+        controller.present()
+        recorder.sendAction(recorder.action, to: recorder.target)
+        XCTAssertTrue(shortcuts.isMuted)
+
+        try XCTUnwrap(controller.window).resignKey()
+
+        XCTAssertFalse(shortcuts.isMuted)
+        XCTAssertFalse(recorder.isRecording)
+    }
+
     /// The window measures itself once, at construction, from the text the status line happens
     /// to hold then. Every other sentence it can show has to fit in that same room — the longest
     /// is the one about which keys are accepted, and it is three times the length of the one the
