@@ -620,7 +620,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch setting {
         case .interactionLocks:
             hudController.refreshInteractionLocks()
-        case .sessionTopic:
+        case .sessionTopic, .rowLayout:
             // Not `supervisor.publish()`: that reports the same sessions, and the widget
             // skips a report that changes nothing so the row under the pointer survives.
             hudController.refreshSettings()

@@ -131,7 +131,7 @@ public enum BackgroundWorkKind: String, Codable, CaseIterable, Equatable, Sendab
     case other
 }
 
-public enum ActivityKind: String, Codable, Sendable {
+public enum ActivityKind: String, Codable, Sendable, CaseIterable {
     case shell
     case subagent
     case backgroundTask

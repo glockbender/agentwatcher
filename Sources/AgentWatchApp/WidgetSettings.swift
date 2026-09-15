@@ -33,6 +33,7 @@ enum WidgetSetting {
     case lampScheme
     case scale
     case toggleShortcut
+    case rowLayout
 }
 
 /// Widget preferences that are not about colour.
