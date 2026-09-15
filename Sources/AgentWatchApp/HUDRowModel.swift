@@ -24,6 +24,13 @@ struct HUDRowModel: Equatable {
     let layout: RowLayout
     /// The name as this row will show it, or `nil` when the row shows none.
     let name: String?
+    /// What the part that gives way says, measured and inserted after the rest of the row.
+    ///
+    /// The name while the name is that part, which is every row until somebody changes it —
+    /// and something else entirely afterwards. Kept beside `name` rather than instead of it
+    /// because both can be in one row: with the branch giving way, the name is still drawn,
+    /// at its own full width.
+    let flexibleText: String?
     /// Whether the row offers a `×`, and if it does but cannot work yet, from when it will.
     /// From the clock, by a threshold: a session left silent long enough gains a working
     /// button without an event of its own, which is why `now` is an input. The date inside
@@ -38,6 +45,7 @@ struct HUDRowModel: Equatable {
         self.snapshot = snapshot
         self.layout = layout
         name = rowName(for: snapshot, layout: layout)
+        flexibleText = layout.flexible.flatMap { rowPartText($0, for: snapshot, layout: layout) }
         dismissal = SessionPresence.dismissal(of: snapshot, now: now)
     }
 }

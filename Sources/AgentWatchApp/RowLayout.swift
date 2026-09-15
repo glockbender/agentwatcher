@@ -17,6 +17,11 @@ enum RowPart: String, CaseIterable {
     case context
     /// Where the row's slack collects. Everything before it is packed to the left and
     /// everything after it sits at the right edge.
+    ///
+    /// Why a row needs one, measured before it was configurable: without the gap the counters
+    /// followed the name, which is a different length in every row and changes with the work —
+    /// so the same number appeared in each row at a different place, and moved sideways the
+    /// moment a name was shortened.
     case gap
 
     /// Whether this part has anything to give up when the widget is too narrow for the row.

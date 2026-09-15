@@ -72,7 +72,7 @@ final class BackgroundWorkRowTests: XCTestCase {
         completed.backgroundWork = [.shell, .shell, .monitor]
 
         XCTAssertTrue(
-            hoverCardText(for: completed, now: start)
+            hoverCardText(for: completed, now: start, layout: .standard)
                 .contains("still running in the background: 2 shell commands · 1 monitor"),
             "the card explains the counter the row has room only to number"
         )
@@ -87,7 +87,7 @@ final class BackgroundWorkRowTests: XCTestCase {
         var completed = testSession(phase: .completed, lastObservedAt: start)
         completed.backgroundWork = [.shell]
 
-        let card = hoverCardText(for: completed, now: start)
+        let card = hoverCardText(for: completed, now: start, layout: .standard)
 
         XCTAssertFalse(card.contains("waiting on"), "the turn ended, so it waits on nothing")
         XCTAssertTrue(card.contains("still running in the background: 1 shell command"))
@@ -111,7 +111,8 @@ final class BackgroundWorkRowTests: XCTestCase {
         )
 
         XCTAssertTrue(
-            hoverCardText(for: waiting, now: start).contains("still running in the background: 1 task")
+            hoverCardText(for: waiting, now: start, layout: .standard).contains(
+                "still running in the background: 1 task")
         )
     }
 
@@ -136,7 +137,7 @@ final class BackgroundWorkRowTests: XCTestCase {
         XCTAssertEqual(counts.map(\.kind), [.subagent, .backgroundTask])
         XCTAssertEqual(counts.map(\.count), [1, 1], "the agent once, the command once")
 
-        let card = hoverCardText(for: waiting, now: start)
+        let card = hoverCardText(for: waiting, now: start, layout: .standard)
         XCTAssertTrue(card.contains("waiting on 1 subagent"))
         XCTAssertTrue(card.contains("still running in the background: 1 shell command"))
         XCTAssertFalse(card.contains("background: 1 subagent"), "said once, by the line that has a symbol")
@@ -147,7 +148,7 @@ final class BackgroundWorkRowTests: XCTestCase {
         completed.backgroundWork = []
 
         XCTAssertEqual(activityCounts(for: completed).count, 0)
-        XCTAssertFalse(hoverCardText(for: completed, now: start).contains("in the background"))
+        XCTAssertFalse(hoverCardText(for: completed, now: start, layout: .standard).contains("in the background"))
     }
 
     // MARK: - Through the engine, the way a live session arrives
@@ -169,7 +170,8 @@ final class BackgroundWorkRowTests: XCTestCase {
 
         XCTAssertEqual(activityCounts(for: working).map(\.kind), [.backgroundTask])
         XCTAssertTrue(
-            hoverCardText(for: working, now: start).contains("still running in the background: 1 task"),
+            hoverCardText(for: working, now: start, layout: .standard).contains(
+                "still running in the background: 1 task"),
             "the card said nothing about the command the turn had just started"
         )
     }
@@ -186,7 +188,7 @@ final class BackgroundWorkRowTests: XCTestCase {
 
         XCTAssertEqual(activityCounts(for: completed).map(\.count), [1], "one command, counted once")
         XCTAssertTrue(
-            hoverCardText(for: completed, now: start)
+            hoverCardText(for: completed, now: start, layout: .standard)
                 .contains("still running in the background: 1 shell command")
         )
     }

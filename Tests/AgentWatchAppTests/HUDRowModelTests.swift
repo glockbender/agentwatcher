@@ -67,6 +67,24 @@ final class HUDRowModelTests: XCTestCase {
         )
     }
 
+    /// The row is measured without the part that gives way and that part is put back
+    /// afterwards, so the model has to carry its text — which is the name only as long as the
+    /// name is the part that gives way.
+    func testTheModelCarriesTheTextOfThePartThatGivesWay() {
+        var session = testSession(title: "Fix the row", lastObservedAt: now)
+        session.gitBranch = "feature/probe"
+        let branchGivesWay = RowLayout(parts: [.timer, .name, .branch, .gap], flexible: .branch)
+
+        XCTAssertEqual(
+            HUDRowModel(snapshot: session, now: now, layout: branchGivesWay).flexibleText,
+            "feature/probe"
+        )
+        XCTAssertEqual(
+            HUDRowModel(snapshot: session, now: now, layout: .standard).flexibleText,
+            "Fix the row"
+        )
+    }
+
     /// `Name only` says what it does. A session the agent has not named yet draws nothing
     /// here rather than falling back to its directory — the row is then a lamp and a clock,
     /// and that is the person's choice to make: see ADR-0011.

@@ -450,13 +450,15 @@ class HUDSessionListView: NSView {
             now: now,
             background: background,
             lampScheme: lampScheme,
+            layout: model.layout,
             style: style,
             onFocus: { [focus] in focus(snapshot) },
             dismissal: model.dismissal,
             onRemove: { [remove] in remove(snapshot) },
             onHoverChanged: onHoverChanged
         )
-        row.setTitle(model.name, display: titleDisplay(model.name, in: row))
+        row.setFlexibleText(
+            model.flexibleText, display: titleDisplay(model.flexibleText, in: row))
         return row
     }
 

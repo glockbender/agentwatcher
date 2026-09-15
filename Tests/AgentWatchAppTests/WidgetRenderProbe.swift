@@ -487,6 +487,7 @@ final class WidgetRenderProbe: XCTestCase {
         let text = hoverCardText(
             for: snapshot ?? sessions()[0],
             now: now,
+            layout: .standard,
             reach: .anApplication
         )
         let label = NSTextField(labelWithString: text)

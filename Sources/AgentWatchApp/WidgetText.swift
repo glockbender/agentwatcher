@@ -8,7 +8,8 @@ import AppKit
 /// a window frame — was drawn into real rows at 18, 20 and 22 points: it reads only from 20,
 /// which costs every row three points of height. Shown that, the owner turned down both the
 /// taller row and the combined glyph, and chose to drop the client from the row altogether.
-/// So the row carries the agent alone, and this is one of the things the hover card is for.
+/// So no row carries it unless somebody asks for it: it is `RowPart.host`, off by default,
+/// and the hover card names it either way.
 extension SessionClientKind {
     var displayName: String {
         switch self {
@@ -153,20 +154,30 @@ private func name(for kind: BackgroundWorkKind, count: Int) -> String {
 /// the row's timer already shows how long the session has been quiet, in less space than
 /// `⚠ no fresh activity` took. The source and the client are not here either: they are
 /// images placed before this text.
-func widgetContextText(for snapshot: SessionSnapshot) -> String? {
+/// - Parameter style: which of the two numbers to draw. The share alone is what every row
+///   drew before the template existed, and it stays the default for the reason above. The
+///   other two are offered because the argument against the count is about the room it takes
+///   in a row somebody else laid out — and this is the row they laid out themselves.
+func widgetContextText(
+    for snapshot: SessionSnapshot,
+    style: RowLayout.ContextStyle = .percent
+) -> String? {
     guard let telemetry = snapshot.contextTelemetry else {
         return nil
     }
-    // The share, and only the share. The count is what a row used to carry beside it, and it
-    // was both the longest thing in the row — Codex reports millions — and the least useful:
-    // "how much is left" is the question, and an absolute number answers it only for someone
-    // who already knows the size of the window. The count keeps its place in the hover card.
+    let tokens = compactTokenCount(telemetry.totalInputTokens)
+    // A count with nothing to be a fraction of is still worth more than a blank column,
+    // which would read as "context unknown" for a session whose context is known. So a
+    // percentage nobody reported falls back to the count rather than to nothing.
     guard let percentage = telemetry.usedPercentage else {
-        // A count with nothing to be a fraction of is still worth more than a blank column,
-        // which would read as "context unknown" for a session whose context is known.
-        return compactTokenCount(telemetry.totalInputTokens)
+        return tokens
     }
-    return "\(Int(percentage.rounded()))%"
+    let share = "\(Int(percentage.rounded()))%"
+    switch style {
+    case .percent: return share
+    case .tokens: return tokens
+    case .both: return "\(share) · \(tokens)"
+    }
 }
 
 /// The interval a person picks, said the way it now works.
@@ -266,6 +277,42 @@ func rowName(for snapshot: SessionSnapshot, layout: RowLayout) -> String? {
     return snapshot.projectName?.nonEmpty.map { "\(noNameYet) in \($0)" }
 }
 
+/// What one text part of a row says, or nothing when the session has nothing to say there.
+///
+/// One place for all of them, so a part that draws nothing and a part left out of the
+/// template cannot be told apart by accident: both are `nil`, and the row skips both.
+///
+/// Every string here already had a reader — the hover card — and this is deliberately the
+/// same wording. A row and its card disagreeing about the branch would make one of them
+/// wrong, and there is no way for a reader to tell which.
+func rowPartText(_ part: RowPart, for snapshot: SessionSnapshot, layout: RowLayout) -> String? {
+    switch part {
+    case .name:
+        return rowName(for: snapshot, layout: layout)
+    case .project:
+        return snapshot.projectName?.nonEmpty
+    case .branch:
+        return snapshot.gitBranch?.nonEmpty
+    case .model:
+        guard let model = snapshot.modelName?.nonEmpty else {
+            return nil
+        }
+        // Codex is the only agent that writes an effort, so a Claude row draws the same
+        // thing either way rather than an empty separator.
+        guard layout.modelStyle == .effort, let effort = snapshot.reasoningEffort?.nonEmpty else {
+            return model
+        }
+        return "\(model) · \(effort)"
+    case .host:
+        return snapshot.hostKind?.displayName
+    case .thread:
+        return threadText(for: snapshot)
+    case .timer, .lamp, .agent, .fault, .counters, .context, .gap:
+        // Not text: a dot, a picture, a number beside a symbol, or the row's slack.
+        return nil
+    }
+}
+
 /// Stands where a name would be, and is not one. In brackets because nothing an agent
 /// writes arrives in brackets, so the row needs no second reading.
 let noNameYet = "[still no name]"
@@ -281,7 +328,10 @@ let noNameYet = "[still no name]"
 func hoverCardText(
     for snapshot: SessionSnapshot,
     now: Date,
-    layout: RowLayout = .standard,
+    /// No default: this is the person's template, and a caller that forgot it would quietly
+    /// show a card built from the app's own — naming a session whose rows have stopped
+    /// naming it, which is the one thing this argument exists to prevent.
+    layout: RowLayout,
     /// Optional, and `nil` is not `.nowhere`: one means nobody asked whether the session can
     /// be reached, the other means somebody asked and the answer was no. Only the second is
     /// worth a line.

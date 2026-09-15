@@ -38,7 +38,9 @@ func chooseTitleDisplay(
     return .truncated(toWidth: availableWidth)
 }
 
-/// One session, laid out as `[timer] [lamp] [icon] [name] [counts] [dismiss]`.
+/// One session, laid out from a `RowLayout`: which parts, in what order, and which one of
+/// them gives way when the widget is too narrow. `[timer] [lamp] [icon] [name] [counts]` is
+/// what a template nobody has changed says, and what this row was before it took one.
 ///
 /// The row is itself the way back to the session: a click anywhere on it brings the session
 /// forward. It used to carry a `↗` button for that at its start, and the button was the one
@@ -47,11 +49,12 @@ func chooseTitleDisplay(
 /// a session that has stopped, and a click that both removes a row and brings its session
 /// forward would be two actions on one press.
 ///
-/// The timer leads the row at a fixed width, so everything after it lines up into columns
-/// down the list.
+/// The timer holds a fixed width wherever it is put, so the parts beside it line up into
+/// columns down the list.
 ///
-/// Everything up to the name has a width of its own; only the name gives way, so a narrow
-/// widget never turns a count or a timer into something ambiguous.
+/// Exactly one part gives way, and every other keeps its width, so a narrow widget never
+/// turns a count or a timer into something ambiguous. ADR-0011 says why that is the app's
+/// rule and not the person's.
 ///
 /// Nothing in the row carries a tooltip of its own. The hover card explains the whole row in
 /// words — every counter, the fault marker, how far a click will reach — which is one place to
@@ -72,16 +75,16 @@ final class HUDSessionRowView: NSStackView {
     /// numbers stopped being constants; `WidgetStyle` says why they could not stay `static`.
     let style: WidgetStyle
 
-    /// Everything in this row except the name, including the gap the name would sit after.
+    /// Everything in this row except the part that gives way, including the row's own gap.
     ///
     /// Measured by laying the row out rather than by adding up the parts. Adding them up was
     /// wrong twice over — an application icon draws at its own size rather than the one asked
     /// for, and a label is wider than its glyphs — and both mistakes made the name budget
     /// larger than the room the row really had.
     ///
-    /// Only meaningful before `setTitle` is called, which is the whole reason a row starts
-    /// without a name: the budget for the name is measured on the row that will carry it,
-    /// so no second row has to be built and thrown away to find it out.
+    /// Only meaningful before `setFlexibleText` is called, which is the whole reason a row
+    /// starts without that part: its budget is measured on the row that will carry it, so no
+    /// second row has to be built and thrown away to find it out.
     var furnitureWidth: CGFloat {
         fittingSize.width + style.elementSpacing
     }
@@ -114,8 +117,17 @@ final class HUDSessionRowView: NSStackView {
 
     private let onHoverChanged: (HUDSessionRowView, Bool) -> Void
     private var hoverTracking: NSTrackingArea?
-    /// Where the name is inserted, and what holds the row's slack until it is.
+    /// What holds the row's slack. `RowPart.gap` says why a row needs exactly one.
     private let spacer = HUDSessionRowView.makeSpacer()
+    /// The parts this row actually put on screen, in order, including the one that gives way.
+    ///
+    /// Not the same list as `layout.parts`: a part the session cannot fill draws nothing. It
+    /// is what tells `setFlexibleText` where to insert — counting the parts before the
+    /// flexible one that really became views.
+    private(set) var drawnParts: [RowPart] = []
+    /// The part this row leaves out while it is measured, kept so `setFlexibleText` can find
+    /// where to put it back.
+    private var layoutFlexible: RowPart?
     private var hasTitle = false
 
     init(
@@ -123,6 +135,7 @@ final class HUDSessionRowView: NSStackView {
         now: Date,
         background: WidgetBackground,
         lampScheme: LampScheme,
+        layout: RowLayout = .standard,
         style: WidgetStyle = .standard,
         onFocus: @escaping () -> Void,
         dismissal: RowDismissal,
@@ -142,46 +155,35 @@ final class HUDSessionRowView: NSStackView {
         shownColor = timerLabel.textColor
         super.init(frame: .zero)
 
-        var views: [NSView] = [
-            timerLabel,
-            Self.makeLamp(lamp, style: style),
-            Self.makeSourceIcon(for: snapshot, style: style),
-        ]
-
-        // Beside the identity rather than out with the counters: it qualifies everything
-        // else in the row, and a marker at the far end would be read as one more count.
-        if let faultMarker = Self.makeFaultMarker(for: snapshot, background: background, style: style) {
-            views.append(faultMarker)
-        }
-
-        // All the slack in the row collects here, so everything after it sits against the
-        // right edge. Without it the counters followed the name, which is a different length
-        // in every row and changes with the work — the same number then appeared at a
-        // different place in each row, and moved as soon as a name was shortened.
-        //
-        // It is also where the name is inserted later: the name comes before the counters,
-        // not after. Counters appear and disappear with the work — a tool call starts, a
-        // subagent finishes — and with them ahead of the name the name slid sideways every
-        // few seconds. Behind it, they move instead, and the thing a reader is actually
-        // looking for keeps one place in every row.
-        views.append(spacer)
-
-        for counter in activityCounts(for: snapshot) {
-            views.append(
-                Self.makeCounter(
-                    image: ActivityIcon.image(for: counter.kind),
-                    text: counterText(for: counter.kind, count: counter.count),
+        var views: [NSView] = []
+        var drawn: [RowPart] = []
+        for part in layout.parts {
+            // The part that gives way is left out here and inserted by `setFlexibleText`:
+            // its width is decided from `furnitureWidth`, which is everything *but* it.
+            guard part != layout.flexible else {
+                drawn.append(part)
+                continue
+            }
+            // A part the session has nothing to put in draws nothing rather than an empty
+            // box. Most rows have no fault to show, and a reserved gap for one would spend
+            // width on the absence of news.
+            guard
+                let view = makePart(
+                    part,
+                    snapshot: snapshot,
+                    lamp: lamp,
+                    layout: layout,
                     background: background,
                     style: style
                 )
-            )
+            else {
+                continue
+            }
+            views.append(view)
+            drawn.append(part)
         }
-        if let context = widgetContextText(for: snapshot) {
-            views.append(
-                Self.makeCounter(
-                    image: Self.contextImage, text: context, background: background, style: style)
-            )
-        }
+        drawnParts = drawn
+        layoutFlexible = layout.flexible
 
         // A row that has stopped keeps its button whether or not it works yet, greyed until
         // it does. Taking the button away instead answered "is there a button?" when the
@@ -231,6 +233,58 @@ final class HUDSessionRowView: NSStackView {
         nil
     }
 
+    /// One part, or nothing when the session has nothing to put in it.
+    ///
+    /// The counters are one part and several views, which is why this returns a stack rather
+    /// than a label: they are chosen together in the settings window, they keep a fixed order
+    /// among themselves, and a person moving "counters" moves all of them at once.
+    private func makePart(
+        _ part: RowPart,
+        snapshot: SessionSnapshot,
+        lamp: SessionLampAppearance,
+        layout: RowLayout,
+        background: WidgetBackground,
+        style: WidgetStyle
+    ) -> NSView? {
+        switch part {
+        case .timer:
+            return timerLabel
+        case .lamp:
+            return Self.makeLamp(lamp, style: style)
+        case .agent:
+            return Self.makeSourceIcon(for: snapshot, style: style)
+        case .fault:
+            return Self.makeFaultMarker(for: snapshot, background: background, style: style)
+        case .gap:
+            return spacer
+        case .name, .project, .branch, .model, .host, .thread:
+            return rowPartText(part, for: snapshot, layout: layout)
+                .map { Self.makeWord($0, part: part, background: background, style: style) }
+        case .counters:
+            let counted = activityCounts(for: snapshot).filter { layout.counterKinds.contains($0.kind) }
+            guard !counted.isEmpty else {
+                return nil
+            }
+            let block = NSStackView(
+                views: counted.map { counter in
+                    Self.makeCounter(
+                        image: ActivityIcon.image(for: counter.kind),
+                        text: counterText(for: counter.kind, count: counter.count),
+                        background: background,
+                        style: style
+                    )
+                })
+            block.orientation = .horizontal
+            block.alignment = .centerY
+            block.spacing = style.elementSpacing
+            return block
+        case .context:
+            return widgetContextText(for: snapshot, style: layout.contextStyle).map {
+                Self.makeCounter(image: Self.contextImage, text: $0, background: background, style: style)
+            }
+        }
+    }
+
     /// Gives the row its name, at whatever length the measured budget allows.
     ///
     /// Separate from `init` because the budget is `furnitureWidth`, which can only be asked
@@ -240,22 +294,34 @@ final class HUDSessionRowView: NSStackView {
     /// Called once, and enforced rather than assumed: a second call would insert a second
     /// label beside the first, and `furnitureWidth` no longer means anything once a name is
     /// in place. A row that needs a different name is a row that gets rebuilt.
-    func setTitle(_ title: String?, display: SessionTitleDisplay) {
+    func setFlexibleText(_ text: String?, display: SessionTitleDisplay) {
         guard !hasTitle else {
             return
         }
         hasTitle = true
         if display != .hidden {
-            accessibleName = title?.nonEmpty
+            accessibleName = text?.nonEmpty
         }
         guard
-            let index = arrangedSubviews.firstIndex(of: spacer),
-            let title = Self.makeTitle(title, display: display, background: background, style: style)
+            let index = flexibleIndex,
+            let label = Self.makeTitle(text, display: display, background: background, style: style)
         else {
             return
         }
-        insertArrangedSubview(title.label, at: index)
-        title.cap?.isActive = true
+        insertArrangedSubview(label.label, at: index)
+        label.cap?.isActive = true
+    }
+
+    /// Where the part that gives way belongs among the views already here.
+    ///
+    /// Counted from `drawnParts` rather than found by looking for the spacer: the flexible
+    /// part is wherever the template puts it, which may be on either side of the gap, and
+    /// the parts before it are only those the session could actually fill.
+    private var flexibleIndex: Int? {
+        guard let flexible = drawnParts.first(where: { $0 == layoutFlexible }) else {
+            return nil
+        }
+        return drawnParts.prefix(while: { $0 != flexible }).count
     }
 
     private static let contextImage: NSImage? = {
@@ -625,6 +691,26 @@ final class HUDSessionRowView: NSStackView {
 
     /// The name, at whatever length it was granted, plus the constraint that enforces it.
     /// A shortened name is spelled out in full by the hover card, never by a tooltip.
+    /// A part that is one word of text and keeps its width.
+    ///
+    /// The name is the row's own subject and is drawn in the foreground colour; everything
+    /// else here — the project, the branch, the model, where it runs, whose thread it is —
+    /// qualifies it, and is drawn the way the counters are so that a glance finds the name
+    /// first. That is the same rule the hover card follows, one line down.
+    private static func makeWord(
+        _ text: String,
+        part: RowPart,
+        background: WidgetBackground,
+        style: WidgetStyle
+    ) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.font = part == .name ? style.titleFont : style.countsFont
+        label.textColor = part == .name ? background.foregroundColor : background.secondaryForegroundColor
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        return label
+    }
+
     private static func makeTitle(
         _ title: String?,
         display: SessionTitleDisplay,

@@ -96,7 +96,7 @@ final class HUDRowLayoutTests: XCTestCase {
         ]
         session.contextTelemetry = .init(totalInputTokens: 333_000)
 
-        let text = hoverCardText(for: session, now: now.addingTimeInterval(90))
+        let text = hoverCardText(for: session, now: now.addingTimeInterval(90), layout: .standard)
 
         XCTAssertTrue(text.contains(longName), "the whole name, whatever the row could show")
         XCTAssertTrue(text.contains("Claude Code · CLI · approval needed"))
@@ -113,7 +113,7 @@ final class HUDRowLayoutTests: XCTestCase {
         bare.projectName = nil
         bare.gitBranch = nil
 
-        let lines = hoverCardText(for: bare, now: now).split(separator: "\n")
+        let lines = hoverCardText(for: bare, now: now, layout: .standard).split(separator: "\n")
 
         XCTAssertEqual(lines.count, 3, "name, identity and the elapsed time — nothing else is known")
         XCTAssertFalse(lines.contains { $0.hasPrefix(" ") || $0.hasSuffix(" ·") })
@@ -126,7 +126,7 @@ final class HUDRowLayoutTests: XCTestCase {
         var faulted = snapshot()
         faulted.monitoringFault = .transcriptNotFound
 
-        let text = hoverCardText(for: faulted, now: now)
+        let text = hoverCardText(for: faulted, now: now, layout: .standard)
 
         XCTAssertTrue(text.contains(monitoringFaultText(for: .transcriptNotFound)))
         XCTAssertFalse(text.contains("transcriptNotFound"), "words, not the name of a symbol")
@@ -159,8 +159,8 @@ final class HUDRowLayoutTests: XCTestCase {
         codex.modelName = "gpt-5.6-terra"
         codex.reasoningEffort = "high"
 
-        XCTAssertTrue(hoverCardText(for: claude, now: now).contains("claude-opus-5"))
-        XCTAssertTrue(hoverCardText(for: codex, now: now).contains("gpt-5.6-terra · high"))
+        XCTAssertTrue(hoverCardText(for: claude, now: now, layout: .standard).contains("claude-opus-5"))
+        XCTAssertTrue(hoverCardText(for: codex, now: now, layout: .standard).contains("gpt-5.6-terra · high"))
     }
 
     /// Codex gives a subagent a session of its own, so it arrives as a row of its own and
@@ -174,7 +174,7 @@ final class HUDRowLayoutTests: XCTestCase {
         var ordinary = codexSnapshot()
         ordinary.threadKind = .user
 
-        XCTAssertTrue(hoverCardText(for: subagent, now: now).contains("subagent Darwin"))
+        XCTAssertTrue(hoverCardText(for: subagent, now: now, layout: .standard).contains("subagent Darwin"))
         XCTAssertNil(threadText(for: ordinary), "a person's own thread is not news")
         XCTAssertEqual(threadText(for: subagentWithoutAName()), "subagent")
     }
@@ -307,9 +307,11 @@ final class HUDRowLayoutTests: XCTestCase {
         var measured = snapshot()
         measured.contextTelemetry = .init(totalInputTokens: 85_000, usedPercentage: 42.5)
 
-        XCTAssertTrue(hoverCardText(for: counted, now: now).contains("333k tokens in context"))
-        XCTAssertFalse(hoverCardText(for: counted, now: now).contains("%"))
-        XCTAssertTrue(hoverCardText(for: measured, now: now).contains("43% of context · 85k tokens in context"))
+        XCTAssertTrue(hoverCardText(for: counted, now: now, layout: .standard).contains("333k tokens in context"))
+        XCTAssertFalse(hoverCardText(for: counted, now: now, layout: .standard).contains("%"))
+        XCTAssertTrue(
+            hoverCardText(for: measured, now: now, layout: .standard).contains("43% of context · 85k tokens in context")
+        )
     }
 
     /// The card waits half a second, and a row that showed nothing until then left the
@@ -350,12 +352,14 @@ final class HUDRowLayoutTests: XCTestCase {
         live.phase = .executing
 
         XCTAssertTrue(
-            hoverCardText(for: live, now: now, reach: .nowhere).contains("No window to bring forward")
+            hoverCardText(for: live, now: now, layout: .standard, reach: .nowhere).contains(
+                "No window to bring forward")
         )
         XCTAssertFalse(
             hoverCardText(
                 for: live,
                 now: now,
+                layout: .standard,
                 reach: .anApplication
             )
             .lowercased()
@@ -641,7 +645,7 @@ final class HUDRowLayoutTests: XCTestCase {
         background.phase = .executing
         background.clientKind = .background
 
-        let card = hoverCardText(for: background, now: now, reach: .nowhere)
+        let card = hoverCardText(for: background, now: now, layout: .standard, reach: .nowhere)
 
         XCTAssertTrue(card.contains("Click opens it in a new Ghostty tab"), card)
         XCTAssertTrue(card.contains("no window of its own"), card)
@@ -658,6 +662,7 @@ final class HUDRowLayoutTests: XCTestCase {
 
         let card = hoverCardText(
             for: shown, now: now,
+            layout: .standard,
             reach: .anApplication)
 
         XCTAssertFalse(card.contains("claude attach"), card)
@@ -1125,10 +1130,11 @@ final class HUDRowLayoutTests: XCTestCase {
             "a working session has nothing to dismiss, and a greyed button would say otherwise"
         )
 
-        let card = hoverCardText(for: finished, now: now)
+        let card = hoverCardText(for: finished, now: now, layout: .standard)
         XCTAssertTrue(card.contains("× in "), card)
-        XCTAssertFalse(hoverCardText(for: snapshot(), now: now).contains("× in "), "nothing was refused")
-        XCTAssertFalse(hoverCardText(for: closed, now: now).contains("× in "), "the button works")
+        XCTAssertFalse(
+            hoverCardText(for: snapshot(), now: now, layout: .standard).contains("× in "), "nothing was refused")
+        XCTAssertFalse(hoverCardText(for: closed, now: now, layout: .standard).contains("× in "), "the button works")
     }
 
     /// One fact, one colour. `no signal` is a phase, the lamp draws it from the scheme a
@@ -1182,7 +1188,7 @@ final class HUDRowLayoutTests: XCTestCase {
             dismissal: dismissal,
             onRemove: {}
         )
-        view.setTitle((snapshot ?? self.snapshot()).title, display: titleDisplay)
+        view.setFlexibleText((snapshot ?? self.snapshot()).title, display: titleDisplay)
         view.frame = NSRect(x: 0, y: 0, width: view.fittingSize.width, height: view.fittingSize.height)
         view.layoutSubtreeIfNeeded()
         return view
