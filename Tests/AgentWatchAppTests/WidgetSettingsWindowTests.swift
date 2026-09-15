@@ -184,6 +184,40 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertEqual(controller.shortcutStatusLabel?.stringValue, shortcutRefusedPress)
     }
 
+    /// The old combination is still registered while a new one is being chosen. Left live, it
+    /// would hide the widget out from under the person in the middle of choosing — and the
+    /// press that did it would also be the press they were trying to record.
+    func testTheOldCombinationGoesQuietWhileANewOneIsBeingChosen() throws {
+        let (controller, shortcuts) = try makeWindowKeepingItsShortcuts()
+        let recorder = try XCTUnwrap(controller.shortcutRecorder)
+
+        recorder.sendAction(recorder.action, to: recorder.target)
+
+        XCTAssertTrue(shortcuts.isMuted)
+    }
+
+    func testTheCombinationSpeaksAgainOnceTheChoosingIsOver() throws {
+        let (controller, shortcuts) = try makeWindowKeepingItsShortcuts()
+        let recorder = try XCTUnwrap(controller.shortcutRecorder)
+        recorder.sendAction(recorder.action, to: recorder.target)
+
+        recorder.keyDown(with: try press(keyCode: 96, flags: [.control, .shift]))
+
+        XCTAssertFalse(shortcuts.isMuted)
+    }
+
+    /// A press it will not take leaves the recorder waiting for another, so the quiet has to
+    /// last exactly as long as that wait — not until the first press, whatever it was.
+    func testTheCombinationStaysQuietWhileTheRecorderIsStillWaiting() throws {
+        let (controller, shortcuts) = try makeWindowKeepingItsShortcuts()
+        let recorder = try XCTUnwrap(controller.shortcutRecorder)
+        recorder.sendAction(recorder.action, to: recorder.target)
+
+        recorder.keyDown(with: try press(keyCode: 13, flags: []))
+
+        XCTAssertTrue(shortcuts.isMuted)
+    }
+
     private func optionCommandW() throws -> WidgetShortcut {
         try XCTUnwrap(WidgetShortcut(keyCode: 13, modifiers: [.option, .command]))
     }
@@ -203,6 +237,24 @@ final class WidgetSettingsWindowTests: XCTestCase {
                 keyCode: keyCode
             )
         )
+    }
+
+    /// For the tests that are about the shortcut itself rather than about the window: the window
+    /// does not hand its collaborators back, and it should not have to grow a way to just for a
+    /// test.
+    private func makeWindowKeepingItsShortcuts() throws -> (
+        WidgetSettingsWindowController, WidgetShortcutController
+    ) {
+        let preferences = try isolatedPreferences()
+        let settings = WidgetSettingsStore(preferences: preferences)
+        let shortcuts = FakeShortcutRegistrar.controller(for: settings)
+        let window = WidgetSettingsWindowController(
+            backgroundStore: WidgetBackgroundStore(preferences: preferences),
+            lampSchemes: LampSchemeStore(preferences: preferences),
+            settings: settings,
+            shortcuts: shortcuts
+        )
+        return (window, shortcuts)
     }
 
     private func makeWindow(
