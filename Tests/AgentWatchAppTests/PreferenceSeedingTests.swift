@@ -124,6 +124,7 @@ final class PreferenceSeedingTests: XCTestCase {
                 WidgetSettingsStore(preferences: preferences),
                 HUDFrameStore(preferences: preferences),
                 LampSchemeStore(preferences: preferences),
+                RowLayoutStore(preferences: preferences),
                 AppUpdater(preferences: preferences),
             ]
         )

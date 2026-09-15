@@ -42,9 +42,10 @@ final class HUDRowModelTests: XCTestCase {
             HUDRowModel(snapshot: waiting, now: atTheThreshold, layout: .standard).dismissal, .now)
     }
 
-    /// Turning the topic off is a change to what the row draws, so it has to be a change to
-    /// the model — otherwise the setting would appear not to work until the next event.
-    func testHidingTheTopicTakesTheNameOutOfTheModel() {
+    /// Taking the name out of the template is a change to what the row draws, so it has to be
+    /// a change to the model — otherwise the setting would appear not to work until the next
+    /// event.
+    func testATemplateWithoutTheNameLeavesTheModelWithoutOne() {
         let session = testSession(title: "Переписать ingress", lastObservedAt: now)
 
         XCTAssertEqual(

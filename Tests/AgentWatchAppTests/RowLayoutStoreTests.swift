@@ -51,37 +51,27 @@ final class RowLayoutStoreTests: XCTestCase {
         XCTAssertEqual(RowLayoutStore(preferences: preferences).layout, chosen)
     }
 
-    // MARK: - The setting this one replaces
+    // MARK: - What a launch writes
 
-    /// `showsSessionTopic` was a flag of its own, and the template subsumes it. It is carried
-    /// over exactly once, by the seeding every launch performs: a person who had switched the
-    /// topic off finds a template without the name, not a row that started showing it again.
-    func testATopicSwitchedOffBecomesATemplateWithoutTheName() throws {
+    /// The file says what the widget is going to do rather than leaving it to the source, so
+    /// the launch that finds no template writes the app's own out in full.
+    func testALaunchWithNoTemplateWritesTheAppsOwnOut() throws {
         let preferences = try isolatedPreferences()
-        preferences.set(false, forKey: "showsSessionTopic")
-        let store = RowLayoutStore(preferences: preferences)
-
-        preferences.seed(store.defaultValues)
-
-        XCTAssertFalse(store.layout.shows(.name))
-        XCTAssertEqual(store.layout.parts, [.timer, .lamp, .agent, .fault, .gap, .counters, .context])
-    }
-
-    func testATopicLeftOnBecomesTheOrdinaryTemplate() throws {
-        let preferences = try isolatedPreferences()
-        preferences.set(true, forKey: "showsSessionTopic")
         let store = RowLayoutStore(preferences: preferences)
 
         preferences.seed(store.defaultValues)
 
         XCTAssertEqual(store.layout, .standard)
+        XCTAssertEqual(
+            preferences.string(forKey: "rowLayout.parts"),
+            "timer,lamp,agent,fault,name,gap,counters,context"
+        )
     }
 
-    /// The carry-over happens once and never fights a template afterwards: seeding fills in
-    /// missing keys only, so a file that already holds one keeps it whatever the old flag says.
-    func testAnExistingTemplateIsNotOverruledByTheOldFlag() throws {
+    /// And a row somebody has arranged survives every launch after it: seeding fills in the
+    /// keys a file lacks and touches nothing it already holds.
+    func testATemplateInTheFileSurvivesTheNextLaunchsSeeding() throws {
         let preferences = try isolatedPreferences()
-        preferences.set(false, forKey: "showsSessionTopic")
         preferences.set("lamp,name,gap", forKey: "rowLayout.parts")
         let store = RowLayoutStore(preferences: preferences)
 

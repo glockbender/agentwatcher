@@ -11,10 +11,6 @@ import Foundation
 /// Nothing here refuses a file. Anything unreadable falls back to what the app would have
 /// drawn anyway, and `RowLayout`'s initialiser repairs the rest — see ADR-0011.
 final class RowLayoutStore: PreferenceDefaults {
-    /// The flag this store replaces. Read once, on the launch that fills in the template, and
-    /// never written — see `defaultValues`.
-    private static let retiredTopicKey = "showsSessionTopic"
-
     private enum Key {
         static let parts = "rowLayout.parts"
         static let flexible = "rowLayout.flexible"
@@ -57,22 +53,13 @@ final class RowLayoutStore: PreferenceDefaults {
         )
     }
 
-    /// Every key this store owns, at the value a file without them should get.
+    /// Every key this store owns, at the value a file without them should get: the row this
+    /// app draws when nobody has changed it.
     ///
-    /// This is where `showsSessionTopic` is carried over, and the seeding does the carrying:
-    /// it writes only the keys a file lacks, so the old flag decides the template exactly
-    /// once — on the first launch after the update — and never again. A file that already
-    /// holds a template keeps it, whatever the flag beside it still says.
+    /// Written whole, and written by the seeding, which fills in only the keys a file lacks —
+    /// so a row somebody has arranged is never written over on the next launch.
     var defaultValues: [String: JSONValue] {
-        let showedTopic = preferences.flag(forKey: Self.retiredTopicKey) ?? true
-        let layout =
-            showedTopic
-            ? RowLayout.standard
-            : RowLayout(
-                parts: RowLayout.standard.parts.filter { $0 != .name },
-                flexible: RowLayout.standard.flexible
-            )
-        return values(of: layout)
+        values(of: .standard)
     }
 
     func setLayout(_ layout: RowLayout) {

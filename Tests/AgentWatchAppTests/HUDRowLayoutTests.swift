@@ -328,9 +328,9 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertEqual(laidOut.layer?.backgroundColor?.alpha ?? 1, 0, accuracy: 0.001)
     }
 
-    /// The setting says "stop showing the topic". A card that showed it anyway would keep
-    /// exactly the promise the rows had just stopped keeping.
-    func testTurningTheTopicOffTakesTheNameOffTheCardToo() {
+    /// A template without the name says "stop naming the session". A card that named it
+    /// anyway would keep exactly the promise the rows had just stopped keeping.
+    func testATemplateWithoutTheNameTakesItOffTheCardToo() {
         let session = snapshot()
 
         let shown = hoverCardText(for: session, now: now, layout: .standard)

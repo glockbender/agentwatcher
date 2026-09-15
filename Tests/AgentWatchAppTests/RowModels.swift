@@ -17,6 +17,7 @@ func rowModels(
     }
 }
 
-/// The template a person gets by taking the name out — what the `Show Session Topic` menu
-/// line used to do, and what a settings file carrying that flag switched off is given once.
+/// The template a person gets by taking the name out. The one case worth its own name here:
+/// it is what the row and the hover card have to agree about — neither names a session the
+/// other has stopped naming.
 let layoutWithoutTheName = RowLayout(parts: RowLayout.standard.parts.filter { $0 != .name })
