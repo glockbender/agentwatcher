@@ -193,6 +193,39 @@ final class SessionHistoryStoreTests: XCTestCase {
         XCTAssertEqual(store.rememberedAgentProcesses, [], "nothing was written, so nothing is known")
     }
 
+    /// And a file written before a wait could name more than one dialog gives back its
+    /// sessions too — with no wait rather than a guessed one.
+    ///
+    /// The same rule as the pairings above and the same cost if it breaks: every remembered
+    /// row on the launch that upgrades. Which is why the field is optional; a required one
+    /// would have thrown here and taken the whole file with it. The wait itself does not come
+    /// back: the older file says who was asked in keys this version no longer reads, and a
+    /// wait restored without its owner is the bug the owner exists to stop.
+    func testAFileWrittenBeforeDialogsWereAListStillGivesBackItsSessions() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var session = testSession(phase: .waitingForUser, lastObservedAt: moment)
+        session.setAwaitedDialogs([AwaitedDialog(activityID: "call-1", kind: .approval)])
+
+        // The older shape: the two flat fields the wait used to be, and no list.
+        var older = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(session)) as? [String: Any]
+        )
+        XCTAssertNotNil(
+            older.removeValue(forKey: "awaitedDialogs"),
+            "the key has to be there to be taken away, or this test proves nothing"
+        )
+        older["awaitedActivityID"] = "call-1"
+        try JSONSerialization.data(withJSONObject: ["sessions": [older]])
+            .write(to: directory.appendingPathComponent("sessions-remembered.json"))
+
+        let store = SessionHistoryStore(directoryURL: directory)
+
+        XCTAssertEqual(store.remembered.map(\.id), [session.id])
+        XCTAssertEqual(store.remembered.first?.phase, .waitingForUser, "the file's own claim survives")
+        XCTAssertEqual(store.remembered.first?.unansweredDialogs, [], "and names nobody it cannot name")
+    }
+
     /// Read out of the file rather than off the object, because what is under test is whether
     /// the file was rewritten at all.
     private func storedAges(in directory: URL) throws -> [Date] {

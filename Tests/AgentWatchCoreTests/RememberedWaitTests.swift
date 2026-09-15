@@ -149,6 +149,20 @@ final class RememberedWaitTests: XCTestCase {
         )
     }
 
+    /// A wait naming no dialog at all is not a wait. It is what a memory file written before
+    /// the dialogs were recorded brings back, and there is nothing in it to ask the
+    /// transcript about — so the row keeps the answer that costs nothing.
+    func testAWaitThatNamesNoDialogIsDropped() {
+        let wait = SessionHistory.RememberedWait(dialogs: [], observedAt: waitedAt)
+
+        XCTAssertFalse(
+            SessionHistory.waitStillHolds(
+                wait,
+                evidence: SessionHistory.RememberedWaitEvidence(facts: [], dialogs: [])
+            )
+        )
+    }
+
     /// Every other phase is still left behind, for the reason it always was: a phase claiming
     /// work with no activities and an old age is what `SessionSilence` reports as a fault.
     func testNoOtherPhaseIsKept() {
