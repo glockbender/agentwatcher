@@ -47,9 +47,15 @@ enum MenuBarIconMetrics {
     static let emptyCellAlpha: CGFloat = 0.4
     /// One breath, the same length as the widget's lamp so the two read as one app.
     static let breathSeconds: TimeInterval = 1.4
-    /// What `NSStatusItem` adds around the image it is given. Measured across image widths
-    /// from 19 to 98 pt, and constant.
-    static let itemPadding: CGFloat = 16
+    /// How much wider than its drawing the status item is made.
+    ///
+    /// Left to itself `NSStatusItem` adds 16 pt around an image — measured, and constant from
+    /// 19 pt of image to 98. That is the right amount for an ordinary 22 pt glyph and far too
+    /// much for this one: the grid is wide already, so eight empty points on each side read as
+    /// a box drawn round the icon rather than as the gap to the next item. With the length set
+    /// here instead, one point a side leaves the spacing between items looking like every
+    /// other pair on the bar.
+    static let itemPadding: CGFloat = 2
 }
 
 /// One cell of the grid: a state, how many sessions are in it, and how it is drawn.

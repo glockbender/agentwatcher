@@ -200,7 +200,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
     /// Whether the status item shows the four counts rather than the plain app glyph.
     ///
     /// On unless it has been turned off, and that includes a copy updating into this version:
-    /// the key is missing there too. So the item grows from 22 pt to around 65 pt without
+    /// the key is missing there too. So the item grows from 22 pt to around 51 pt without
     /// anybody asking for it — deliberate, because a feature that exists to be seen is not
     /// served by a switch almost nobody would find, and one menu item turns it off.
     var showsMenuBarCounts: Bool {

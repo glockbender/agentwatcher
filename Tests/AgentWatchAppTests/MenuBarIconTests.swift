@@ -107,15 +107,24 @@ final class MenuBarIconTests: XCTestCase {
         )
     }
 
-    /// Three widths, and the item is 16 pt wider than each.
+    /// Three widths, and the item is two points wider than each.
     ///
     /// A column is as wide as the widest number in it, which is the cell above and the cell
     /// below. Measuring one of them clipped a "10" to "1(".
+    ///
+    /// The item's own width is here because it is a decision, not arithmetic: left to itself
+    /// the status item would add 16 pt, and eight empty points on each side of a grid this
+    /// wide read as a box around the icon rather than as the gap to the next item.
     func testTheGridWidensOnlyWhenAColumnReachesTwoDigits() {
-        XCTAssertEqual(drawing(needsPerson: 1, working: 1, done: 1, quiet: 1).size.width, 49)
-        XCTAssertEqual(drawing(needsPerson: 12, working: 3, done: 1, quiet: 1).size.width, 57)
-        XCTAssertEqual(drawing(needsPerson: 1, working: 1, done: 1, quiet: 10).size.width, 57)
-        XCTAssertEqual(drawing(needsPerson: 12, working: 10, done: 11, quiet: 9).size.width, 65)
+        let widths = [
+            drawing(needsPerson: 1, working: 1, done: 1, quiet: 1).size.width,
+            drawing(needsPerson: 12, working: 3, done: 1, quiet: 1).size.width,
+            drawing(needsPerson: 1, working: 1, done: 1, quiet: 10).size.width,
+            drawing(needsPerson: 12, working: 10, done: 11, quiet: 9).size.width,
+        ]
+
+        XCTAssertEqual(widths, [49, 57, 57, 65])
+        XCTAssertEqual(widths.map { $0 + MenuBarIconMetrics.itemPadding }, [51, 59, 59, 67])
     }
 
     /// The deployment floor is older than the machine these symbols were measured on, so a
