@@ -21,9 +21,21 @@ import Foundation
 /// honest summary: that comes from `SubagentStart` / `SubagentStop`, which are not tool calls
 /// and pass through untouched.
 ///
-/// This is the only place the question can be asked at all. The hook payload carries the
+/// This was the only place the question could be asked at all. The hook payload carries the
 /// transcript path, and a path never crosses the socket (ADR-0001), so the
-/// app on the other side has nothing to tell one caller's tool call from another's.
+/// app on the other side had nothing to tell one caller's tool call from another's.
+///
+/// **Both halves of that have since stopped being true, and this now answers `false` every
+/// time.** Measured on 2.1.272: a subagent's hook carries the *parent's* `transcript_path`,
+/// identical to the main thread's, and its own file arrives as `agent_transcript_path` on
+/// `SubagentStop` alone — so the path test below recognises nobody. And point 2 above no
+/// longer holds either: `PostToolUse` does arrive from a subagent now, carrying the same
+/// `agent_id` as its `PreToolUse`, so such a call ends like any other.
+///
+/// Left in place rather than deleted, because deleting it is a decision about what a row
+/// should count, not a tidy-up: `agent_id` now reaches the app on every hook, so the question
+/// this type exists for can be asked there, where the answer can also be undone. See
+/// `docs/architecture.md` §9 and `docs/agent-integration.md` §1в.
 public enum SubagentToolCall {
     /// The events that say a tool call started or ended.
     ///
