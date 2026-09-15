@@ -102,6 +102,12 @@ final class HookIngressController {
         if let activityID = event.activityID {
             parts.append(activityID)
         }
+        // Which subagent it came from, when it came from one. A session running several at
+        // once produces one dialog and a stream of unrelated calls around it, and this is
+        // what says which of them belong together.
+        if let agentID = event.agentID {
+            parts.append("from \(agentID)")
+        }
         return parts.joined(separator: " · ")
     }
 }

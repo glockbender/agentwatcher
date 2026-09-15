@@ -230,7 +230,7 @@ final class SessionReducerTests: XCTestCase {
     func testUserInputRequestRaisesAttention() {
         let result = SessionReducer.reduce(
             snapshot(),
-            event: .userInputRequired(reason: .approval, activityID: nil, at: start)
+            event: .userInputRequired(reason: .approval, activityID: nil, agentID: nil, at: start)
         )
 
         XCTAssertEqual(result.phase, .waitingForUser)
@@ -260,10 +260,14 @@ final class SessionReducerTests: XCTestCase {
         XCTAssertEqual(result.lastObservedAt, observedAt)
     }
 
-    /// A new call starting is the main exit from a wait: the turn is paused while a person
-    /// is being asked, so nothing new is issued until they answer. The awaited id is set
-    /// here to the value a real permission request would have recorded, so the test would
-    /// fail if that guard were ever extended to cover starts as well.
+    /// A new call starting is the main exit from a wait: the agent being asked is paused, so
+    /// it issues nothing new until it is answered. This is the main thread's own dialog —
+    /// the case Codex also has, since its hooks name no agent — and there the exit is
+    /// unchanged. A start by *another* agent is `testOnlyTheAgentThatWasAskedCanEndItsOwnWait`.
+    ///
+    /// The awaited id is set here to the value a real permission request would have
+    /// recorded, so the test would fail if the completion guard were ever extended to cover
+    /// starts as well.
     func testStartingActivityResumesAfterPermissionRequest() {
         var waiting = snapshot(phase: .waitingForUser)
         waiting.awaitedActivityID = "bash-1"
@@ -297,7 +301,7 @@ final class SessionReducerTests: XCTestCase {
         )
         waiting = SessionReducer.reduce(
             waiting,
-            event: .userInputRequired(reason: .selection, activityID: "asked", at: start)
+            event: .userInputRequired(reason: .selection, activityID: "asked", agentID: nil, at: start)
         )
 
         let unrelated = SessionReducer.reduce(
@@ -380,7 +384,7 @@ final class SessionReducerTests: XCTestCase {
 
         let asked = SessionReducer.reduce(
             session,
-            event: .userInputRequired(reason: .approval, activityID: nil, at: start)
+            event: .userInputRequired(reason: .approval, activityID: nil, agentID: nil, at: start)
         )
 
         XCTAssertEqual(asked.awaitedActivityID, "bash-1")
@@ -554,6 +558,86 @@ final class SessionReducerTests: XCTestCase {
             event: .activityFailed(id: "bash-1", at: start)
         )
         XCTAssertTrue(failed.activities.isEmpty, "a call that was refused started nothing to outlive it")
+    }
+
+    /// Measured on 2.1.272: every hook fired from inside a subagent carries `agent_id`, and
+    /// the main thread's hooks carry none. So a dialog has an owner, and only its owner's
+    /// events say anything about it.
+    ///
+    /// The sequence is a real one, from the evening the row was wrong: a subagent asked for
+    /// permission at 19:48:09, a second subagent started a call one second later, the main
+    /// turn ended at 19:58:54 and was given a new prompt — and the dialog was still on screen
+    /// through all of it. Every one of those three used to end the wait.
+    func testOnlyTheAgentThatWasAskedCanEndItsOwnWait() {
+        var session = SessionSnapshot(
+            id: "session",
+            source: .claude,
+            arrivalIndex: 0,
+            title: "Session",
+            phase: .executing,
+            lastObservedAt: start
+        )
+        session = SessionReducer.reduce(
+            session,
+            event: .activityStarted(subagent(id: "reviewer-a"), at: start)
+        )
+        session = SessionReducer.reduce(
+            session,
+            event: .activityStarted(call(id: "a-bash", owner: "reviewer-a"), at: start.addingTimeInterval(1))
+        )
+
+        let asked = SessionReducer.reduce(
+            session,
+            event: .userInputRequired(
+                reason: .approval,
+                activityID: nil,
+                agentID: "reviewer-a",
+                at: start.addingTimeInterval(2)
+            )
+        )
+
+        XCTAssertEqual(asked.phase, .waitingForUser)
+        XCTAssertEqual(asked.awaitedAgentID, "reviewer-a")
+        XCTAssertEqual(
+            asked.awaitedActivityID,
+            "a-bash",
+            "the call being asked about is the asking agent's own last one, not the session's"
+        )
+
+        let elsewhere = SessionReducer.reduce(
+            asked,
+            event: .activityStarted(call(id: "b-bash", owner: "reviewer-b"), at: start.addingTimeInterval(3))
+        )
+
+        XCTAssertEqual(elsewhere.phase, .waitingForUser, "another subagent works on while this one is blocked")
+
+        let mainTurnEnded = SessionReducer.reduce(elsewhere, event: .turnCompleted(at: start.addingTimeInterval(4)))
+
+        XCTAssertEqual(mainTurnEnded.phase, .waitingForUser, "the main turn ending is not an answer to a child")
+
+        let nextPrompt = SessionReducer.reduce(
+            mainTurnEnded,
+            event: .turnStarted(mode: .standard, at: start.addingTimeInterval(5))
+        )
+
+        XCTAssertEqual(nextPrompt.phase, .waitingForUser, "a person can type while the dialog is still up")
+
+        let released = SessionReducer.reduce(
+            nextPrompt,
+            event: .activityCompleted(id: "reviewer-a", at: start.addingTimeInterval(6))
+        )
+
+        XCTAssertEqual(released.phase, .executing, "`SubagentStop` for the owner ends what nothing else could")
+        XCTAssertNil(released.awaitedAgentID)
+        XCTAssertNil(released.awaitedActivityID)
+    }
+
+    private func subagent(id: String) -> SessionActivity {
+        SessionActivity(id: id, kind: .subagent, startedAt: start, outlivesTurn: true)
+    }
+
+    private func call(id: String, owner: String?) -> SessionActivity {
+        SessionActivity(id: id, kind: .shell, startedAt: start, parentID: owner)
     }
 
     private func backgroundActivity(id: String) -> SessionActivity {

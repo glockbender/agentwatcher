@@ -74,6 +74,11 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
     /// shell. See `SessionActivity.outlivesItsCall`.
     public let activityOutlivesItsCall: Bool
     public let userInputRequestKind: UserInputRequestKind?
+    /// The subagent this hook fired from inside, or `nil` for the session's main thread.
+    ///
+    /// On every event, because every hook carries it. See `SessionSnapshot.awaitedAgentID`
+    /// for what it is for and the measurement behind it.
+    public let agentID: String?
     public let agentProcessID: Int32?
     public let clientKind: SessionClientKind?
     public let contextTelemetry: SessionContextTelemetry?
@@ -107,6 +112,7 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
         activityOutlivesTurn: Bool = false,
         activityOutlivesItsCall: Bool = false,
         userInputRequestKind: UserInputRequestKind? = nil,
+        agentID: String? = nil,
         agentProcessID: Int32? = nil,
         clientKind: SessionClientKind? = nil,
         contextTelemetry: SessionContextTelemetry? = nil,
@@ -127,6 +133,7 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
         self.activityOutlivesTurn = activityOutlivesTurn
         self.activityOutlivesItsCall = activityOutlivesItsCall
         self.userInputRequestKind = userInputRequestKind
+        self.agentID = agentID
         self.agentProcessID = agentProcessID
         self.clientKind = clientKind
         self.contextTelemetry = contextTelemetry
@@ -354,6 +361,12 @@ public enum HookEventNormalizer {
 
         let mode = sessionMode(from: string("permission_mode", in: fields))
         let forkedFromSessionID = string("forked_from_session_id", in: fields)
+        // Measured on Claude Code 2.1.272: every hook fired from inside a subagent carries
+        // `agent_id`, the main thread's carry none, and the field's own description names
+        // this as its purpose. Read once here rather than in the branches that want it,
+        // because the two that want it most — `PreToolUse` and `PermissionRequest` — are not
+        // the two that already read it.
+        let declaredAgentID = string("agent_id", in: fields)
         // Everything every branch has in common, filled once. Spelling out seven identical
         // arguments a dozen times over is where a field quietly stops being copied — the same
         // reason `SessionDescription` groups its four.
@@ -381,6 +394,12 @@ public enum HookEventNormalizer {
                 activityOutlivesTurn: outlivesTurn,
                 activityOutlivesItsCall: outlivesItsCall,
                 userInputRequestKind: userInputRequestKind,
+                // Nothing is its own parent. `SubagentStart` and `SubagentStop` report the
+                // subagent's own `agent_id`, and that same value is what its activity is
+                // identified by — so the one case where the two are equal is the subagent
+                // itself, and it belongs to whoever spawned it, not to itself. (What a
+                // subagent nested inside another reports is not measured.)
+                agentID: declaredAgentID == activityID ? nil : declaredAgentID,
                 agentProcessID: agentProcessID,
                 clientKind: clientKind,
                 contextTelemetry: contextTelemetry,

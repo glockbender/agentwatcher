@@ -34,6 +34,81 @@ final class EventProtocolTests: XCTestCase {
         return try HookIngressProcessor.normalize(request, observedAt: start).activityKind
     }
 
+    /// The identifier that tells a subagent's call from the main thread's, end to end.
+    ///
+    /// Through `HookIngressProcessor` rather than the normalizer directly, because
+    /// `agent_id` is hashed on the way in — twice, once by the sender and once by the app —
+    /// and what this test is actually about is that the two hooks still agree afterwards.
+    /// The subagent's own activity is identified by its `agent_id`, and the calls it makes
+    /// name that same value as their parent; asserting on raw strings would prove neither.
+    ///
+    /// Measured on Claude Code 2.1.272: `agent_id` is present on every hook fired from
+    /// inside a subagent and absent on the main thread's.
+    func testASubagentsCallsNameTheSubagentTheyBelongTo() throws {
+        let subagentStarted = try HookIngressProcessor.normalize(
+            HookIngressRequest(
+                source: .claude,
+                declaredEvent: "SubagentStart",
+                payload: .object([
+                    "session_id": .string("session"),
+                    "agent_id": .string("agent-a"),
+                ])
+            ),
+            observedAt: start
+        )
+        let itsCall = try HookIngressProcessor.normalize(
+            HookIngressRequest(
+                source: .claude,
+                declaredEvent: "PreToolUse",
+                payload: .object([
+                    "session_id": .string("session"),
+                    "agent_id": .string("agent-a"),
+                    "tool_use_id": .string("tool"),
+                    "tool_name": .string("Bash"),
+                ])
+            ),
+            observedAt: start
+        )
+        let mainThreadCall = try HookIngressProcessor.normalize(
+            HookIngressRequest(
+                source: .claude,
+                declaredEvent: "PreToolUse",
+                payload: .object([
+                    "session_id": .string("session"),
+                    "tool_use_id": .string("tool"),
+                    "tool_name": .string("Bash"),
+                ])
+            ),
+            observedAt: start
+        )
+
+        XCTAssertEqual(
+            itsCall.agentID,
+            subagentStarted.activityID,
+            "a call made inside a subagent names the very activity that subagent is"
+        )
+        XCTAssertNil(mainThreadCall.agentID, "the main thread's hooks carry no agent of their own")
+    }
+
+    /// `SubagentStart` reports the subagent's own `agent_id`, which is also what its activity
+    /// is identified by — so read blindly it would come out as its own parent. Nothing owns
+    /// itself. (What a subagent nested inside another reports is not measured.)
+    func testTheSubagentActivityIsNotItsOwnParent() throws {
+        let started = try HookIngressProcessor.normalize(
+            HookIngressRequest(
+                source: .claude,
+                declaredEvent: "SubagentStart",
+                payload: .object([
+                    "session_id": .string("session"),
+                    "agent_id": .string("agent-a"),
+                ])
+            ),
+            observedAt: start
+        )
+
+        XCTAssertNil(started.agentID)
+    }
+
     private let start = Date(timeIntervalSince1970: 2_000)
 
     func testClaudeFixtureNormalizesEachLifecycleTransition() throws {

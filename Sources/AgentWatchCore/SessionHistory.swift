@@ -71,6 +71,7 @@ public enum SessionHistory {
             remembered.discoveredProcess = nil
             remembered.phase = .waitingForUser
             remembered.awaitedActivityID = awaiting.awaitedActivityID
+            remembered.awaitedAgentID = awaiting.awaitedAgentID
             remembered.userInputRequestKind = awaiting.kind
             return remembered
         }
@@ -92,6 +93,7 @@ public enum SessionHistory {
         guard snapshot.phase == .waitingForUser else {
             remembered.phase = .disconnected
             remembered.awaitedActivityID = nil
+            remembered.awaitedAgentID = nil
             remembered.userInputRequestKind = nil
             return remembered
         }
@@ -102,12 +104,22 @@ public enum SessionHistory {
     /// whether it still holds.
     public struct RememberedWait: Equatable, Sendable {
         public let awaitedActivityID: String?
+        /// Which agent was asked, carried across the restart with the call. Without it the
+        /// wait would come back belonging to the main thread, and the next call by any other
+        /// subagent would read as its answer.
+        public let awaitedAgentID: String?
         public let kind: UserInputRequestKind?
         /// When the session was last heard from, used to reject older interruptions.
         public let observedAt: Date
 
-        public init(awaitedActivityID: String?, kind: UserInputRequestKind?, observedAt: Date) {
+        public init(
+            awaitedActivityID: String?,
+            awaitedAgentID: String? = nil,
+            kind: UserInputRequestKind?,
+            observedAt: Date
+        ) {
             self.awaitedActivityID = awaitedActivityID
+            self.awaitedAgentID = awaitedAgentID
             self.kind = kind
             self.observedAt = observedAt
         }

@@ -246,7 +246,20 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     /// Without it any finishing tool cleared the wait, and a session blocked on a permission
     /// dialog went back to reading as `working` the moment an unrelated parallel tool
     /// returned — losing the one signal this widget exists to deliver.
+    ///
+    /// Half of the answer; `awaitedAgentID` below is the other half, and the two are always
+    /// set and cleared together.
     public var awaitedActivityID: String?
+    /// Which agent the dialog belongs to, or `nil` for the session's main thread.
+    ///
+    /// Measured on Claude Code 2.1.272: every hook fired from inside a subagent carries
+    /// `agent_id`, and the main thread's carry none — so the owner is a fact, not a guess.
+    /// It is what `awaitedActivityID` could not answer on its own: the awaited call ends by
+    /// its own identity, but a *different* agent starting a call, the main turn ending, and
+    /// the next prompt all used to read as an answer to somebody else's dialog.
+    ///
+    /// Optional for the reason `discoveredProcess` gives.
+    public var awaitedAgentID: String?
     public var activities: [SessionActivity]
     public var lastObservedAt: Date
     public var agentProcessID: Int32?
@@ -375,6 +388,7 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
         phase: SessionPhase = .idle,
         userInputRequestKind: UserInputRequestKind? = nil,
         awaitedActivityID: String? = nil,
+        awaitedAgentID: String? = nil,
         activities: [SessionActivity] = [],
         lastObservedAt: Date,
         agentProcessID: Int32? = nil,
@@ -397,6 +411,7 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
         self.phase = phase
         self.userInputRequestKind = userInputRequestKind
         self.awaitedActivityID = awaitedActivityID
+        self.awaitedAgentID = awaitedAgentID
         self.activities = activities
         self.lastObservedAt = lastObservedAt
         self.agentProcessID = agentProcessID

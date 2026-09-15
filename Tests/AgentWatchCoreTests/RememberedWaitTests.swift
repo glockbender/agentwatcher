@@ -302,6 +302,36 @@ final class RememberedWaitTests: XCTestCase {
         XCTAssertEqual(engine.snapshots["claude:abc"]?.phase, .disconnected, "and the row is where it was")
     }
 
+    /// A dialog belongs to one agent, and a restart that forgot which would hand the wait to
+    /// the main thread: the next call by any other subagent would then read as the answer,
+    /// which is the whole bug this owner exists to prevent — reintroduced by a restart.
+    func testARestartRemembersWhichAgentTheDialogBelongsTo() throws {
+        var waiting = self.waiting()
+        waiting.awaitedAgentID = "reviewer-a"
+
+        let kept = SessionHistory.remembered(waiting)
+        XCTAssertEqual(kept.awaitedAgentID, "reviewer-a")
+
+        var engine = SessionStateEngine()
+        engine.restore([kept])
+
+        XCTAssertEqual(
+            engine.rememberedWaitsAwaitingEvidence["claude:abc"]?.awaitedAgentID,
+            "reviewer-a",
+            "the owner is set aside with the wait, not thrown away"
+        )
+
+        let restored = try XCTUnwrap(
+            engine.confirmRememberedWait(
+                forSessionWithID: "claude:abc",
+                evidence: SessionHistory.RememberedWaitEvidence(facts: [], awaitedActivityID: "call-1")
+            )
+        )
+
+        XCTAssertEqual(restored.phase, .waitingForUser)
+        XCTAssertEqual(restored.awaitedAgentID, "reviewer-a")
+    }
+
     private func waiting() -> SessionSnapshot {
         SessionSnapshot(
             id: "claude:abc",

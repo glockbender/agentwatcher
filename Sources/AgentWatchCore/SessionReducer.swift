@@ -22,7 +22,14 @@ public enum SessionEvent: Equatable, Sendable {
     /// `TranscriptFact.workEnded`, and the only observation of that moment there is.
     case workEnded(id: String, at: Date)
     case activityFailed(id: String, at: Date)
-    case userInputRequired(reason: UserInputRequestKind, activityID: String?, at: Date)
+    /// Somebody is being asked something. `agentID` names which agent was asked — `nil` for
+    /// the session's main thread — and `activityID` the call, when the hook gave one.
+    case userInputRequired(
+        reason: UserInputRequestKind,
+        activityID: String?,
+        agentID: String?,
+        at: Date
+    )
     /// The dialog the session was waiting on is gone — answered, or dismissed.
     ///
     /// Deliberately not "the person said yes": what is observed is that nothing is being
@@ -57,7 +64,7 @@ public enum SessionReducer {
             next.mode = mode ?? .unknown
             next.phase = .idle
             next.userInputRequestKind = nil
-            next.awaitedActivityID = nil
+            next.clearAwaited()
             next.activities = []
             // Nothing reported rather than nothing running — see `turnStarted` below, where
             // the difference between the two is spelled out.
@@ -103,9 +110,14 @@ public enum SessionReducer {
             // `unknown` is not `standard`. A turn whose mode nobody stated is still work in
             // progress, and calling it planning would be a claim; `executing` says only what
             // is known — a turn is running.
-            next.phase = mode == .plan ? .planning : .executing
-            next.userInputRequestKind = nil
-            next.awaitedActivityID = nil
+            // Only the main thread's own dialog. A person can type a new prompt while a
+            // subagent's permission dialog is still on screen — measured that evening, at
+            // 19:56 — and doing so answers nothing.
+            if next.awaitedAgentID == nil {
+                next.phase = mode == .plan ? .planning : .executing
+                next.userInputRequestKind = nil
+                next.clearAwaited()
+            }
             next.lastObservedAt = observedAt
 
         case let .modeChanged(mode, observedAt):
@@ -119,16 +131,23 @@ public enum SessionReducer {
             next.activities.removeAll { $0.id == activity.id }
             next.activities.append(activity)
             // A *new* call starting does end a wait, and it is the exit that matters most:
-            // the turn is paused while a person is being asked, so nothing new is issued
-            // until they answer. Calls already in flight keep completing — that is why a
-            // completion is checked against the awaited id below and a start is not.
+            // the agent being asked is paused, so it issues nothing new until it is
+            // answered. Calls already in flight keep completing — that is why a completion
+            // is checked against the awaited id below and a start is not.
             //
             // Without this exit a session whose awaited completion never arrived — the app
             // was down for a moment, and hooks are fail-open by design — stayed at an urgent
             // blinking lamp forever, with nothing to sweep it and no way to dismiss it.
-            next.phase = next.mode == .plan ? .planning : .executing
-            next.userInputRequestKind = nil
-            next.awaitedActivityID = nil
+            //
+            // *The agent being asked*, not the session: a second subagent goes on working
+            // while the first one waits, and its calls say nothing about a dialog it never
+            // saw. That is what put the row back to `working` one second after the dialog
+            // opened.
+            if activity.parentID == next.awaitedAgentID {
+                next.phase = next.mode == .plan ? .planning : .executing
+                next.userInputRequestKind = nil
+                next.clearAwaited()
+            }
             next.lastObservedAt = observedAt
 
         case let .activityObserved(activity, observedAt):
@@ -162,20 +181,28 @@ public enum SessionReducer {
             endWait(&next, forActivity: id, at: observedAt)
             next.lastObservedAt = observedAt
 
-        case let .userInputRequired(reason, activityID, observedAt):
+        case let .userInputRequired(reason, activityID, agentID, observedAt):
             next.phase = .waitingForUser
             next.userInputRequestKind = reason
-            // A permission request names no tool of its own, but it always follows the start
-            // of the call it is asking about — so the most recent activity is the one being
-            // waited on. An inference, but from event order, not from any model's words.
-            next.awaitedActivityID = activityID ?? next.activities.last?.id
+            next.awaitedAgentID = agentID
+            // A permission request names no tool of its own — measured on 2.1.272, it is the
+            // one tool hook with no `tool_use_id` — but it always follows the start of the
+            // call it is asking about, in that same agent. So the asking agent's most recent
+            // call is the one being waited on. An inference, but from event order, not from
+            // any model's words.
+            //
+            // Filtered by owner, because the session's own last call belongs to whichever
+            // agent happened to speak last, which on a session running several subagents is
+            // almost never the one being asked.
+            next.awaitedActivityID =
+                activityID ?? next.activities.last { $0.parentID == agentID }?.id
             next.lastObservedAt = observedAt
 
         case let .userInputResolved(observedAt):
             if next.phase == .waitingForUser {
                 next.phase = next.mode == .plan ? .planning : .executing
                 next.userInputRequestKind = nil
-                next.awaitedActivityID = nil
+                next.clearAwaited()
             }
             next.lastObservedAt = observedAt
 
@@ -189,9 +216,15 @@ public enum SessionReducer {
             // not `PostToolUse` — so the session showed subagents it never had and claimed to
             // be waiting for subtasks while it was in fact waiting for a person.
             next.activities.removeAll { !$0.outlivesTurn }
-            next.phase = next.activities.isEmpty ? .completed : .waitingForChildren
-            next.userInputRequestKind = nil
-            next.awaitedActivityID = nil
+            // A subagent's dialog outlives the turn that spawned it, and `Stop` is the main
+            // thread's own event — it answers nothing that was asked of a child. Its wait is
+            // released by that child's own `SubagentStop`, by the ending of the call being
+            // asked about, or by Claude Code's session record (ADR-0010).
+            if next.awaitedAgentID == nil {
+                next.phase = next.activities.isEmpty ? .completed : .waitingForChildren
+                next.userInputRequestKind = nil
+                next.clearAwaited()
+            }
             next.lastObservedAt = observedAt
 
         case let .backgroundWorkReported(kinds, observedAt):
@@ -210,23 +243,23 @@ public enum SessionReducer {
             next.activities.removeAll()
             next.phase = .idle
             next.userInputRequestKind = nil
-            next.awaitedActivityID = nil
+            next.clearAwaited()
             next.lastObservedAt = observedAt
 
         case let .failed(observedAt):
             next.phase = .failed
-            next.awaitedActivityID = nil
+            next.clearAwaited()
             next.lastObservedAt = observedAt
 
         case let .disconnected(observedAt):
             next.phase = .disconnected
-            next.awaitedActivityID = nil
+            next.clearAwaited()
             next.lastObservedAt = observedAt
 
         case let .sessionClosed(observedAt):
             next.phase = .sessionClosed
             next.userInputRequestKind = nil
-            next.awaitedActivityID = nil
+            next.clearAwaited()
             next.activities = []
             next.backgroundWork = nil
             next.lastObservedAt = observedAt
@@ -258,19 +291,34 @@ public enum SessionReducer {
     }
 
     private static func endWait(_ next: inout SessionSnapshot, forActivity id: String, at: Date) {
+        // The asked agent itself ending — `SubagentStop` — releases the wait whatever became
+        // of the call. It is the only release left for a subagent whose dialog was dismissed
+        // rather than answered, now that the main thread's own events no longer speak for it.
+        let ownerEnded = next.awaitedAgentID != nil && next.awaitedAgentID == id
         if next.phase == .waitingForUser,
             // Without an identity, a late ending from a previous turn cannot answer this
             // dialog. Named calls still close out of order by their own identity.
-            (next.awaitedActivityID != nil || at >= next.lastObservedAt),
-            activityEndsWait(awaitedActivityID: next.awaitedActivityID, endingActivityID: id)
+            ownerEnded || (next.awaitedActivityID != nil || at >= next.lastObservedAt),
+            ownerEnded || activityEndsWait(awaitedActivityID: next.awaitedActivityID, endingActivityID: id)
         {
             next.phase = next.mode == .plan ? .planning : .executing
             next.userInputRequestKind = nil
-            next.awaitedActivityID = nil
+            next.clearAwaited()
         } else if next.phase == .waitingForChildren && next.activities.isEmpty {
             // The turn ended before this child did — that is the only way into
             // `waitingForChildren` — so the session is finished, not back at work.
             next.phase = .completed
         }
+    }
+}
+
+extension SessionSnapshot {
+    /// Forgets the dialog: which call it was about and which agent was asked.
+    ///
+    /// One call rather than two assignments, because the two are one fact and a site that
+    /// cleared only the first left a wait that could never be matched again.
+    fileprivate mutating func clearAwaited() {
+        awaitedActivityID = nil
+        awaitedAgentID = nil
     }
 }

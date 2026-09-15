@@ -317,6 +317,10 @@ public struct SessionStateEngine: Sendable {
                 id: event.activityID ?? "unknown-activity",
                 kind: event.activityKind ?? .tool,
                 startedAt: event.observedAt,
+                // Which agent made this call, when it was not the session's main thread.
+                // It is what lets a permission dialog belong to one subagent while the
+                // others go on working: see `SessionSnapshot.awaitedAgentID`.
+                parentID: event.agentID,
                 outlivesTurn: event.activityOutlivesTurn,
                 outlivesItsCall: event.activityOutlivesItsCall
             )
@@ -337,6 +341,7 @@ public struct SessionStateEngine: Sendable {
                 event: .userInputRequired(
                     reason: event.userInputRequestKind ?? .approval,
                     activityID: event.activityID,
+                    agentID: event.agentID,
                     at: event.observedAt
                 )
             )
@@ -764,11 +769,13 @@ public struct SessionStateEngine: Sendable {
                 if restored.phase == .waitingForUser {
                     rememberedWaits[restored.id] = SessionHistory.RememberedWait(
                         awaitedActivityID: restored.awaitedActivityID,
+                        awaitedAgentID: restored.awaitedAgentID,
                         kind: restored.userInputRequestKind,
                         observedAt: restored.lastObservedAt
                     )
                     restored.phase = .disconnected
                     restored.awaitedActivityID = nil
+                    restored.awaitedAgentID = nil
                     restored.userInputRequestKind = nil
                 }
                 // Its own place, unless the engine has already handed that index out. The list
@@ -824,6 +831,7 @@ public struct SessionStateEngine: Sendable {
         }
         snapshot.phase = .waitingForUser
         snapshot.awaitedActivityID = wait.awaitedActivityID
+        snapshot.awaitedAgentID = wait.awaitedAgentID
         snapshot.userInputRequestKind = wait.kind
         snapshots[id] = snapshot
         return snapshot
