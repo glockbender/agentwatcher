@@ -13,7 +13,9 @@ final class WidgetShortcutController {
         /// Nobody has set one, or it was cleared.
         case none
         case active(WidgetShortcut)
-        case taken(WidgetShortcut)
+        /// Registered twice over without being taken down in between — this application's own
+        /// fault, never another application's. See `ShortcutRegistrationOutcome.alreadyOurs`.
+        case alreadyOurs(WidgetShortcut)
         case refused(WidgetShortcut, code: Int32)
     }
 
@@ -42,8 +44,8 @@ final class WidgetShortcutController {
     private let registrar: GlobalShortcutRegistering
     private let onToggle: () -> Void
     /// What is actually in the system's table right now, which is not the same as what the
-    /// setting says: a combination another application owns stays in the setting and never
-    /// reaches the table.
+    /// setting says: a combination the machine refused stays in the setting and never reaches
+    /// the table.
     private var registered: WidgetShortcut?
 
     init(
@@ -96,8 +98,8 @@ final class WidgetShortcutController {
         case .registered:
             registered = shortcut
             status = .active(shortcut)
-        case .taken:
-            status = .taken(shortcut)
+        case .alreadyOurs:
+            status = .alreadyOurs(shortcut)
         case let .refused(code):
             status = .refused(shortcut, code: code)
         }

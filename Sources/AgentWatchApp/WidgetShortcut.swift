@@ -32,11 +32,19 @@ struct WidgetShortcut: Equatable {
 
     /// Nothing is accepted that this app cannot name and cannot hand to a menu.
     ///
-    /// Both halves matter. Without a modifier the combination would be a bare key taken from
-    /// every application on the machine — press `w` in any editor and the widget would vanish
-    /// instead of a `w` being typed. Without a name there is nothing to print in the settings
+    /// Both halves matter. Without a modifier the combination would be a bare key, and the
+    /// handler fires wherever it is pressed — the widget would appear and vanish on every `w`
+    /// typed anywhere on the machine. Without a name there is nothing to print in the settings
     /// row or beside the menu line, and a shortcut a person cannot read back is one they cannot
     /// change on purpose.
+    ///
+    /// The modifier is this app's rule, not the system's: `RegisterEventHotKey` takes a bare
+    /// `F5` and answers `noErr` — measured. An F-key would be a fair thing to allow, since
+    /// nobody types one into a document. It is refused anyway, so that the sentence under the
+    /// recorder is one rule with no exception to explain. `fn` cannot be part of that exception
+    /// either way: Carbon's modifier mask has bits for `⌘⇧⌥⌃` and the right-hand halves of
+    /// them, and none for `fn`. What `fn` decides is which event the hardware produces at all —
+    /// `F5` or screen brightness — before any of this is reached.
     init?(keyCode: UInt16, modifiers: Modifiers) {
         guard !modifiers.isEmpty, let key = Self.keys[keyCode] else {
             return nil

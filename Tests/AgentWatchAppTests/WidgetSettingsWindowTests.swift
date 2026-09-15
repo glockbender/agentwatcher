@@ -167,10 +167,13 @@ final class WidgetSettingsWindowTests: XCTestCase {
 
     /// The control that cannot do its job stays where it is and says why — hiding it would
     /// leave the person with a widget that ignores the combination they can still see set.
-    func testACombinationAnotherApplicationOwnsIsExplainedRatherThanHidden() throws {
-        let (controller, _, _, _) = try makeWindow(answer: .taken)
+    func testARegistrationThatDidNotTakeIsExplainedRatherThanHidden() throws {
+        let (controller, _, _, _) = try makeWindow(answer: .alreadyOurs)
 
-        XCTAssertEqual(controller.shortcutStatusLabel?.stringValue, shortcutStatusLine(.taken(try optionCommandW())))
+        XCTAssertEqual(
+            controller.shortcutStatusLabel?.stringValue,
+            shortcutStatusLine(.alreadyOurs(try optionCommandW()))
+        )
         XCTAssertTrue(controller.shortcutRecorder?.isEnabled == true, "the way out is to record another")
     }
 
@@ -181,7 +184,7 @@ final class WidgetSettingsWindowTests: XCTestCase {
         recorder.startRecording()
         recorder.keyDown(with: try press(keyCode: 13, flags: []))
 
-        XCTAssertEqual(controller.shortcutStatusLabel?.stringValue, shortcutRefusedPress)
+        XCTAssertEqual(controller.shortcutStatusLabel?.stringValue, shortcutAcceptedKeys)
     }
 
     /// The old combination is still registered while a new one is being chosen. Left live, it
@@ -216,6 +219,32 @@ final class WidgetSettingsWindowTests: XCTestCase {
         recorder.keyDown(with: try press(keyCode: 13, flags: []))
 
         XCTAssertTrue(shortcuts.isMuted)
+    }
+
+    /// The window measures itself once, at construction, from the text the status line happens
+    /// to hold then. Every other sentence it can show has to fit in that same room — the longest
+    /// is the one about which keys are accepted, and it is three times the length of the one the
+    /// window opens with.
+    func testTheStatusLineHasRoomForTheLongestThingItCanSay() throws {
+        let (controller, _, _, _) = try makeWindow()
+        let label = try XCTUnwrap(controller.shortcutStatusLabel)
+        let shortcut = try optionCommandW()
+        try XCTUnwrap(controller.window?.contentView).layoutSubtreeIfNeeded()
+        let room = label.frame.height
+
+        for line in [
+            shortcutAcceptedKeys,
+            shortcutStatusLine(.none),
+            shortcutStatusLine(.active(shortcut)),
+            shortcutStatusLine(.alreadyOurs(shortcut)),
+            shortcutStatusLine(.refused(shortcut, code: -9878)),
+        ] {
+            label.stringValue = line
+            let needed = label.sizeThatFits(
+                NSSize(width: label.frame.width, height: .greatestFiniteMagnitude)
+            ).height
+            XCTAssertLessThanOrEqual(needed, room, "no room for: \(line)")
+        }
     }
 
     private func optionCommandW() throws -> WidgetShortcut {

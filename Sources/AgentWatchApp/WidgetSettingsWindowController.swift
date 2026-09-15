@@ -220,6 +220,7 @@ final class WidgetSettingsWindowController: NSWindowController {
         // A fixed width so the row does not jump about between "Click to record" and "⌥⌘W",
         // which are nowhere near the same length.
         recorder.widthAnchor.constraint(equalToConstant: 168).isActive = true
+        recorder.toolTip = shortcutAcceptedKeys
         recorder.onRecording = { [weak self] recording in
             self?.shortcutRecorded(recording)
         }
@@ -244,6 +245,17 @@ final class WidgetSettingsWindowController: NSWindowController {
         // and a person who cannot read the end of it learns nothing.
         label.preferredMaxLayoutWidth = width
         label.widthAnchor.constraint(equalToConstant: width).isActive = true
+        // Room for the longest sentence, measured rather than guessed at, and fixed so that the
+        // window does not resize itself under the pointer every time the status changes.
+        let tallest = shortcutEveryStatusLine().reduce(CGFloat(0)) { tallest, line in
+            label.stringValue = line
+            let needed = label.sizeThatFits(
+                NSSize(width: width, height: .greatestFiniteMagnitude)
+            ).height
+            return max(tallest, needed)
+        }
+        label.stringValue = ""
+        label.heightAnchor.constraint(equalToConstant: tallest).isActive = true
         shortcutStatusLabel = label
         return label
     }
@@ -279,7 +291,7 @@ final class WidgetSettingsWindowController: NSWindowController {
         case .cancelled:
             shortcutRefusal = nil
         case .refused:
-            shortcutRefusal = shortcutRefusedPress
+            shortcutRefusal = shortcutAcceptedKeys
         }
         // A refused press leaves the recorder waiting for another, and the old combination has
         // to stay quiet for exactly as long as that lasts.

@@ -4,18 +4,23 @@ import Carbon.HIToolbox
 /// What the machine said about a combination somebody chose.
 enum ShortcutRegistrationOutcome: Equatable {
     case registered
-    /// Another application already holds it. The one refusal worth its own case: it is the only
-    /// one a person can do something about, so it is the only one the settings window can
-    /// explain rather than merely report.
-    case taken
+    /// `eventHotKeyExistsErr`. Its own case because it means something specific, and not what its
+    /// name in Carbon suggests.
+    ///
+    /// Measured on macOS 15.3.1: two separate applications register the same combination and both
+    /// are told `noErr` — a press then reaches **both** of their handlers. The same call made
+    /// twice inside one process is refused with this status, with a different `id` as well as
+    /// with the same one. So the system counts a collision only within an application, and this
+    /// status can only mean that Agent Watch is still holding the combination itself.
+    case alreadyOurs
     case refused(code: Int32)
 }
 
 /// Puts a combination into the system's table of shortcuts, and takes it out again.
 ///
 /// A protocol so the parts that decide *when* to register can be tested without registering:
-/// a real combination is taken from every other application on the machine for as long as it is
-/// held, which is not something a test run may do.
+/// a real registration lasts as long as the process does and reaches the whole machine, which is
+/// not something a test run may leave behind.
 @MainActor
 protocol GlobalShortcutRegistering: AnyObject {
     var onPress: (() -> Void)? { get set }
@@ -77,7 +82,7 @@ final class GlobalShortcutRegistrar: GlobalShortcutRegistering {
             &reference
         )
         guard status == noErr, let reference else {
-            return status == OSStatus(eventHotKeyExistsErr) ? .taken : .refused(code: status)
+            return status == OSStatus(eventHotKeyExistsErr) ? .alreadyOurs : .refused(code: status)
         }
         hotKey = reference
         return .registered

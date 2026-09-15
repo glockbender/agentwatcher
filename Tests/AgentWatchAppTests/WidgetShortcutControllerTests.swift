@@ -16,10 +16,10 @@ final class WidgetShortcutControllerTests: XCTestCase {
         XCTAssertEqual(controller.status, .active(try optionCommandW()))
     }
 
-    /// The system's table of shortcuts counts our own registration too. Putting the new
-    /// combination up before taking the old one down works until somebody picks a combination
-    /// that differs only in a modifier — then the app collides with itself and tells the person
-    /// another application owns it.
+    /// The system's table of shortcuts counts our own registration, and — measured — only our
+    /// own: two applications hold the same combination quite happily, but one application asking
+    /// twice is refused. So putting the new combination up before taking the old one down is the
+    /// one way this app can collide with anything at all.
     func testTheOldCombinationComesDownBeforeTheNewOneGoesUp() throws {
         let (controller, registrar, settings) = try makeController()
         controller.apply()
@@ -45,13 +45,13 @@ final class WidgetShortcutControllerTests: XCTestCase {
 
     /// Fail-open: the app carries on, and the setting keeps the combination the person chose so
     /// the settings window can say which one it is that will not take.
-    func testACombinationAnotherApplicationOwnsIsReportedRatherThanSwallowed() throws {
+    func testARefusedRegistrationIsReportedRatherThanSwallowed() throws {
         let (controller, registrar, _) = try makeController()
-        registrar.answer = .taken
+        registrar.answer = .alreadyOurs
 
         controller.apply()
 
-        XCTAssertEqual(controller.status, .taken(try optionCommandW()))
+        XCTAssertEqual(controller.status, .alreadyOurs(try optionCommandW()))
     }
 
     func testPressingTheShortcutHidesAndShowsTheWidget() throws {
@@ -95,7 +95,7 @@ final class WidgetShortcutControllerTests: XCTestCase {
     func testTheMenuPrintsNothingWhenTheCombinationDoesNotWork() throws {
         let (controller, registrar, _) = try makeController()
         let item = NSMenuItem()
-        registrar.answer = .taken
+        registrar.answer = .alreadyOurs
         controller.apply()
 
         controller.showShortcut(on: item)
