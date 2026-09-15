@@ -14,11 +14,12 @@ struct JetBrainsProduct: Equatable {
 /// What a JetBrains IDE on this machine will say about itself, for free.
 ///
 /// Every IDE bundle carries `product-info.json`, and the one field that matters there is
-/// `dataDirectoryName`: it names the settings directory this exact product and version uses,
-/// which is where the plugin's own files live. Following the bundle to its settings is what
-/// makes this work for whichever IDE a person actually has, without a table of bundle
-/// identifiers to keep in step with JetBrains' catalogue — and without asking macOS for a
-/// single permission. See `docs/session-focus-research.md`.
+/// `dataDirectoryName` — `GoLand2026.1`. It names this exact product and version, which is
+/// the name the plugin and the app meet on: the plugin writes its reply under it, and
+/// `hasAnsweredPing` looks for it there. Asking the bundle what it is works for whichever IDE
+/// a person actually has, without a table of bundle identifiers to keep in step with
+/// JetBrains' catalogue — and without asking macOS for a single permission. See
+/// `docs/session-focus-research.md`.
 enum JetBrainsInstallation {
     /// Reads the one field this needs out of the bundle's own description of itself.
     static func dataDirectoryName(ofApplicationAt bundleURL: URL, fileManager: FileManager = .default) -> String? {
@@ -97,9 +98,4 @@ enum JetBrainsInstallation {
         return fileManager.fileExists(atPath: reply.path)
     }
 
-    private static func settingsDirectory(named name: String, fileManager: FileManager) -> URL {
-        fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/JetBrains")
-            .appendingPathComponent(name)
-    }
 }

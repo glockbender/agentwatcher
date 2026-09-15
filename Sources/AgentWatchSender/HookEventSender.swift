@@ -202,12 +202,6 @@ public struct RedactedHookIngressRequest: Sendable {
         )
     }
 
-    /// Reads `tool_input.run_in_background` off the payload the hook was given.
-    ///
-    /// Here rather than in the redactor because the redactor replaces `tool_input` whole —
-    /// it holds the shell command — and one boolean is not worth opening that door. Only a
-    /// real boolean counts: a string `"true"` is a payload shape nobody promised, and
-    /// guessing at it would be inventing a fact.
     /// Reads `background_tasks` off the payload the hook was given: one kind per piece of
     /// work the session still has in flight.
     ///
@@ -216,7 +210,7 @@ public struct RedactedHookIngressRequest: Sendable {
     /// would draw, and the model's own one-line summary, which a row could well show one day.
     /// Taking only the kind is what makes this change small: a kind is one word from a fixed
     /// list, and a list of them is a count, not content. The same reasoning as
-    /// `runsInBackground` above, applied to a field that says what is running rather than
+    /// `runsInBackground` below, applied to a field that says what is running rather than
     /// what was asked for.
     ///
     /// `nil` rather than an empty list when the field is absent, and the difference is
@@ -237,6 +231,12 @@ public struct RedactedHookIngressRequest: Sendable {
         }
     }
 
+    /// Reads `tool_input.run_in_background` off the payload the hook was given.
+    ///
+    /// Here rather than in the redactor because the redactor replaces `tool_input` whole —
+    /// it holds the shell command — and one boolean is not worth opening that door. Only a
+    /// real boolean counts: a string `"true"` is a payload shape nobody promised, and
+    /// guessing at it would be inventing a fact.
     private static func runsInBackground(in payload: JSONValue) -> Bool? {
         guard
             case let .object(fields) = payload,

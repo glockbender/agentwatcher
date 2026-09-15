@@ -20,6 +20,23 @@ final class WidgetShortcutTests: XCTestCase {
         XCTAssertEqual(WidgetShortcut(stored: "96"), shortcut)
     }
 
+    /// What a cleared shortcut leaves in the file, and the one malformed string that is not a
+    /// mistake: `WidgetSettingsStore` writes it on purpose, and reads the widget's answer to it
+    /// as "no combination". A parser that made something of it would give a cleared shortcut
+    /// back to a person who had just taken it away.
+    func testTheEmptyStringIsNoCombinationRatherThanABadOne() {
+        XCTAssertNil(WidgetShortcut(stored: ""))
+    }
+
+    /// The file is one a person can open and edit, so what comes back out of it is not
+    /// promised. Nothing here throws or guesses: a line this app cannot read is no shortcut,
+    /// and the widget goes on without one.
+    func testAStoredLineThisAppCannotReadIsNoCombinationAtAll() {
+        XCTAssertNil(WidgetShortcut(stored: "meta+13"), "a modifier by a name this app never writes")
+        XCTAssertNil(WidgetShortcut(stored: "opt+cmd+W"), "the letter where the key code belongs")
+        XCTAssertNil(WidgetShortcut(stored: "opt+cmd+250"), "a key code this app has no name for")
+    }
+
     /// A bare letter would be taken from every application on the machine, this one included —
     /// typing `w` anywhere would hide the widget instead of writing a `w`.
     func testAKeyWithNoModifierIsRefused() {
