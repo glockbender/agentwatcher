@@ -60,15 +60,37 @@ final class SessionHistoryStoreTests: XCTestCase {
         store.update([session], at: moment)
 
         session.phase = .waitingForUser
-        session.userInputRequestKind = .approval
-        session.awaitedActivityID = "call-1"
+        session.setAwaitedDialogs([AwaitedDialog(activityID: "call-1", kind: .approval)])
         // A second later: well inside the window that an age or a model name would wait out.
         store.update([session], at: moment + 1)
 
         let remembered = try XCTUnwrap(SessionHistoryStore(directoryURL: directory).remembered.first)
         XCTAssertEqual(remembered.phase, .waitingForUser)
-        XCTAssertEqual(remembered.awaitedActivityID, "call-1")
+        XCTAssertEqual(remembered.unansweredDialogs.first?.activityID, "call-1")
         XCTAssertEqual(remembered.userInputRequestKind, .approval)
+    }
+
+    /// A second dialog is as much a change as the first, and the file has to take it at
+    /// once for the same reason.
+    ///
+    /// Two subagents can be asked at the same moment — measured — and neither question need
+    /// name a call this app ever heard of. Told apart by the awaited call alone, as the file
+    /// once was, the second dialog opening looked like no change at all and waited out the
+    /// write window.
+    func testASecondDialogOpeningIsWrittenAtOnce() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SessionHistoryStore(directoryURL: directory)
+        var session = testSession(phase: .waitingForUser, lastObservedAt: moment)
+        let first = AwaitedDialog(agentID: "reviewer-a", kind: .approval)
+        session.setAwaitedDialogs([first])
+        store.update([session], at: moment)
+
+        session.setAwaitedDialogs([first, AwaitedDialog(agentID: "reviewer-b", kind: .approval)])
+        store.update([session], at: moment + 1)
+
+        let remembered = try XCTUnwrap(SessionHistoryStore(directoryURL: directory).remembered.first)
+        XCTAssertEqual(remembered.unansweredDialogs.map(\.agentID), ["reviewer-a", "reviewer-b"])
     }
 
     /// And the way out of a wait is written at once for the same reason: a file still saying
@@ -79,11 +101,11 @@ final class SessionHistoryStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = SessionHistoryStore(directoryURL: directory)
         var session = testSession(phase: .waitingForUser, lastObservedAt: moment)
-        session.awaitedActivityID = "call-1"
+        session.setAwaitedDialogs([AwaitedDialog(activityID: "call-1", kind: .approval)])
         store.update([session], at: moment)
 
         session.phase = .executing
-        session.awaitedActivityID = nil
+        session.clearAwaited()
         store.update([session], at: moment + 1)
 
         XCTAssertEqual(SessionHistoryStore(directoryURL: directory).remembered.first?.phase, .disconnected)

@@ -567,11 +567,7 @@ final class TranscriptWatcher {
         else {
             return nil
         }
-        return SessionHistory.RememberedWaitEvidence(
-            facts: increment.facts,
-            awaitedActivityID: wait.awaitedActivityID,
-            awaitedAgentID: wait.awaitedAgentID
-        )
+        return SessionHistory.RememberedWaitEvidence(facts: increment.facts, dialogs: wait.dialogs)
     }
 
     /// What the session calls itself right now, and where the two agents differ most.

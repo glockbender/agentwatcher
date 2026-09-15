@@ -112,6 +112,38 @@ public enum UserInputRequestKind: String, Codable, Sendable {
     case selection
 }
 
+/// One question a session is waiting for an answer to.
+///
+/// A session can have several at once: measured on Claude Code 2.1.272, two subagents each
+/// got their own permission dialog a second apart, with neither answered. Claude Code does
+/// not serialise them, so the row cannot treat "a dialog" as a single thing — answering one
+/// leaves the other on screen, and a session with one unanswered question is still waiting
+/// for its person.
+public struct AwaitedDialog: Codable, Equatable, Sendable {
+    /// Which agent was asked, or `nil` for the session's main thread.
+    ///
+    /// Measured on Claude Code 2.1.272: every hook fired from inside a subagent carries
+    /// `agent_id` and the main thread's carry none, so the owner is a fact, not a guess.
+    /// It is also this dialog's identity — one agent is asked one thing at a time, because
+    /// it is stopped until it is answered.
+    public let agentID: String?
+    /// Which call the question is about, where the events named one.
+    ///
+    /// Without it any finishing tool cleared the wait, and a session blocked on a permission
+    /// dialog went back to reading as `working` the moment an unrelated parallel tool
+    /// returned — losing the one signal this widget exists to deliver.
+    public let activityID: String?
+    /// What is being asked, where the hook said. `nil` only for a wait restored from a file
+    /// that did not record it.
+    public let kind: UserInputRequestKind?
+
+    public init(agentID: String? = nil, activityID: String? = nil, kind: UserInputRequestKind? = nil) {
+        self.agentID = agentID
+        self.activityID = activityID
+        self.kind = kind
+    }
+}
+
 /// A kind of work a session left running when its turn ended.
 ///
 /// Claude Code lists these in `Stop`'s own `background_tasks`, and the type it writes there
@@ -241,25 +273,17 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     public var mode: SessionMode
     public var phase: SessionPhase
     public var userInputRequestKind: UserInputRequestKind?
-    /// Which tool call the session is waiting on an answer for.
+    /// Every question still unanswered, oldest first — see `AwaitedDialog`.
     ///
-    /// Without it any finishing tool cleared the wait, and a session blocked on a permission
-    /// dialog went back to reading as `working` the moment an unrelated parallel tool
-    /// returned — losing the one signal this widget exists to deliver.
+    /// `nil` and `[]` say the same thing here: nobody is being waited for. The optional is
+    /// for the reason `discoveredProcess` gives — a memory file written before this field
+    /// existed has to go on decoding, and a non-optional would have thrown and emptied it.
+    /// Read it through `unansweredDialogs`, which asks the question without the distinction
+    /// that does not exist.
     ///
-    /// Half of the answer; `awaitedAgentID` below is the other half, and the two are always
-    /// set and cleared together.
-    public var awaitedActivityID: String?
-    /// Which agent the dialog belongs to, or `nil` for the session's main thread.
-    ///
-    /// Measured on Claude Code 2.1.272: every hook fired from inside a subagent carries
-    /// `agent_id`, and the main thread's carry none — so the owner is a fact, not a guess.
-    /// It is what `awaitedActivityID` could not answer on its own: the awaited call ends by
-    /// its own identity, but a *different* agent starting a call, the main turn ending, and
-    /// the next prompt all used to read as an answer to somebody else's dialog.
-    ///
-    /// Optional for the reason `discoveredProcess` gives.
-    public var awaitedAgentID: String?
+    /// Settable only through `setAwaitedDialogs` and `clearAwaited`, because the row's own
+    /// summary of it — `userInputRequestKind` — has to change with it.
+    public internal(set) var awaitedDialogs: [AwaitedDialog]?
     public var activities: [SessionActivity]
     public var lastObservedAt: Date
     public var agentProcessID: Int32?
@@ -377,6 +401,19 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
         clientKind == .background ? viewerProcessID ?? agentProcessID : agentProcessID
     }
 
+    /// The questions still unanswered, oldest first, reading the stored `nil` as none.
+    ///
+    /// The one way in: every rule about a wait is a rule about this list, and none of them
+    /// has to spell the empty case twice.
+    public var unansweredDialogs: [AwaitedDialog] {
+        awaitedDialogs ?? []
+    }
+
+    /// Whether somebody is still being waited for. The list's own question, named.
+    public var isAwaitingAnswer: Bool {
+        !unansweredDialogs.isEmpty
+    }
+
     public init(
         id: String,
         source: AgentSource,
@@ -387,8 +424,7 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
         mode: SessionMode = .unknown,
         phase: SessionPhase = .idle,
         userInputRequestKind: UserInputRequestKind? = nil,
-        awaitedActivityID: String? = nil,
-        awaitedAgentID: String? = nil,
+        awaitedDialogs: [AwaitedDialog]? = nil,
         activities: [SessionActivity] = [],
         lastObservedAt: Date,
         agentProcessID: Int32? = nil,
@@ -410,8 +446,7 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
         self.mode = mode
         self.phase = phase
         self.userInputRequestKind = userInputRequestKind
-        self.awaitedActivityID = awaitedActivityID
-        self.awaitedAgentID = awaitedAgentID
+        self.awaitedDialogs = awaitedDialogs
         self.activities = activities
         self.lastObservedAt = lastObservedAt
         self.agentProcessID = agentProcessID

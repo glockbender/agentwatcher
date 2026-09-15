@@ -319,7 +319,7 @@ public struct SessionStateEngine: Sendable {
                 startedAt: event.observedAt,
                 // Which agent made this call, when it was not the session's main thread.
                 // It is what lets a permission dialog belong to one subagent while the
-                // others go on working: see `SessionSnapshot.awaitedAgentID`.
+                // others go on working: see `AwaitedDialog.agentID`.
                 parentID: event.agentID,
                 outlivesTurn: event.activityOutlivesTurn,
                 outlivesItsCall: event.activityOutlivesItsCall
@@ -766,17 +766,17 @@ public struct SessionStateEngine: Sendable {
                 // row saying "waiting for you" is a claim about a person, and this app has
                 // heard nothing at all. So the wait is set aside until the session's own
                 // transcript answers for it, and until then the row says only `no signal`.
+                //
+                // A file written before the dialogs were recorded brings none, and such a
+                // wait is simply dropped: with nothing to ask the transcript about, the row
+                // keeps the answer that costs nothing.
                 if restored.phase == .waitingForUser {
                     rememberedWaits[restored.id] = SessionHistory.RememberedWait(
-                        awaitedActivityID: restored.awaitedActivityID,
-                        awaitedAgentID: restored.awaitedAgentID,
-                        kind: restored.userInputRequestKind,
+                        dialogs: restored.unansweredDialogs,
                         observedAt: restored.lastObservedAt
                     )
                     restored.phase = .disconnected
-                    restored.awaitedActivityID = nil
-                    restored.awaitedAgentID = nil
-                    restored.userInputRequestKind = nil
+                    restored.clearAwaited()
                 }
                 // Its own place, unless the engine has already handed that index out. The list
                 // is sorted by this, so two rows sharing an index would leave their order to a
@@ -830,9 +830,7 @@ public struct SessionStateEngine: Sendable {
             return nil
         }
         snapshot.phase = .waitingForUser
-        snapshot.awaitedActivityID = wait.awaitedActivityID
-        snapshot.awaitedAgentID = wait.awaitedAgentID
-        snapshot.userInputRequestKind = wait.kind
+        snapshot.setAwaitedDialogs(wait.dialogs)
         snapshots[id] = snapshot
         return snapshot
     }

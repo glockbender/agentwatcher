@@ -76,7 +76,7 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
     public let userInputRequestKind: UserInputRequestKind?
     /// The subagent this hook fired from inside, or `nil` for the session's main thread.
     ///
-    /// On every event, because every hook carries it. See `SessionSnapshot.awaitedAgentID`
+    /// On every event, because every hook carries it. See `AwaitedDialog.agentID`
     /// for what it is for and the measurement behind it.
     public let agentID: String?
     public let agentProcessID: Int32?

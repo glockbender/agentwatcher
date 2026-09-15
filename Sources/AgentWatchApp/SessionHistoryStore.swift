@@ -93,7 +93,12 @@ final class SessionHistoryStore {
     }
 
     private static func identity(of record: SessionSnapshot) -> String {
-        [record.id, record.phase.rawValue, record.awaitedActivityID ?? ""].joined(separator: "\u{1}")
+        // Every dialog, and each by its owner as well as its call: two subagents can be
+        // asked at once, and both questions can name a call this app never heard of. Told
+        // apart by the call alone, the second dialog opening would look like no change and
+        // the file would not be written.
+        let dialogs = record.unansweredDialogs.flatMap { [$0.agentID ?? "", $0.activityID ?? ""] }
+        return ([record.id, record.phase.rawValue] + dialogs).joined(separator: "\u{1}")
     }
 
     private func write(_ records: [SessionSnapshot], agentProcesses: [RememberedAgentProcess]) {

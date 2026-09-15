@@ -21,7 +21,7 @@ final class SessionHistoryTests: XCTestCase {
             arrivalIndex: 0,
             phase: .executing,
             userInputRequestKind: .approval,
-            awaitedActivityID: "call-1",
+            awaitedDialogs: [AwaitedDialog(activityID: "call-1", kind: .approval)],
             activities: [SessionActivity(id: "call-1", kind: .shell, startedAt: now - 600)],
             lastObservedAt: now - 600,
             monitoringFault: .unexplainedSilence
@@ -33,7 +33,7 @@ final class SessionHistoryTests: XCTestCase {
         let stored = engine.snapshots["claude:abc"]
         XCTAssertEqual(stored?.phase, .disconnected)
         XCTAssertEqual(stored?.activities, [])
-        XCTAssertNil(stored?.awaitedActivityID)
+        XCTAssertEqual(stored?.unansweredDialogs, [])
         XCTAssertNil(stored?.userInputRequestKind)
         XCTAssertNil(stored?.monitoringFault)
         XCTAssertFalse(SessionSilence.isUnexplained(try XCTUnwrap(stored), now: now))

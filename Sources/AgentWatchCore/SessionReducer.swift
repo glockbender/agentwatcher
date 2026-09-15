@@ -63,7 +63,6 @@ public enum SessionReducer {
         case let .sessionStarted(mode, observedAt):
             next.mode = mode ?? .unknown
             next.phase = .idle
-            next.userInputRequestKind = nil
             next.clearAwaited()
             next.activities = []
             // Nothing reported rather than nothing running — see `turnStarted` below, where
@@ -112,11 +111,11 @@ public enum SessionReducer {
             // is known — a turn is running.
             // Only the main thread's own dialog. A person can type a new prompt while a
             // subagent's permission dialog is still on screen — measured that evening, at
-            // 19:56 — and doing so answers nothing.
-            if next.awaitedAgentID == nil {
+            // 19:56 — and doing so answers nothing. A second subagent's dialog is no more
+            // answered than the first, which is why what is left decides the phase.
+            next.endDialogs { $0.agentID == nil }
+            if !next.isAwaitingAnswer {
                 next.phase = mode == .plan ? .planning : .executing
-                next.userInputRequestKind = nil
-                next.clearAwaited()
             }
             next.lastObservedAt = observedAt
 
@@ -142,11 +141,15 @@ public enum SessionReducer {
             // *The agent being asked*, not the session: a second subagent goes on working
             // while the first one waits, and its calls say nothing about a dialog it never
             // saw. That is what put the row back to `working` one second after the dialog
-            // opened.
-            if activity.parentID == next.awaitedAgentID {
+            // opened. With two agents asked at once it ends one dialog and leaves the other,
+            // so the session goes on waiting until the list is empty.
+            let wasAwaiting = next.isAwaitingAnswer
+            next.endDialogs { $0.agentID == activity.parentID }
+            // The second half of the condition is the ordinary case, with nothing asked at
+            // all: a call from the main thread means the session is working. A subagent's
+            // does not, since it says nothing about what the session as a whole is doing.
+            if !next.isAwaitingAnswer, wasAwaiting || activity.parentID == nil {
                 next.phase = next.mode == .plan ? .planning : .executing
-                next.userInputRequestKind = nil
-                next.clearAwaited()
             }
             next.lastObservedAt = observedAt
 
@@ -183,8 +186,6 @@ public enum SessionReducer {
 
         case let .userInputRequired(reason, activityID, agentID, observedAt):
             next.phase = .waitingForUser
-            next.userInputRequestKind = reason
-            next.awaitedAgentID = agentID
             // A permission request names no tool of its own — measured on 2.1.272, it is the
             // one tool hook with no `tool_use_id` — but it always follows the start of the
             // call it is asking about, in that same agent. So the asking agent's most recent
@@ -194,14 +195,21 @@ public enum SessionReducer {
             // Filtered by owner, because the session's own last call belongs to whichever
             // agent happened to speak last, which on a session running several subagents is
             // almost never the one being asked.
-            next.awaitedActivityID =
-                activityID ?? next.activities.last { $0.parentID == agentID }?.id
+            next.awaitAnswer(
+                to: AwaitedDialog(
+                    agentID: agentID,
+                    activityID: activityID ?? next.activities.last { $0.parentID == agentID }?.id,
+                    kind: reason
+                )
+            )
             next.lastObservedAt = observedAt
 
         case let .userInputResolved(observedAt):
+            // Every dialog at once, and this is the one exit that may: the observation
+            // behind it is the session's own record saying nothing is being asked of
+            // anybody (ADR-0010), not one call or one agent reporting for itself.
             if next.phase == .waitingForUser {
                 next.phase = next.mode == .plan ? .planning : .executing
-                next.userInputRequestKind = nil
                 next.clearAwaited()
             }
             next.lastObservedAt = observedAt
@@ -220,10 +228,9 @@ public enum SessionReducer {
             // thread's own event — it answers nothing that was asked of a child. Its wait is
             // released by that child's own `SubagentStop`, by the ending of the call being
             // asked about, or by Claude Code's session record (ADR-0010).
-            if next.awaitedAgentID == nil {
+            next.endDialogs { $0.agentID == nil }
+            if !next.isAwaitingAnswer {
                 next.phase = next.activities.isEmpty ? .completed : .waitingForChildren
-                next.userInputRequestKind = nil
-                next.clearAwaited()
             }
             next.lastObservedAt = observedAt
 
@@ -242,7 +249,6 @@ public enum SessionReducer {
             // a `SessionStart` and the first prompt.
             next.activities.removeAll()
             next.phase = .idle
-            next.userInputRequestKind = nil
             next.clearAwaited()
             next.lastObservedAt = observedAt
 
@@ -258,7 +264,6 @@ public enum SessionReducer {
 
         case let .sessionClosed(observedAt):
             next.phase = .sessionClosed
-            next.userInputRequestKind = nil
             next.clearAwaited()
             next.activities = []
             next.backgroundWork = nil
@@ -281,63 +286,91 @@ public enum SessionReducer {
         return next
     }
 
-    /// What the end of one activity means for a session that was waiting.
+    /// What the end of one activity means for one dialog.
     ///
-    /// Only the call the session is actually waiting on ends the wait. With no awaited call
-    /// recorded there is nothing to compare against, and any ending has to be taken as the
-    /// answer.
+    /// Only the call the dialog is about answers it. With no call recorded there is nothing
+    /// to compare against, and any ending has to be taken as the answer.
     ///
-    /// That last rule belongs to the main thread alone, and `awaitedAgentID` is what says so.
-    /// It was written when one agent's endings were the only ones that could arrive; on a
-    /// session running subagents it hands the answer to whichever other subagent finished
+    /// That last rule belongs to the main thread alone, and the dialog's owner is what says
+    /// so. It was written when one agent's endings were the only ones that could arrive; on
+    /// a session running subagents it hands the answer to whichever other subagent finished
     /// next — the very bug the owner exists to stop, on the path a missed `PreToolUse` leads
     /// to. A subagent's dialog with no known call is released by its own next call or by its
     /// own end instead, both of which name it.
-    static func activityEndsWait(
-        awaitedActivityID: String?,
-        awaitedAgentID: String?,
-        endingActivityID: String
-    ) -> Bool {
-        if let awaitedActivityID {
-            return awaitedActivityID == endingActivityID
+    static func dialogEnds(_ dialog: AwaitedDialog, atActivityID endingActivityID: String) -> Bool {
+        if let activityID = dialog.activityID {
+            return activityID == endingActivityID
         }
-        return awaitedAgentID == nil
+        return dialog.agentID == nil
     }
 
     private static func endWait(_ next: inout SessionSnapshot, forActivity id: String, at: Date) {
-        // The asked agent itself ending — `SubagentStop` — releases the wait whatever became
-        // of the call. It is the only release left for a subagent whose dialog was dismissed
-        // rather than answered, now that the main thread's own events no longer speak for it.
-        let ownerEnded = next.awaitedAgentID != nil && next.awaitedAgentID == id
-        if next.phase == .waitingForUser,
+        guard next.phase == .waitingForUser else {
+            if next.phase == .waitingForChildren && next.activities.isEmpty {
+                // The turn ended before this child did — that is the only way into
+                // `waitingForChildren` — so the session is finished, not back at work.
+                next.phase = .completed
+            }
+            return
+        }
+        // Read before the list is touched: a closure that mutates `next` may not read it.
+        let lastObservedAt = next.lastObservedAt
+        next.endDialogs { dialog in
+            // The asked agent itself ending — `SubagentStop` — releases its dialog whatever
+            // became of the call. It is the only release left for a subagent whose dialog
+            // was dismissed rather than answered, now that the main thread's own events no
+            // longer speak for it.
+            if dialog.agentID == id {
+                return true
+            }
             // Without an identity, a late ending from a previous turn cannot answer this
             // dialog. Named calls still close out of order by their own identity.
-            ownerEnded || (next.awaitedActivityID != nil || at >= next.lastObservedAt),
-            ownerEnded
-                || activityEndsWait(
-                    awaitedActivityID: next.awaitedActivityID,
-                    awaitedAgentID: next.awaitedAgentID,
-                    endingActivityID: id
-                )
-        {
+            guard dialog.activityID != nil || at >= lastObservedAt else {
+                return false
+            }
+            return dialogEnds(dialog, atActivityID: id)
+        }
+        if !next.isAwaitingAnswer {
             next.phase = next.mode == .plan ? .planning : .executing
-            next.userInputRequestKind = nil
-            next.clearAwaited()
-        } else if next.phase == .waitingForChildren && next.activities.isEmpty {
-            // The turn ended before this child did — that is the only way into
-            // `waitingForChildren` — so the session is finished, not back at work.
-            next.phase = .completed
         }
     }
 }
 
 extension SessionSnapshot {
-    /// Forgets the dialog: which call it was about and which agent was asked.
+    /// Records a question and leaves the row saying what it is.
     ///
-    /// One call rather than two assignments, because the two are one fact and a site that
-    /// cleared only the first left a wait that could never be matched again.
-    fileprivate mutating func clearAwaited() {
-        awaitedActivityID = nil
-        awaitedAgentID = nil
+    /// A second question from the same owner replaces the first rather than joining it: an
+    /// agent is stopped until it is answered, so it can only be asked one thing at a time,
+    /// and a repeat is the same dialog restated.
+    mutating func awaitAnswer(to dialog: AwaitedDialog) {
+        var dialogs = unansweredDialogs
+        dialogs.removeAll { $0.agentID == dialog.agentID }
+        dialogs.append(dialog)
+        setAwaitedDialogs(dialogs)
+    }
+
+    /// Forgets every dialog `isAnswered` names, and leaves the rest.
+    ///
+    /// The one way out of a wait, so that no exit can end somebody else's dialog: each rule
+    /// says which dialogs it speaks for, and what is left decides the phase.
+    mutating func endDialogs(where isAnswered: (AwaitedDialog) -> Bool) {
+        setAwaitedDialogs(unansweredDialogs.filter { !isAnswered($0) })
+    }
+
+    /// Forgets every dialog at once: nobody is being waited for any more.
+    public mutating func clearAwaited() {
+        setAwaitedDialogs([])
+    }
+
+    /// The single place the list and the row's summary of it change together. Also how a
+    /// wait comes back from the session memory, which brings its dialogs whole.
+    ///
+    /// The row names one kind, and it is the oldest unanswered question's — the one that
+    /// has been waiting longest. Kept beside the list rather than derived at the point of
+    /// drawing, because an answer to one dialog has to change it: a dismissed approval
+    /// leaving an unanswered choice behind must not go on reading "approval needed".
+    public mutating func setAwaitedDialogs(_ dialogs: [AwaitedDialog]) {
+        awaitedDialogs = dialogs
+        userInputRequestKind = dialogs.first?.kind
     }
 }

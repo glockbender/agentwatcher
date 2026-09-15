@@ -270,14 +270,13 @@ final class SessionReducerTests: XCTestCase {
     /// starts as well.
     func testStartingActivityResumesAfterPermissionRequest() {
         var waiting = snapshot(phase: .waitingForUser)
-        waiting.awaitedActivityID = "bash-1"
-        waiting.userInputRequestKind = .approval
+        waiting.setAwaitedDialogs([AwaitedDialog(activityID: "bash-1", kind: .approval)])
 
         let result = SessionReducer.reduce(waiting, event: .activityStarted(activity(id: "shell-1"), at: start))
 
         XCTAssertEqual(result.phase, .executing)
         XCTAssertNil(result.userInputRequestKind)
-        XCTAssertNil(result.awaitedActivityID)
+        XCTAssertFalse(result.isAwaitingAnswer)
     }
 
     /// The signal this widget exists to deliver. A parallel tool finishing says nothing
@@ -318,7 +317,7 @@ final class SessionReducerTests: XCTestCase {
         )
 
         XCTAssertEqual(answered.phase, .executing, "the awaited call finished, so the wait is over")
-        XCTAssertNil(answered.awaitedActivityID)
+        XCTAssertFalse(answered.isAwaitingAnswer)
     }
 
     /// The stranding this guards against: the app misses one `PostToolUse` — hooks are
@@ -332,7 +331,7 @@ final class SessionReducerTests: XCTestCase {
             title: "Session",
             phase: .waitingForUser,
             userInputRequestKind: .approval,
-            awaitedActivityID: "never-completes",
+            awaitedDialogs: [AwaitedDialog(activityID: "never-completes", kind: .approval)],
             lastObservedAt: start
         )
         waiting.activities = [
@@ -348,19 +347,18 @@ final class SessionReducerTests: XCTestCase {
         )
 
         XCTAssertEqual(next.phase, .executing, "a new call can only have been issued after an answer")
-        XCTAssertNil(next.awaitedActivityID)
+        XCTAssertFalse(next.isAwaitingAnswer)
     }
 
     /// A turn ending is the other exit, for a wait that was answered with nothing to run.
     func testATurnEndingClearsAWaitAndItsAwaitedCall() {
         var waiting = snapshot(phase: .waitingForUser)
-        waiting.awaitedActivityID = "bash-1"
-        waiting.userInputRequestKind = .approval
+        waiting.setAwaitedDialogs([AwaitedDialog(activityID: "bash-1", kind: .approval)])
 
         let next = SessionReducer.reduce(waiting, event: .turnCompleted(at: start))
 
         XCTAssertEqual(next.phase, .completed)
-        XCTAssertNil(next.awaitedActivityID)
+        XCTAssertFalse(next.isAwaitingAnswer)
     }
 
     /// A permission request names no tool of its own, so the call it follows is the one being
@@ -387,7 +385,26 @@ final class SessionReducerTests: XCTestCase {
             event: .userInputRequired(reason: .approval, activityID: nil, agentID: nil, at: start)
         )
 
-        XCTAssertEqual(asked.awaitedActivityID, "bash-1")
+        XCTAssertEqual(asked.unansweredDialogs.first?.activityID, "bash-1")
+    }
+
+    /// The two exits that speak for the session rather than for one agent, and so the only
+    /// ones that may end every dialog at once: the session's own record saying nothing is
+    /// being asked of anybody (ADR-0010), and a person stopping the turn.
+    func testTheSessionWideExitsEndEveryDialogAtOnce() {
+        var waiting = snapshot(phase: .waitingForUser)
+        waiting.setAwaitedDialogs([
+            AwaitedDialog(agentID: "reviewer-a", activityID: "a-bash", kind: .approval),
+            AwaitedDialog(agentID: "reviewer-b", activityID: "b-bash", kind: .selection),
+        ])
+
+        for event: SessionEvent in [.userInputResolved(at: start), .turnInterrupted(at: start)] {
+            let next = SessionReducer.reduce(waiting, event: event)
+
+            XCTAssertFalse(next.isAwaitingAnswer, "\(event)")
+            XCTAssertNotEqual(next.phase, .waitingForUser, "\(event)")
+            XCTAssertNil(next.userInputRequestKind, "\(event)")
+        }
     }
 
     /// `AskUserQuestion` records its own tool id, so the completion that answers it is that
@@ -395,13 +412,12 @@ final class SessionReducerTests: XCTestCase {
     /// instead of the path the normalizer actually produces.
     func testToolCompletionResumesAfterAnAskUserQuestion() {
         var waiting = snapshot(phase: .waitingForUser)
-        waiting.awaitedActivityID = "id_question"
-        waiting.userInputRequestKind = .selection
+        waiting.setAwaitedDialogs([AwaitedDialog(activityID: "id_question", kind: .selection)])
 
         let result = SessionReducer.reduce(waiting, event: .activityCompleted(id: "id_question", at: start))
 
         XCTAssertEqual(result.phase, .executing)
-        XCTAssertNil(result.awaitedActivityID)
+        XCTAssertFalse(result.isAwaitingAnswer)
     }
 
     func testFailureRaisesErrorAttention() {
@@ -517,8 +533,7 @@ final class SessionReducerTests: XCTestCase {
     /// answer.
     func testACallObservedInTheTranscriptLeavesAWaitingSessionWaiting() {
         var previous = snapshot(mode: .standard, phase: .waitingForUser)
-        previous.userInputRequestKind = .approval
-        previous.awaitedActivityID = "the-call-being-approved"
+        previous.setAwaitedDialogs([AwaitedDialog(activityID: "the-call-being-approved", kind: .approval)])
 
         let result = SessionReducer.reduce(
             previous,
@@ -528,7 +543,7 @@ final class SessionReducerTests: XCTestCase {
         XCTAssertEqual(result.activities.map(\.id), ["advisor-1"])
         XCTAssertEqual(result.phase, .waitingForUser, "the transcript does not end a wait")
         XCTAssertEqual(result.userInputRequestKind, .approval)
-        XCTAssertEqual(result.awaitedActivityID, "the-call-being-approved")
+        XCTAssertEqual(result.unansweredDialogs.first?.activityID, "the-call-being-approved")
         XCTAssertEqual(result.lastObservedAt, start, "reading the record is still proof of life")
     }
 
@@ -597,9 +612,9 @@ final class SessionReducerTests: XCTestCase {
         )
 
         XCTAssertEqual(asked.phase, .waitingForUser)
-        XCTAssertEqual(asked.awaitedAgentID, "reviewer-a")
+        XCTAssertEqual(asked.unansweredDialogs.first?.agentID, "reviewer-a")
         XCTAssertEqual(
-            asked.awaitedActivityID,
+            asked.unansweredDialogs.first?.activityID,
             "a-bash",
             "the call being asked about is the asking agent's own last one, not the session's"
         )
@@ -628,8 +643,7 @@ final class SessionReducerTests: XCTestCase {
         )
 
         XCTAssertEqual(released.phase, .executing, "`SubagentStop` for the owner ends what nothing else could")
-        XCTAssertNil(released.awaitedAgentID)
-        XCTAssertNil(released.awaitedActivityID)
+        XCTAssertFalse(released.isAwaitingAnswer)
     }
 
     /// A consequence of the owner rule worth pinning, because nothing else asserts it: a
