@@ -237,9 +237,12 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             partsGrid.removeRow(at: 0)
         }
 
-        let ordered = Self.orderedParts(of: layout)
-        for (index, part) in ordered.enumerated() {
-            partsGrid.addRow(with: makePartRow(part, at: index, in: ordered, layout: layout))
+        for (index, part) in Self.orderedParts(of: layout).enumerated() {
+            // The row's own parts come first, and the ones left out after them, so an arrow
+            // is offered only where there is somewhere within the group to go.
+            let shownCount = layout.parts.count
+            let group = layout.shows(part) ? 0..<shownCount : shownCount..<RowPart.allCases.count
+            partsGrid.addRow(with: makePartRow(part, at: index, within: group, layout: layout))
         }
         // Every column stated, for the reason the lamp grid states its own: left to itself
         // the grid gave the slack to the widest cell and squeezed the rest. Measured by
@@ -259,7 +262,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     private func makePartRow(
         _ part: RowPart,
         at index: Int,
-        in ordered: [RowPart],
+        within group: Range<Int>,
         layout: RowLayout
     ) -> [NSView] {
         let isShown = layout.shows(part)
@@ -292,7 +295,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         when.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         return [name, when, makeChoiceCell(part, isShown: isShown, layout: layout)]
-            + makeArrowCells(part, at: index, in: ordered)
+            + makeArrowCells(part, at: index, within: group)
     }
 
     /// What this part shows, or — for a part made of text with no choices — whether it is the
@@ -328,18 +331,21 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         return radio
     }
 
-    private func makeArrowCells(_ part: RowPart, at index: Int, in ordered: [RowPart]) -> [NSView] {
+    /// - Parameter group: the places this part may move between — the row's own parts, or the
+    ///   ones left out of it. A part cannot cross from one into the other by an arrow: that is
+    ///   what its checkbox does, and an arrow that silently did nothing was the alternative.
+    private func makeArrowCells(_ part: RowPart, at index: Int, within group: Range<Int>) -> [NSView] {
         let up = NSButton(title: "↑", target: self, action: #selector(movePartEarlier(_:)))
         up.bezelStyle = .rounded
         up.tag = Self.tag(of: part)
-        up.isEnabled = index > 0
+        up.isEnabled = index > group.lowerBound
         up.toolTip = "Move this part one place earlier in the row"
         moveUpButtons[part] = up
 
         let down = NSButton(title: "↓", target: self, action: #selector(movePartLater(_:)))
         down.bezelStyle = .rounded
         down.tag = Self.tag(of: part)
-        down.isEnabled = index < ordered.count - 1
+        down.isEnabled = index < group.upperBound - 1
         down.toolTip = "Move this part one place later in the row"
         moveDownButtons[part] = down
 
@@ -429,15 +435,21 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         guard let part = Self.part(ofTag: tag) else {
             return
         }
-        var ordered = Self.orderedParts(of: rowLayouts.layout)
+        let layout = rowLayouts.layout
+        // Only the parts in the row have an order to change. A part left out is placed by its
+        // checkbox, which puts it in front of the gap.
+        guard layout.shows(part) else {
+            return
+        }
+        var parts = layout.parts
         guard
-            let from = ordered.firstIndex(of: part),
-            ordered.indices.contains(from + step)
+            let from = parts.firstIndex(of: part),
+            parts.indices.contains(from + step)
         else {
             return
         }
-        ordered.swapAt(from, from + step)
-        store(parts: ordered.filter(rowLayouts.layout.shows))
+        parts.swapAt(from, from + step)
+        store(parts: parts)
     }
 
     @objc private func variantChanged(_ sender: NSPopUpButton) {
@@ -445,17 +457,11 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             return
         }
         let chosen = sender.indexOfSelectedItem
-        let layout = rowLayouts.layout
         rowLayouts.setLayout(
-            RowLayout(
-                parts: layout.parts,
-                flexible: layout.flexible,
-                counterKinds: layout.counterKinds,
-                nameStyle: part == .name ? (chosen == 1 ? .title : .fallback) : layout.nameStyle,
-                modelStyle: part == .model ? (chosen == 1 ? .effort : .plain) : layout.modelStyle,
-                contextStyle: part == .context
-                    ? [.percent, .tokens, .both][min(chosen, 2)] : layout.contextStyle,
-                reservesDismissColumn: layout.reservesDismissColumn
+            rowLayouts.layout.changing(
+                nameStyle: part == .name ? (chosen == 1 ? .title : .fallback) : nil,
+                modelStyle: part == .model ? (chosen == 1 ? .effort : .plain) : nil,
+                contextStyle: part == .context ? [.percent, .tokens, .both][min(chosen, 2)] : nil
             )
         )
         showRowLayout()
@@ -469,18 +475,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     }
 
     @objc private func dismissColumnChanged(_ sender: NSButton) {
-        let layout = rowLayouts.layout
-        rowLayouts.setLayout(
-            RowLayout(
-                parts: layout.parts,
-                flexible: layout.flexible,
-                counterKinds: layout.counterKinds,
-                nameStyle: layout.nameStyle,
-                modelStyle: layout.modelStyle,
-                contextStyle: layout.contextStyle,
-                reservesDismissColumn: sender.state == .on
-            )
-        )
+        rowLayouts.setLayout(rowLayouts.layout.changing(reservesDismissColumn: sender.state == .on))
         showRowLayout()
     }
 
@@ -491,18 +486,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
 
     /// Writes a new order, keeping everything the order does not decide.
     private func store(parts: [RowPart], flexible: RowPart? = nil) {
-        let layout = rowLayouts.layout
-        rowLayouts.setLayout(
-            RowLayout(
-                parts: parts,
-                flexible: flexible ?? layout.flexible,
-                counterKinds: layout.counterKinds,
-                nameStyle: layout.nameStyle,
-                modelStyle: layout.modelStyle,
-                contextStyle: layout.contextStyle,
-                reservesDismissColumn: layout.reservesDismissColumn
-            )
-        )
+        rowLayouts.setLayout(rowLayouts.layout.changing(parts: parts, flexible: flexible))
         showRowLayout()
     }
 

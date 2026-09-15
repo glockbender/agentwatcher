@@ -129,4 +129,30 @@ struct RowLayout: Equatable {
     func shows(_ part: RowPart) -> Bool {
         parts.contains(part)
     }
+
+    /// The same template with one thing changed, and everything else carried over.
+    ///
+    /// One place rather than a full initialiser at each control in the settings window. Three
+    /// of those had already appeared, and the next field added here would have been forgotten
+    /// in one of them — a setting that works from one control and silently resets from the
+    /// next. The result still goes through `init`, so a change cannot skip the repairs.
+    func changing(
+        parts: [RowPart]? = nil,
+        flexible: RowPart? = nil,
+        counterKinds: Set<ActivityKind>? = nil,
+        nameStyle: NameStyle? = nil,
+        modelStyle: ModelStyle? = nil,
+        contextStyle: ContextStyle? = nil,
+        reservesDismissColumn: Bool? = nil
+    ) -> RowLayout {
+        RowLayout(
+            parts: parts ?? self.parts,
+            flexible: flexible ?? self.flexible,
+            counterKinds: counterKinds ?? self.counterKinds,
+            nameStyle: nameStyle ?? self.nameStyle,
+            modelStyle: modelStyle ?? self.modelStyle,
+            contextStyle: contextStyle ?? self.contextStyle,
+            reservesDismissColumn: reservesDismissColumn ?? self.reservesDismissColumn
+        )
+    }
 }

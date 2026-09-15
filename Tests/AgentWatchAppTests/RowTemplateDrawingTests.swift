@@ -50,6 +50,57 @@ final class RowTemplateDrawingTests: XCTestCase {
         )
     }
 
+    /// The counters are one part and several symbols, so they have to be one view: the place
+    /// the flexible part goes back to is counted in parts, and a block that spread itself over
+    /// the row as three separate views would push that count off by two.
+    func testCountersStandingBeforeThePartThatGivesWayDoNotShiftIt() {
+        var session = testSession(
+            title: "Fix the row",
+            activities: [
+                SessionActivity(id: "a", kind: .shell, startedAt: now),
+                SessionActivity(id: "b", kind: .tool, startedAt: now),
+            ],
+            lastObservedAt: now
+        )
+        session.gitBranch = "feature/probe"
+        let layout = RowLayout(parts: [.timer, .counters, .branch, .gap], flexible: .branch)
+
+        let row = makeRow(session, layout: layout)
+        row.setFlexibleText("feature/probe", display: .fullName)
+
+        XCTAssertEqual(
+            row.arrangedSubviews.compactMap { ($0 as? NSTextField)?.stringValue },
+            ["0s", "feature/probe"],
+            "the branch went in after the counter block, not into the middle of it"
+        )
+    }
+
+    /// Found by drawing a widget whose branch gives way: `main` came out in the name's own
+    /// type, larger than every other qualifier in the row, purely because it was the part
+    /// being shortened. Which part gives way is a decision about width, not about what the
+    /// row is about — so a part is drawn the same whether or not it is the one that narrows.
+    func testThePartThatGivesWayKeepsItsOwnType() {
+        var session = testSession(title: "Fix the row", lastObservedAt: now)
+        session.gitBranch = "feature/probe"
+        let layout = RowLayout(parts: [.timer, .name, .branch, .gap], flexible: .branch)
+
+        let row = makeRow(session, layout: layout)
+        row.setFlexibleText("feature/probe", display: .fullName)
+
+        let labels = row.arrangedSubviews.compactMap { $0 as? NSTextField }
+        // The colour, not the font: both are the same size, and what set the branch apart in
+        // the drawing was the name's full-strength foreground against the muted one every
+        // other qualifier in the row is drawn in.
+        XCTAssertEqual(
+            labels.first { $0.stringValue == "feature/probe" }?.textColor,
+            WidgetBackground.graphite.secondaryForegroundColor
+        )
+        XCTAssertEqual(
+            labels.first { $0.stringValue == "Fix the row" }?.textColor,
+            WidgetBackground.graphite.foregroundColor
+        )
+    }
+
     // MARK: - The dismiss button's column
 
     /// A session still at work gets no dismiss button at all, so without the column its

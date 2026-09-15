@@ -318,7 +318,8 @@ final class HUDSessionRowView: NSStackView {
         }
         guard
             let index = flexibleIndex,
-            let label = Self.makeTitle(text, display: display, background: background, style: style)
+            let label = Self.makeTitle(
+                text, part: layoutFlexible, display: display, background: background, style: style)
         else {
             return
         }
@@ -725,8 +726,14 @@ final class HUDSessionRowView: NSStackView {
         return label
     }
 
+    /// - Parameter part: which part this text belongs to, so that it is drawn the way that
+    ///   part is drawn anywhere else in the row. Found by drawing a widget whose branch gives
+    ///   way: `main` came out in the name's own full-strength colour, brighter than every
+    ///   other qualifier, purely because it was the part being shortened. Which part narrows
+    ///   is a decision about width, not about what the row is about.
     private static func makeTitle(
         _ title: String?,
+        part: RowPart?,
         display: SessionTitleDisplay,
         background: WidgetBackground,
         style: WidgetStyle
@@ -741,8 +748,8 @@ final class HUDSessionRowView: NSStackView {
             default: title
             }
         let label = NSTextField(labelWithString: shown)
-        label.font = style.titleFont
-        label.textColor = background.foregroundColor
+        label.font = part == .name ? style.titleFont : style.countsFont
+        label.textColor = part == .name ? background.foregroundColor : background.secondaryForegroundColor
         label.lineBreakMode = .byTruncatingMiddle
 
         var cap: NSLayoutConstraint?

@@ -23,6 +23,21 @@ final class WidgetRenderProbe: XCTestCase {
         let directory = try XCTUnwrap(requested)
 
         try draw(listView(width: 420), named: "wide", in: directory)
+        // A template nobody would get by default, and the one the arithmetic was never proved
+        // against: the part that gives way sits *after* the gap, where `furnitureWidth` — whose
+        // comment assumed it came before — has to give the same answer. Narrow on purpose, so
+        // there is not enough room and the row has to decide what to shorten.
+        try draw(
+            listView(
+                width: 300,
+                layout: RowLayout(
+                    parts: [.timer, .lamp, .agent, .name, .gap, .branch, .context],
+                    flexible: .branch
+                )
+            ),
+            named: "branch-gives-way",
+            in: directory
+        )
         // The same widget at every size on offer. This is the one part of the app whose whole
         // question is how it looks, so it is drawn rather than measured: the numbers already
         // have tests, and what they cannot answer is whether a row at 200% reads as the same
@@ -383,9 +398,13 @@ final class WidgetRenderProbe: XCTestCase {
         return column
     }
 
-    private func listView(width: CGFloat, style: WidgetStyle = .standard) -> HUDSessionListView {
+    private func listView(
+        width: CGFloat,
+        style: WidgetStyle = .standard,
+        layout: RowLayout = .standard
+    ) -> HUDSessionListView {
         let list = HUDSessionListView(
-            models: rowModels(sessions(), now: now),
+            models: rowModels(sessions(), now: now, layout: layout),
             usageLimits: [AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 17), observedAt: now)],
             now: now,
             availableWidth: width,

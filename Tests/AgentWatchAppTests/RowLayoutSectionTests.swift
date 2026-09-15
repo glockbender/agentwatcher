@@ -71,6 +71,30 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertEqual(rowLayouts.layout.parts.firstIndex(of: .gap), 4)
     }
 
+    /// The parts left out of the row are listed after the ones in it, so the last part in the
+    /// row has a part below it that it cannot trade places with: moving it down would put it
+    /// among the ones not drawn, which is what its checkbox is for. A button that is offered
+    /// and does nothing is worse than one that is greyed — see the disable-and-explain rule.
+    func testTheLastPartInTheRowIsNotOfferedAWayDown() throws {
+        let (window, rowLayouts) = try makeWindow()
+        let last = try XCTUnwrap(rowLayouts.layout.parts.last)
+
+        let down = try XCTUnwrap(window.moveDownButtons[last])
+
+        XCTAssertFalse(down.isEnabled, "\(last) is last in the row and has nowhere to go")
+    }
+
+    /// And the first part left out has nowhere up, for the same reason from the other side.
+    func testTheFirstPartLeftOutIsNotOfferedAWayUp() throws {
+        let (window, rowLayouts) = try makeWindow()
+        let layout = rowLayouts.layout
+        let firstLeftOut = try XCTUnwrap(RowPart.allCases.first { !layout.shows($0) })
+
+        let up = try XCTUnwrap(window.moveUpButtons[firstLeftOut])
+
+        XCTAssertFalse(up.isEnabled, "\(firstLeftOut) is not in the row, so there is no order to move it in")
+    }
+
     func testChoosingWhatTheNameShowsIsStored() throws {
         let (window, rowLayouts) = try makeWindow()
         let style = try XCTUnwrap(window.variantButtons[.name])
