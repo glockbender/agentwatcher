@@ -22,8 +22,6 @@ struct HUDRowModel: Equatable {
     /// dismissal — one with the branch and one without — and a model holding only those
     /// would compare equal, leaving the list with the rows it already had.
     let layout: RowLayout
-    /// The name as this row will show it, or `nil` when the row shows none.
-    let name: String?
     /// What the part that gives way says, measured and inserted after the rest of the row.
     ///
     /// The name while the name is that part, which is every row until somebody changes it —
@@ -44,7 +42,6 @@ struct HUDRowModel: Equatable {
     init(snapshot: SessionSnapshot, now: Date, layout: RowLayout) {
         self.snapshot = snapshot
         self.layout = layout
-        name = rowName(for: snapshot, layout: layout)
         flexibleText = layout.flexible.flatMap { rowPartText($0, for: snapshot, layout: layout) }
         dismissal = SessionPresence.dismissal(of: snapshot, now: now)
     }

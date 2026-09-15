@@ -880,7 +880,10 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             return
         }
         lampSchemes.setColor(sender.color, for: phase)
-        showRowLayout()
+        // The sample only, not the whole section: a colour well reports every shade the
+        // pointer passes over, and rebuilding thirteen rows of controls on each of those is
+        // work nobody asked for — none of them says anything about a colour.
+        showSampleRow(rowLayouts.layout)
     }
 
     @objc private func motionChanged(_ sender: NSPopUpButton) {
@@ -892,7 +895,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             return
         }
         lampSchemes.setMotion(motion, for: phase)
-        showRowLayout()
+        showSampleRow(rowLayouts.layout)
     }
 
     @objc func resetLamp() {
@@ -952,7 +955,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         showSelectedBackground()
         // The sample is a real row, drawn on the widget's background and with its lamp, and a
         // row takes both at construction. So every control that changes either redraws it.
-        showRowLayout()
+        showSampleRow(rowLayouts.layout)
     }
 
     // MARK: - The transparency

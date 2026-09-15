@@ -157,6 +157,11 @@ final class HUDSessionRowView: NSStackView {
             for: snapshot, now: now, background: background, lampScheme: lampScheme, style: style)
         shownElapsed = timerLabel.stringValue
         shownColor = timerLabel.textColor
+        // The session's own name, whatever the template does with it and whatever the width
+        // leaves room for. It used to be taken from the part that gives way, which is the
+        // same string until somebody moves that job elsewhere — and then the row announced
+        // itself as `feature/probe` with the name drawn right beside it.
+        accessibleName = rowName(for: snapshot, layout: layout)?.nonEmpty
         super.init(frame: .zero)
 
         var views: [NSView] = []
@@ -313,9 +318,6 @@ final class HUDSessionRowView: NSStackView {
             return
         }
         hasTitle = true
-        if display != .hidden {
-            accessibleName = text?.nonEmpty
-        }
         guard
             let index = flexibleIndex,
             let label = Self.makeTitle(
@@ -500,8 +502,9 @@ final class HUDSessionRowView: NSStackView {
         dismissButton.map { [$0] } ?? []
     }
 
-    /// The session's name in full, or the bare fact of a session when the name is hidden by
-    /// the setting or not known yet.
+    /// The session's name in full, or the bare fact of a session when the template leaves the
+    /// name out or the agent has not written one yet. Not narrowed by the width: what is
+    /// spoken is not measured in points.
     override func accessibilityLabel() -> String? {
         accessibleName ?? "Session"
     }
@@ -704,8 +707,6 @@ final class HUDSessionRowView: NSStackView {
         return pair
     }
 
-    /// The name, at whatever length it was granted, plus the constraint that enforces it.
-    /// A shortened name is spelled out in full by the hover card, never by a tooltip.
     /// A part that is one word of text and keeps its width.
     ///
     /// The name is the row's own subject and is drawn in the foreground colour; everything
@@ -726,6 +727,10 @@ final class HUDSessionRowView: NSStackView {
         return label
     }
 
+    /// The part that gives way, at whatever length it was granted, plus the constraint that
+    /// enforces it. What was shortened is spelled out in full by the hover card, never by a
+    /// tooltip.
+    ///
     /// - Parameter part: which part this text belongs to, so that it is drawn the way that
     ///   part is drawn anywhere else in the row. Found by drawing a widget whose branch gives
     ///   way: `main` came out in the name's own full-strength colour, brighter than every

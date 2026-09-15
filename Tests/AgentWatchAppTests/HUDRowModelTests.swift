@@ -42,19 +42,6 @@ final class HUDRowModelTests: XCTestCase {
             HUDRowModel(snapshot: waiting, now: atTheThreshold, layout: .standard).dismissal, .now)
     }
 
-    /// Taking the name out of the template is a change to what the row draws, so it has to be
-    /// a change to the model — otherwise the setting would appear not to work until the next
-    /// event.
-    func testATemplateWithoutTheNameLeavesTheModelWithoutOne() {
-        let session = testSession(title: "Переписать ingress", lastObservedAt: now)
-
-        XCTAssertEqual(
-            HUDRowModel(snapshot: session, now: now, layout: .standard).name,
-            "Переписать ingress"
-        )
-        XCTAssertNil(HUDRowModel(snapshot: session, now: now, layout: layoutWithoutTheName).name)
-    }
-
     /// Changing the template changes what every row draws, so it has to change every row's
     /// model — otherwise the list keeps the rows it already has, and the setting appears not
     /// to work until each session speaks again. The two templates below produce the same name
@@ -86,14 +73,17 @@ final class HUDRowModelTests: XCTestCase {
         )
     }
 
-    /// `Name only` says what it does. A session the agent has not named yet draws nothing
-    /// here rather than falling back to its directory — the row is then a lamp and a clock,
-    /// and that is the person's choice to make: see ADR-0011.
+    /// `Name only` says what it does, and the model is where that shows up: the part that
+    /// gives way has nothing to say, so the row is left a lamp and a clock. That is the
+    /// person's choice to make — see ADR-0011.
     func testNameOnlyLeavesANamelessSessionWithoutOne() {
         let nameless = testSession(title: nil, projectName: "agent-watch", lastObservedAt: now)
         let titleOnly = RowLayout(parts: RowLayout.standard.parts, nameStyle: .title)
 
-        XCTAssertNil(HUDRowModel(snapshot: nameless, now: now, layout: titleOnly).name)
-        XCTAssertNotNil(HUDRowModel(snapshot: nameless, now: now, layout: .standard).name)
+        XCTAssertNil(HUDRowModel(snapshot: nameless, now: now, layout: titleOnly).flexibleText)
+        XCTAssertEqual(
+            HUDRowModel(snapshot: nameless, now: now, layout: .standard).flexibleText,
+            "[still no name] in agent-watch"
+        )
     }
 }

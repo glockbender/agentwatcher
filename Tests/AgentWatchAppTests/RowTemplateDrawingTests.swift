@@ -101,6 +101,44 @@ final class RowTemplateDrawingTests: XCTestCase {
         )
     }
 
+    // MARK: - What the row is called when it is read aloud
+
+    /// The row is one button, and its name is the session's. Which part happens to be the one
+    /// that narrows is a decision about width: with the branch giving way, the row announced
+    /// itself as `feature/probe` while the name it was drawing sat right beside it.
+    func testTheRowIsNamedAfterTheSessionAndNotAfterThePartThatGivesWay() {
+        var session = testSession(title: "Fix the row", lastObservedAt: now)
+        session.gitBranch = "feature/probe"
+        let layout = RowLayout(parts: [.timer, .name, .branch, .gap], flexible: .branch)
+
+        let row = makeRow(session, layout: layout)
+        row.setFlexibleText("feature/probe", display: .fullName)
+
+        XCTAssertEqual(row.accessibilityLabel(), "Fix the row")
+    }
+
+    /// A row too narrow to draw the name still says it: what is spoken is not measured in
+    /// points, and a row that answered "Session" because of the width would hide a name it
+    /// knows from the one reader who cannot see the widget at all.
+    func testANameWithNoRoomToBeDrawnIsStillTheRowsName() {
+        let session = testSession(title: "Fix the row", lastObservedAt: now)
+
+        let row = makeRow(session, layout: .standard)
+        row.setFlexibleText("Fix the row", display: .hidden)
+
+        XCTAssertEqual(row.accessibilityLabel(), "Fix the row")
+    }
+
+    /// And a template with no name in it leaves the bare fact of a session, which is all the
+    /// widget itself is showing.
+    func testATemplateWithoutTheNameLeavesTheRowWithTheBareFactOfASession() {
+        let session = testSession(title: "Fix the row", lastObservedAt: now)
+
+        let row = makeRow(session, layout: layoutWithoutTheName)
+
+        XCTAssertEqual(row.accessibilityLabel(), "Session")
+    }
+
     // MARK: - The dismiss button's column
 
     /// A session still at work gets no dismiss button at all, so without the column its
