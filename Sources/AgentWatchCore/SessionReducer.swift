@@ -24,6 +24,13 @@ public enum SessionEvent: Equatable, Sendable {
     case activityFailed(id: String, at: Date)
     case userInputRequired(reason: UserInputRequestKind, activityID: String?, at: Date)
     case turnCompleted(at: Date)
+    /// What the session still has running, as the hook that ended the turn listed it.
+    ///
+    /// Its own event rather than a second value on `turnCompleted`, because it is a second
+    /// fact: the turn ending is one observation and what it left behind is another, and a
+    /// `Stop` from a sender too old to report the list must still end the turn. Every list
+    /// replaces the one before it — Claude Code sends the live set each time, not a change.
+    case backgroundWorkReported([BackgroundWorkKind], at: Date)
     /// A person stopped the turn. Distinct from `turnCompleted` because nothing completed.
     case turnInterrupted(at: Date)
     case failed(at: Date)
@@ -45,6 +52,7 @@ public enum SessionReducer {
             next.userInputRequestKind = nil
             next.awaitedActivityID = nil
             next.activities = []
+            next.backgroundWork = []
             next.lastObservedAt = observedAt
 
         case let .turnStarted(mode, observedAt):
@@ -71,6 +79,11 @@ public enum SessionReducer {
             // drops the row early — but that errs towards claiming too little rather than
             // accumulating work that finished long ago.
             next.activities.removeAll { !$0.outlivesTurn || $0.outlivesItsCall }
+            // And the list of what the last turn left running goes with them, for the reason
+            // just given: the end of background work is itself what starts the next turn.
+            // A person typing while it runs clears the list early here too, and the next
+            // `Stop` puts back whatever is still going.
+            next.backgroundWork = []
             // `unknown` is not `standard`. A turn whose mode nobody stated is still work in
             // progress, and calling it planning would be a claim; `executing` says only what
             // is known — a turn is running.
@@ -157,6 +170,10 @@ public enum SessionReducer {
             next.awaitedActivityID = nil
             next.lastObservedAt = observedAt
 
+        case let .backgroundWorkReported(kinds, observedAt):
+            next.backgroundWork = kinds
+            next.lastObservedAt = observedAt
+
         case let .turnInterrupted(observedAt):
             // Everything the turn issued stops with it, a subagent included: the interruption
             // is aimed at the whole turn, not at one call. That is the difference from
@@ -187,6 +204,7 @@ public enum SessionReducer {
             next.userInputRequestKind = nil
             next.awaitedActivityID = nil
             next.activities = []
+            next.backgroundWork = []
             next.lastObservedAt = observedAt
         }
 

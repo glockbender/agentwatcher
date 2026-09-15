@@ -112,6 +112,25 @@ public enum UserInputRequestKind: String, Codable, Sendable {
     case selection
 }
 
+/// A kind of work a session left running when its turn ended.
+///
+/// Claude Code lists these in `Stop`'s own `background_tasks`, and the type it writes there
+/// is open-ended — its schema says the label "falls back to the raw discriminant for unknown
+/// types". So the four this app can name are named and anything else is `other`: a word from
+/// an agent must not reach a row unread, and dropping the task instead would lose the one
+/// fact worth having, that something is still running.
+public enum BackgroundWorkKind: String, Codable, CaseIterable, Equatable, Sendable {
+    /// A shell command: the one a person is most likely to be waiting on, and the only kind
+    /// that can arrive here without the agent ever asking for the background — Claude Code
+    /// moves a foreground command here itself once it outruns its timeout.
+    case shell
+    case subagent
+    /// An MCP tool watching for something to happen.
+    case monitor
+    case workflow
+    case other
+}
+
 public enum ActivityKind: String, Codable, Sendable {
     case shell
     case subagent
@@ -298,6 +317,20 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     public var transcriptLabel: String {
         continuedBy?.last ?? sessionLabel
     }
+
+    /// What the session left running when its last turn ended, one entry per task.
+    ///
+    /// Not an activity, and deliberately not one: an activity is a call the turn is waiting
+    /// on, and this is work the turn walked away from. It never moves the phase — the turn
+    /// really did end, and a background command wants nothing from a person — so the row says
+    /// `completed` and adds what is still running. ADR-0008.
+    ///
+    /// Reported whole by every `Stop` and believed whole, which is what makes it a
+    /// correction rather than a tally: Claude Code sends the full live list each time.
+    ///
+    /// Optional for the reason `discoveredProcess` gives: a memory file written before this
+    /// field existed must still read. `nil` there means the same as empty.
+    public var backgroundWork: [BackgroundWorkKind]?
 
     /// The terminal process a background session is on screen in, when one is.
     ///

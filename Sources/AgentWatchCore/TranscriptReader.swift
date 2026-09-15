@@ -69,7 +69,7 @@ public struct TranscriptIncrement: Equatable, Sendable {
     ///
     /// A session that is thinking, or writing a long answer, produces lines this reader has no
     /// facts to take from — and those lines are still proof it is alive. Without them a turn
-    /// that calls no tool for two minutes is reported as silence nothing accounts for, which
+    /// that calls no tool for three minutes is reported as silence nothing accounts for, which
     /// is a warning about a healthy session.
     ///
     /// `nil` when no line carried a timestamp this reader could parse. The caller decides what

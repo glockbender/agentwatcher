@@ -308,6 +308,35 @@ final class TranscriptWatcherTests: XCTestCase {
         XCTAssertTrue(updates.flatMap(\.facts).isEmpty, "a file that cannot be measured is not read")
     }
 
+    /// Which step failed and what the system called it.
+    ///
+    /// The fault itself says only that the transcript could not be read, which is all a
+    /// person can act on. This is the other half, and it goes to the log rather than to the
+    /// row: one failed read books a minute of back-off, so the triangle stands for a whole
+    /// minute over an event that lasted a millisecond — and every one of the three places
+    /// that raise this fault used to catch the error and drop it, leaving nothing afterwards
+    /// to tell a deleted file from a changed permission.
+    ///
+    /// Domain and code, never `localizedDescription`: that one carries the file's path, and
+    /// a path is the one thing this app keeps out of its own log.
+    func testAFailedReadSaysWhichStepFailedAndWhatTheSystemCalledIt() async throws {
+        try write(toolResult(id: "call-old"))
+        let watcher = try makeWatcher()
+        watcher.update(sessions: [working()])
+        _ = try await poll(watcher)
+
+        try lockTranscript()
+        let updates = try await poll(watcher)
+
+        XCTAssertEqual(updates.first?.fault, .transcriptUnreadable)
+        let detail = try XCTUnwrap(updates.first?.faultDetail)
+        // 513 rather than the 257 a reader would expect: Foundation reports a read refused
+        // for permissions under its write-permission code. Left exactly as the system gives
+        // it, because a number that can be looked up beats a sentence this file invented.
+        XCTAssertEqual(detail, "open: NSCocoaErrorDomain 513")
+        XCTAssertFalse(detail.contains(transcriptURL.path), "a path never goes into the log")
+    }
+
     /// A file found by name and then unusable costs the same scan of the whole root as one
     /// that was never there, so it waits the same minute. Without this the back-off is
     /// bypassed: every tick drops the path, and every next tick searches again.

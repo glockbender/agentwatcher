@@ -781,8 +781,14 @@ final class SessionSupervisor {
                 changed = true
                 let name = Self.label(snapshot)
                 onNotableEvent(
-                    update.fault.map { "\(name) · \(monitoringFaultSummary(for: $0))" }
-                        ?? "\(name) · monitoring recovered"
+                    update.fault.map { fault in
+                        // The detail only ever comes with a fault, and only from a read that
+                        // failed at a named step — a silence fault has none, and says all
+                        // there is to say without one.
+                        [name, monitoringFaultSummary(for: fault), update.faultDetail]
+                            .compactMap { $0 }
+                            .joined(separator: " · ")
+                    } ?? "\(name) · monitoring recovered"
                 )
             }
         }

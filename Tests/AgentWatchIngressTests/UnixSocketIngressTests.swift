@@ -123,6 +123,57 @@ final class UnixSocketIngressTests: XCTestCase {
         XCTAssertNotEqual(fields["forked_from_session_id"], .string(original), "never raw across the socket")
     }
 
+    /// What `Stop` says is still running travels beside the payload, not inside it.
+    ///
+    /// `background_tasks` is already a sensitive key and stays one here: the entry holds the
+    /// command line, and nothing in the row wants it. So the sender lifts out the one thing
+    /// the row does want — the kind of each task — exactly as it lifts out
+    /// `run_in_background`, and the entries are redacted on the way as they always were.
+    func testTheSenderCarriesTheKindsStopReportedAndNotTheCommands() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let socketPath = directoryURL.appendingPathComponent("agent-watch.sock").path
+        let results = IngressResults()
+        let received = expectation(description: "stop event arrives")
+        let ingress = UnixSocketIngress(socketPath: socketPath) { result in
+            results.append(result)
+            received.fulfill()
+        }
+        try ingress.start()
+        defer { ingress.stop() }
+
+        let request = try XCTUnwrap(
+            RedactedHookIngressRequest.make(
+                source: .claude,
+                declaredEvent: "Stop",
+                payload: .object([
+                    "session_id": .string("session"),
+                    "background_tasks": .array([
+                        .object([
+                            "id": .string("b2x71w2yx"),
+                            "type": .string("shell"),
+                            "status": .string("running"),
+                            "command": .string("python3 review.py --mr 67 wait"),
+                        ])
+                    ]),
+                ])
+            ))
+        try HookEventSender.send(request, to: socketPath)
+
+        wait(for: [received], timeout: 1)
+        let receivedRequest = try XCTUnwrap(results.snapshot().first).get()
+        XCTAssertEqual(receivedRequest.backgroundWork, [.shell])
+        guard case let .object(fields) = receivedRequest.payload else {
+            return XCTFail("Expected an object payload")
+        }
+        XCTAssertEqual(
+            fields["background_tasks"],
+            .string("<redacted>"),
+            "the entries themselves never cross the socket — the redactor already holds that door shut"
+        )
+    }
+
     func testLocalControlSenderDeliversRevealRequestToIngress() throws {
         let directoryURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }
