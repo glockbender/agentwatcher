@@ -157,7 +157,11 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         // fitting width is the left inset plus the widest section, and the section's last
         // column would sit flush against the window's edge.
         let fitting = content.fittingSize
-        let width = fitting.width + content.edgeInsets.right
+        // And the scroller's own strip where the system draws one. This content is always
+        // taller than the window — that is why it scrolls — so with "Always show scroll bars"
+        // the strip is always there, and it is taken out of the content rather than laid over
+        // it. Measured: 15 points, which is the whole right margin but five.
+        let width = fitting.width + content.edgeInsets.right + Self.scrollerStrip
         window.contentMinSize = NSSize(width: width, height: 240)
         window.setContentSize(
             NSSize(width: width, height: min(fitting.height, Self.tallestUsefulWindow)))
@@ -177,6 +181,14 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// thing a window taller than the screen cannot offer.
     static var tallestUsefulWindow: CGFloat {
         (NSScreen.main?.visibleFrame.height ?? 900) * 0.9
+    }
+
+    /// What a scroller takes from the content's width, which is nothing unless the system
+    /// draws the old solid strip rather than the overlay that fades in over the content.
+    private static var scrollerStrip: CGFloat {
+        NSScroller.preferredScrollerStyle == .legacy
+            ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+            : 0
     }
 
     /// Closing the window in the middle of a recording is a change of mind like any other, and
@@ -615,12 +627,19 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         guard let part = Self.part(ofTag: sender.tag) else {
             return
         }
+        // A pop-up with nothing selected answers -1, and a list read at -1 is a crash rather
+        // than a setting. Nothing here can produce one — every list is built with a selection
+        // — so this is the guard, not a repair: an unreadable answer changes nothing.
+        let contextStyles: [RowLayout.ContextStyle] = [.percent, .tokens, .both]
         let chosen = sender.indexOfSelectedItem
+        guard chosen >= 0 else {
+            return
+        }
         rowLayouts.setLayout(
             rowLayouts.layout.changing(
                 nameStyle: part == .name ? (chosen == 1 ? .title : .fallback) : nil,
                 modelStyle: part == .model ? (chosen == 1 ? .effort : .plain) : nil,
-                contextStyle: part == .context ? [.percent, .tokens, .both][min(chosen, 2)] : nil
+                contextStyle: part == .context ? contextStyles[min(chosen, contextStyles.count - 1)] : nil
             )
         )
         showRowLayout()

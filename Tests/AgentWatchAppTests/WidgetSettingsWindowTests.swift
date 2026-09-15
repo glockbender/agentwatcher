@@ -333,6 +333,11 @@ final class WidgetSettingsWindowTests: XCTestCase {
     func testTheWindowIsWideEnoughForEveryControlInIt() throws {
         let controller = try makeWindow().controller
         let content = try XCTUnwrap(controller.window?.contentView)
+        // The worst case on purpose, and the one this machine does not have: with "Always
+        // show scroll bars" the scroller is a solid strip taking width out of the content
+        // rather than an overlay taking none. The content here is always taller than the
+        // window — that is why it scrolls — so on such a machine the strip is always there.
+        (content as? NSScrollView)?.scrollerStyle = .legacy
         let document = (content as? NSScrollView)?.documentView ?? content
         document.layoutSubtreeIfNeeded()
 
