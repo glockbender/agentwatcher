@@ -45,13 +45,41 @@ final class WidgetShortcutControllerTests: XCTestCase {
 
     /// Fail-open: the app carries on, and the setting keeps the combination the person chose so
     /// the settings window can say which one it is that will not take.
-    func testARefusedRegistrationIsReportedRatherThanSwallowed() throws {
+    func testACombinationTheAppIsStillHoldingIsReportedRatherThanSwallowed() throws {
         let (controller, registrar, _) = try makeController()
         registrar.answer = .alreadyOurs
 
         controller.apply()
 
         XCTAssertEqual(controller.status, .alreadyOurs(try optionCommandW()))
+    }
+
+    /// The other refusal, and the one the app has no explanation for: the system said no and
+    /// gave a number. It is carried through rather than flattened, because the number is the
+    /// only thing anybody could look up afterwards.
+    func testAMachineThatSaysNoIsQuotedWithItsOwnNumber() throws {
+        let (controller, registrar, _) = try makeController()
+        registrar.answer = .refused(code: -9878)
+
+        controller.apply()
+
+        XCTAssertEqual(controller.status, .refused(try optionCommandW(), code: -9878))
+    }
+
+    /// The settings window shows the outcome and is built before there is one, so it has to be
+    /// told rather than ask again. Only a real change: `apply` runs at launch and after every
+    /// setting, and a window that redrew each time would blink for nothing.
+    func testAChangeOfOutcomeIsAnnouncedOnceAndOnlyWhenItChanges() throws {
+        let (controller, registrar, _) = try makeController()
+        var announced = 0
+        controller.onStatusChange = { announced += 1 }
+
+        controller.apply()
+        controller.apply()
+        registrar.answer = .refused(code: -9878)
+        controller.apply()
+
+        XCTAssertEqual(announced, 2, "active, then refused — and not the second identical apply")
     }
 
     func testPressingTheShortcutHidesAndShowsTheWidget() throws {
@@ -64,9 +92,8 @@ final class WidgetShortcutControllerTests: XCTestCase {
         XCTAssertEqual(toggles.count, 1)
     }
 
-    /// Two reasons to go quiet, one switch. While the status menu is open AppKit presses the
-    /// menu line itself, and a second toggle from here would undo it. While a new combination
-    /// is being recorded, the old one is still registered and would fire on the way in.
+    /// One reason to go quiet: while a new combination is being recorded the old one is still
+    /// registered, and the press meant for the recorder would hide the widget instead.
     func testAPressDoesNothingWhileTheShortcutIsMuted() throws {
         let toggles = Counter()
         let (controller, registrar, _) = try makeController(onToggle: toggles.increment)

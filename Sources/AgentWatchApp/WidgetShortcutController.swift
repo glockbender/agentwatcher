@@ -34,10 +34,12 @@ final class WidgetShortcutController {
 
     /// Goes quiet without giving the combination up.
     ///
-    /// Two callers, one reason each. While the status menu is open AppKit presses the menu line
-    /// itself by its key equivalent, and a toggle from here as well would undo it in the same
-    /// breath. While a new combination is being recorded the old one is still registered, and it
-    /// would fire on the way in.
+    /// One caller, and one reason: while a new combination is being recorded the old one is
+    /// still registered, and pressing it would hide the widget out from under the person
+    /// choosing — with the very press they were trying to record.
+    ///
+    /// There was a second reason expected, and measurement took it away: an open status menu
+    /// does **not** fire both the menu line and the shortcut. ADR-0009 holds the three runs.
     var isMuted = false
 
     private let settings: WidgetSettingsStore

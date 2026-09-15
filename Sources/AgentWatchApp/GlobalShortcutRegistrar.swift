@@ -43,6 +43,13 @@ final class GlobalShortcutRegistrar: GlobalShortcutRegistering {
 
     private var hotKey: EventHotKeyRef?
     private var handler: EventHandlerRef?
+    /// What the system said about installing the handler.
+    ///
+    /// Kept rather than dropped because without the handler a registration still succeeds and
+    /// the press still reaches the system's table — it simply has nowhere to go. That is the
+    /// one failure here a person could not tell from a working shortcut, so it is reported as
+    /// a refusal instead of leaving the settings window saying the combination is active.
+    private var handlerStatus: OSStatus = noErr
 
     /// Four bytes the system uses to tell one application's shortcuts from another's: `AGWT`.
     private static let signature = OSType(0x4147_5754)
@@ -56,7 +63,7 @@ final class GlobalShortcutRegistrar: GlobalShortcutRegistering {
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
-        InstallEventHandler(
+        handlerStatus = InstallEventHandler(
             GetApplicationEventTarget(),
             { _, event, context in
                 guard let context, let event else {
@@ -76,6 +83,19 @@ final class GlobalShortcutRegistrar: GlobalShortcutRegistering {
     }
 
     func register(_ shortcut: WidgetShortcut) -> ShortcutRegistrationOutcome {
+        guard handlerStatus == noErr else {
+            return .refused(code: handlerStatus)
+        }
+        // Never two at once. Carbon refuses the same combination twice and would answer
+        // `eventHotKeyExistsErr`, but a *different* one succeeds — and the reference to the
+        // first would be overwritten here, leaving it registered with the system for the life
+        // of the process with no way left to take it down. The handler would go on answering
+        // it, too: it checks the signature, and both carry ours. Nothing calls this twice
+        // today; the controller takes the old one down first and has a test that says so.
+        // This is the same rule stated where it cannot be skipped.
+        guard hotKey == nil else {
+            return .alreadyOurs
+        }
         var reference: EventHotKeyRef?
         let status = RegisterEventHotKey(
             UInt32(shortcut.keyCode),
