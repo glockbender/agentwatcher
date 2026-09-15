@@ -34,6 +34,21 @@ final class ShortcutRecorderButton: NSButton {
         true
     }
 
+    /// Losing the focus is a change of mind, and the only one that arrives without a key press.
+    ///
+    /// Every other way out of recording is a key: `⎋`, `⌫`, or a combination to keep. Clicking
+    /// past the button is none of them, so without this the recorder stayed in the middle of a
+    /// recording that nothing would ever finish — and the combination it was called to replace
+    /// stayed muted while the menu went on printing it.
+    override func resignFirstResponder() -> Bool {
+        guard isRecording else {
+            return super.resignFirstResponder()
+        }
+        stopRecording()
+        onRecording?(.cancelled)
+        return super.resignFirstResponder()
+    }
+
     func startRecording() {
         isRecording = true
         window?.makeFirstResponder(self)

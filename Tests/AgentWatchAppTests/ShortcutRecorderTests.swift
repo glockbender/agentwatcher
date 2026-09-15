@@ -85,6 +85,31 @@ final class ShortcutRecorderTests: XCTestCase {
         XCTAssertTrue(recorder.isRecording, "still waiting for one it can take")
     }
 
+    /// Clicking elsewhere is a change of mind, and it is the one the recorder would otherwise
+    /// never hear about: every other way out of recording is a key press, and this one is the
+    /// absence of any. Left recording, the button sits reading "Press a combination…" and the
+    /// combination it was called to replace stays muted — registered, printed beside the menu
+    /// line, and doing nothing.
+    func testGivingUpTheFocusEndsTheRecording() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 80),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let recorder = ShortcutRecorderButton()
+        try XCTUnwrap(window.contentView).addSubview(recorder)
+        var recorded: ShortcutRecording?
+        recorder.onRecording = { recorded = $0 }
+        recorder.startRecording()
+        XCTAssertTrue(recorder.isRecording, "nothing to give up otherwise")
+
+        window.makeFirstResponder(nil)
+
+        XCTAssertEqual(recorded, .cancelled)
+        XCTAssertFalse(recorder.isRecording)
+    }
+
     func testAKeyPressedWhileNotRecordingIsNoneOfItsBusiness() throws {
         let recorder = ShortcutRecorderButton()
         var recorded: ShortcutRecording?

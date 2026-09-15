@@ -221,6 +221,38 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertTrue(shortcuts.isMuted)
     }
 
+    /// A person who starts recording and then changes their mind presses nothing, so nothing
+    /// reports anything — and the quiet that was meant to last as long as the choosing lasted
+    /// outlived the window. The combination stayed registered and printed beside the menu
+    /// line, and pressing it did nothing at all until the next visit to this window.
+    func testWalkingAwayFromTheRecorderLetsTheCombinationSpeakAgain() throws {
+        let (controller, shortcuts) = try makeWindowKeepingItsShortcuts()
+        let recorder = try XCTUnwrap(controller.shortcutRecorder)
+        recorder.sendAction(recorder.action, to: recorder.target)
+        XCTAssertTrue(shortcuts.isMuted, "the old combination goes quiet while a new one is chosen")
+
+        try XCTUnwrap(controller.window).makeFirstResponder(nil)
+
+        XCTAssertFalse(shortcuts.isMuted)
+        XCTAssertEqual(recorder.title, "⌥⌘W", "and the button stops asking for a press")
+    }
+
+    /// The same change of mind, made by closing the window rather than by clicking past the
+    /// recorder. Worth its own test because the way out is a different one: AppKit does not
+    /// promise that closing a window takes the focus off the control inside it.
+    func testClosingTheWindowMidRecordingLetsTheCombinationSpeakAgain() throws {
+        let (controller, shortcuts) = try makeWindowKeepingItsShortcuts()
+        let recorder = try XCTUnwrap(controller.shortcutRecorder)
+        controller.present()
+        recorder.sendAction(recorder.action, to: recorder.target)
+        XCTAssertTrue(shortcuts.isMuted)
+
+        controller.close()
+
+        XCTAssertFalse(shortcuts.isMuted)
+        XCTAssertFalse(recorder.isRecording)
+    }
+
     /// The window measures itself once, at construction, from the text the status line happens
     /// to hold then. Every other sentence it can show has to fit in that same room — the longest
     /// is the one about which keys are accepted, and it is three times the length of the one the

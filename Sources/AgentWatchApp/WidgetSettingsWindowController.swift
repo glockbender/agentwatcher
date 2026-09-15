@@ -17,7 +17,7 @@ import AppKit
 /// be anywhere else: recording a combination needs a control that takes a key press, and a menu
 /// line cannot be one.
 @MainActor
-final class WidgetSettingsWindowController: NSWindowController {
+final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate {
     private let backgroundStore: WidgetBackgroundStore
     private let lampSchemes: LampSchemeStore
     private let settings: WidgetSettingsStore
@@ -111,7 +111,17 @@ final class WidgetSettingsWindowController: NSWindowController {
             self?.shortcutRefusal = nil
             self?.showShortcut()
         }
+        window.delegate = self
         showCurrentValues()
+    }
+
+    /// Closing the window in the middle of a recording is a change of mind like any other, and
+    /// it is the one the recorder cannot notice for itself: measured, AppKit leaves the focus
+    /// on the control inside a window it closes. Without this the combination stayed quiet
+    /// after the window was gone — still registered, still printed beside the menu line, and
+    /// doing nothing until the next visit here.
+    func windowWillClose(_ notification: Notification) {
+        stopRecordingShortcut()
     }
 
     @available(*, unavailable)
@@ -270,6 +280,18 @@ final class WidgetSettingsWindowController: NSWindowController {
         // pressing it here would hide the widget out from under the person doing the choosing.
         shortcuts.isMuted = true
         showShortcut()
+    }
+
+    /// Ends a recording nobody is going to finish, and hands the combination its voice back.
+    ///
+    /// Through the same path a `⎋` takes, so there is one place that decides what the end of a
+    /// recording does.
+    private func stopRecordingShortcut() {
+        guard let recorder = shortcutRecorder, recorder.isRecording else {
+            return
+        }
+        recorder.stopRecording()
+        shortcutRecorded(.cancelled)
     }
 
     @objc private func clearShortcut() {
