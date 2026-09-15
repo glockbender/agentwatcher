@@ -28,6 +28,35 @@ struct WidgetStyle {
 
     init(scale: CGFloat = 1) {
         self.scale = min(max(scale, WidgetSettingsStore.minimumScale), WidgetSettingsStore.maximumScale)
+        measure()
+    }
+
+    /// The four numbers that cannot be worked out from the scale alone, taken once.
+    ///
+    /// Each of them is read off a real label, a real image view or a real button, because
+    /// AppKit is the only authority on what it will draw — the reasoning is beside each one
+    /// below. That makes them the expensive part of this type by a distance: measured at 125%,
+    /// one `rowHeight` costs 341 µs and one `buttonSize` 691 µs, against 1,9 ms for building a
+    /// whole row. Left as computed properties they were taken again for every row of every
+    /// rebuild, so over half the cost of drawing the list was re-deriving five numbers that
+    /// had not changed. A width drag rebuilds the whole list per frame, which is where that
+    /// showed.
+    ///
+    /// Stored on the instance and not in a `static`, which is the distinction the type comment
+    /// draws: a `static let` would answer for whichever scale asked first, where a style is
+    /// built once per scale and measured once with it.
+    private mutating func measure() {
+        rowHeight = max(points(19), (tallestRowContent + 2 * rowVerticalInset).rounded(.up))
+        let natural = Self.borderedButtonSize(font: buttonFont, controlSize: buttonControlSize)
+        buttonHasBezel = natural.height <= rowHeight
+        buttonSize =
+            buttonHasBezel
+            ? NSSize(width: min(points(22), natural.width), height: min(rowHeight, natural.height))
+            // Nothing to stretch or squeeze: a borderless button is its glyph, and the box
+            // around it is only the target. So the row decides it, as it did before there was
+            // a bezel to respect.
+            : NSSize(width: points(22), height: rowHeight)
+        timerWidth = labelWidth(of: "99d", font: timerFont)
     }
 
     /// A tuned number at this scale, rounded to a whole point.
@@ -135,10 +164,9 @@ struct WidgetStyle {
     /// part company only going down: a font half the size does not give a label half the
     /// height, because `NSTextField` keeps a minimum of its own around the text, so at half
     /// size a 6-point name still wants 9.5 points and the scaled row offered 10 including its
-    /// insets. Measured rather than derived, for the same reason `timerWidth` is.
-    var rowHeight: CGFloat {
-        max(points(19), (tallestRowContent + 2 * rowVerticalInset).rounded(.up))
-    }
+    /// insets. Measured rather than derived, for the same reason `timerWidth` is — and taken
+    /// once, in `measure`, which says what that costs.
+    private(set) var rowHeight: CGFloat = 0
 
     /// The gap above and below a row's contents, inside the hover wash. A point at every
     /// size: it is the hairline that keeps the wash off the text, and half a point of it
@@ -211,16 +239,7 @@ struct WidgetStyle {
     /// At the tuned size the height is untouched — the bezel's own 19 points are where the
     /// row's height came from in the first place — and the width gives up one point, 22 to 21,
     /// which is the button asking for exactly as much room as it draws in.
-    var buttonSize: NSSize {
-        guard buttonHasBezel else {
-            // Nothing to stretch or squeeze: a borderless button is its glyph, and the box
-            // around it is only the target. So the row decides it, as it did before there
-            // was a bezel to respect.
-            return NSSize(width: points(22), height: rowHeight)
-        }
-        let natural = Self.borderedButtonSize(font: buttonFont, controlSize: buttonControlSize)
-        return NSSize(width: min(points(22), natural.width), height: min(rowHeight, natural.height))
-    }
+    private(set) var buttonSize: NSSize = .zero
 
     /// What a bezelled `×` comes out as when nothing is imposed on it.
     private static func borderedButtonSize(font: NSFont, controlSize: NSControl.ControlSize) -> NSSize {
@@ -259,9 +278,7 @@ struct WidgetStyle {
     ///
     /// Measured against a real button rather than a threshold written here, so a macOS that
     /// changes its metrics moves this with it.
-    var buttonHasBezel: Bool {
-        Self.borderedButtonSize(font: buttonFont, controlSize: buttonControlSize).height <= rowHeight
-    }
+    private(set) var buttonHasBezel = true
 
     /// Below this a shortened name says nothing useful, and a single initial takes over.
     /// Kept small on purpose: a truncated `AGENTS…CLAUDE.md` still identifies a session.
@@ -273,9 +290,10 @@ struct WidgetStyle {
     /// Three characters, always — the longest value the timer can print. Reserved in every
     /// row so the lamp and everything after it stand in a straight column.
     ///
-    /// Measured through a label at this style's own font, which is why it cannot be a stored
+    /// Measured through a label at this style's own font, which is why it cannot be a shared
     /// constant: the first scale to ask would have fixed the answer for every scale after it.
-    var timerWidth: CGFloat { labelWidth(of: "99d", font: timerFont) }
+    /// Taken once per style, in `measure`.
+    private(set) var timerWidth: CGFloat = 0
 
     // MARK: - The list
 
