@@ -12,11 +12,19 @@ import AppKit
 ///
 /// The background and the transparency moved here from the menu for the same reason — they
 /// are appearance, and appearance now has one place.
+///
+/// The shortcut is the one thing here that is not appearance, and it is here because it cannot
+/// be anywhere else: recording a combination needs a control that takes a key press, and a menu
+/// line cannot be one.
 @MainActor
 final class WidgetSettingsWindowController: NSWindowController {
     private let backgroundStore: WidgetBackgroundStore
     private let lampSchemes: LampSchemeStore
     private let settings: WidgetSettingsStore
+    private let shortcuts: WidgetShortcutController
+    /// What the last key press was refused for, shown in place of the status until something
+    /// else happens. Transient on purpose: it is about the press, not about the setting.
+    private var shortcutRefusal: String?
 
     /// The controls, kept so a change made elsewhere — the reset button, or the store
     /// clamping a value — can be shown without rebuilding the window.
@@ -30,15 +38,20 @@ final class WidgetSettingsWindowController: NSWindowController {
     private(set) var opacityLabel: NSTextField?
     private(set) var scaleSlider: NSSlider?
     private(set) var scaleLabel: NSTextField?
+    private(set) var shortcutRecorder: ShortcutRecorderButton?
+    private(set) var shortcutClearButton: NSButton?
+    private(set) var shortcutStatusLabel: NSTextField?
 
     init(
         backgroundStore: WidgetBackgroundStore,
         lampSchemes: LampSchemeStore,
-        settings: WidgetSettingsStore
+        settings: WidgetSettingsStore,
+        shortcuts: WidgetShortcutController
     ) {
         self.backgroundStore = backgroundStore
         self.lampSchemes = lampSchemes
         self.settings = settings
+        self.shortcuts = shortcuts
 
         let window = NSWindow(
             // Replaced by the content's own fitting size below; a window needs some rect to
@@ -56,10 +69,11 @@ final class WidgetSettingsWindowController: NSWindowController {
         let palette = makeBackgroundGrid()
         let opacity = makeOpacityRow()
         let size = makeScaleRow()
+        let shortcut = makeShortcutRow()
         // The rules are as wide as the widest thing they separate, measured from the sections
         // themselves. A constant here decided the window's width instead, and left a strip of
         // empty window to the right of every control.
-        let ruleWidth = [lamp, palette, opacity, size].map(\.fittingSize.width).max() ?? 0
+        let ruleWidth = [lamp, palette, opacity, size, shortcut].map(\.fittingSize.width).max() ?? 0
 
         let content = NSStackView()
         content.orientation = .vertical
@@ -78,6 +92,10 @@ final class WidgetSettingsWindowController: NSWindowController {
         content.addView(Self.makeRule(width: ruleWidth), in: .top)
         content.addView(Self.makeSectionTitle("Size"), in: .top)
         content.addView(size, in: .top)
+        content.addView(Self.makeRule(width: ruleWidth), in: .top)
+        content.addView(Self.makeSectionTitle(shortcutSectionTitle), in: .top)
+        content.addView(shortcut, in: .top)
+        content.addView(makeShortcutStatusLabel(width: ruleWidth), in: .top)
 
         let container = NSView()
         container.addSubview(content)
@@ -86,6 +104,13 @@ final class WidgetSettingsWindowController: NSWindowController {
         // Sized to its content rather than to the number above: the lamp grid's height comes
         // from nine rows of controls whose size is the system's to decide, not this file's.
         window.setContentSize(content.fittingSize)
+        // The window is the only place a failed registration can be seen, so it listens rather
+        // than reading the status once at construction: the combination may be taken by
+        // something that starts up after this window did.
+        shortcuts.onStatusChange = { [weak self] in
+            self?.shortcutRefusal = nil
+            self?.showShortcut()
+        }
         showCurrentValues()
     }
 
@@ -183,6 +208,95 @@ final class WidgetSettingsWindowController: NSWindowController {
         button.bezelStyle = .rounded
         button.toolTip = "Forgets every colour and motion chosen here, phase by phase."
         return button
+    }
+
+    private func makeShortcutRow() -> NSView {
+        let recorder = ShortcutRecorderButton(
+            title: shortcutEmptyButton,
+            target: self,
+            action: #selector(startRecordingShortcut)
+        )
+        recorder.bezelStyle = .rounded
+        // A fixed width so the row does not jump about between "Click to record" and "⌥⌘W",
+        // which are nowhere near the same length.
+        recorder.widthAnchor.constraint(equalToConstant: 168).isActive = true
+        recorder.onRecording = { [weak self] recording in
+            self?.shortcutRecorded(recording)
+        }
+        shortcutRecorder = recorder
+
+        let clear = NSButton(title: shortcutClearTitle, target: self, action: #selector(clearShortcut))
+        clear.bezelStyle = .rounded
+        self.shortcutClearButton = clear
+
+        let row = NSStackView(views: [recorder, clear])
+        row.orientation = .horizontal
+        row.spacing = 8
+        return row
+    }
+
+    private func makeShortcutStatusLabel(width: CGFloat) -> NSView {
+        let label = NSTextField(wrappingLabelWithString: "")
+        label.font = WidgetStyle.standard.secondaryFont
+        label.textColor = .secondaryLabelColor
+        // Wrapping rather than truncating, and bounded by the width the sections already agreed
+        // on: the longest of these sentences names a combination and says what to do about it,
+        // and a person who cannot read the end of it learns nothing.
+        label.preferredMaxLayoutWidth = width
+        label.widthAnchor.constraint(equalToConstant: width).isActive = true
+        shortcutStatusLabel = label
+        return label
+    }
+
+    @objc private func startRecordingShortcut() {
+        guard let recorder = shortcutRecorder else {
+            return
+        }
+        shortcutRefusal = nil
+        recorder.startRecording()
+        // The old combination is still registered while the new one is being chosen, and
+        // pressing it here would hide the widget out from under the person doing the choosing.
+        shortcuts.isMuted = true
+        showShortcut()
+    }
+
+    @objc private func clearShortcut() {
+        shortcutRefusal = nil
+        shortcutRecorder?.stopRecording()
+        shortcuts.isMuted = false
+        settings.setToggleShortcut(nil)
+        showShortcut()
+    }
+
+    private func shortcutRecorded(_ recording: ShortcutRecording) {
+        switch recording {
+        case let .recorded(shortcut):
+            shortcutRefusal = nil
+            settings.setToggleShortcut(shortcut)
+        case .cleared:
+            shortcutRefusal = nil
+            settings.setToggleShortcut(nil)
+        case .cancelled:
+            shortcutRefusal = nil
+        case .refused:
+            shortcutRefusal = shortcutRefusedPress
+        }
+        // A refused press leaves the recorder waiting for another, and the old combination has
+        // to stay quiet for exactly as long as that lasts.
+        shortcuts.isMuted = shortcutRecorder?.isRecording ?? false
+        showShortcut()
+    }
+
+    private func showShortcut() {
+        guard let recorder = shortcutRecorder else {
+            return
+        }
+        recorder.title =
+            recorder.isRecording
+            ? shortcutRecordingButton
+            : (settings.toggleShortcut?.displayed ?? shortcutEmptyButton)
+        shortcutStatusLabel?.stringValue = shortcutRefusal ?? shortcutStatusLine(shortcuts.status)
+        shortcutClearButton?.isEnabled = settings.toggleShortcut != nil
     }
 
     @objc private func colorChanged(_ sender: NSColorWell) {
@@ -345,6 +459,7 @@ final class WidgetSettingsWindowController: NSWindowController {
         showSelectedBackground()
         showOpacity()
         showScale()
+        showShortcut()
     }
 
     private func showSelectedBackground() {

@@ -31,6 +31,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let preferences: PreferenceFile
     private let updater: AppUpdater
     private let heard = AgentHeardStore()
+    /// Keeps the combination that hides and shows the widget agreeing with the setting.
+    private lazy var shortcuts = WidgetShortcutController(
+        settings: settings,
+        registrar: GlobalShortcutRegistrar(),
+        onToggle: { [weak self] in
+            self?.hudController.toggle()
+        }
+    )
     private let history = SessionHistoryStore()
     private lazy var tooling: ToolingCoordinator = {
         let coordinator = ToolingCoordinator(installer: installer, heard: heard)
@@ -93,7 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var settingsWindow: WidgetSettingsWindowController = WidgetSettingsWindowController(
         backgroundStore: backgroundStore,
         lampSchemes: lampSchemes,
-        settings: settings
+        settings: settings,
+        shortcuts: shortcuts
     )
     private let debugLog = EventDebugLog()
     private lazy var debugController = EventDebugWindowController(initialEntries: debugLog.recentEntries())
@@ -158,6 +167,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // and a memory never overwrites it — but it would come in as a brand new session.
         supervisor.start()
         ingress.start()
+        // After the widget is on screen: the shortcut's whole job is to take it away again.
+        shortcuts.apply()
         updater.checkAfterLaunch()
     }
 
@@ -314,6 +325,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // and saves a timer: see `SessionSupervisor.discoverAgentProcesses`.
         supervisor.discoverAgentProcesses()
         widgetMenuItem?.title = hudController.window?.isVisible == true ? "Hide Widget" : "Show Widget"
+        if let widgetMenuItem {
+            shortcuts.showShortcut(on: widgetMenuItem)
+        }
         debugMenuItem?.title = debugController.isVisible ? "Hide Event Debug" : "Show Event Debug"
         #if AGENT_WATCH_DEBUG_CAPTURE
             updateRawHookCaptureMenuItem()
@@ -629,6 +643,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // control that passed its own raw value would draw the widget at a size the saved
             // setting does not hold — so the next launch would show a different widget.
             hudController.setScale(settings.scale)
+        case .toggleShortcut:
+            shortcuts.apply()
         }
     }
 

@@ -32,6 +32,7 @@ enum WidgetSetting {
     case backgroundOpacity
     case lampScheme
     case scale
+    case toggleShortcut
 }
 
 /// Widget preferences that are not about colour.
@@ -74,6 +75,18 @@ final class WidgetSettingsStore: PreferenceDefaults {
     /// number a whole point without rounding deciding it.
     static let offeredScales: [CGFloat] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 
+    /// What a fresh install hides and shows the widget with — `⌥⌘W`.
+    ///
+    /// Kept as the text that goes into the file rather than built from a key code, because
+    /// building one is failable: a default that might be nothing would need a fallback no test
+    /// could ever reach. That these four characters really mean `⌥⌘W` is a test's job instead.
+    static let defaultToggleShortcut = "opt+cmd+13"
+    /// What the file holds when a person has cleared the shortcut.
+    ///
+    /// A state of its own rather than a missing key, because a missing key is what a fresh
+    /// install looks like — and that one is given `⌥⌘W`.
+    static let noToggleShortcut = ""
+
     private enum Key {
         static let locksPosition = "lockWidgetPosition"
         static let locksSize = "lockWidgetSize"
@@ -81,6 +94,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let showsSessionTopic = "showsSessionTopic"
         static let transcriptPollInterval = "transcriptPollIntervalSeconds"
         static let scale = "widgetScale"
+        static let toggleShortcut = "toggleWidgetShortcut"
     }
 
     private let preferences: PreferenceFile
@@ -93,6 +107,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.showsSessionTopic: .bool(true),
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
             Key.scale: .number(Double(Self.defaultScale)),
+            Key.toggleShortcut: .string(Self.defaultToggleShortcut),
         ]
     }
 
@@ -170,6 +185,18 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     private func normalizedScale(_ scale: CGFloat) -> CGFloat {
         min(max(scale, Self.minimumScale), Self.maximumScale)
+    }
+
+    /// The combination that hides and shows the widget from anywhere, or nothing.
+    var toggleShortcut: WidgetShortcut? {
+        WidgetShortcut(
+            stored: preferences.string(forKey: Key.toggleShortcut) ?? Self.defaultToggleShortcut
+        )
+    }
+
+    func setToggleShortcut(_ shortcut: WidgetShortcut?) {
+        preferences.set(shortcut?.stored ?? Self.noToggleShortcut, forKey: Key.toggleShortcut)
+        onChange?(.toggleShortcut)
     }
 
     func setTranscriptPollInterval(_ interval: TimeInterval?) {

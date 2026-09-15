@@ -55,10 +55,12 @@ final class WidgetSettingsWindowTests: XCTestCase {
         lampSchemes.setMotion(.urgent, for: .idle)
         lampSchemes.setColor(NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1), for: .idle)
 
+        let settings = WidgetSettingsStore(preferences: preferences)
         let controller = WidgetSettingsWindowController(
             backgroundStore: WidgetBackgroundStore(preferences: preferences),
             lampSchemes: lampSchemes,
-            settings: WidgetSettingsStore(preferences: preferences)
+            settings: settings,
+            shortcuts: FakeShortcutRegistrar.controller(for: settings)
         )
 
         XCTAssertEqual(
@@ -136,7 +138,76 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertEqual(controller.scaleLabel?.stringValue, "200%")
     }
 
-    private func makeWindow() throws -> (
+    func testTheWindowShowsTheCombinationTheWidgetAnswersTo() throws {
+        let (controller, _, _, _) = try makeWindow()
+
+        XCTAssertEqual(controller.shortcutRecorder?.title, "⌥⌘W")
+    }
+
+    func testACombinationRecordedInTheWindowIsKept() throws {
+        let (controller, _, _, settings) = try makeWindow()
+        let recorder = try XCTUnwrap(controller.shortcutRecorder)
+
+        recorder.startRecording()
+        recorder.keyDown(with: try press(keyCode: 96, flags: [.control, .shift]))
+
+        XCTAssertEqual(settings.toggleShortcut?.displayed, "⌃⇧F5")
+        XCTAssertEqual(recorder.title, "⌃⇧F5")
+    }
+
+    func testClearingLeavesTheWidgetWithNoCombinationAtAll() throws {
+        let (controller, _, _, settings) = try makeWindow()
+        let clear = try XCTUnwrap(controller.shortcutClearButton)
+
+        clear.sendAction(clear.action, to: clear.target)
+
+        XCTAssertNil(settings.toggleShortcut)
+        XCTAssertEqual(controller.shortcutRecorder?.title, shortcutEmptyButton)
+    }
+
+    /// The control that cannot do its job stays where it is and says why — hiding it would
+    /// leave the person with a widget that ignores the combination they can still see set.
+    func testACombinationAnotherApplicationOwnsIsExplainedRatherThanHidden() throws {
+        let (controller, _, _, _) = try makeWindow(answer: .taken)
+
+        XCTAssertEqual(controller.shortcutStatusLabel?.stringValue, shortcutStatusLine(.taken(try optionCommandW())))
+        XCTAssertTrue(controller.shortcutRecorder?.isEnabled == true, "the way out is to record another")
+    }
+
+    func testAPressThatCannotBeAShortcutSaysWhatWouldBeAccepted() throws {
+        let (controller, _, _, _) = try makeWindow()
+        let recorder = try XCTUnwrap(controller.shortcutRecorder)
+
+        recorder.startRecording()
+        recorder.keyDown(with: try press(keyCode: 13, flags: []))
+
+        XCTAssertEqual(controller.shortcutStatusLabel?.stringValue, shortcutRefusedPress)
+    }
+
+    private func optionCommandW() throws -> WidgetShortcut {
+        try XCTUnwrap(WidgetShortcut(keyCode: 13, modifiers: [.option, .command]))
+    }
+
+    private func press(keyCode: UInt16, flags: NSEvent.ModifierFlags) throws -> NSEvent {
+        try XCTUnwrap(
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: flags,
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: false,
+                keyCode: keyCode
+            )
+        )
+    }
+
+    private func makeWindow(
+        answer: ShortcutRegistrationOutcome = .registered
+    ) throws -> (
         controller: WidgetSettingsWindowController,
         lampSchemes: LampSchemeStore,
         backgroundStore: WidgetBackgroundStore,
@@ -146,11 +217,20 @@ final class WidgetSettingsWindowTests: XCTestCase {
         let lampSchemes = LampSchemeStore(preferences: preferences)
         let backgroundStore = WidgetBackgroundStore(preferences: preferences)
         let settings = WidgetSettingsStore(preferences: preferences)
+        let registrar = FakeShortcutRegistrar()
+        registrar.answer = answer
+        let shortcuts = WidgetShortcutController(
+            settings: settings,
+            registrar: registrar,
+            onToggle: {}
+        )
+        shortcuts.apply()
         return (
             WidgetSettingsWindowController(
                 backgroundStore: backgroundStore,
                 lampSchemes: lampSchemes,
-                settings: settings
+                settings: settings,
+                shortcuts: shortcuts
             ),
             lampSchemes,
             backgroundStore,

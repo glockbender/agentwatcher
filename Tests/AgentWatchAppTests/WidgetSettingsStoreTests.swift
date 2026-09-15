@@ -132,6 +132,49 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(announced, 2, "one for each size the widget actually changed to")
     }
 
+    /// The constant is kept as the text that goes into the file, so that the default needs no
+    /// fallback for the case where it fails to build. This is the test that keeps it honest —
+    /// without it, a typo in `opt+cmd+13` would ship as a fresh install with no shortcut at all.
+    func testAFreshInstallTogglesTheWidgetWithOptionCommandW() throws {
+        let store = try makeStore()
+
+        XCTAssertEqual(store.toggleShortcut?.displayed, "⌥⌘W")
+    }
+
+    func testAChosenShortcutSurvives() throws {
+        let store = try makeStore()
+        let chosen = try XCTUnwrap(WidgetShortcut(keyCode: 96, modifiers: [.control, .shift]))
+
+        store.setToggleShortcut(chosen)
+
+        XCTAssertEqual(store.toggleShortcut, chosen)
+    }
+
+    /// Clearing has to be a state the file can hold, not the absence of a key: an absent key is
+    /// how a fresh install looks, and that one gets `⌥⌘W` back.
+    func testAClearedShortcutStaysCleared() throws {
+        let store = try makeStore()
+
+        store.setToggleShortcut(nil)
+
+        XCTAssertNil(store.toggleShortcut)
+    }
+
+    func testChangingTheShortcutIsAnnouncedSoItCanBeRegisteredAgain() throws {
+        let store = try makeStore()
+        var announced = 0
+        store.onChange = { setting in
+            if case .toggleShortcut = setting {
+                announced += 1
+            }
+        }
+
+        store.setToggleShortcut(WidgetShortcut(keyCode: 96, modifiers: [.control]))
+        store.setToggleShortcut(nil)
+
+        XCTAssertEqual(announced, 2)
+    }
+
     private func makeStore() throws -> WidgetSettingsStore {
         WidgetSettingsStore(preferences: try isolatedPreferences())
     }

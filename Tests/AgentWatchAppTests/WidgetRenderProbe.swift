@@ -106,10 +106,12 @@ final class WidgetRenderProbe: XCTestCase {
     /// reads wrong.
     private func settingsWindowContent() throws -> NSView {
         let preferences = try isolatedPreferences()
+        let settings = WidgetSettingsStore(preferences: preferences)
         let controller = WidgetSettingsWindowController(
             backgroundStore: WidgetBackgroundStore(preferences: preferences),
             lampSchemes: LampSchemeStore(preferences: preferences),
-            settings: WidgetSettingsStore(preferences: preferences)
+            settings: settings,
+            shortcuts: FakeShortcutRegistrar.controller(for: settings)
         )
         let view = try XCTUnwrap(controller.window?.contentView)
         // The window's own background, which `cacheDisplay` does not draw: without it the

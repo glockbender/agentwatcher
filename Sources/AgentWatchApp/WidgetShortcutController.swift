@@ -1,0 +1,105 @@
+import AppKit
+
+/// Keeps the system's table of shortcuts agreeing with the setting, and knows what to say when
+/// it cannot.
+///
+/// Separate from the registrar so that *when* to register can be tested without registering,
+/// and separate from `AppDelegate` so that the rule about taking the old combination down
+/// before putting the new one up has somewhere to live and something to check it.
+@MainActor
+final class WidgetShortcutController {
+    /// What the widget's shortcut is doing, in the words the settings window shows.
+    enum Status: Equatable {
+        /// Nobody has set one, or it was cleared.
+        case none
+        case active(WidgetShortcut)
+        case taken(WidgetShortcut)
+        case refused(WidgetShortcut, code: Int32)
+    }
+
+    private(set) var status: Status = .none {
+        didSet {
+            guard status != oldValue else {
+                return
+            }
+            onStatusChange?()
+        }
+    }
+
+    /// So that the settings window and the status menu can show what happened without asking
+    /// again on a timer.
+    var onStatusChange: (() -> Void)?
+
+    /// Goes quiet without giving the combination up.
+    ///
+    /// Two callers, one reason each. While the status menu is open AppKit presses the menu line
+    /// itself by its key equivalent, and a toggle from here as well would undo it in the same
+    /// breath. While a new combination is being recorded the old one is still registered, and it
+    /// would fire on the way in.
+    var isMuted = false
+
+    private let settings: WidgetSettingsStore
+    private let registrar: GlobalShortcutRegistering
+    private let onToggle: () -> Void
+    /// What is actually in the system's table right now, which is not the same as what the
+    /// setting says: a combination another application owns stays in the setting and never
+    /// reaches the table.
+    private var registered: WidgetShortcut?
+
+    init(
+        settings: WidgetSettingsStore,
+        registrar: GlobalShortcutRegistering,
+        onToggle: @escaping () -> Void
+    ) {
+        self.settings = settings
+        self.registrar = registrar
+        self.onToggle = onToggle
+        registrar.onPress = { [weak self] in
+            guard let self, !isMuted else {
+                return
+            }
+            onToggle()
+        }
+    }
+
+    /// Prints the combination beside a menu line — but only while pressing it would really do
+    /// something.
+    ///
+    /// A menu that offers `⌥⌘W` while another application holds `⌥⌘W` promises what this app
+    /// cannot deliver, and the person has no way to find that out from the menu. Saying why is
+    /// the settings window's job; the menu's job is to stop claiming it.
+    func showShortcut(on item: NSMenuItem) {
+        guard case let .active(shortcut) = status else {
+            item.keyEquivalent = ""
+            item.keyEquivalentModifierMask = []
+            return
+        }
+        item.keyEquivalent = shortcut.menuKeyEquivalent
+        item.keyEquivalentModifierMask = shortcut.menuModifierMask
+    }
+
+    /// Makes the table match the setting. Safe to call at launch and after every change.
+    func apply() {
+        if registered != nil {
+            // Before, never after. The table is system-wide and counts this application's own
+            // entry, so registering the new combination first collides with the old one as soon
+            // as the two differ only by a modifier — and the machine reports that collision the
+            // same way it reports somebody else's.
+            registrar.unregister()
+            registered = nil
+        }
+        guard let shortcut = settings.toggleShortcut else {
+            status = .none
+            return
+        }
+        switch registrar.register(shortcut) {
+        case .registered:
+            registered = shortcut
+            status = .active(shortcut)
+        case .taken:
+            status = .taken(shortcut)
+        case let .refused(code):
+            status = .refused(shortcut, code: code)
+        }
+    }
+}
