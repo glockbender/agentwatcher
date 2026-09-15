@@ -57,8 +57,10 @@ func shortcutEveryStatusLine() -> [String] {
             modifiers: [.control, .option, .shift, .command]
         )
     else {
-        // Not a fallback that gets the answer wrong: this sentence is twice the length of any
-        // other, so the room measured from it alone is still room enough for all of them.
+        // Unreachable — four modifiers and `F10` are a shortcut this type accepts, and a test
+        // says the list really does come back whole. The sentence left here is the tallest one
+        // there is, tied with the `alreadyOurs` line at two lines, so even this would measure
+        // room enough.
         return [shortcutAcceptedKeys]
     }
     return [

@@ -12,6 +12,10 @@ enum ShortcutRegistrationOutcome: Equatable {
     /// twice inside one process is refused with this status, with a different `id` as well as
     /// with the same one. So the system counts a collision only within an application, and this
     /// status can only mean that Agent Watch is still holding the combination itself.
+    ///
+    /// The name states that measurement, so if a later macOS starts refusing a duplicate across
+    /// applications the name becomes the lie `taken` was. `docs/measurements.md` carries the row
+    /// to re-check, under macOS.
     case alreadyOurs
     case refused(code: Int32)
 }

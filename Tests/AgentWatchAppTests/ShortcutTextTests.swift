@@ -38,6 +38,13 @@ final class ShortcutTextTests: XCTestCase {
         XCTAssertTrue(shortcutAcceptedKeys.lowercased().contains("layout"))
     }
 
+    /// The window measures the room for its status line from this list. A shortened list would
+    /// measure less room, and the sentence that did not fit would lose its tail with nothing to
+    /// say so — which is the defect this whole list was added to fix.
+    func testEveryLineTheStatusCanShowIsOfferedForMeasuring() {
+        XCTAssertEqual(shortcutEveryStatusLine().count, 4 + 1, "four states and the sentence about keys")
+    }
+
     func testWithNoShortcutSetTheLineClaimsNoCombination() {
         XCTAssertFalse(shortcutStatusLine(.none).contains("⌘"))
     }
