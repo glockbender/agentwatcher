@@ -23,6 +23,19 @@ final class RowLayoutStoreTests: XCTestCase {
         XCTAssertEqual(store.layout.parts, [.lamp, .name, .gap, .timer])
     }
 
+    /// The file is meant to be corrected by hand, and a hand writes `timer, lamp` rather than
+    /// `timer,lamp`. Costing nothing to allow, and the alternative is a part silently missing
+    /// from somebody's row with the file in front of them saying it is there.
+    func testAnOrderWrittenByHandWithSpacesIsReadTheSame() throws {
+        let preferences = try isolatedPreferences()
+        preferences.set("timer, lamp, name, gap", forKey: "rowLayout.parts")
+        preferences.set("shell, tool", forKey: "rowLayout.counterKinds")
+        let store = RowLayoutStore(preferences: preferences)
+
+        XCTAssertEqual(store.layout.parts, [.timer, .lamp, .name, .gap])
+        XCTAssertEqual(store.layout.counterKinds, [.shell, .tool])
+    }
+
     /// A file written by a later version names parts this one has never heard of. Dropping
     /// them quietly is the same fail-open rule monitoring follows: a row missing one part is
     /// worth more than no row at all, and refusing the file would leave the widget empty.
