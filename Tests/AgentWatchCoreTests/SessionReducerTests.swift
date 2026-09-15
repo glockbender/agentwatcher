@@ -632,6 +632,28 @@ final class SessionReducerTests: XCTestCase {
         XCTAssertNil(released.awaitedActivityID)
     }
 
+    /// A consequence of the owner rule worth pinning, because nothing else asserts it: a
+    /// subagent's call arriving after the parent's `Stop` no longer drags the row back into
+    /// `executing`. The turn really has ended — the work is the child's, and
+    /// `waitingForChildren` is what says so.
+    ///
+    /// The degraded case, stated rather than fixed: if that child's `SubagentStart` was
+    /// missed, a `completed` row now stays `completed` where it used to flip to `executing`.
+    /// Both readings are wrong about something, and this one is wrong more quietly.
+    func testASubagentsCallAfterTheTurnEndedLeavesTheRowWaitingForItsChildren() {
+        var session = snapshot(mode: .standard, phase: .executing)
+        session = SessionReducer.reduce(session, event: .activityStarted(subagent(id: "child"), at: start))
+        session = SessionReducer.reduce(session, event: .turnCompleted(at: start.addingTimeInterval(1)))
+        XCTAssertEqual(session.phase, .waitingForChildren)
+
+        let childWorks = SessionReducer.reduce(
+            session,
+            event: .activityStarted(call(id: "child-bash", owner: "child"), at: start.addingTimeInterval(2))
+        )
+
+        XCTAssertEqual(childWorks.phase, .waitingForChildren, "the parent's turn is over; this is the child's work")
+    }
+
     private func subagent(id: String) -> SessionActivity {
         SessionActivity(id: id, kind: .subagent, startedAt: start, outlivesTurn: true)
     }

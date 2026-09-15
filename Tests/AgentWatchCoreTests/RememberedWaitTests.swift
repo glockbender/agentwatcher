@@ -332,6 +332,31 @@ final class RememberedWaitTests: XCTestCase {
         XCTAssertEqual(restored.awaitedAgentID, "reviewer-a")
     }
 
+    /// The same rule as a live wait, on the restart path: with no call named, any ending in
+    /// the transcript answers the dialog — and that is the main thread's rule. The transcript
+    /// being read is the parent's, so for a subagent's dialog every ending in it belongs to
+    /// somebody else by definition.
+    func testTheParentsTranscriptDoesNotAnswerASubagentsDialogItCannotName() {
+        let ending = TranscriptFact.callReturned(activityID: "some-other-call", at: waitedAt + 10)
+
+        let mainThread = SessionHistory.RememberedWaitEvidence(
+            facts: [ending],
+            awaitedActivityID: nil,
+            awaitedAgentID: nil
+        )
+        XCTAssertNotNil(
+            mainThread.newestAwaitedCallEndAt,
+            "with one agent, any ending is the only evidence there can be"
+        )
+
+        let subagent = SessionHistory.RememberedWaitEvidence(
+            facts: [ending],
+            awaitedActivityID: nil,
+            awaitedAgentID: "reviewer-a"
+        )
+        XCTAssertNil(subagent.newestAwaitedCallEndAt, "it ended somebody else's call")
+    }
+
     private func waiting() -> SessionSnapshot {
         SessionSnapshot(
             id: "claude:abc",

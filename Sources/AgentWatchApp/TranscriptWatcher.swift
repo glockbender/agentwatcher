@@ -569,7 +569,8 @@ final class TranscriptWatcher {
         }
         return SessionHistory.RememberedWaitEvidence(
             facts: increment.facts,
-            awaitedActivityID: wait.awaitedActivityID
+            awaitedActivityID: wait.awaitedActivityID,
+            awaitedAgentID: wait.awaitedAgentID
         )
     }
 

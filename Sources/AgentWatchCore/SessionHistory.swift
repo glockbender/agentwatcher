@@ -145,8 +145,11 @@ public enum SessionHistory {
         ///
         /// Here rather than in the reader that produced the bytes: this is the whole
         /// interpretation step, and it is worth being able to exercise it without a file.
-        public init(facts: [TranscriptFact], awaitedActivityID: String?) {
-            newestAwaitedCallEndAt = facts.filter { $0.ends(activityID: awaitedActivityID) }.map(\.at).max()
+        public init(facts: [TranscriptFact], awaitedActivityID: String?, awaitedAgentID: String? = nil) {
+            newestAwaitedCallEndAt =
+                facts
+                .filter { $0.ends(activityID: awaitedActivityID, agentID: awaitedAgentID) }
+                .map(\.at).max()
             newestInterruptionAt = facts.compactMap { fact in
                 if case let .turnInterrupted(at) = fact {
                     return at

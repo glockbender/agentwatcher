@@ -35,7 +35,7 @@ import Foundation
 /// Left in place rather than deleted, because deleting it is a decision about what a row
 /// should count, not a tidy-up: `agent_id` now reaches the app on every hook, so the question
 /// this type exists for can be asked there, where the answer can also be undone. See
-/// `docs/architecture.md` §9 and `docs/agent-integration.md` §1в.
+/// `docs/architecture.md` §6 and `docs/agent-integration.md` §1в.
 public enum SubagentToolCall {
     /// The events that say a tool call started or ended.
     ///

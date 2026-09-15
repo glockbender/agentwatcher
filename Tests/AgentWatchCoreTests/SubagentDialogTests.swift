@@ -59,6 +59,31 @@ final class SubagentDialogTests: XCTestCase {
         XCTAssertNil(resumed.awaitedAgentID)
     }
 
+    /// The degraded path, and the same bug hiding on it. With no awaited call recorded, any
+    /// ending has to be taken as the answer — a rule written for the main thread, where
+    /// there is only one agent whose endings could arrive. For a subagent's dialog it hands
+    /// the answer back to whichever other subagent finished next.
+    ///
+    /// A dialog reaches this state whenever the call's own `PreToolUse` never arrived: hooks
+    /// are fail-open, so the app being down for a moment is a designed-for condition.
+    func testASubagentsDialogWithNoKnownCallIsStillNotAnsweredByAnotherAgent() throws {
+        var engine = SessionStateEngine()
+        try engine.ingest(hook("UserPromptSubmit"))
+        try engine.ingest(hook("SubagentStart", agentID: "reviewer-a"))
+        try engine.ingest(hook("SubagentStart", agentID: "reviewer-b"))
+        // No `PreToolUse` for the call being asked about — that is the whole point.
+        let asked = try engine.ingest(hook("PermissionRequest", agentID: "reviewer-a"))
+        XCTAssertNil(asked.awaitedActivityID, "nothing was heard about the call itself")
+
+        try engine.ingest(hook("PreToolUse", agentID: "reviewer-b", toolUseID: "b-bash"))
+        let elsewhere = try engine.ingest(hook("PostToolUse", agentID: "reviewer-b", toolUseID: "b-bash"))
+
+        XCTAssertEqual(elsewhere.phase, .waitingForUser, "another agent's call finishing answers nothing")
+
+        let stopped = try engine.ingest(hook("SubagentStop", agentID: "reviewer-a"))
+        XCTAssertNotEqual(stopped.phase, .waitingForUser, "its own end still releases it")
+    }
+
     /// The main thread's own dialog keeps behaving as it always did — which is what makes
     /// this change safe for Codex, whose hooks never carry an agent at all.
     func testTheMainThreadsOwnDialogStillEndsAtTheNextCall() throws {

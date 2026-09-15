@@ -46,11 +46,18 @@ public enum TranscriptFact: Equatable, Sendable {
 
     /// Whether this fact is the end of one particular call.
     ///
-    /// With no call named, the same fallback as a live wait accepts any activity ending.
-    public func ends(activityID: String?) -> Bool {
+    /// The same rule as a live wait, including its limits: with no call named, any ending
+    /// answers a dialog the main thread is waiting on, and none answers a subagent's. The
+    /// transcript being read is the parent's, so an ending in it that a subagent's dialog
+    /// cannot name belongs to somebody else by definition.
+    public func ends(activityID: String?, agentID: String?) -> Bool {
         switch self {
         case let .callReturned(id, _), let .callFailed(id, _), let .workEnded(id, _):
-            return SessionReducer.activityEndsWait(awaitedActivityID: activityID, endingActivityID: id)
+            return SessionReducer.activityEndsWait(
+                awaitedActivityID: activityID,
+                awaitedAgentID: agentID,
+                endingActivityID: id
+            )
         case .callStarted, .turnInterrupted: return false
         }
     }

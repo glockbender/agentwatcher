@@ -286,8 +286,22 @@ public enum SessionReducer {
     /// Only the call the session is actually waiting on ends the wait. With no awaited call
     /// recorded there is nothing to compare against, and any ending has to be taken as the
     /// answer.
-    static func activityEndsWait(awaitedActivityID: String?, endingActivityID: String) -> Bool {
-        awaitedActivityID == nil || awaitedActivityID == endingActivityID
+    ///
+    /// That last rule belongs to the main thread alone, and `awaitedAgentID` is what says so.
+    /// It was written when one agent's endings were the only ones that could arrive; on a
+    /// session running subagents it hands the answer to whichever other subagent finished
+    /// next — the very bug the owner exists to stop, on the path a missed `PreToolUse` leads
+    /// to. A subagent's dialog with no known call is released by its own next call or by its
+    /// own end instead, both of which name it.
+    static func activityEndsWait(
+        awaitedActivityID: String?,
+        awaitedAgentID: String?,
+        endingActivityID: String
+    ) -> Bool {
+        if let awaitedActivityID {
+            return awaitedActivityID == endingActivityID
+        }
+        return awaitedAgentID == nil
     }
 
     private static func endWait(_ next: inout SessionSnapshot, forActivity id: String, at: Date) {
@@ -299,7 +313,12 @@ public enum SessionReducer {
             // Without an identity, a late ending from a previous turn cannot answer this
             // dialog. Named calls still close out of order by their own identity.
             ownerEnded || (next.awaitedActivityID != nil || at >= next.lastObservedAt),
-            ownerEnded || activityEndsWait(awaitedActivityID: next.awaitedActivityID, endingActivityID: id)
+            ownerEnded
+                || activityEndsWait(
+                    awaitedActivityID: next.awaitedActivityID,
+                    awaitedAgentID: next.awaitedAgentID,
+                    endingActivityID: id
+                )
         {
             next.phase = next.mode == .plan ? .planning : .executing
             next.userInputRequestKind = nil
