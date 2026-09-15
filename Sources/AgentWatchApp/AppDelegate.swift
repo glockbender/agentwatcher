@@ -14,7 +14,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     #endif
     private var lockPositionMenuItem: NSMenuItem?
     private var lockSizeMenuItem: NSMenuItem?
-    private var sessionTopicMenuItem: NSMenuItem?
     private var updateOnLaunchMenuItem: NSMenuItem?
     private var closedSessionMenuItems: [NSMenuItem] = []
     private var transcriptMenuItems: [NSMenuItem] = []
@@ -28,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings: WidgetSettingsStore
     private let frameStore: HUDFrameStore
     private let lampSchemes: LampSchemeStore
+    private let rowLayouts: RowLayoutStore
     private let preferences: PreferenceFile
     private let updater: AppUpdater
     private let heard = AgentHeardStore()
@@ -96,7 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         backgroundOpacity: backgroundStore.opacity,
         style: WidgetStyle(scale: settings.scale),
         frameStore: frameStore,
-        settings: settings
+        settings: settings,
+        rowLayouts: rowLayouts
     )
     private lazy var settingsWindow: WidgetSettingsWindowController = WidgetSettingsWindowController(
         backgroundStore: backgroundStore,
@@ -126,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settings = WidgetSettingsStore(preferences: preferences)
         frameStore = HUDFrameStore(preferences: preferences)
         lampSchemes = LampSchemeStore(preferences: preferences)
+        rowLayouts = RowLayoutStore(preferences: preferences)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -140,9 +142,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lampSchemes.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
+        rowLayouts.onChange = { [weak self] setting in
+            self?.settingChanged(setting)
+        }
         // Before anything reads a setting: a fresh install gets the whole configuration
         // written out, and a version that adds one fills in that key alone.
-        let owners: [PreferenceDefaults] = [backgroundStore, settings, frameStore, lampSchemes, updater]
+        let owners: [PreferenceDefaults] = [
+            backgroundStore, settings, frameStore, lampSchemes, rowLayouts, updater,
+        ]
         var everyDefault: [String: JSONValue] = [:]
         for owner in owners {
             everyDefault.merge(owner.defaultValues) { existing, _ in existing }
@@ -336,7 +343,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         #endif
         lockPositionMenuItem?.state = settings.locksPosition ? .on : .off
         lockSizeMenuItem?.state = settings.locksSize ? .on : .off
-        sessionTopicMenuItem?.state = settings.showsSessionTopic ? .on : .off
         updateOnLaunchMenuItem?.state = updater.checksOnLaunch ? .on : .off
         updateClosedSessionMenuSelection()
         updateTranscriptMenu()
@@ -381,19 +387,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         submenu.addItem(.separator())
         submenu.addItem(makeClosedSessionMenuItem())
-        submenu.addItem(.separator())
-
-        let sessionTopic = NSMenuItem(
-            title: "Show Session Topic",
-            action: #selector(toggleSessionTopic),
-            keyEquivalent: ""
-        )
-        sessionTopic.target = self
-        // Deliberately says "show": the sender resolves the topic either way, so the app
-        // can only stop displaying it, not stop it from being read.
-        sessionTopic.toolTip = "Shows each session's own name next to its status"
-        submenu.addItem(sessionTopic)
-        sessionTopicMenuItem = sessionTopic
 
         item.submenu = submenu
         return item
@@ -599,10 +592,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hudController.resetSize()
     }
 
-    @objc private func toggleSessionTopic() {
-        settings.setShowsSessionTopic(!settings.showsSessionTopic)
-    }
-
     @objc private func selectClosedSessionRetention(_ sender: NSMenuItem) {
         guard let seconds = sender.representedObject as? TimeInterval else {
             return
@@ -620,7 +609,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch setting {
         case .interactionLocks:
             hudController.refreshInteractionLocks()
-        case .sessionTopic, .rowLayout:
+        case .rowLayout:
             // Not `supervisor.publish()`: that reports the same sessions, and the widget
             // skips a report that changes nothing so the row under the pointer survives.
             hudController.refreshSettings()

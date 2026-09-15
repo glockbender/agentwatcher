@@ -109,7 +109,7 @@ final class HUDRowReuseTests: XCTestCase {
         let secondRow = try XCTUnwrap(list.row(for: second.id))
 
         // Built by hand: `rowModels` orders for display, which would undo the reorder.
-        let reversed = [second, first].map { HUDRowModel(snapshot: $0, now: now, showsSessionTopic: true) }
+        let reversed = [second, first].map { HUDRowModel(snapshot: $0, now: now, layout: .standard) }
         XCTAssertTrue(list.apply(models: reversed, now: now), "a new order is a change")
 
         XCTAssertTrue(list.row(for: first.id) === firstRow)
@@ -278,7 +278,8 @@ final class HUDRowReuseTests: XCTestCase {
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             frameStore: frameStore,
-            settings: WidgetSettingsStore(preferences: preferences)
+            settings: WidgetSettingsStore(preferences: preferences),
+            rowLayouts: RowLayoutStore(preferences: preferences)
         )
         controller.showWindow(nil)
         return controller

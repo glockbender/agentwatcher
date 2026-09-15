@@ -100,7 +100,8 @@ final class HUDPanelLockTests: XCTestCase {
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             frameStore: HUDFrameStore(preferences: preferences),
-            settings: settings
+            settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences)
         )
     }
 

@@ -15,6 +15,13 @@ import Foundation
 /// digit.
 struct HUDRowModel: Equatable {
     let snapshot: SessionSnapshot
+    /// The template this row is drawn from.
+    ///
+    /// Carried on the model rather than read at drawing time so that changing the template
+    /// is a change to every row: two templates can produce the same name and the same
+    /// dismissal — one with the branch and one without — and a model holding only those
+    /// would compare equal, leaving the list with the rows it already had.
+    let layout: RowLayout
     /// The name as this row will show it, or `nil` when the row shows none.
     let name: String?
     /// Whether the row offers a `×`, and if it does but cannot work yet, from when it will.
@@ -27,9 +34,10 @@ struct HUDRowModel: Equatable {
         snapshot.id
     }
 
-    init(snapshot: SessionSnapshot, now: Date, showsSessionTopic: Bool) {
+    init(snapshot: SessionSnapshot, now: Date, layout: RowLayout) {
         self.snapshot = snapshot
-        name = rowName(for: snapshot, showsSessionTopic: showsSessionTopic)
+        self.layout = layout
+        name = rowName(for: snapshot, layout: layout)
         dismissal = SessionPresence.dismissal(of: snapshot, now: now)
     }
 }

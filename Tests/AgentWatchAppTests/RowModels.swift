@@ -10,9 +10,13 @@ import Foundation
 func rowModels(
     _ sessions: [SessionSnapshot],
     now: Date,
-    showsSessionTopic: Bool = true
+    layout: RowLayout = .standard
 ) -> [HUDRowModel] {
     orderedForDisplay(sessions).map {
-        HUDRowModel(snapshot: $0, now: now, showsSessionTopic: showsSessionTopic)
+        HUDRowModel(snapshot: $0, now: now, layout: layout)
     }
 }
+
+/// The template a person gets by taking the name out — what the `Show Session Topic` menu
+/// line used to do, and what a settings file carrying that flag switched off is given once.
+let layoutWithoutTheName = RowLayout(parts: RowLayout.standard.parts.filter { $0 != .name })

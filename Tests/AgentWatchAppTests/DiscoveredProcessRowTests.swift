@@ -221,18 +221,18 @@ final class DiscoveredProcessRowTests: XCTestCase {
             lastObservedAt: now
         )
 
-        XCTAssertEqual(rowName(for: discovered, showsSessionTopic: true), "[still no name] in agent-watch")
-        XCTAssertEqual(rowName(for: unnamedSession, showsSessionTopic: true), "[still no name] in agent-watch")
+        XCTAssertEqual(rowName(for: discovered, layout: .standard), "[still no name] in agent-watch")
+        XCTAssertEqual(rowName(for: unnamedSession, layout: .standard), "[still no name] in agent-watch")
 
         var named = unnamedSession
         named.title = "Slack thread diagnostic"
         XCTAssertEqual(
-            rowName(for: named, showsSessionTopic: true),
+            rowName(for: named, layout: .standard),
             "Slack thread diagnostic",
             "a name of its own still wins over the directory"
         )
         XCTAssertNil(
-            rowName(for: discovered, showsSessionTopic: false),
+            rowName(for: discovered, layout: layoutWithoutTheName),
             "the setting hides what a row is about, whichever source named it"
         )
     }

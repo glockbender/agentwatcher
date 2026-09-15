@@ -331,8 +331,8 @@ final class HUDRowLayoutTests: XCTestCase {
     func testTurningTheTopicOffTakesTheNameOffTheCardToo() {
         let session = snapshot()
 
-        let shown = hoverCardText(for: session, now: now, showsSessionTopic: true)
-        let hidden = hoverCardText(for: session, now: now, showsSessionTopic: false)
+        let shown = hoverCardText(for: session, now: now, layout: .standard)
+        let hidden = hoverCardText(for: session, now: now, layout: layoutWithoutTheName)
 
         XCTAssertTrue(shown.contains(longName))
         XCTAssertFalse(hidden.contains(longName))

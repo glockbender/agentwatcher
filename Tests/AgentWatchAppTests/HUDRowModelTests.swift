@@ -21,8 +21,8 @@ final class HUDRowModelTests: XCTestCase {
         let session = testSession(phase: .executing, lastObservedAt: now)
 
         XCTAssertEqual(
-            HUDRowModel(snapshot: session, now: now, showsSessionTopic: true),
-            HUDRowModel(snapshot: session, now: now.addingTimeInterval(60), showsSessionTopic: true)
+            HUDRowModel(snapshot: session, now: now, layout: .standard),
+            HUDRowModel(snapshot: session, now: now.addingTimeInterval(60), layout: .standard)
         )
     }
 
@@ -36,10 +36,10 @@ final class HUDRowModelTests: XCTestCase {
         let atTheThreshold = now.addingTimeInterval(SessionFreshnessEvaluator.defaultDisconnectAfter)
 
         XCTAssertEqual(
-            HUDRowModel(snapshot: waiting, now: justBeforeTheThreshold, showsSessionTopic: true).dismissal,
+            HUDRowModel(snapshot: waiting, now: justBeforeTheThreshold, layout: .standard).dismissal,
             .notOffered(until: now + SessionFreshnessEvaluator.defaultDisconnectAfter))
         XCTAssertEqual(
-            HUDRowModel(snapshot: waiting, now: atTheThreshold, showsSessionTopic: true).dismissal, .now)
+            HUDRowModel(snapshot: waiting, now: atTheThreshold, layout: .standard).dismissal, .now)
     }
 
     /// Turning the topic off is a change to what the row draws, so it has to be a change to
@@ -48,9 +48,33 @@ final class HUDRowModelTests: XCTestCase {
         let session = testSession(title: "Переписать ingress", lastObservedAt: now)
 
         XCTAssertEqual(
-            HUDRowModel(snapshot: session, now: now, showsSessionTopic: true).name,
+            HUDRowModel(snapshot: session, now: now, layout: .standard).name,
             "Переписать ingress"
         )
-        XCTAssertNil(HUDRowModel(snapshot: session, now: now, showsSessionTopic: false).name)
+        XCTAssertNil(HUDRowModel(snapshot: session, now: now, layout: layoutWithoutTheName).name)
+    }
+
+    /// Changing the template changes what every row draws, so it has to change every row's
+    /// model — otherwise the list keeps the rows it already has, and the setting appears not
+    /// to work until each session speaks again. The two templates below produce the same name
+    /// and the same dismissal, which is exactly the case a model carrying only those misses.
+    func testAChangedTemplateChangesEveryRowsModel() {
+        let session = testSession(title: "Переписать ingress", lastObservedAt: now)
+
+        XCTAssertNotEqual(
+            HUDRowModel(snapshot: session, now: now, layout: .standard),
+            HUDRowModel(snapshot: session, now: now, layout: RowLayout(parts: [.lamp, .name, .gap, .branch]))
+        )
+    }
+
+    /// `Name only` says what it does. A session the agent has not named yet draws nothing
+    /// here rather than falling back to its directory — the row is then a lamp and a clock,
+    /// and that is the person's choice to make: see ADR-0011.
+    func testNameOnlyLeavesANamelessSessionWithoutOne() {
+        let nameless = testSession(title: nil, projectName: "agent-watch", lastObservedAt: now)
+        let titleOnly = RowLayout(parts: RowLayout.standard.parts, nameStyle: .title)
+
+        XCTAssertNil(HUDRowModel(snapshot: nameless, now: now, layout: titleOnly).name)
+        XCTAssertNotNil(HUDRowModel(snapshot: nameless, now: now, layout: .standard).name)
     }
 }

@@ -248,12 +248,20 @@ func monitoringFaultSummary(for fault: MonitoringFault) -> String {
 /// The card does not do the same, and that is why this rule lives here rather than there: a
 /// card has room for a line naming the project, and a name line repeating it would say the
 /// same word twice.
-func rowName(for snapshot: SessionSnapshot, showsSessionTopic: Bool) -> String? {
-    guard showsSessionTopic else {
+///
+/// All of the above describes `NameStyle.fallback`, which is what every row does unless it is
+/// told otherwise. `NameStyle.title` turns the stand-in off and accepts the empty row it
+/// brings back: the control says `Name only`, and a person who wants the project in the row
+/// has a part for it. See ADR-0011.
+func rowName(for snapshot: SessionSnapshot, layout: RowLayout) -> String? {
+    guard layout.shows(.name) else {
         return nil
     }
     if let title = snapshot.title?.nonEmpty {
         return title
+    }
+    guard layout.nameStyle == .fallback else {
+        return nil
     }
     return snapshot.projectName?.nonEmpty.map { "\(noNameYet) in \($0)" }
 }
@@ -273,7 +281,7 @@ let noNameYet = "[still no name]"
 func hoverCardText(
     for snapshot: SessionSnapshot,
     now: Date,
-    showsSessionTopic: Bool = true,
+    layout: RowLayout = .standard,
     /// Optional, and `nil` is not `.nowhere`: one means nobody asked whether the session can
     /// be reached, the other means somebody asked and the answer was no. Only the second is
     /// worth a line.
@@ -316,7 +324,7 @@ func hoverCardText(
 
     // The setting says "stop showing the topic", and a card that showed it anyway would
     // keep exactly the promise the rows had just stopped keeping.
-    let name = showsSessionTopic ? snapshot.title?.nonEmpty : nil
+    let name = layout.shows(.name) ? snapshot.title?.nonEmpty : nil
 
     let focus = focusHint(reach, runsWithoutAWindow: snapshot.hostKind == .background)
 

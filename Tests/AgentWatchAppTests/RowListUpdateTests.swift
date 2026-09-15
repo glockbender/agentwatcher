@@ -56,11 +56,11 @@ final class RowListUpdateTests: XCTestCase {
     /// has to notice it by itself or the button would wait for a session that never speaks.
     func testARowThatBecameDismissibleIsRebuiltWithoutAnEventOfItsOwn() {
         let waiting = testSession(index: 0, phase: .waitingForUser, lastObservedAt: now)
-        let before = HUDRowModel(snapshot: waiting, now: now, showsSessionTopic: true)
+        let before = HUDRowModel(snapshot: waiting, now: now, layout: .standard)
         let after = HUDRowModel(
             snapshot: waiting,
             now: now.addingTimeInterval(SessionFreshnessEvaluator.defaultDisconnectAfter),
-            showsSessionTopic: true
+            layout: .standard
         )
 
         XCTAssertEqual(rowListUpdate(from: [before], to: [after]).rebuilt, [before.id])
@@ -85,7 +85,7 @@ final class RowListUpdateTests: XCTestCase {
         HUDRowModel(
             snapshot: testSession(index: index, title: title, phase: phase, lastObservedAt: now),
             now: now,
-            showsSessionTopic: true
+            layout: .standard
         )
     }
 }

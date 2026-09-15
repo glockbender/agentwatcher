@@ -71,7 +71,8 @@ final class HUDRenderTests: XCTestCase {
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             frameStore: frameStore,
-            settings: WidgetSettingsStore(preferences: preferences)
+            settings: WidgetSettingsStore(preferences: preferences),
+            rowLayouts: RowLayoutStore(preferences: preferences)
         )
         controller.showWindow(nil)
         return controller

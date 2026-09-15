@@ -129,7 +129,8 @@ final class HoverCardFreshnessTests: XCTestCase {
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             frameStore: HUDFrameStore(preferences: preferences),
-            settings: WidgetSettingsStore(preferences: preferences)
+            settings: WidgetSettingsStore(preferences: preferences),
+            rowLayouts: RowLayoutStore(preferences: preferences)
         )
     }
 }

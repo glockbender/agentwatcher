@@ -25,7 +25,6 @@ enum ClosedSessionRetention: Equatable {
 /// knows the follow-up for every setting rather than one per store.
 enum WidgetSetting {
     case interactionLocks
-    case sessionTopic
     case closedSessionRetention
     case transcriptPollInterval
     case background
@@ -92,7 +91,6 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let locksPosition = "lockWidgetPosition"
         static let locksSize = "lockWidgetSize"
         static let closedSessionRetention = "closedSessionRetentionSeconds"
-        static let showsSessionTopic = "showsSessionTopic"
         static let transcriptPollInterval = "transcriptPollIntervalSeconds"
         static let scale = "widgetScale"
         static let toggleShortcut = "toggleWidgetShortcut"
@@ -105,7 +103,6 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.locksPosition: .bool(false),
             Key.locksSize: .bool(false),
             Key.closedSessionRetention: .number(Self.defaultClosedSessionRetention),
-            Key.showsSessionTopic: .bool(true),
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
             Key.scale: .number(Double(Self.defaultScale)),
             Key.toggleShortcut: .string(Self.defaultToggleShortcut),
@@ -137,12 +134,6 @@ final class WidgetSettingsStore: PreferenceDefaults {
             return .after(Self.defaultClosedSessionRetention)
         }
         return ClosedSessionRetention(seconds: stored)
-    }
-
-    /// Only hides the topic. The sender resolves it either way, so promising more here
-    /// than "stop showing it" would be a lie the app cannot keep.
-    var showsSessionTopic: Bool {
-        preferences.flag(forKey: Key.showsSessionTopic) ?? true
     }
 
     /// How often each working session's transcript is read, or `nil` when it is not read.
@@ -218,10 +209,5 @@ final class WidgetSettingsStore: PreferenceDefaults {
     func setClosedSessionRetention(_ retention: ClosedSessionRetention) {
         preferences.set(retention.seconds, forKey: Key.closedSessionRetention)
         onChange?(.closedSessionRetention)
-    }
-
-    func setShowsSessionTopic(_ isShown: Bool) {
-        preferences.set(isShown, forKey: Key.showsSessionTopic)
-        onChange?(.sessionTopic)
     }
 }

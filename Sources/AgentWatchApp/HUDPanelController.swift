@@ -22,6 +22,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     private var style: WidgetStyle
     private let frameStore: HUDFrameStore
     private let settings: WidgetSettingsStore
+    private let rowLayouts: RowLayoutStore
     /// Survives the wholesale rebuild of the content view controller on every refresh,
     /// so a scrolled list does not jump back to the top twice a second.
     private var savedScrollOffset: NSPoint?
@@ -48,7 +49,8 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         backgroundOpacity: CGFloat,
         style: WidgetStyle = .standard,
         frameStore: HUDFrameStore,
-        settings: WidgetSettingsStore
+        settings: WidgetSettingsStore,
+        rowLayouts: RowLayoutStore
     ) {
         self.reach = reach
         self.focus = focus
@@ -59,6 +61,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         self.style = style
         self.frameStore = frameStore
         self.settings = settings
+        self.rowLayouts = rowLayouts
         // The floor before the size is read, not at the first refresh: the panel below is
         // created from what the store gives back, and a store still holding the tuned size's
         // floor rounds a smaller saved size up. The widget then opens larger than it was left
@@ -286,7 +289,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         // clock would let a row's age disagree with the thresholds decided beside it.
         let moment = now ?? clock()
         let models = orderedForDisplay(state.sessions).map { snapshot in
-            HUDRowModel(snapshot: snapshot, now: moment, showsSessionTopic: settings.showsSessionTopic)
+            HUDRowModel(snapshot: snapshot, now: moment, layout: rowLayouts.layout)
         }
 
         if let listView = container.body as? HUDSessionListView,
@@ -404,7 +407,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         hoverCardText(
             for: snapshot,
             now: now,
-            showsSessionTopic: settings.showsSessionTopic,
+            layout: rowLayouts.layout,
             reach: reach(snapshot)
         )
     }

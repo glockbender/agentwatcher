@@ -115,11 +115,11 @@ final class PreferenceFileTests: XCTestCase {
         let preferences = PreferenceFile(directoryURL: directory)
 
         WidgetBackgroundStore(preferences: preferences).select(.mint)
-        WidgetSettingsStore(preferences: preferences).setShowsSessionTopic(false)
+        WidgetSettingsStore(preferences: preferences).setLocksPosition(true)
 
         let reopened = PreferenceFile(directoryURL: directory)
         XCTAssertEqual(WidgetBackgroundStore(preferences: reopened).selected, .mint)
-        XCTAssertFalse(WidgetSettingsStore(preferences: reopened).showsSessionTopic)
+        XCTAssertTrue(WidgetSettingsStore(preferences: reopened).locksPosition)
     }
 
     func testSeedingFillsOnlyWhatIsMissing() throws {

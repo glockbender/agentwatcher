@@ -52,15 +52,6 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.closedSessionRetention, .after(600))
     }
 
-    func testTheSessionTopicIsShownUnlessItIsTurnedOff() throws {
-        let store = try makeStore()
-
-        XCTAssertTrue(store.showsSessionTopic)
-
-        store.setShowsSessionTopic(false)
-        XCTAssertFalse(store.showsSessionTopic)
-    }
-
     func testTranscriptsAreReadEveryFiveSecondsUntilAskedOtherwise() throws {
         let store = try makeStore()
 

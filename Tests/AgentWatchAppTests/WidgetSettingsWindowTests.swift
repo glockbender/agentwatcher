@@ -364,7 +364,8 @@ final class LampSchemeReachesTheWidgetTests: XCTestCase {
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             frameStore: HUDFrameStore(preferences: preferences),
-            settings: WidgetSettingsStore(preferences: preferences)
+            settings: WidgetSettingsStore(preferences: preferences),
+            rowLayouts: RowLayoutStore(preferences: preferences)
         )
         controller.showWindow(nil)
         controller.render(
@@ -404,7 +405,8 @@ final class LampSchemeReachesTheWidgetTests: XCTestCase {
             backgroundOpacity: 1,
             style: WidgetStyle(scale: settings.scale),
             frameStore: HUDFrameStore(preferences: preferences),
-            settings: settings
+            settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences)
         )
         settings.onChange = { setting in
             guard case .scale = setting else {
@@ -458,7 +460,8 @@ final class LampSchemeReachesTheWidgetTests: XCTestCase {
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             frameStore: frameStore,
-            settings: settings
+            settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences)
         )
         controller.showWindow(nil)
         let panel = try XCTUnwrap(controller.window)
@@ -495,7 +498,8 @@ final class LampSchemeReachesTheWidgetTests: XCTestCase {
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             frameStore: frameStore,
-            settings: settings
+            settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences)
         )
         controller.showWindow(nil)
         let panel = try XCTUnwrap(controller.window)
@@ -536,7 +540,8 @@ final class LampSchemeReachesTheWidgetTests: XCTestCase {
             backgroundOpacity: 1,
             style: WidgetStyle(scale: settings.scale),
             frameStore: HUDFrameStore(preferences: preferences),
-            settings: settings
+            settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences)
         )
         controller.showWindow(nil)
         let panel = try XCTUnwrap(controller.window)
