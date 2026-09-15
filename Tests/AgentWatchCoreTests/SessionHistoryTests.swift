@@ -39,6 +39,30 @@ final class SessionHistoryTests: XCTestCase {
         XCTAssertFalse(SessionSilence.isUnexplained(try XCTUnwrap(stored), now: now))
     }
 
+    /// Work the last turn left running goes the same way its activities do, and for the same
+    /// reason: nothing has been observed since, so nothing may be claimed.
+    ///
+    /// The row draws this list as a live fact — `still running in the background: 1 shell
+    /// command` — and after a restart there is no one to correct it until the session speaks
+    /// again. Kept, it would also draw two sessions in the same real state differently: the
+    /// one whose `Stop` happened to report a list would carry a counter over the restart,
+    /// while the one whose background call this app merely counted would not, because its
+    /// activities were cleared.
+    func testARestoredSessionClaimsNoBackgroundWorkNobodyHasSeenSince() {
+        var working = SessionSnapshot(
+            id: "claude:abc",
+            source: .claude,
+            arrivalIndex: 0,
+            phase: .completed,
+            lastObservedAt: now - 600
+        )
+        working.backgroundWork = [.shell]
+
+        let remembered = SessionHistory.remembered(working)
+
+        XCTAssertNil(remembered.backgroundWork)
+    }
+
     /// Order is the one thing a restart could quietly ruin. The index a session was given
     /// when it first appeared is kept, so the rows come back where they were — and the
     /// engine's counter has to move past them, or the next new session would be handed an

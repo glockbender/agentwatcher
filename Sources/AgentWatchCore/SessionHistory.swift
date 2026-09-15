@@ -58,6 +58,13 @@ public enum SessionHistory {
     ) -> SessionSnapshot {
         var remembered = snapshot
         remembered.activities = []
+        // And what the last turn left running goes with them, for the same reason: the row
+        // draws that list as something happening now, and after a restart nobody is left to
+        // correct it until the session speaks again. Keeping it would also draw two sessions
+        // in one real state differently — the one whose `Stop` reported a list would carry a
+        // counter across the restart, the one whose background call this app merely counted
+        // would not, having just had its activities cleared on the line above.
+        remembered.backgroundWork = nil
         remembered.monitoringFault = nil
 
         if let awaiting {
