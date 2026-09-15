@@ -498,6 +498,36 @@ public struct SessionStateEngine: Sendable {
         return snapshot
     }
 
+    /// Applies what Claude Code's own record of the process says, and answers whether it
+    /// changed anything.
+    ///
+    /// One thing only: the dialog this row was waiting on is gone. The record never starts a
+    /// wait, never moves any other phase and never reaches a Codex row — an undocumented file
+    /// belonging to another product is allowed to retract a claim this app made, not to make
+    /// one. ADR-0010.
+    ///
+    /// The age comparison is the load-bearing half of the rule, and it is about ordering
+    /// rather than freshness: `PermissionRequest` reaches this app *before* the dialog is put
+    /// on screen, so at the moment a wait is raised the record still says `busy` from
+    /// whenever the turn began. A rule that read the state alone would clear every wait as it
+    /// was raised, and no dialog would ever light a lamp.
+    @discardableResult
+    public mutating func apply(_ status: ClaudeSessionStatus, toSessionWithID id: String) -> SessionSnapshot? {
+        guard
+            let previous = liveRow(id),
+            previous.source == .claude,
+            previous.phase == .waitingForUser,
+            status.state != .waiting,
+            status.updatedAt >= previous.lastObservedAt
+        else {
+            return nil
+        }
+        var next = SessionReducer.reduce(previous, event: .userInputResolved(at: status.updatedAt))
+        next.lastObservedAt = max(previous.lastObservedAt, next.lastObservedAt)
+        snapshots[id] = next
+        return next
+    }
+
     @discardableResult
     public mutating func apply(_ fact: TranscriptFact, toSessionWithID id: String) -> SessionSnapshot? {
         guard let previous = liveRow(id) else {

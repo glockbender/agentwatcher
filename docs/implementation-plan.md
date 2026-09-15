@@ -246,6 +246,7 @@ Spike ограничивается несколькими рабочими сц�
 | `AskUserQuestion` | `user_input.required` (choice) | когда приходит как `PreToolUse` |
 | `StatusLine` | `status.updated` (context/usage) | только Claude; у Codex отклоняется |
 | `permission_mode: plan` | режим планирования | только при явном значении; отсутствующее не угадывается |
+| `status` в `~/.claude/sessions/<pid>.json` | конец ожидания человека | не хук; только гасит ожидание, только у Claude — [ADR-0010](adr/0010-the-answer-to-a-dialog-comes-from-the-session-record.md) |
 
 Отдельно проверено и зафиксировано как **невозможное через hooks**: вызовы серверных инструментов
 Anthropic API, в том числе `advisor`. В транскрипте они записаны как `server_tool_use` с

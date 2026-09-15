@@ -83,6 +83,16 @@ final class SessionSupervisor {
             self?.applyTranscript(updates)
         }
     )
+
+    /// Claude Code's own record of a process, watched only while that session is being asked
+    /// something. It reports the one moment no hook and no transcript does — the dialog is
+    /// gone — and nothing else.
+    private lazy var sessionRecords = SessionRecordWatcher(
+        claudeHome: claudeHome,
+        onStatus: { [weak self] sessionID, status in
+            self?.applySessionRecord(status, toSessionWithID: sessionID)
+        }
+    )
     private let home: URL
     private let workspaceNotifications: NotificationCenter
 
@@ -197,7 +207,16 @@ final class SessionSupervisor {
         maintenanceTimer?.invalidate()
         maintenanceTimer = nil
         transcripts.stop()
+        sessionRecords.stop()
         workspaceNotifications.removeObserver(self)
+    }
+
+    /// Whether any session's record is being watched right now.
+    ///
+    /// Exposed for the reason `isPolling` is: nothing is watched while nothing waits, and an
+    /// invariant nothing can observe is an invariant nothing can hold you to.
+    var isWatchingSessionRecords: Bool {
+        sessionRecords.isWatching
     }
 
     /// Whether a transcript is being read right now, for the menu to say so plainly.
@@ -703,6 +722,23 @@ final class SessionSupervisor {
         return identifiers
     }
 
+    // MARK: - Claude Code's own record of the session
+
+    /// Claude Code says the session is no longer waiting for anybody.
+    ///
+    /// The only thing this can do is end a wait, and the engine enforces the rest: not a
+    /// Codex row, not a row that is not waiting, and not a status from before the dialog
+    /// opened — `PermissionRequest` reaches this app before the dialog is on screen, so the
+    /// record still says `busy` at that moment.
+    private func applySessionRecord(_ status: ClaudeSessionStatus, toSessionWithID sessionID: String) {
+        guard let snapshot = engine.apply(status, toSessionWithID: sessionID) else {
+            return
+        }
+        // Same shape as the transcript's lines, because the two are read side by side.
+        onNotableEvent("\(Self.label(snapshot)) · record · the dialog is gone")
+        publish()
+    }
+
     // MARK: - The transcript
 
     /// Folds one poll's worth of transcript into the sessions.
@@ -873,6 +909,7 @@ final class SessionSupervisor {
         onChange(snapshots, usageLimits)
         updateMaintenanceTimer()
         transcripts.update(sessions: snapshots)
+        sessionRecords.update(sessions: snapshots)
     }
 
     /// Sorted, because `snapshots` is a dictionary and its order changes on rehash. The

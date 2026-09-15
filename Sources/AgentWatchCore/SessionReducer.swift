@@ -23,6 +23,13 @@ public enum SessionEvent: Equatable, Sendable {
     case workEnded(id: String, at: Date)
     case activityFailed(id: String, at: Date)
     case userInputRequired(reason: UserInputRequestKind, activityID: String?, at: Date)
+    /// The dialog the session was waiting on is gone — answered, or dismissed.
+    ///
+    /// Deliberately not "the person said yes": what is observed is that nothing is being
+    /// asked any more, and the difference between an answer and an Esc is not in the record.
+    /// Either way the session is no longer waiting for anybody, which is the whole of what
+    /// the lamp claims.
+    case userInputResolved(at: Date)
     case turnCompleted(at: Date)
     /// What the session still has running, as the hook that ended the turn listed it.
     ///
@@ -162,6 +169,14 @@ public enum SessionReducer {
             // of the call it is asking about — so the most recent activity is the one being
             // waited on. An inference, but from event order, not from any model's words.
             next.awaitedActivityID = activityID ?? next.activities.last?.id
+            next.lastObservedAt = observedAt
+
+        case let .userInputResolved(observedAt):
+            if next.phase == .waitingForUser {
+                next.phase = next.mode == .plan ? .planning : .executing
+                next.userInputRequestKind = nil
+                next.awaitedActivityID = nil
+            }
             next.lastObservedAt = observedAt
 
         case let .turnCompleted(observedAt):

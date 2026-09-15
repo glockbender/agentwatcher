@@ -1529,6 +1529,95 @@ final class SessionSupervisorTests: XCTestCase {
         XCTAssertEqual(supervisor.sessions.map(\.agentProcessID), [502], "the terminal's own row is withdrawn")
     }
 
+    // MARK: - The dialog a person answered
+
+    /// The whole change, end to end. Nothing reports the answer: `PermissionRequest` arrives
+    /// before the dialog is on screen, no hook follows it, and the transcript writes nothing
+    /// until the approved call returns — measured at 89 seconds for a `git push`. Claude
+    /// Code's own record of the process is the one witness, and the row must leave the wait
+    /// on its word alone, with no hook and with the call still running.
+    func testAWaitingRowGoesBackToWorkWhenTheRecordLosesItsDialog() async throws {
+        // This very process, because the row has to stay alive: the supervisor watches the
+        // agent's process and closes the row the moment it is gone, and a made-up number is
+        // gone before the first read.
+        let agentProcessID = ProcessInfo.processInfo.processIdentifier
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let records = home.appendingPathComponent(".claude/sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: records, withIntermediateDirectories: true)
+        let record = records.appendingPathComponent("\(agentProcessID).json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        try writeSessionRecord(
+            to: record, processID: agentProcessID, state: "waiting", waitingFor: "permission prompt",
+            atMilliseconds: 3_999_000)
+
+        // Armed only once the dialog is up. A turn starting publishes a working row too, and
+        // a test watching from the start would be satisfied by that one.
+        var watchingForTheAnswer = false
+        var answered: [SessionSnapshot] = []
+        let supervisor = try makeSupervisor(
+            onChange: { snapshots, _ in
+                guard watchingForTheAnswer, answered.isEmpty, snapshots.first?.phase == .executing else {
+                    return
+                }
+                answered = snapshots
+            },
+            home: home
+        )
+        defer { supervisor.stop() }
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "alpha", agentProcessID: agentProcessID))
+        supervisor.ingest(
+            testRequest(event: "UserPromptSubmit", sessionID: "alpha", agentProcessID: agentProcessID))
+        supervisor.ingest(
+            testRequest(event: "PermissionRequest", sessionID: "alpha", agentProcessID: agentProcessID))
+        XCTAssertEqual(supervisor.sessions.first?.phase, .waitingForUser, "the dialog is up")
+        XCTAssertTrue(supervisor.isWatchingSessionRecords, "a row being asked something has its record watched")
+
+        watchingForTheAnswer = true
+        try writeSessionRecord(
+            to: record, processID: agentProcessID, state: "busy", waitingFor: nil, atMilliseconds: 4_500_000)
+        runTheRunLoop(untilTrue: { !answered.isEmpty })
+
+        XCTAssertEqual(answered.first?.phase, .executing)
+        XCTAssertNil(answered.first?.userInputRequestKind)
+    }
+
+    /// The record is read on a timer, and a timer only fires while the run loop is running —
+    /// which awaiting an expectation does not do. So the test runs it, rather than the code
+    /// being reshaped around what a test happens to pump.
+    private func runTheRunLoop(untilTrue condition: () -> Bool, timeout: TimeInterval = 3) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+    }
+
+    /// Rewritten in place rather than replaced, which is how Claude Code was measured to
+    /// write it.
+    private func writeSessionRecord(
+        to url: URL,
+        processID: Int32,
+        state: String,
+        waitingFor: String?,
+        atMilliseconds: Int
+    ) throws {
+        let reason = waitingFor.map { "\"waitingFor\":\"\($0)\"," } ?? ""
+        let record = Data(
+            """
+            {"pid":\(processID),"kind":"interactive","status":"\(state)",\(reason)"statusUpdatedAt":\(atMilliseconds)}
+            """.utf8
+        )
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            try record.write(to: url)
+            return
+        }
+        // In place, keeping the inode, because that is how Claude Code was measured to
+        // rewrite it.
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: 0)
+        try handle.write(contentsOf: record)
+    }
+
     private func makeSupervisor(
         retention: ClosedSessionRetention = .manual,
         now: @escaping () -> Date = { Date(timeIntervalSince1970: 4_000) },
