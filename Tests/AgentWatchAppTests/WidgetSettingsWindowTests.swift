@@ -279,27 +279,6 @@ final class WidgetSettingsWindowTests: XCTestCase {
         }
     }
 
-    private func optionCommandW() throws -> WidgetShortcut {
-        try XCTUnwrap(WidgetShortcut(keyCode: 13, modifiers: [.option, .command]))
-    }
-
-    private func press(keyCode: UInt16, flags: NSEvent.ModifierFlags) throws -> NSEvent {
-        try XCTUnwrap(
-            NSEvent.keyEvent(
-                with: .keyDown,
-                location: .zero,
-                modifierFlags: flags,
-                timestamp: 0,
-                windowNumber: 0,
-                context: nil,
-                characters: "",
-                charactersIgnoringModifiers: "",
-                isARepeat: false,
-                keyCode: keyCode
-            )
-        )
-    }
-
     /// For the tests that are about the shortcut itself rather than about the window: the window
     /// does not hand its collaborators back, and it should not have to grow a way to just for a
     /// test.

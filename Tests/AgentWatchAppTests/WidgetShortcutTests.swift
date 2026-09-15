@@ -113,34 +113,15 @@ final class WidgetShortcutTests: XCTestCase {
     /// Caps Lock and the `fn` key arrive in the same set as `⌘`, and neither is something a
     /// person can be asked to hold down. Recording them would make the shortcut unrepeatable.
     func testARecordedPressKeepsOnlyTheModifiersAShortcutMayUse() throws {
-        let press = try XCTUnwrap(
-            keyPress(keyCode: 13, flags: [.command, .option, .capsLock, .function])
-        )
+        let pressed = try press(keyCode: 13, flags: [.command, .option, .capsLock, .function])
 
         XCTAssertEqual(
-            WidgetShortcut(press: press),
+            WidgetShortcut(press: pressed),
             WidgetShortcut(keyCode: 13, modifiers: [.option, .command])
         )
     }
 
     func testAPressWithNothingHeldDownRecordsNothing() throws {
-        let press = try XCTUnwrap(keyPress(keyCode: 13, flags: []))
-
-        XCTAssertNil(WidgetShortcut(press: press))
-    }
-
-    private func keyPress(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> NSEvent? {
-        NSEvent.keyEvent(
-            with: .keyDown,
-            location: .zero,
-            modifierFlags: flags,
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            characters: "",
-            charactersIgnoringModifiers: "",
-            isARepeat: false,
-            keyCode: keyCode
-        )
+        XCTAssertNil(WidgetShortcut(press: try press(keyCode: 13)))
     }
 }

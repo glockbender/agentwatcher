@@ -131,10 +131,6 @@ final class WidgetShortcutControllerTests: XCTestCase {
         XCTAssertEqual(item.keyEquivalentModifierMask, [])
     }
 
-    private func optionCommandW() throws -> WidgetShortcut {
-        try XCTUnwrap(WidgetShortcut(keyCode: 13, modifiers: [.option, .command]))
-    }
-
     private func makeController(onToggle: @escaping () -> Void = {}) throws -> (
         WidgetShortcutController, FakeShortcutRegistrar, WidgetSettingsStore
     ) {
