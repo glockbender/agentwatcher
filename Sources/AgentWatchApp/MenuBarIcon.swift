@@ -160,6 +160,13 @@ enum MenuBarIconRenderer {
     /// deployment floor is older than the machine these symbols were measured on, and an icon
     /// that says less is better than an icon that is not there.
     static func draw(_ cells: [MenuBarIconCell], dark: Bool) -> MenuBarIconDrawing? {
+        // Four, because everything below is written in columns and rows: a cell reaches for the
+        // one two places along to find out how wide its column has to be. An empty list is not
+        // a hypothetical — a view repaints itself when the bar turns light or dark, and that
+        // can happen before it has ever been given anything to draw.
+        guard cells.count == 4 else {
+            return nil
+        }
         let configuration = NSImage.SymbolConfiguration(
             pointSize: MenuBarIconMetrics.symbolSize,
             weight: .medium

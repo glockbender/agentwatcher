@@ -105,21 +105,59 @@ final class MenuBarIconView: NSView {
             return cell
         }
         positionLayers()
+        // New layers with new pictures in them are not enough to change what is on screen.
+        // Measured: with the counts moving from 0 waiting to 2, every redraw ran and reported
+        // success while the bar kept showing the first frame it was ever given, and opening
+        // the menu — which makes the button redraw — brought it up to date at once. A status
+        // item's window is not on anybody's display cycle while the application is inactive,
+        // which is always, so it has to be asked.
+        needsDisplay = true
+        redrawRequests += 1
         if widthChanged {
             onWidthChange?(drawing.size.width)
         }
         return true
     }
 
-    /// The grid is centred in whatever the button turned out to be, rather than pinned to its
-    /// left edge: the item's length is set from the drawing's width, but the two are set at
-    /// different moments and a stale one must not shift the icon.
+    /// Fills the button, and places the grid on the bar rather than on the button.
+    ///
+    /// Called instead of setting the frame from outside, because the frame is only half of it:
+    /// the layers have to be placed again afterwards, and waiting for AppKit's own layout pass
+    /// leaves the grid at wherever the view's first, sizeless bounds put it.
+    func fill(_ button: NSView) {
+        frame = button.bounds
+        autoresizingMask = [.width, .height]
+        positionLayers()
+    }
+
+    /// The band the status bar actually gave this item.
+    ///
+    /// Not `bounds`, because the button is not always its own slot: measured, it is 22 pt tall
+    /// at launch and 28 pt tall once the item has been rebuilt — hanging 2.5 pt below the bar
+    /// and 3.5 above it — so a grid centred in the button sits off the bar's centre, and moves
+    /// the moment the counts are switched off and on again. The view holding the button keeps
+    /// the bar's height whatever the button does.
+    private var barSlot: NSRect {
+        guard let container = superview?.superview else {
+            return bounds
+        }
+        return convert(container.bounds, from: container)
+    }
+
+    /// The grid is centred in that band rather than pinned to its left edge: the item's length
+    /// is set from the drawing's width, but the two are set at different moments and a stale
+    /// one must not shift the icon.
     private func positionLayers() {
         guard let drawing else {
             return
         }
-        let left = ((bounds.width - drawing.size.width) / 2).rounded()
-        let bottom = ((bounds.height - drawing.size.height) / 2).rounded()
+        let slot = barSlot
+        // Snapped to whole pixels rather than whole points: the slot's own origin lands on a
+        // half point when the button is the taller of its two sizes, and rounding that to a
+        // point would move the grid half a point off the bar's centre to buy a crispness it
+        // already has.
+        let left = snapped(slot.minX + (slot.width - drawing.size.width) / 2)
+        let bottom = snapped(slot.minY + (slot.height - drawing.size.height) / 2)
         CATransaction.begin()
         // Position is set from layout, which can run inside an implicit animation. A grid that
         // slides into place on every redraw is not what any of this is for.
@@ -128,6 +166,11 @@ final class MenuBarIconView: NSView {
             layer.frame = part.frame.offsetBy(dx: left, dy: bottom)
         }
         CATransaction.commit()
+    }
+
+    private func snapped(_ value: CGFloat) -> CGFloat {
+        let scale = window?.backingScaleFactor ?? 2
+        return (value * scale).rounded() / scale
     }
 
     private static let breathKey = "breath"
@@ -151,6 +194,19 @@ final class MenuBarIconView: NSView {
     /// Which cells are breathing, for a test that cannot see the screen.
     var breathingCells: [Int] {
         cellLayers.enumerated().compactMap { $0.element.animation(forKey: Self.breathKey) == nil ? nil : $0.offset }
+    }
+
+    /// How many times the view has asked to be shown again.
+    ///
+    /// Counted rather than read back from `needsDisplay`: on a layer-backed view AppKit turns
+    /// the request into layer invalidation, and the flag reads false again immediately — tried
+    /// in a window ordered on screen, and it still does. The flag is not an honest answer to
+    /// "did this ask to be redrawn", so the test asks this instead.
+    private(set) var redrawRequests = 0
+
+    /// Where the cells ended up, for a test that cannot see the bar.
+    var cellFrames: [NSRect] {
+        cellLayers.map { $0.frame }
     }
 
     /// Where each breath was anchored, for the test that a rebuilt cell carries on rather

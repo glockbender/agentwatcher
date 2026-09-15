@@ -127,6 +127,86 @@ final class MenuBarIconTests: XCTestCase {
         XCTAssertEqual(widths.map { $0 + MenuBarIconMetrics.itemPadding }, [51, 59, 59, 67])
     }
 
+    /// The grid belongs to the bar, not to the button it is drawn in.
+    ///
+    /// Measured on a real item: the button is 22 pt tall at launch and 28 pt once the item has
+    /// been rebuilt — hanging below the bar and above it — while the view holding the button
+    /// keeps the bar's height throughout. A grid centred in the button therefore sat right at
+    /// launch and moved off centre as soon as the counts were switched off and on again.
+    func testTheGridSitsOnTheBarWhenTheButtonIsTallerThanTheBar() throws {
+        let bar = MenuBarIconMetrics.barHeight
+        let slot = NSView(frame: NSRect(x: 0, y: 0, width: 51, height: bar))
+        let button = NSView(frame: NSRect(x: 0, y: -2.5, width: 51, height: bar + 6))
+        slot.addSubview(button)
+        let view = MenuBarIconView()
+        button.addSubview(view)
+        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 1, quiet: 1)))
+
+        view.fill(button)
+
+        // In the view's own coordinates the bar starts 2.5 pt up, because that is how far the
+        // button hangs below it.
+        let cells = view.cellFrames
+        let lowest = try XCTUnwrap(cells.map(\.minY).min())
+        let highest = try XCTUnwrap(cells.map(\.maxY).max())
+        XCTAssertEqual(lowest, 2.5, accuracy: 0.01, "the grid is not sitting on the bar")
+        XCTAssertEqual(highest - lowest, bar, accuracy: 0.01, "the grid no longer fills the bar")
+    }
+
+    /// A button of exactly the bar's height is the other half: the same arithmetic must leave
+    /// the grid where it already was.
+    func testTheGridFillsAButtonThatIsExactlyTheBar() throws {
+        let bar = MenuBarIconMetrics.barHeight
+        let slot = NSView(frame: NSRect(x: 0, y: 0, width: 51, height: bar))
+        let button = NSView(frame: NSRect(x: 0, y: 0, width: 51, height: bar))
+        slot.addSubview(button)
+        let view = MenuBarIconView()
+        button.addSubview(view)
+        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 1, quiet: 1)))
+
+        view.fill(button)
+
+        XCTAssertEqual(try XCTUnwrap(view.cellFrames.map(\.minY).min()), 0, accuracy: 0.01)
+    }
+
+    /// Rebuilding the layers is not enough to change what the bar shows.
+    ///
+    /// Measured: every redraw ran and reported success while the bar kept the first frame it
+    /// was given, until the menu was opened and the button redrew itself.
+    func testAChangedCountAsksForARedraw() {
+        let view = MenuBarIconView()
+        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 0, working: 1, done: 0, quiet: 0)))
+        let before = view.redrawRequests
+
+        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 2, working: 1, done: 0, quiet: 0)))
+
+        XCTAssertEqual(
+            view.redrawRequests,
+            before + 1,
+            "the new numbers were drawn but nothing was asked to show them"
+        )
+    }
+
+    /// And the other half: numbers that have not moved must not ask for anything, which is
+    /// what keeps the bar still while sessions churn.
+    func testCountsThatHaveNotMovedAskForNothing() {
+        let view = MenuBarIconView()
+        let cells = MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 0, quiet: 3))
+        view.show(cells)
+        let before = view.redrawRequests
+
+        view.show(cells)
+
+        XCTAssertEqual(view.redrawRequests, before)
+    }
+
+    /// The bar turning light or dark repaints the view, and that can reach it before anything
+    /// has been drawn into it. It used to reach for the second column of a grid with no cells.
+    func testAViewWithNothingToDrawYetDrawsNothing() {
+        XCTAssertNil(MenuBarIconRenderer.draw([], dark: true))
+        XCTAssertFalse(MenuBarIconView().show([]))
+    }
+
     /// The deployment floor is older than the machine these symbols were measured on, so a
     /// missing one has to be an answer rather than a crash: the caller puts the plain app
     /// glyph back and the icon says less instead of not being there.

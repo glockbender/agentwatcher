@@ -368,8 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let width = view.drawnWidth {
             item.length = width + MenuBarIconMetrics.itemPadding
         }
-        view.frame = button.bounds
-        view.autoresizingMask = [.width, .height]
+        view.fill(button)
         updateStatusItemWording()
     }
 
