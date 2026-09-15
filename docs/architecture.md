@@ -433,8 +433,10 @@ State engine обязан корректно переживать повторн
 ## 7. Фаза сессии и граф активностей
 
 > Решения из этого раздела, на которые ссылается код: [ADR-0002](adr/0002-a-closed-session-is-terminal.md)
-> (закрытая сессия — конечное состояние) и [ADR-0003](adr/0003-colour-is-never-the-only-carrier.md)
-> (цвет никогда не единственный носитель).
+> (закрытая сессия — конечное состояние), [ADR-0003](adr/0003-colour-is-never-the-only-carrier.md)
+> (цвет никогда не единственный носитель) и
+> [ADR-0008](adr/0008-background-work-does-not-claim-the-turn.md) (фоновая работа не претендует на
+> ход).
 
 Одного статуса для сессии недостаточно. Например, основной агент может ждать сразу двух сабагентов,
 один из которых исследует код, а второй запускает тесты. Если показать только «работает», наиболее
@@ -444,19 +446,26 @@ State engine обязан корректно переживать повторн
 
 ```text
 SessionSnapshot
-├── phase       planning | executing | waiting_user | waiting_children | completed | failed
-├── mode        plan | default | unknown
-├── fault       none | transcript unreadable | unexplained silence
-└── activities
-    ├── shell
-    ├── subagent
-    ├── background task
-    └── other tool
+├── phase            planning | executing | waiting_user | waiting_children | completed | failed
+├── mode             plan | default | unknown
+├── fault            none | transcript unreadable | unexplained silence
+├── activities
+│   ├── shell
+│   ├── subagent
+│   ├── background task
+│   └── other tool
+└── background work  shell | subagent | monitor | workflow | other
 ```
 
 `phase` описывает положение основной сессии, а `activities` — конкретную работу, которая сейчас
 выполняется внутри неё. Активности могут образовывать дерево, но интерфейс обязан нормально работать
 и с неполными связями.
+
+`background work` — четвёртая ось, и она отвечает на свой вопрос: что осталось работать, когда ход
+уже кончился. Это не активность: активность — вызов, которого ход ждёт, а здесь работа, от которой
+ход ушёл. Список приходит целиком с каждым `Stop` (`agent-integration.md` §3), фазу не двигает
+([ADR-0008](adr/0008-background-work-does-not-claim-the-turn.md)) и показывается счётчиком в строке
+и отдельной строкой в карточке.
 
 Третья ось — `fault` — отвечает не «что делает сессия», а «насколько это ещё известно», и это разные
 вопросы: сессия может честно работать, а приложение — потерять её из виду. Здесь раньше стояло поле

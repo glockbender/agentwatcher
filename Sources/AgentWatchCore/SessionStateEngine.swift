@@ -342,6 +342,15 @@ public struct SessionStateEngine: Sendable {
             )
         case .turnCompleted:
             snapshot = SessionReducer.reduce(snapshot, event: .turnCompleted(at: event.observedAt))
+            // Second, and only when the hook actually said something: `Stop` is the one event
+            // that lists what the session left running, so an event silent on the subject
+            // must leave the list as it is rather than empty it.
+            if let backgroundWork = event.backgroundWork {
+                snapshot = SessionReducer.reduce(
+                    snapshot,
+                    event: .backgroundWorkReported(backgroundWork, at: event.observedAt)
+                )
+            }
         case .turnFailed:
             snapshot = SessionReducer.reduce(snapshot, event: .failed(at: event.observedAt))
         case .turnInterrupted:

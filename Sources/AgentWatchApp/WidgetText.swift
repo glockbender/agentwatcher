@@ -30,7 +30,11 @@ func activityCounts(for snapshot: SessionSnapshot) -> [(kind: ActivityKind, coun
     // else, and together they are the answer to "why has this row gone quiet".
     return [ActivityKind.compaction, .advisor, .subagent, .shell, .backgroundTask, .tool]
         .compactMap { kind in
-            grouped[kind].map { (kind: kind, count: $0.count) }
+            if kind == .backgroundTask {
+                let drawn = drawnBackgroundWork(for: snapshot)
+                return drawn.isEmpty ? nil : (kind: kind, count: drawn.count)
+            }
+            return grouped[kind].map { (kind: kind, count: $0.count) }
         }
 }
 
@@ -52,8 +56,14 @@ func counterText(for kind: ActivityKind, count: Int) -> String? {
 /// returns its result at once and keeps running afterwards, so it is not here — calling the
 /// number "running" made the widget look wrong to anyone who could see three background
 /// shells and a count of one.
+///
+/// Background work is left out here and given a line of its own below. Found by drawing the
+/// card: it read `waiting on 1 background task` and `still running in the background: 1 shell
+/// command`, one after the other — the same work twice, and the first line saying the
+/// opposite of what was true of a turn that had ended. The row's counter still shows it;
+/// the card is where the two can be told apart in words.
 func activitiesText(for snapshot: SessionSnapshot) -> String {
-    let counts = activityCounts(for: snapshot)
+    let counts = activityCounts(for: snapshot).filter { $0.kind != .backgroundTask }
     guard !counts.isEmpty else {
         return ""
     }
@@ -62,6 +72,78 @@ func activitiesText(for snapshot: SessionSnapshot) -> String {
         .map { ActivityIcon.name(for: $0.kind, count: $0.count) }
         .joined(separator: " · ")
     return "waiting on \(listed)"
+}
+
+/// What the last turn left running, as one line: `still running in the background: 1 shell
+/// command · 1 monitor`.
+///
+/// The row beside it has room for a number and a symbol; this is where that number is given
+/// its meaning. Said in the session's own terms — the kinds Claude Code listed — because the
+/// difference between a command and a monitor is the difference between "it will finish" and
+/// "it is watching for something".
+///
+/// "Still running", not "waiting on": the turn is not waiting for any of this. It ended, and
+/// this work carried on past it.
+func backgroundWorkText(for snapshot: SessionSnapshot) -> String {
+    let counts = backgroundWorkCounts(for: snapshot)
+    guard !counts.isEmpty else {
+        return ""
+    }
+    let listed =
+        counts
+        .map { name(for: $0.kind, count: $0.count) }
+        .joined(separator: " · ")
+    return "still running in the background: \(listed)"
+}
+
+/// The background work a row draws, which is deliberately not the whole list the session
+/// reported.
+///
+/// The session's own list replaces the calls this app counted rather than adding to them: a
+/// command the agent sent to the background is one piece of work and is in both, and the
+/// session's list is the complete one — it includes the command Claude Code moved there
+/// itself after its timeout, which started as an ordinary call and was never counted here.
+///
+/// A subagent is dropped from it. Measured on Claude Code 2.1.272: a `Stop` sent while a
+/// spawned agent was still working carried `type: "subagent"` in the same array — and a
+/// subagent already has a symbol in the row and a word in the card, so leaving it in drew one
+/// agent as two pieces of work.
+///
+/// With no list at all — an older Claude Code, or a sender not yet reinstalled — the
+/// background calls this app counted stand in for it. Same work; the only thing missing is
+/// the session's own word for the kind, so they are `other`.
+private func drawnBackgroundWork(for snapshot: SessionSnapshot) -> [BackgroundWorkKind] {
+    let reported =
+        snapshot.backgroundWork
+        ?? snapshot.activities.filter { $0.kind == .backgroundTask }.map { _ in BackgroundWorkKind.other }
+    return reported.filter { $0 != .subagent }
+}
+
+/// The same fixed order the row's counters use, so the card never lists two kinds in an
+/// order the row would not.
+private func backgroundWorkCounts(
+    for snapshot: SessionSnapshot
+) -> [(kind: BackgroundWorkKind, count: Int)] {
+    let grouped = Dictionary(grouping: drawnBackgroundWork(for: snapshot), by: { $0 })
+    return BackgroundWorkKind.allCases.compactMap { kind in
+        grouped[kind].map { (kind: kind, count: $0.count) }
+    }
+}
+
+/// A count and what it counts. `shell` is spelled out as a command because that is the word
+/// for it outside this app — nobody waiting on a script calls it a shell.
+private func name(for kind: BackgroundWorkKind, count: Int) -> String {
+    let noun =
+        switch kind {
+        case .shell: count == 1 ? "shell command" : "shell commands"
+        case .subagent: count == 1 ? "subagent" : "subagents"
+        case .monitor: count == 1 ? "monitor" : "monitors"
+        case .workflow: count == 1 ? "workflow" : "workflows"
+        // A kind this app has no word for. Naming it "other" would say less than the number
+        // does; "task" says what every one of them is.
+        case .other: count == 1 ? "task" : "tasks"
+        }
+    return "\(count) \(noun)"
 }
 
 /// How much of the context window the session has used, when the provider reported it.
@@ -223,6 +305,9 @@ func hoverCardText(
         .joined(separator: " · ")
 
     let work = activitiesText(for: snapshot)
+    // Below what the turn is waiting on, because it is the opposite fact: that list is work
+    // the turn is held up by, this is work it walked away from.
+    let leftRunning = backgroundWorkText(for: snapshot)
 
     let context = snapshot.contextTelemetry.map { telemetry in
         let tokens = "\(compactTokenCount(telemetry.totalInputTokens)) tokens in context"
@@ -242,6 +327,7 @@ func hoverCardText(
         place.isEmpty ? nil : place,
         "Last event \(compactElapsed(now.timeIntervalSince(snapshot.lastObservedAt))) ago",
         work.isEmpty ? nil : work,
+        leftRunning.isEmpty ? nil : leftRunning,
         context,
         // After everything the session itself has to say, because it qualifies all of it: how
         // much of the lines above is still being watched. The focus hint stays below it, being

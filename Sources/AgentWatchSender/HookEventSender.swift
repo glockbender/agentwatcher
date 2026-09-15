@@ -196,7 +196,8 @@ public struct RedactedHookIngressRequest: Sendable {
                 agentProcessID: agentProcessID,
                 clientKind: clientKind,
                 description: description,
-                toolRunsInBackground: runsInBackground(in: payload)
+                toolRunsInBackground: runsInBackground(in: payload),
+                backgroundWork: backgroundWork(in: payload)
             )
         )
     }
@@ -207,6 +208,35 @@ public struct RedactedHookIngressRequest: Sendable {
     /// it holds the shell command — and one boolean is not worth opening that door. Only a
     /// real boolean counts: a string `"true"` is a payload shape nobody promised, and
     /// guessing at it would be inventing a fact.
+    /// Reads `background_tasks` off the payload the hook was given: one kind per piece of
+    /// work the session still has in flight.
+    ///
+    /// The kind and nothing else, and that is a choice about what the row needs rather than
+    /// a verdict on the rest. The entry also carries the command line, which nothing here
+    /// would draw, and the model's own one-line summary, which a row could well show one day.
+    /// Taking only the kind is what makes this change small: a kind is one word from a fixed
+    /// list, and a list of them is a count, not content. The same reasoning as
+    /// `runsInBackground` above, applied to a field that says what is running rather than
+    /// what was asked for.
+    ///
+    /// `nil` rather than an empty list when the field is absent, and the difference is
+    /// load-bearing: only `Stop` carries this array, so reading its absence as "nothing is
+    /// running" would clear the session's background work on its very next hook.
+    static func backgroundWork(in payload: JSONValue) -> [BackgroundWorkKind]? {
+        guard
+            case let .object(fields) = payload,
+            case let .array(tasks)? = fields["background_tasks"] ?? fields["backgroundTasks"]
+        else {
+            return nil
+        }
+        return tasks.map { task in
+            guard case let .object(fields) = task, case let .string(named)? = fields["type"] else {
+                return .other
+            }
+            return BackgroundWorkKind(rawValue: named) ?? .other
+        }
+    }
+
     private static func runsInBackground(in payload: JSONValue) -> Bool? {
         guard
             case let .object(fields) = payload,

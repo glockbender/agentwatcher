@@ -87,6 +87,12 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
     /// `--fork-session`. Only a start carries it. Kept so that a copy whose original the
     /// sender could not name is said out loud rather than drawn as a second row in silence.
     public let startedAsCopy: Bool
+    /// What the session still has running now that its turn has ended, one entry per task.
+    ///
+    /// Only `turnCompleted` carries it, because only `Stop` is given it. `nil` is not an
+    /// empty list: it means this event said nothing on the subject, which every other event
+    /// does.
+    public let backgroundWork: [BackgroundWorkKind]?
 
     public init(
         schemaVersion: Int = EventEnvelope.currentSchemaVersion,
@@ -106,8 +112,10 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
         contextTelemetry: SessionContextTelemetry? = nil,
         usageLimits: AgentUsageLimits? = nil,
         forkedFromSessionID: String? = nil,
-        startedAsCopy: Bool = false
+        startedAsCopy: Bool = false,
+        backgroundWork: [BackgroundWorkKind]? = nil
     ) {
+        self.backgroundWork = backgroundWork
         self.schemaVersion = schemaVersion
         self.source = source
         self.sessionID = sessionID
@@ -189,11 +197,26 @@ public struct HookIngressRequest: Codable, Equatable, Sendable {
     /// transcripts, a background `Bash` hands back a handle in about five seconds and the
     /// command runs on for as long as it likes.
     public let toolRunsInBackground: Bool?
+    /// What the session still has running, as `Stop`'s own `background_tasks` listed it: one
+    /// kind per task, and nothing else from the entry.
+    ///
+    /// Lifted out by the hook process for the reason above it: each entry also holds the
+    /// command line, which the app has no use for. The description beside it is the model's
+    /// own summary and is probably harmless — it is redacted because the whole entry is, not
+    /// because anything here needs it kept out. A kind is a word from a fixed list.
+    ///
+    /// The app does not trust the count any more than it trusts the rest — `HookEventNormalizer`
+    /// caps it, because anything running as this user can write to that socket.
+    public let backgroundWork: [BackgroundWorkKind]?
 
     public static let maximumSessionTitleLength = 120
     /// A directory name and a branch name are both short by nature, and a long one is a
     /// sign of something other than a directory or a branch.
     public static let maximumShortFieldLength = 60
+    /// Above any number of background tasks a session plausibly has, and far below a number
+    /// that would cost anything to hold. A session runs a handful; a list longer than this
+    /// is not a session reporting itself.
+    public static let maximumBackgroundTaskCount = 32
 
     public init(
         schemaVersion: Int = HookIngressRequest.currentSchemaVersion,
@@ -203,7 +226,8 @@ public struct HookIngressRequest: Codable, Equatable, Sendable {
         agentProcessID: Int32? = nil,
         clientKind: SessionClientKind? = nil,
         description: SessionDescription? = nil,
-        toolRunsInBackground: Bool? = nil
+        toolRunsInBackground: Bool? = nil,
+        backgroundWork: [BackgroundWorkKind]? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.source = source
@@ -213,6 +237,7 @@ public struct HookIngressRequest: Codable, Equatable, Sendable {
         self.clientKind = clientKind
         self.description = description
         self.toolRunsInBackground = toolRunsInBackground
+        self.backgroundWork = backgroundWork
     }
 
     /// Keeps hostile or malformed text from reaching the widget as layout or as an
@@ -302,7 +327,8 @@ public enum HookIngressProcessor {
             agentProcessID: request.agentProcessID,
             clientKind: request.clientKind,
             description: HookIngressRequest.sanitized(request.description),
-            toolRunsInBackground: request.toolRunsInBackground
+            toolRunsInBackground: request.toolRunsInBackground,
+            backgroundWork: request.backgroundWork
         )
     }
 }
@@ -316,7 +342,8 @@ public enum HookEventNormalizer {
         agentProcessID: Int32? = nil,
         clientKind: SessionClientKind? = nil,
         description: SessionDescription? = nil,
-        toolRunsInBackground: Bool? = nil
+        toolRunsInBackground: Bool? = nil,
+        backgroundWork: [BackgroundWorkKind]? = nil
     ) throws -> EventEnvelope {
         guard case let .object(fields) = payload else {
             throw EventNormalizationError.missingSessionID
@@ -339,7 +366,8 @@ public enum HookEventNormalizer {
             userInputRequestKind: UserInputRequestKind? = nil,
             contextTelemetry: SessionContextTelemetry? = nil,
             usageLimits: AgentUsageLimits? = nil,
-            startedAsCopy: Bool = false
+            startedAsCopy: Bool = false,
+            backgroundWork: [BackgroundWorkKind]? = nil
         ) -> EventEnvelope {
             EventEnvelope(
                 source: source,
@@ -358,7 +386,8 @@ public enum HookEventNormalizer {
                 contextTelemetry: contextTelemetry,
                 usageLimits: usageLimits,
                 forkedFromSessionID: forkedFromSessionID,
-                startedAsCopy: startedAsCopy
+                startedAsCopy: startedAsCopy,
+                backgroundWork: backgroundWork
             )
         }
 
@@ -383,7 +412,15 @@ public enum HookEventNormalizer {
         case .userPromptSubmit:
             return envelope(.turnStarted)
         case .stop:
-            return envelope(.turnCompleted)
+            // Capped here rather than where it was read, for the reason the redactor is run
+            // twice: the sender is one way in and the socket is another, and only this side
+            // is on both.
+            return envelope(
+                .turnCompleted,
+                backgroundWork: backgroundWork.map {
+                    Array($0.prefix(HookIngressRequest.maximumBackgroundTaskCount))
+                }
+            )
         case .stopFailure:
             return envelope(.turnFailed)
         case .interrupt:

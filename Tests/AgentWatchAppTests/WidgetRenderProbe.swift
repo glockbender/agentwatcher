@@ -46,6 +46,13 @@ final class WidgetRenderProbe: XCTestCase {
         try draw(crampedList(), named: "cramped", in: directory)
         try draw(hoverCard(), named: "card", in: directory)
         try draw(hoverCard(style: WidgetStyle(scale: 2)), named: "card-200", in: directory)
+        // The card for a finished session that left work running: the line under the lamp's
+        // own word is what explains the counter the row has room only to number.
+        try draw(
+            hoverCard(for: sessions().first { $0.backgroundWork?.isEmpty == false }),
+            named: "card-background-work",
+            in: directory
+        )
         try draw(dismissStates(style: WidgetStyle(scale: 0.5)), named: "dismiss-50", in: directory)
         try draw(emptyState(complaint: nil), named: "empty", in: directory)
         try draw(
@@ -259,6 +266,14 @@ final class WidgetRenderProbe: XCTestCase {
             )
         ]
 
+        // The turn is over and the session left a command running that it never asked to send
+        // to the background — Claude Code moved it there itself after its timeout. The lamp
+        // says `completed`, which is true of the turn, and the counter beside it is the rest
+        // of the sentence. Drawn because a green lamp with a counter is exactly the pairing
+        // that has to read as one row rather than as a contradiction.
+        var leftRunning = session(11, "Скрипт ушёл в фон по таймауту", .completed, secondsAgo: 240)
+        leftRunning.backgroundWork = [.shell]
+
         // An agent with no window of its own. Its row answers a click like every other — the
         // click opens a terminal tab — and the crossed-out window icon is what says the
         // difference; this is the only place that icon can be looked at beside the other two.
@@ -293,8 +308,9 @@ final class WidgetRenderProbe: XCTestCase {
         ).row(arrivalIndex: 9)
 
         return [
-            working, waiting, compacting, consulting, background, headless, unnamed, codex,
-            lost, session(4, "Старая сессия", .sessionClosed, secondsAgo: 30), discovered,
+            working, waiting, compacting, consulting, background, leftRunning, headless,
+            unnamed, codex, lost, session(4, "Старая сессия", .sessionClosed, secondsAgo: 30),
+            discovered,
         ]
     }
 
@@ -410,9 +426,12 @@ final class WidgetRenderProbe: XCTestCase {
 
     /// Built the way `SessionHoverCard` builds it, which is what makes the image worth
     /// looking at — a mock-up of a card would only prove the mock-up looks right.
-    private func hoverCard(style: WidgetStyle = .standard) -> NSView {
+    private func hoverCard(
+        for snapshot: SessionSnapshot? = nil,
+        style: WidgetStyle = .standard
+    ) -> NSView {
         let text = hoverCardText(
-            for: sessions()[0],
+            for: snapshot ?? sessions()[0],
             now: now,
             reach: .anApplication
         )
