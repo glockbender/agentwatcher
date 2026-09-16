@@ -207,6 +207,15 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         style = WidgetStyle(scale: scale)
         hoverCard.style = style
         refreshContent()
+        // And say which window just changed. A person dragging the size slider is looking at
+        // the slider, while the thing that changes is a small window elsewhere on the screen
+        // — behind something, or one they have lost track of. The same outline the
+        // `Highlight Widget` menu line draws, rather than a second mark invented for this.
+        //
+        // Here rather than beside the menu action, because the guard above is what makes it
+        // honest: the controller is born with the size already saved, so nothing is lit at
+        // launch and nothing is lit by a write that changes nothing.
+        highlight()
     }
 
     /// Keeps the window at least as large as the current size needs.

@@ -572,6 +572,46 @@ final class LampSchemeReachesTheWidgetTests: XCTestCase {
     /// Through the store's own `onChange`, the way the running app is wired, rather than by
     /// calling the controller: the seam this test exists for is the one between a preference
     /// being written and the widget hearing about it.
+    /// A person dragging the size slider is looking at the slider, and the thing that
+    /// changes is a small window somewhere else on the screen — possibly behind something,
+    /// possibly one they have lost track of. So a change of size says where the widget is,
+    /// with the outline the `Highlight Widget` menu line already draws: one language for
+    /// "here it is", not a second one invented for this.
+    func testChangingTheSizeSaysWhereTheWidgetIs() throws {
+        let preferences = try isolatedPreferences()
+        let settings = WidgetSettingsStore(preferences: preferences)
+        let controller = HUDPanelController(
+            reach: { _ in .nowhere },
+            focus: { _ in },
+            remove: { _ in },
+            background: .graphite,
+            lampScheme: LampScheme(),
+            backgroundOpacity: 1,
+            style: WidgetStyle(scale: settings.scale),
+            frameStore: HUDFrameStore(preferences: preferences),
+            settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences)
+        )
+        defer { controller.shutdown() }
+        controller.showWindow(nil)
+        let panel = try XCTUnwrap(controller.window as? HUDPanel)
+        // A real size: the outline is laid out against the content, and against nothing it
+        // waits for geometry rather than drawing.
+        panel.setContentSize(NSSize(width: 600, height: 400))
+        XCTAssertNil(Self.outline(in: panel), "the widget is lit before anything happened")
+
+        controller.setScale(2)
+
+        XCTAssertNotNil(
+            Self.outline(in: panel),
+            "the widget changed size without saying which window it was"
+        )
+    }
+
+    private static func outline(in panel: HUDPanel) -> HUDHighlightOverlayView? {
+        panel.contentView?.subviews.compactMap { $0 as? HUDHighlightOverlayView }.last
+    }
+
     func testEnlargingTheWidgetRedrawsTheRowsAtOnce() throws {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
