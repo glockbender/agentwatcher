@@ -88,28 +88,91 @@ public enum SessionPhase: String, Codable, CaseIterable, Sendable {
     case disconnected
     case sessionClosed
 
-    /// Whether the session says work is under way right now.
+    /// What this phase means to a person, in the four states worth acting on.
     ///
-    /// The one question two different rules were each answering with their own switch, in
-    /// exactly opposite directions — whether quiet is accounted for, and whether age is worth
-    /// tracking. Both are this, and nothing checked that the two agreed. The compiler forces
-    /// a new phase to be classified once, here.
+    /// The one place a phase is classified. Three rules were each answering a piece of this
+    /// question with a switch of their own, in exactly opposite directions — whether quiet is
+    /// accounted for, whether age is worth tracking, and which of four cells a count belongs
+    /// in — and nothing checked that they agreed. The compiler forces a new phase to be
+    /// classified once, here, and everything else reads the answer.
+    public var attention: SessionAttention {
+        switch self {
+        // `failed` joins `waitingForUser` because both stop until a person looks. The
+        // difference between them matters in the row, which says what happened; it does not
+        // matter to the question "is there anything for me right now".
+        case .waitingForUser, .failed: .needsPerson
+        case .planning, .executing, .waitingForChildren: .working
+        case .completed: .done
+        case .idle, .disconnected: .quiet
+        case .sessionClosed: .closed
+        }
+    }
+
+    /// Whether the session says work is under way right now.
     ///
     /// The three that claim work are also the three where quiet means nothing by itself: a
     /// build runs for minutes without a word. The other six explain their own silence — the
     /// turn ended, a person is being waited for, the session is closed or lost, or it is at
     /// rest between turns.
     public var claimsWork: Bool {
-        switch self {
-        case .planning, .executing, .waitingForChildren: true
-        case .idle, .waitingForUser, .completed, .failed, .disconnected, .sessionClosed: false
-        }
+        attention == .working
     }
+}
+
+/// Whether a session wants the person, and if not, why not.
+///
+/// Four answers plus an end, deliberately coarser than `SessionPhase`: `planning` and
+/// `executing` are a real difference in the widget's row and no difference at all to somebody
+/// deciding whether to look. Named for the question rather than for what reads it — the menu
+/// bar counts these, but they are a fact about the session, not about a status item.
+public enum SessionAttention: String, CaseIterable, Sendable {
+    /// Nothing moves here until a person answers, or at least looks.
+    case needsPerson
+    /// Work is under way, with nothing to do but wait.
+    case working
+    /// The turn ended and the work is done.
+    case done
+    /// Alive, with nothing to act on.
+    case quiet
+    /// Over. Counted nowhere — see ADR-0002.
+    case closed
 }
 
 public enum UserInputRequestKind: String, Codable, Sendable {
     case approval
     case selection
+}
+
+/// One question a session is waiting for an answer to.
+///
+/// A session can have several at once: measured on Claude Code 2.1.272, two subagents each
+/// got their own permission dialog a second apart, with neither answered. Claude Code does
+/// not serialise them, so the row cannot treat "a dialog" as a single thing — answering one
+/// leaves the other on screen, and a session with one unanswered question is still waiting
+/// for its person.
+public struct AwaitedDialog: Codable, Equatable, Sendable {
+    /// Which agent was asked, or `nil` for the session's main thread.
+    ///
+    /// Measured on Claude Code 2.1.272: every hook fired from inside a subagent carries
+    /// `agent_id` and the main thread's carry none, so the owner is a fact, not a guess.
+    /// It is also this dialog's identity — one agent is asked one thing at a time, because
+    /// it is stopped until it is answered.
+    public let agentID: String?
+    /// Which call the question is about, where the events named one.
+    ///
+    /// Without it any finishing tool cleared the wait, and a session blocked on a permission
+    /// dialog went back to reading as `working` the moment an unrelated parallel tool
+    /// returned — losing the one signal this widget exists to deliver.
+    public let activityID: String?
+    /// What is being asked, where the hook said. `nil` only for a wait restored from a file
+    /// that did not record it.
+    public let kind: UserInputRequestKind?
+
+    public init(agentID: String? = nil, activityID: String? = nil, kind: UserInputRequestKind? = nil) {
+        self.agentID = agentID
+        self.activityID = activityID
+        self.kind = kind
+    }
 }
 
 /// A kind of work a session left running when its turn ended.
@@ -241,12 +304,17 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     public var mode: SessionMode
     public var phase: SessionPhase
     public var userInputRequestKind: UserInputRequestKind?
-    /// Which tool call the session is waiting on an answer for.
+    /// Every question still unanswered, oldest first — see `AwaitedDialog`.
     ///
-    /// Without it any finishing tool cleared the wait, and a session blocked on a permission
-    /// dialog went back to reading as `working` the moment an unrelated parallel tool
-    /// returned — losing the one signal this widget exists to deliver.
-    public var awaitedActivityID: String?
+    /// `nil` and `[]` say the same thing here: nobody is being waited for. The optional is
+    /// for the reason `discoveredProcess` gives — a memory file written before this field
+    /// existed has to go on decoding, and a non-optional would have thrown and emptied it.
+    /// Read it through `unansweredDialogs`, which asks the question without the distinction
+    /// that does not exist.
+    ///
+    /// Settable only through `setAwaitedDialogs` and `clearAwaited`, because the row's own
+    /// summary of it — `userInputRequestKind` — has to change with it.
+    public internal(set) var awaitedDialogs: [AwaitedDialog]?
     public var activities: [SessionActivity]
     public var lastObservedAt: Date
     public var agentProcessID: Int32?
@@ -364,6 +432,19 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
         clientKind == .background ? viewerProcessID ?? agentProcessID : agentProcessID
     }
 
+    /// The questions still unanswered, oldest first, reading the stored `nil` as none.
+    ///
+    /// The one way in: every rule about a wait is a rule about this list, and none of them
+    /// has to spell the empty case twice.
+    public var unansweredDialogs: [AwaitedDialog] {
+        awaitedDialogs ?? []
+    }
+
+    /// Whether somebody is still being waited for. The list's own question, named.
+    public var isAwaitingAnswer: Bool {
+        !unansweredDialogs.isEmpty
+    }
+
     public init(
         id: String,
         source: AgentSource,
@@ -374,7 +455,7 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
         mode: SessionMode = .unknown,
         phase: SessionPhase = .idle,
         userInputRequestKind: UserInputRequestKind? = nil,
-        awaitedActivityID: String? = nil,
+        awaitedDialogs: [AwaitedDialog]? = nil,
         activities: [SessionActivity] = [],
         lastObservedAt: Date,
         agentProcessID: Int32? = nil,
@@ -396,7 +477,7 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
         self.mode = mode
         self.phase = phase
         self.userInputRequestKind = userInputRequestKind
-        self.awaitedActivityID = awaitedActivityID
+        self.awaitedDialogs = awaitedDialogs
         self.activities = activities
         self.lastObservedAt = lastObservedAt
         self.agentProcessID = agentProcessID

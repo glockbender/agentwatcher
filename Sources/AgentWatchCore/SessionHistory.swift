@@ -70,8 +70,7 @@ public enum SessionHistory {
         if let awaiting {
             remembered.discoveredProcess = nil
             remembered.phase = .waitingForUser
-            remembered.awaitedActivityID = awaiting.awaitedActivityID
-            remembered.userInputRequestKind = awaiting.kind
+            remembered.setAwaitedDialogs(awaiting.dialogs)
             return remembered
         }
         // A row is only ever built from a process while that process is running, and the
@@ -91,8 +90,7 @@ public enum SessionHistory {
         // same rule here.
         guard snapshot.phase == .waitingForUser else {
             remembered.phase = .disconnected
-            remembered.awaitedActivityID = nil
-            remembered.userInputRequestKind = nil
+            remembered.clearAwaited()
             return remembered
         }
         return remembered
@@ -101,14 +99,15 @@ public enum SessionHistory {
     /// A wait a session was remembered in, held back until the session's own file can say
     /// whether it still holds.
     public struct RememberedWait: Equatable, Sendable {
-        public let awaitedActivityID: String?
-        public let kind: UserInputRequestKind?
+        /// Every dialog the session was waiting on, oldest first — who was asked, about
+        /// which call, and what was being asked. All of them rather than one, because the
+        /// wait is over only when the last of them is answered.
+        public let dialogs: [AwaitedDialog]
         /// When the session was last heard from, used to reject older interruptions.
         public let observedAt: Date
 
-        public init(awaitedActivityID: String?, kind: UserInputRequestKind?, observedAt: Date) {
-            self.awaitedActivityID = awaitedActivityID
-            self.kind = kind
+        public init(dialogs: [AwaitedDialog], observedAt: Date) {
+            self.dialogs = dialogs
             self.observedAt = observedAt
         }
     }
@@ -118,14 +117,28 @@ public enum SessionHistory {
     /// The awaited call ending or a current interruption retracts the wait. Unrelated calls
     /// can finish while a permission dialog stays open, so their dates prove nothing about it.
     public struct RememberedWaitEvidence: Equatable, Sendable {
-        /// The awaited call reported back somewhere in the tail.
-        public let newestAwaitedCallEndAt: Date?
+        /// One remembered dialog and what the tail says about it.
+        public struct DialogEvidence: Equatable, Sendable {
+            public let dialog: AwaitedDialog
+            /// The newest ending of the call this dialog is about, `nil` when the tail has
+            /// none. Per dialog and not per wait: one subagent's call reporting back says
+            /// nothing about the question another subagent is still holding.
+            public let callEndedAt: Date?
+
+            public init(dialog: AwaitedDialog, callEndedAt: Date?) {
+                self.dialog = dialog
+                self.callEndedAt = callEndedAt
+            }
+        }
+
+        /// The remembered dialogs, each with its own ending.
+        public let dialogs: [DialogEvidence]
         /// A whole-turn interruption, judged against the age of the remembered wait.
         /// Late observations of calls starting preserve a wait, just as they do live.
         public let newestInterruptionAt: Date?
 
-        public init(newestAwaitedCallEndAt: Date?, newestInterruptionAt: Date?) {
-            self.newestAwaitedCallEndAt = newestAwaitedCallEndAt
+        public init(dialogs: [DialogEvidence], newestInterruptionAt: Date?) {
+            self.dialogs = dialogs
             self.newestInterruptionAt = newestInterruptionAt
         }
 
@@ -133,8 +146,11 @@ public enum SessionHistory {
         ///
         /// Here rather than in the reader that produced the bytes: this is the whole
         /// interpretation step, and it is worth being able to exercise it without a file.
-        public init(facts: [TranscriptFact], awaitedActivityID: String?) {
-            newestAwaitedCallEndAt = facts.filter { $0.ends(activityID: awaitedActivityID) }.map(\.at).max()
+        public init(facts: [TranscriptFact], dialogs: [AwaitedDialog]) {
+            self.dialogs = dialogs.map { dialog in
+                let endings = facts.filter { $0.ends(dialog) }
+                return DialogEvidence(dialog: dialog, callEndedAt: endings.map(\.at).max())
+            }
             newestInterruptionAt = facts.compactMap { fact in
                 if case let .turnInterrupted(at) = fact {
                     return at
@@ -154,7 +170,16 @@ public enum SessionHistory {
         guard let evidence else {
             return false
         }
-        if let endedAt = evidence.newestAwaitedCallEndAt, endedAt >= wait.observedAt {
+        // One dialog still unanswered is enough: the session is waiting for its person until
+        // the last of them is answered. A call that ended before the wait was observed is
+        // some earlier call of the same identity, not an answer to this question.
+        let stillUnanswered = evidence.dialogs.contains { dialog in
+            guard let endedAt = dialog.callEndedAt else {
+                return true
+            }
+            return endedAt < wait.observedAt
+        }
+        guard stillUnanswered else {
             return false
         }
         guard let newestInterruptionAt = evidence.newestInterruptionAt else {

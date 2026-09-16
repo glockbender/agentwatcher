@@ -6,6 +6,14 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
+    /// The counts drawn into the status item, or `nil` while it shows the plain app glyph.
+    private var menuBarIconView: MenuBarIconView?
+    /// The line at the top of the menu that says in words what the icon says in numbers.
+    private var menuBarSummaryItem: NSMenuItem?
+    private var menuBarCountsMenuItem: NSMenuItem?
+    /// What the icon is currently showing. Kept so that the drawing follows a change rather
+    /// than every report: most of what happens to a session moves none of these four numbers.
+    private var menuBarCounts = SessionAttentionCounts.empty
     private var widgetMenuItem: NSMenuItem?
     private var debugMenuItem: NSMenuItem?
     #if AGENT_WATCH_DEBUG_CAPTURE
@@ -251,16 +259,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        let image = NSImage(
-            systemSymbolName: "circle.grid.2x2.fill",
-            accessibilityDescription: "Agent Watch"
-        )
-        image?.isTemplate = true
-        item.button?.image = image
-        item.button?.toolTip = "Agent Watch"
 
         let menu = NSMenu()
         menu.delegate = self
+        // First, and never clickable: what the icon means, spelled out. The icon is read at a
+        // glance and the menu is opened when the glance was not enough.
+        let summaryItem = NSMenuItem(title: MenuBarSummaryText.line(for: menuBarCounts), action: nil, keyEquivalent: "")
+        summaryItem.isEnabled = false
+        menu.addItem(summaryItem)
+        menuBarSummaryItem = summaryItem
+        let countsItem = NSMenuItem(
+            title: "Show Counts in Menu Bar",
+            action: #selector(toggleMenuBarCounts),
+            keyEquivalent: ""
+        )
+        countsItem.target = self
+        menu.addItem(countsItem)
+        menuBarCountsMenuItem = countsItem
+        menu.addItem(.separator())
         let toggleItem = NSMenuItem(
             title: "Show Widget",
             action: #selector(toggleHUD),
@@ -327,6 +343,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         item.menu = menu
         statusItem = item
+        applyMenuBarIcon()
+    }
+
+    /// Puts the status item into whichever of its two states the setting asks for.
+    ///
+    /// The plain state is exactly what shipped before the counts existed: a template glyph on
+    /// a `squareLength` item, 22 pt. That length matters — the same glyph on a
+    /// `variableLength` item measures 32 pt, so an item left variable would be 10 pt wider
+    /// than before while showing strictly less.
+    private func applyMenuBarIcon() {
+        guard let item = statusItem, let button = item.button else {
+            return
+        }
+        guard settings.showsMenuBarCounts else {
+            showPlainStatusGlyph(on: item)
+            return
+        }
+
+        let view = menuBarIconView ?? makeMenuBarIconView()
+        guard view.show(MenuBarIconCell.grid(for: menuBarCounts)) else {
+            // A symbol the running system does not have. Fail-open, like every other reading
+            // of something this app does not own.
+            showPlainStatusGlyph(on: item)
+            return
+        }
+        menuBarIconView = view
+        button.image = nil
+        if view.superview !== button {
+            button.addSubview(view)
+        }
+        if let width = view.drawnWidth {
+            item.length = width + MenuBarIconMetrics.itemPadding
+        }
+        view.fill(button)
+        updateStatusItemWording()
+    }
+
+    private func makeMenuBarIconView() -> MenuBarIconView {
+        let view = MenuBarIconView()
+        // The view draws itself and therefore knows its width first; the item's length is not
+        // its to set.
+        view.onWidthChange = { [weak self] width in
+            self?.statusItem?.length = width + MenuBarIconMetrics.itemPadding
+        }
+        return view
+    }
+
+    private func showPlainStatusGlyph(on item: NSStatusItem) {
+        menuBarIconView?.removeFromSuperview()
+        menuBarIconView = nil
+        let image = NSImage(
+            systemSymbolName: "circle.grid.2x2.fill",
+            accessibilityDescription: "Agent Watch"
+        )
+        image?.isTemplate = true
+        item.length = NSStatusItem.squareLength
+        item.button?.image = image
+        item.button?.toolTip = "Agent Watch"
+        item.button?.setAccessibilityLabel("Agent Watch")
+    }
+
+    /// The tooltip and the accessibility label say what the icon says, in the menu's words.
+    private func updateStatusItemWording() {
+        let line = MenuBarSummaryText.line(for: menuBarCounts)
+        statusItem?.button?.toolTip = "Agent Watch — \(line)"
+        statusItem?.button?.setAccessibilityLabel("Agent Watch. \(line)")
+    }
+
+    /// Redraws the icon, and only when one of its four numbers has moved.
+    private func updateMenuBarIcon(sessions: [SessionSnapshot]) {
+        let counts = SessionAttentionCounts(sessions: sessions)
+        guard counts != menuBarCounts else {
+            return
+        }
+        menuBarCounts = counts
+        menuBarIconView?.show(MenuBarIconCell.grid(for: counts))
+        updateStatusItemWording()
+    }
+
+    @objc private func toggleMenuBarCounts() {
+        settings.setShowsMenuBarCounts(!settings.showsMenuBarCounts)
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -334,6 +431,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // the app has never heard from is most worth finding. It costs about a millisecond
         // and saves a timer: see `SessionSupervisor.discoverAgentProcesses`.
         supervisor.discoverAgentProcesses()
+        menuBarSummaryItem?.title = MenuBarSummaryText.line(for: menuBarCounts)
+        menuBarCountsMenuItem?.state = settings.showsMenuBarCounts ? .on : .off
         widgetMenuItem?.title = hudController.window?.isVisible == true ? "Hide Widget" : "Show Widget"
         if let widgetMenuItem {
             shortcuts.showShortcut(on: widgetMenuItem)
@@ -483,13 +582,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         sessions: [SessionSnapshot]? = nil,
         usageLimits: [AgentUsageLimits]? = nil
     ) {
+        let shown = sessions ?? supervisor.sessions
         hudController.render(
             WidgetState(
-                sessions: sessions ?? supervisor.sessions,
+                sessions: shown,
                 usageLimits: usageLimits ?? supervisor.usageLimits,
                 complaint: widgetComplaint
             )
         )
+        // The same list, and the same moment. A second source of sessions for the status item
+        // would be a second answer to the question this app exists to answer once.
+        updateMenuBarIcon(sessions: shown)
     }
 
     private func makeTranscriptMenuItem() -> NSMenuItem {
@@ -637,6 +740,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             hudController.setScale(settings.scale)
         case .toggleShortcut:
             applyShortcut()
+        case .menuBarCounts:
+            applyMenuBarIcon()
         }
     }
 

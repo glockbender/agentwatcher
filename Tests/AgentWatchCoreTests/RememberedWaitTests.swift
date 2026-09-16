@@ -11,6 +11,8 @@ import XCTest
 /// attention state.
 final class RememberedWaitTests: XCTestCase {
     private let waitedAt = Date(timeIntervalSince1970: 1_700_000_000)
+    /// The dialog `waiting()` is waiting on, and what the transcript is asked about.
+    private let dialog = AwaitedDialog(activityID: "call-1", kind: .approval)
 
     /// The seam: the file keeps the wait, the engine refuses to claim it. Two rules that used
     /// to be one function, and a row that came back saying "waiting for you" on a memory
@@ -20,7 +22,7 @@ final class RememberedWaitTests: XCTestCase {
 
         let kept = SessionHistory.remembered(waiting)
         XCTAssertEqual(kept.phase, .waitingForUser)
-        XCTAssertEqual(kept.awaitedActivityID, "call-1")
+        XCTAssertEqual(kept.unansweredDialogs.first?.activityID, "call-1")
         XCTAssertEqual(kept.userInputRequestKind, .approval)
 
         var engine = SessionStateEngine()
@@ -29,7 +31,7 @@ final class RememberedWaitTests: XCTestCase {
         XCTAssertEqual(restored.phase, .disconnected, "nothing has been heard, so nothing is claimed yet")
         XCTAssertNil(restored.userInputRequestKind)
         XCTAssertEqual(
-            engine.rememberedWaitsAwaitingEvidence["claude:abc"]?.awaitedActivityID,
+            engine.rememberedWaitsAwaitingEvidence["claude:abc"]?.dialogs.first?.activityID,
             "call-1",
             "the wait is set aside, not thrown away"
         )
@@ -43,11 +45,11 @@ final class RememberedWaitTests: XCTestCase {
 
         let restored = engine.confirmRememberedWait(
             forSessionWithID: "claude:abc",
-            evidence: SessionHistory.RememberedWaitEvidence(newestAwaitedCallEndAt: nil, newestInterruptionAt: nil)
+            evidence: SessionHistory.RememberedWaitEvidence(facts: [], dialogs: [dialog])
         )
 
         XCTAssertEqual(restored?.phase, .waitingForUser)
-        XCTAssertEqual(restored?.awaitedActivityID, "call-1")
+        XCTAssertEqual(restored?.unansweredDialogs.first?.activityID, "call-1")
         XCTAssertEqual(restored?.userInputRequestKind, .approval)
         XCTAssertEqual(restored?.lastObservedAt, waitedAt, "the wait began then, and reading a file is not an event")
         XCTAssertTrue(engine.rememberedWaitsAwaitingEvidence.isEmpty)
@@ -67,7 +69,7 @@ final class RememberedWaitTests: XCTestCase {
             forSessionWithID: "claude:abc",
             evidence: SessionHistory.RememberedWaitEvidence(
                 facts: [.callReturned(activityID: "call-1", at: waitedAt)],
-                awaitedActivityID: "call-1"
+                dialogs: [dialog]
             )
         )
 
@@ -84,7 +86,7 @@ final class RememberedWaitTests: XCTestCase {
             forSessionWithID: "claude:abc",
             evidence: SessionHistory.RememberedWaitEvidence(
                 facts: [.callStarted(activityID: "call-9", kind: .shell, at: waitedAt + 3_600)],
-                awaitedActivityID: "call-1"
+                dialogs: [dialog]
             )
         )
 
@@ -115,7 +117,7 @@ final class RememberedWaitTests: XCTestCase {
         )
         let refused = engine.confirmRememberedWait(
             forSessionWithID: "claude:abc",
-            evidence: SessionHistory.RememberedWaitEvidence(newestAwaitedCallEndAt: nil, newestInterruptionAt: nil)
+            evidence: SessionHistory.RememberedWaitEvidence(facts: [], dialogs: [dialog])
         )
 
         XCTAssertNil(refused)
@@ -127,12 +129,13 @@ final class RememberedWaitTests: XCTestCase {
     /// nothing for it to inherit. Such a wait is judged by whether the session did anything
     /// at all afterwards, which is enough on its own.
     func testAWaitNamingNoCallIsStillJudgedByWhatFollowedIt() {
-        let wait = SessionHistory.RememberedWait(awaitedActivityID: nil, kind: .approval, observedAt: waitedAt)
+        let unnamed = AwaitedDialog(kind: .approval)
+        let wait = SessionHistory.RememberedWait(dialogs: [unnamed], observedAt: waitedAt)
 
         XCTAssertTrue(
             SessionHistory.waitStillHolds(
                 wait,
-                evidence: SessionHistory.RememberedWaitEvidence(facts: [], awaitedActivityID: nil)
+                evidence: SessionHistory.RememberedWaitEvidence(facts: [], dialogs: [unnamed])
             )
         )
         XCTAssertFalse(
@@ -140,8 +143,22 @@ final class RememberedWaitTests: XCTestCase {
                 wait,
                 evidence: SessionHistory.RememberedWaitEvidence(
                     facts: [.callReturned(activityID: "anything", at: waitedAt + 1)],
-                    awaitedActivityID: nil
+                    dialogs: [unnamed]
                 )
+            )
+        )
+    }
+
+    /// A wait naming no dialog at all is not a wait. It is what a memory file written before
+    /// the dialogs were recorded brings back, and there is nothing in it to ask the
+    /// transcript about — so the row keeps the answer that costs nothing.
+    func testAWaitThatNamesNoDialogIsDropped() {
+        let wait = SessionHistory.RememberedWait(dialogs: [], observedAt: waitedAt)
+
+        XCTAssertFalse(
+            SessionHistory.waitStillHolds(
+                wait,
+                evidence: SessionHistory.RememberedWaitEvidence(facts: [], dialogs: [])
             )
         )
     }
@@ -153,7 +170,7 @@ final class RememberedWaitTests: XCTestCase {
             var snapshot = waiting()
             snapshot.phase = phase
             XCTAssertEqual(SessionHistory.remembered(snapshot).phase, .disconnected, "\(phase)")
-            XCTAssertNil(SessionHistory.remembered(snapshot).awaitedActivityID, "\(phase)")
+            XCTAssertTrue(SessionHistory.remembered(snapshot).unansweredDialogs.isEmpty, "\(phase)")
         }
     }
 
@@ -176,7 +193,7 @@ final class RememberedWaitTests: XCTestCase {
 
         let record = try XCTUnwrap(written.first)
         XCTAssertEqual(record.phase, .waitingForUser, "the file goes on saying what it said")
-        XCTAssertEqual(record.awaitedActivityID, "call-1")
+        XCTAssertEqual(record.unansweredDialogs.first?.activityID, "call-1")
         XCTAssertEqual(record.userInputRequestKind, .approval)
     }
 
@@ -188,7 +205,7 @@ final class RememberedWaitTests: XCTestCase {
         engine.confirmRememberedWait(
             forSessionWithID: "claude:abc",
             evidence: SessionHistory.RememberedWaitEvidence(
-                newestAwaitedCallEndAt: waitedAt + 1, newestInterruptionAt: nil)
+                facts: [.callReturned(activityID: "call-1", at: waitedAt + 1)], dialogs: [dialog])
         )
 
         let written = SessionHistory.records(
@@ -197,7 +214,7 @@ final class RememberedWaitTests: XCTestCase {
         )
 
         XCTAssertEqual(try XCTUnwrap(written.first).phase, .disconnected)
-        XCTAssertNil(try XCTUnwrap(written.first).awaitedActivityID)
+        XCTAssertTrue(try XCTUnwrap(written.first).unansweredDialogs.isEmpty)
     }
 
     func testLiveAndRestoredWaitsAgreeOnWhichTranscriptFactsAnswerThem() throws {
@@ -228,7 +245,10 @@ final class RememberedWaitTests: XCTestCase {
                 live.apply(fact, toSessionWithID: waiting.id)
                 restored.confirmRememberedWait(
                     forSessionWithID: waiting.id,
-                    evidence: SessionHistory.RememberedWaitEvidence(facts: [fact], awaitedActivityID: awaitedID)
+                    evidence: SessionHistory.RememberedWaitEvidence(
+                        facts: [fact],
+                        dialogs: [AwaitedDialog(activityID: awaitedID, kind: .approval)]
+                    )
                 )
 
                 XCTAssertEqual(
@@ -256,7 +276,9 @@ final class RememberedWaitTests: XCTestCase {
                         source: .claude, sessionID: "abc", observedAt: waitedAt,
                         kind: .userInputRequired, userInputRequestKind: .approval)
                 )
-                XCTAssertNil(waiting.awaitedActivityID)
+                XCTAssertEqual(
+                    waiting.unansweredDialogs, [AwaitedDialog(kind: .approval)],
+                    "asked, with no call of its own to name")
                 engine.apply(fact, toSessionWithID: waiting.id)
                 XCTAssertEqual(
                     engine.snapshots[waiting.id]?.phase, offset < 0 ? .waitingForUser : .executing,
@@ -268,9 +290,10 @@ final class RememberedWaitTests: XCTestCase {
     func testHistoricalEndingsDoNotAnswerALaterWait() {
         let ids: [String?] = [nil, "call-1"]
         for id in ids {
-            let wait = SessionHistory.RememberedWait(awaitedActivityID: id, kind: .approval, observedAt: waitedAt)
+            let asked = AwaitedDialog(activityID: id, kind: .approval)
+            let wait = SessionHistory.RememberedWait(dialogs: [asked], observedAt: waitedAt)
             let evidence = SessionHistory.RememberedWaitEvidence(
-                facts: [.callReturned(activityID: "call-1", at: waitedAt - 60)], awaitedActivityID: id
+                facts: [.callReturned(activityID: "call-1", at: waitedAt - 60)], dialogs: [asked]
             )
             XCTAssertTrue(SessionHistory.waitStillHolds(wait, evidence: evidence))
         }
@@ -295,11 +318,118 @@ final class RememberedWaitTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            engine.rememberedWaitsAwaitingEvidence["claude:abc"]?.awaitedActivityID,
+            engine.rememberedWaitsAwaitingEvidence["claude:abc"]?.dialogs.first?.activityID,
             "call-1",
             "the original's parting word changed nothing on the row, so it spent nothing"
         )
         XCTAssertEqual(engine.snapshots["claude:abc"]?.phase, .disconnected, "and the row is where it was")
+    }
+
+    /// A dialog belongs to one agent, and a restart that forgot which would hand the wait to
+    /// the main thread: the next call by any other subagent would then read as the answer,
+    /// which is the whole bug this owner exists to prevent — reintroduced by a restart.
+    func testARestartRemembersWhichAgentTheDialogBelongsTo() throws {
+        let asked = AwaitedDialog(agentID: "reviewer-a", activityID: "call-1", kind: .approval)
+        var waiting = self.waiting()
+        waiting.setAwaitedDialogs([asked])
+
+        let kept = SessionHistory.remembered(waiting)
+        XCTAssertEqual(kept.unansweredDialogs.first?.agentID, "reviewer-a")
+
+        var engine = SessionStateEngine()
+        engine.restore([kept])
+
+        XCTAssertEqual(
+            engine.rememberedWaitsAwaitingEvidence["claude:abc"]?.dialogs.first?.agentID,
+            "reviewer-a",
+            "the owner is set aside with the wait, not thrown away"
+        )
+
+        let restored = try XCTUnwrap(
+            engine.confirmRememberedWait(
+                forSessionWithID: "claude:abc",
+                evidence: SessionHistory.RememberedWaitEvidence(facts: [], dialogs: [asked])
+            )
+        )
+
+        XCTAssertEqual(restored.phase, .waitingForUser)
+        XCTAssertEqual(restored.unansweredDialogs.first?.agentID, "reviewer-a")
+    }
+
+    /// Every dialog crosses the restart, not just the first: two subagents can be asked at
+    /// once, and the file is all that brings either of them back.
+    func testARestartRemembersEveryDialogAndNotOnlyTheFirst() throws {
+        let first = AwaitedDialog(agentID: "reviewer-a", activityID: "a-bash", kind: .approval)
+        let second = AwaitedDialog(agentID: "reviewer-b", activityID: "b-bash", kind: .selection)
+        var waiting = self.waiting()
+        waiting.setAwaitedDialogs([first, second])
+
+        let kept = SessionHistory.remembered(waiting)
+        XCTAssertEqual(kept.unansweredDialogs, [first, second])
+
+        var engine = SessionStateEngine()
+        engine.restore([kept])
+
+        XCTAssertEqual(
+            engine.rememberedWaitsAwaitingEvidence["claude:abc"]?.dialogs,
+            [first, second],
+            "both are set aside, and the wait is over only when the last is answered"
+        )
+    }
+
+    /// The transcript answering one of two remembered dialogs leaves the other on screen.
+    /// Read as one wait with one awaited call, the first ending it found retracted the whole
+    /// thing — and the row came back saying "no signal" while a person was still being asked.
+    func testAnAnswerToOneRememberedDialogDoesNotRetractTheOther() {
+        let answered = AwaitedDialog(agentID: "reviewer-a", activityID: "a-bash", kind: .approval)
+        let stillOpen = AwaitedDialog(agentID: "reviewer-b", activityID: "b-bash", kind: .approval)
+        let wait = SessionHistory.RememberedWait(dialogs: [answered, stillOpen], observedAt: waitedAt)
+
+        XCTAssertTrue(
+            SessionHistory.waitStillHolds(
+                wait,
+                evidence: SessionHistory.RememberedWaitEvidence(
+                    facts: [.callReturned(activityID: "a-bash", at: waitedAt + 30)],
+                    dialogs: wait.dialogs
+                )
+            )
+        )
+        XCTAssertFalse(
+            SessionHistory.waitStillHolds(
+                wait,
+                evidence: SessionHistory.RememberedWaitEvidence(
+                    facts: [
+                        .callReturned(activityID: "a-bash", at: waitedAt + 30),
+                        .callReturned(activityID: "b-bash", at: waitedAt + 31),
+                    ],
+                    dialogs: wait.dialogs
+                )
+            ),
+            "and once the last of them is answered the wait is over"
+        )
+    }
+
+    /// The same rule as a live wait, on the restart path: with no call named, any ending in
+    /// the transcript answers the dialog — and that is the main thread's rule. The transcript
+    /// being read is the parent's, so for a subagent's dialog every ending in it belongs to
+    /// somebody else by definition.
+    func testTheParentsTranscriptDoesNotAnswerASubagentsDialogItCannotName() {
+        let ending = TranscriptFact.callReturned(activityID: "some-other-call", at: waitedAt + 10)
+
+        let mainThread = SessionHistory.RememberedWaitEvidence(
+            facts: [ending],
+            dialogs: [AwaitedDialog(kind: .approval)]
+        )
+        XCTAssertNotNil(
+            mainThread.dialogs.first?.callEndedAt,
+            "with one agent, any ending is the only evidence there can be"
+        )
+
+        let subagent = SessionHistory.RememberedWaitEvidence(
+            facts: [ending],
+            dialogs: [AwaitedDialog(agentID: "reviewer-a", kind: .approval)]
+        )
+        XCTAssertNil(subagent.dialogs.first?.callEndedAt, "it ended somebody else's call")
     }
 
     private func waiting() -> SessionSnapshot {
@@ -309,7 +439,7 @@ final class RememberedWaitTests: XCTestCase {
             arrivalIndex: 0,
             phase: .waitingForUser,
             userInputRequestKind: .approval,
-            awaitedActivityID: "call-1",
+            awaitedDialogs: [dialog],
             activities: [SessionActivity(id: "call-1", kind: .shell, startedAt: waitedAt - 5)],
             lastObservedAt: waitedAt
         )

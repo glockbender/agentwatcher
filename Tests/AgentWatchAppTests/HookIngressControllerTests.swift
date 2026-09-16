@@ -69,6 +69,37 @@ final class HookIngressControllerTests: XCTestCase {
         XCTAssertEqual(logged, ["Claude · id_session · turnStarted"])
     }
 
+    /// The log has to say *whose* dialog it is, because a session running several subagents
+    /// produces one `userInputRequired` and a stream of unrelated calls around it, and the
+    /// question a reader arrives with is which of them the dialog belonged to. Working that
+    /// out from transcripts afterwards took an evening.
+    func testTheLogNamesTheSubagentAnEventCameFrom() {
+        let mainThread = EventEnvelope(
+            source: .claude,
+            sessionID: "id_session",
+            observedAt: .now,
+            kind: .userInputRequired,
+            userInputRequestKind: .approval
+        )
+        let subagent = EventEnvelope(
+            source: .claude,
+            sessionID: "id_session",
+            observedAt: .now,
+            kind: .userInputRequired,
+            userInputRequestKind: .approval,
+            agentID: "id_reviewer"
+        )
+
+        XCTAssertEqual(
+            HookIngressController.describe(mainThread),
+            "Claude · id_session · userInputRequired"
+        )
+        XCTAssertEqual(
+            HookIngressController.describe(subagent),
+            "Claude · id_session · userInputRequired · from id_reviewer"
+        )
+    }
+
     func testAMalformedEventIsRefusedWithoutReachingTheSessions() {
         var logged: [String] = []
         let controller = makeController(

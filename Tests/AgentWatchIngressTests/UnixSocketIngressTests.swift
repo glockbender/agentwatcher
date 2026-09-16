@@ -272,6 +272,55 @@ final class UnixSocketIngressTests: XCTestCase {
         XCTAssertEqual(fields["prompt"], .string("<redacted>"))
     }
 
+    /// A subagent's tool call reaches the app, and says whose it is.
+    ///
+    /// Through the real executable, with the payload shaped as Claude Code 2.1.272 actually
+    /// sends it: `transcript_path` is the **parent's**, identical to the main thread's, and
+    /// the subagent is named only by `agent_id`. A filter that judged by the path used to
+    /// stand here and recognised nobody; this is what has to keep working now it is gone —
+    /// the call is what a permission dialog is about, so dropping it would leave the dialog
+    /// with nothing to point at.
+    func testExecutableDeliversASubagentsCallAndNamesTheSubagent() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let socketPath = directoryURL.appendingPathComponent("agent-watch.sock").path
+        let results = IngressResults()
+        let received = expectation(description: "the subagent's call arrives")
+        let ingress = UnixSocketIngress(socketPath: socketPath) { result in
+            results.append(result)
+            received.fulfill()
+        }
+        try ingress.start()
+        defer { ingress.stop() }
+
+        let payload = """
+            {"session_id":"session","agent_id":"agent-a","agent_type":"general-purpose",\
+            "tool_use_id":"tool","tool_name":"Bash",\
+            "transcript_path":"/tmp/projects/p/session.jsonl"}
+            """
+        let sender = try runSender(
+            input: Data(payload.utf8),
+            arguments: [
+                "--source", "claude",
+                "--event", "PreToolUse",
+                "--socket", socketPath,
+            ]
+        )
+
+        XCTAssertEqual(sender.status, 0)
+        wait(for: [received], timeout: 1)
+        let request = try results.snapshot().first?.get()
+        let event = try HookIngressProcessor.normalize(
+            XCTUnwrap(request),
+            observedAt: Date(timeIntervalSince1970: 1_000)
+        )
+
+        XCTAssertEqual(event.kind, .activityStarted)
+        XCTAssertNotNil(event.agentID, "the call names the subagent that made it")
+        XCTAssertNotEqual(event.agentID, .some("agent-a"), "and names it by its redacted label")
+    }
+
     func testExecutableDropsACodexServiceSessionOutsideTheIndex() throws {
         let directoryURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }

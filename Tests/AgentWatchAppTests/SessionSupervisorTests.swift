@@ -836,7 +836,7 @@ final class SessionSupervisorTests: XCTestCase {
         firstLaunch.ingest(toolCall(sessionID: sessionID, toolUseID: try senderSideToolUseID("toolu_01")))
         firstLaunch.ingest(testRequest(event: "PermissionRequest", sessionID: sessionID, agentProcessID: getpid()))
         XCTAssertEqual(firstLaunch.sessions.first?.phase, .waitingForUser)
-        let awaited = try XCTUnwrap(firstLaunch.sessions.first?.awaitedActivityID)
+        let awaited = try XCTUnwrap(firstLaunch.sessions.first?.unansweredDialogs.first)
         firstLaunch.stop()
 
         let waitingAgain = expectation(description: "the catch-up put the wait back")
@@ -862,7 +862,7 @@ final class SessionSupervisorTests: XCTestCase {
 
         await fulfillment(of: [waitingAgain], timeout: 2)
         XCTAssertEqual(secondLaunch.sessions.first?.userInputRequestKind, .approval)
-        XCTAssertEqual(secondLaunch.sessions.first?.awaitedActivityID, awaited)
+        XCTAssertEqual(secondLaunch.sessions.first?.unansweredDialogs.first, awaited)
     }
 
     /// Quitting before the transcript has answered must not lose the wait.
@@ -894,7 +894,7 @@ final class SessionSupervisorTests: XCTestCase {
         firstLaunch.ingest(testRequest(event: "UserPromptSubmit", sessionID: sessionID, agentProcessID: getpid()))
         firstLaunch.ingest(toolCall(sessionID: sessionID, toolUseID: try senderSideToolUseID("toolu_01")))
         firstLaunch.ingest(testRequest(event: "PermissionRequest", sessionID: sessionID, agentProcessID: getpid()))
-        let awaited = try XCTUnwrap(firstLaunch.sessions.first?.awaitedActivityID)
+        let awaited = try XCTUnwrap(firstLaunch.sessions.first?.unansweredDialogs.first)
         firstLaunch.stop()
 
         let secondLaunch = try makeSupervisor(
@@ -908,7 +908,7 @@ final class SessionSupervisorTests: XCTestCase {
 
         let onDisk = try XCTUnwrap(SessionHistoryStore(directoryURL: directory).remembered.first)
         XCTAssertEqual(onDisk.phase, .waitingForUser, "the file goes on saying what it said")
-        XCTAssertEqual(onDisk.awaitedActivityID, awaited)
+        XCTAssertEqual(onDisk.unansweredDialogs.first, awaited)
     }
 
     /// The other direction, and the one that costs something to get wrong: the person

@@ -33,6 +33,7 @@ enum WidgetSetting {
     case scale
     case toggleShortcut
     case rowLayout
+    case menuBarCounts
 }
 
 /// Widget preferences that are not about colour.
@@ -94,6 +95,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let transcriptPollInterval = "transcriptPollIntervalSeconds"
         static let scale = "widgetScale"
         static let toggleShortcut = "toggleWidgetShortcut"
+        static let showsMenuBarCounts = "showsMenuBarCounts"
     }
 
     private let preferences: PreferenceFile
@@ -106,6 +108,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
             Key.scale: .number(Double(Self.defaultScale)),
             Key.toggleShortcut: .string(Self.defaultToggleShortcut),
+            Key.showsMenuBarCounts: .bool(true),
         ]
     }
 
@@ -184,6 +187,21 @@ final class WidgetSettingsStore: PreferenceDefaults {
         WidgetShortcut(
             stored: preferences.string(forKey: Key.toggleShortcut) ?? Self.defaultToggleShortcut
         )
+    }
+
+    /// Whether the status item shows the four counts rather than the plain app glyph.
+    ///
+    /// On unless it has been turned off, and that includes a copy updating into this version:
+    /// the key is missing there too. So the item grows from 22 pt to around 51 pt without
+    /// anybody asking for it — deliberate, because a feature that exists to be seen is not
+    /// served by a switch almost nobody would find, and one menu item turns it off.
+    var showsMenuBarCounts: Bool {
+        preferences.flag(forKey: Key.showsMenuBarCounts) ?? true
+    }
+
+    func setShowsMenuBarCounts(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsMenuBarCounts)
+        onChange?(.menuBarCounts)
     }
 
     func setToggleShortcut(_ shortcut: WidgetShortcut?) {

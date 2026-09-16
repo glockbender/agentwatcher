@@ -584,7 +584,10 @@ final class TranscriptWatcherTests: XCTestCase {
         )
         let watcher = try makeWatcher()
         let session = restored()
-        let wait = SessionHistory.RememberedWait(awaitedActivityID: "call-current", kind: .approval, observedAt: start)
+        let wait = SessionHistory.RememberedWait(
+            dialogs: [AwaitedDialog(activityID: "call-current", kind: .approval)],
+            observedAt: start
+        )
         let updates = try await catchUp(watcher, sessions: [session], waits: [session.id: wait])
         XCTAssertTrue(SessionHistory.waitStillHolds(wait, evidence: updates.first?.waitEvidence))
     }

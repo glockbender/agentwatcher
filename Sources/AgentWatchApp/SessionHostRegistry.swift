@@ -108,7 +108,42 @@ final class SessionHostRegistry {
         let tab: TabFocusAttempt
     }
 
-    /// Brings the session's host forward, then asks its IDE for the tab.
+    /// The way to this session's tab, found before its host is raised.
+    ///
+    /// Found first and followed second, because the two are one question. A route ends at a
+    /// window of its own — Ghostty's `focus` raises the terminal's window, the IDE plugin
+    /// picks the project's — and that is exactly the reason not to bring every other window
+    /// of the host along on the way there.
+    enum TabRoute {
+        /// Ghostty focuses this terminal: window and tab in the one call.
+        case ghostty(terminalID: String)
+        /// The IDE plugin picks the window and the tab; this is the address it answers to.
+        case jetBrains(URL)
+        /// Nothing here addresses a tab, and the reason belongs in the log.
+        case noTab(TabFocusAttempt)
+    }
+
+    /// Which of the host's windows come forward.
+    ///
+    /// All of them only when nothing is going to pick one. `activateAllWindows` is the wide
+    /// net for a host whose tab cannot be addressed: the session is in one of those windows
+    /// and Agent Watch cannot say which. Where a route exists it is the wrong net — every
+    /// window of the host comes forward, and then the route puts the right one on top of the
+    /// pile it has just made. What the person sees is the pile: reported for Ghostty with
+    /// several windows open, and true of the IDE plugin in the same way.
+    ///
+    /// `activateAllWindows` although it is deprecated, and that is a measurement rather than
+    /// inertia: it still works from a background process on macOS 15, and the newer spelling
+    /// could not be shown to raise a buried window of the same application any better —
+    /// there was only one on screen to test with.
+    static func activationOptions(for route: TabRoute) -> NSApplication.ActivationOptions {
+        switch route {
+        case .ghostty, .jetBrains: []
+        case .noTab: [.activateAllWindows]
+        }
+    }
+
+    /// Brings the session's host forward, then asks it for the tab.
     ///
     /// The caller is told rather than left to guess: with the row always answering a click,
     /// a click that could do nothing has to be distinguishable from one that did something.
@@ -116,13 +151,8 @@ final class SessionHostRegistry {
     /// The order is deliberate. The plugin's own focus is written on the assumption that the
     /// application is already forward — it picks the right *window* and leaves the raising
     /// alone — and raising first also keeps today's behaviour intact for every host that has
-    /// no plugin behind it.
-    ///
-    /// `activateAllWindows` although it is deprecated, and that is a measurement rather than
-    /// inertia: it still works from a background process on macOS 15, and the newer spelling
-    /// could not be shown to raise a buried window of the same application any better —
-    /// there was only one on screen to test with. Raising the *right* window of several is
-    /// what the IDE plugin is for; without it, raising all of them is the wider net.
+    /// no plugin behind it. The route, though, is decided before the raise: how many windows
+    /// to bring forward is a question only the route can answer.
     @discardableResult
     func focus(_ snapshot: SessionSnapshot) -> FocusOutcome {
         // A background session has no application anywhere above it and never will — its
@@ -136,8 +166,9 @@ final class SessionHostRegistry {
         guard let application = application(for: snapshot) else {
             return FocusOutcome(raised: false, tab: .unaddressable)
         }
-        let raised = application.activate(options: [.activateAllWindows])
-        return FocusOutcome(raised: raised, tab: askForTab(of: snapshot, in: application))
+        let route = tabRoute(of: snapshot, in: application)
+        let raised = application.activate(options: Self.activationOptions(for: route))
+        return FocusOutcome(raised: raised, tab: follow(route))
     }
 
     /// Opens a background session in a new Ghostty tab with `claude attach`.
@@ -193,53 +224,51 @@ final class SessionHostRegistry {
             return FocusOutcome(
                 raised: false, tab: .missing("the job identifier in Claude Code's record is not one that may be typed"))
         }
+        // Without `activateAllWindows`, for the same reason as every other addressed tab: the
+        // terminal above has already been focused, and Ghostty's `focus` brings its window
+        // with it. Raising the rest of them now would bury the one just asked for.
         _ = NSRunningApplication.runningApplications(withBundleIdentifier: GhosttyScripting.bundleIdentifier)
-            .first?.activate(options: [.activateAllWindows])
+            .first?.activate(options: [])
         return FocusOutcome(raised: true, tab: .asked)
     }
 
-    /// Asking whoever owns this host to select the session's tab.
+    /// Who can be asked for this session's tab, and how.
     ///
     /// Two hosts can be asked, by two entirely different routes, and which one applies is
     /// decided by the application rather than by the session: a JetBrains IDE through its
     /// plugin, Ghostty through its AppleScript dictionary. Everything else has no way to
     /// address a tab, and that is the ordinary answer rather than a fault.
-    private func askForTab(
+    private func tabRoute(
         of snapshot: SessionSnapshot,
         in application: NSRunningApplication
-    ) -> TabFocusAttempt {
+    ) -> TabRoute {
         if application.bundleIdentifier == GhosttyScripting.bundleIdentifier {
-            return askGhosttyForTab(of: snapshot)
+            return ghosttyRoute(of: snapshot)
         }
-        return askIDEForTab(of: snapshot, in: application)
+        return ideRoute(of: snapshot, in: application)
     }
 
-    private func askGhosttyForTab(of snapshot: SessionSnapshot) -> TabFocusAttempt {
+    private func ghosttyRoute(of snapshot: SessionSnapshot) -> TabRoute {
         guard let terminals = GhosttyScripting.terminals() else {
             // Ghostty answered nothing, and by far the likeliest reason is that this app has
             // not been allowed to control it. Named rather than swallowed, because the fix
             // is one switch in System Settings and nothing else would ever hint at it.
-            return .missing("Ghostty did not answer; check Automation permission")
+            return .noTab(.missing("Ghostty did not answer; check Automation permission"))
         }
         switch GhosttyFocus.decision(among: terminals, sessionName: snapshot.title) {
-        case .ask(let terminalID):
-            guard GhosttyScripting.focus(terminalID: terminalID) else {
-                return .missing("Ghostty refused to focus the tab")
-            }
-            return .asked
-        case .decline(let refusal):
-            return refusal.attempt
+        case .ask(let terminalID): return .ghostty(terminalID: terminalID)
+        case .decline(let refusal): return .noTab(refusal.attempt)
         }
     }
 
-    private func askIDEForTab(
+    private func ideRoute(
         of snapshot: SessionSnapshot,
         in application: NSRunningApplication
-    ) -> TabFocusAttempt {
+    ) -> TabRoute {
         // The plugin looks for the tab whose shell is an ancestor of this process: the
         // terminal showing a background session, where there is one.
         guard let bundleURL = application.bundleURL, let agentProcessID = snapshot.hostProcessID else {
-            return .unaddressable
+            return .noTab(.unaddressable)
         }
         let decision = JetBrainsFocus.decision(
             dataDirectoryName: JetBrainsInstallation.dataDirectoryName(ofApplicationAt: bundleURL),
@@ -249,14 +278,27 @@ final class SessionHostRegistry {
             agentProcessID: agentProcessID
         )
         switch decision {
-        case .ask(let url):
+        case .ask(let url): return .jetBrains(url)
+        case .decline(let refusal): return .noTab(refusal.attempt)
+        }
+    }
+
+    /// Walking the route the host has just been raised for.
+    private func follow(_ route: TabRoute) -> TabFocusAttempt {
+        switch route {
+        case .ghostty(let terminalID):
+            guard GhosttyScripting.focus(terminalID: terminalID) else {
+                return .missing("Ghostty refused to focus the tab")
+            }
+            return .asked
+        case .jetBrains(let url):
             // Fire and forget, and it cannot be otherwise: the address goes to the JetBrains
             // daemon, which hands it to the IDE, which runs the plugin. Nothing comes back
             // along that path. What the plugin did is in the IDE's own log.
             _ = NSWorkspace.shared.open(url)
             return .asked
-        case .decline(let refusal):
-            return refusal.attempt
+        case .noTab(let attempt):
+            return attempt
         }
     }
 

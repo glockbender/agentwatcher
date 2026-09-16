@@ -230,7 +230,7 @@ final class SessionReducerTests: XCTestCase {
     func testUserInputRequestRaisesAttention() {
         let result = SessionReducer.reduce(
             snapshot(),
-            event: .userInputRequired(reason: .approval, activityID: nil, at: start)
+            event: .userInputRequired(reason: .approval, activityID: nil, agentID: nil, at: start)
         )
 
         XCTAssertEqual(result.phase, .waitingForUser)
@@ -260,20 +260,23 @@ final class SessionReducerTests: XCTestCase {
         XCTAssertEqual(result.lastObservedAt, observedAt)
     }
 
-    /// A new call starting is the main exit from a wait: the turn is paused while a person
-    /// is being asked, so nothing new is issued until they answer. The awaited id is set
-    /// here to the value a real permission request would have recorded, so the test would
-    /// fail if that guard were ever extended to cover starts as well.
+    /// A new call starting is the main exit from a wait: the agent being asked is paused, so
+    /// it issues nothing new until it is answered. This is the main thread's own dialog —
+    /// the case Codex also has, since its hooks name no agent — and there the exit is
+    /// unchanged. A start by *another* agent is `testOnlyTheAgentThatWasAskedCanEndItsOwnWait`.
+    ///
+    /// The awaited id is set here to the value a real permission request would have
+    /// recorded, so the test would fail if the completion guard were ever extended to cover
+    /// starts as well.
     func testStartingActivityResumesAfterPermissionRequest() {
         var waiting = snapshot(phase: .waitingForUser)
-        waiting.awaitedActivityID = "bash-1"
-        waiting.userInputRequestKind = .approval
+        waiting.setAwaitedDialogs([AwaitedDialog(activityID: "bash-1", kind: .approval)])
 
         let result = SessionReducer.reduce(waiting, event: .activityStarted(activity(id: "shell-1"), at: start))
 
         XCTAssertEqual(result.phase, .executing)
         XCTAssertNil(result.userInputRequestKind)
-        XCTAssertNil(result.awaitedActivityID)
+        XCTAssertFalse(result.isAwaitingAnswer)
     }
 
     /// The signal this widget exists to deliver. A parallel tool finishing says nothing
@@ -297,7 +300,7 @@ final class SessionReducerTests: XCTestCase {
         )
         waiting = SessionReducer.reduce(
             waiting,
-            event: .userInputRequired(reason: .selection, activityID: "asked", at: start)
+            event: .userInputRequired(reason: .selection, activityID: "asked", agentID: nil, at: start)
         )
 
         let unrelated = SessionReducer.reduce(
@@ -314,7 +317,7 @@ final class SessionReducerTests: XCTestCase {
         )
 
         XCTAssertEqual(answered.phase, .executing, "the awaited call finished, so the wait is over")
-        XCTAssertNil(answered.awaitedActivityID)
+        XCTAssertFalse(answered.isAwaitingAnswer)
     }
 
     /// The stranding this guards against: the app misses one `PostToolUse` — hooks are
@@ -328,7 +331,7 @@ final class SessionReducerTests: XCTestCase {
             title: "Session",
             phase: .waitingForUser,
             userInputRequestKind: .approval,
-            awaitedActivityID: "never-completes",
+            awaitedDialogs: [AwaitedDialog(activityID: "never-completes", kind: .approval)],
             lastObservedAt: start
         )
         waiting.activities = [
@@ -344,19 +347,18 @@ final class SessionReducerTests: XCTestCase {
         )
 
         XCTAssertEqual(next.phase, .executing, "a new call can only have been issued after an answer")
-        XCTAssertNil(next.awaitedActivityID)
+        XCTAssertFalse(next.isAwaitingAnswer)
     }
 
     /// A turn ending is the other exit, for a wait that was answered with nothing to run.
     func testATurnEndingClearsAWaitAndItsAwaitedCall() {
         var waiting = snapshot(phase: .waitingForUser)
-        waiting.awaitedActivityID = "bash-1"
-        waiting.userInputRequestKind = .approval
+        waiting.setAwaitedDialogs([AwaitedDialog(activityID: "bash-1", kind: .approval)])
 
         let next = SessionReducer.reduce(waiting, event: .turnCompleted(at: start))
 
         XCTAssertEqual(next.phase, .completed)
-        XCTAssertNil(next.awaitedActivityID)
+        XCTAssertFalse(next.isAwaitingAnswer)
     }
 
     /// A permission request names no tool of its own, so the call it follows is the one being
@@ -380,10 +382,29 @@ final class SessionReducerTests: XCTestCase {
 
         let asked = SessionReducer.reduce(
             session,
-            event: .userInputRequired(reason: .approval, activityID: nil, at: start)
+            event: .userInputRequired(reason: .approval, activityID: nil, agentID: nil, at: start)
         )
 
-        XCTAssertEqual(asked.awaitedActivityID, "bash-1")
+        XCTAssertEqual(asked.unansweredDialogs.first?.activityID, "bash-1")
+    }
+
+    /// The two exits that speak for the session rather than for one agent, and so the only
+    /// ones that may end every dialog at once: the session's own record saying nothing is
+    /// being asked of anybody (ADR-0010), and a person stopping the turn.
+    func testTheSessionWideExitsEndEveryDialogAtOnce() {
+        var waiting = snapshot(phase: .waitingForUser)
+        waiting.setAwaitedDialogs([
+            AwaitedDialog(agentID: "reviewer-a", activityID: "a-bash", kind: .approval),
+            AwaitedDialog(agentID: "reviewer-b", activityID: "b-bash", kind: .selection),
+        ])
+
+        for event: SessionEvent in [.userInputResolved(at: start), .turnInterrupted(at: start)] {
+            let next = SessionReducer.reduce(waiting, event: event)
+
+            XCTAssertFalse(next.isAwaitingAnswer, "\(event)")
+            XCTAssertNotEqual(next.phase, .waitingForUser, "\(event)")
+            XCTAssertNil(next.userInputRequestKind, "\(event)")
+        }
     }
 
     /// `AskUserQuestion` records its own tool id, so the completion that answers it is that
@@ -391,13 +412,12 @@ final class SessionReducerTests: XCTestCase {
     /// instead of the path the normalizer actually produces.
     func testToolCompletionResumesAfterAnAskUserQuestion() {
         var waiting = snapshot(phase: .waitingForUser)
-        waiting.awaitedActivityID = "id_question"
-        waiting.userInputRequestKind = .selection
+        waiting.setAwaitedDialogs([AwaitedDialog(activityID: "id_question", kind: .selection)])
 
         let result = SessionReducer.reduce(waiting, event: .activityCompleted(id: "id_question", at: start))
 
         XCTAssertEqual(result.phase, .executing)
-        XCTAssertNil(result.awaitedActivityID)
+        XCTAssertFalse(result.isAwaitingAnswer)
     }
 
     func testFailureRaisesErrorAttention() {
@@ -513,8 +533,7 @@ final class SessionReducerTests: XCTestCase {
     /// answer.
     func testACallObservedInTheTranscriptLeavesAWaitingSessionWaiting() {
         var previous = snapshot(mode: .standard, phase: .waitingForUser)
-        previous.userInputRequestKind = .approval
-        previous.awaitedActivityID = "the-call-being-approved"
+        previous.setAwaitedDialogs([AwaitedDialog(activityID: "the-call-being-approved", kind: .approval)])
 
         let result = SessionReducer.reduce(
             previous,
@@ -524,7 +543,7 @@ final class SessionReducerTests: XCTestCase {
         XCTAssertEqual(result.activities.map(\.id), ["advisor-1"])
         XCTAssertEqual(result.phase, .waitingForUser, "the transcript does not end a wait")
         XCTAssertEqual(result.userInputRequestKind, .approval)
-        XCTAssertEqual(result.awaitedActivityID, "the-call-being-approved")
+        XCTAssertEqual(result.unansweredDialogs.first?.activityID, "the-call-being-approved")
         XCTAssertEqual(result.lastObservedAt, start, "reading the record is still proof of life")
     }
 
@@ -554,6 +573,107 @@ final class SessionReducerTests: XCTestCase {
             event: .activityFailed(id: "bash-1", at: start)
         )
         XCTAssertTrue(failed.activities.isEmpty, "a call that was refused started nothing to outlive it")
+    }
+
+    /// Measured on 2.1.272: every hook fired from inside a subagent carries `agent_id`, and
+    /// the main thread's hooks carry none. So a dialog has an owner, and only its owner's
+    /// events say anything about it.
+    ///
+    /// The sequence is a real one, from the evening the row was wrong: a subagent asked for
+    /// permission at 19:48:09, a second subagent started a call one second later, the main
+    /// turn ended at 19:58:54 and was given a new prompt — and the dialog was still on screen
+    /// through all of it. Every one of those three used to end the wait.
+    func testOnlyTheAgentThatWasAskedCanEndItsOwnWait() {
+        var session = SessionSnapshot(
+            id: "session",
+            source: .claude,
+            arrivalIndex: 0,
+            title: "Session",
+            phase: .executing,
+            lastObservedAt: start
+        )
+        session = SessionReducer.reduce(
+            session,
+            event: .activityStarted(subagent(id: "reviewer-a"), at: start)
+        )
+        session = SessionReducer.reduce(
+            session,
+            event: .activityStarted(call(id: "a-bash", owner: "reviewer-a"), at: start.addingTimeInterval(1))
+        )
+
+        let asked = SessionReducer.reduce(
+            session,
+            event: .userInputRequired(
+                reason: .approval,
+                activityID: nil,
+                agentID: "reviewer-a",
+                at: start.addingTimeInterval(2)
+            )
+        )
+
+        XCTAssertEqual(asked.phase, .waitingForUser)
+        XCTAssertEqual(asked.unansweredDialogs.first?.agentID, "reviewer-a")
+        XCTAssertEqual(
+            asked.unansweredDialogs.first?.activityID,
+            "a-bash",
+            "the call being asked about is the asking agent's own last one, not the session's"
+        )
+
+        let elsewhere = SessionReducer.reduce(
+            asked,
+            event: .activityStarted(call(id: "b-bash", owner: "reviewer-b"), at: start.addingTimeInterval(3))
+        )
+
+        XCTAssertEqual(elsewhere.phase, .waitingForUser, "another subagent works on while this one is blocked")
+
+        let mainTurnEnded = SessionReducer.reduce(elsewhere, event: .turnCompleted(at: start.addingTimeInterval(4)))
+
+        XCTAssertEqual(mainTurnEnded.phase, .waitingForUser, "the main turn ending is not an answer to a child")
+
+        let nextPrompt = SessionReducer.reduce(
+            mainTurnEnded,
+            event: .turnStarted(mode: .standard, at: start.addingTimeInterval(5))
+        )
+
+        XCTAssertEqual(nextPrompt.phase, .waitingForUser, "a person can type while the dialog is still up")
+
+        let released = SessionReducer.reduce(
+            nextPrompt,
+            event: .activityCompleted(id: "reviewer-a", at: start.addingTimeInterval(6))
+        )
+
+        XCTAssertEqual(released.phase, .executing, "`SubagentStop` for the owner ends what nothing else could")
+        XCTAssertFalse(released.isAwaitingAnswer)
+    }
+
+    /// A consequence of the owner rule worth pinning, because nothing else asserts it: a
+    /// subagent's call arriving after the parent's `Stop` no longer drags the row back into
+    /// `executing`. The turn really has ended — the work is the child's, and
+    /// `waitingForChildren` is what says so.
+    ///
+    /// The degraded case, stated rather than fixed: if that child's `SubagentStart` was
+    /// missed, a `completed` row now stays `completed` where it used to flip to `executing`.
+    /// Both readings are wrong about something, and this one is wrong more quietly.
+    func testASubagentsCallAfterTheTurnEndedLeavesTheRowWaitingForItsChildren() {
+        var session = snapshot(mode: .standard, phase: .executing)
+        session = SessionReducer.reduce(session, event: .activityStarted(subagent(id: "child"), at: start))
+        session = SessionReducer.reduce(session, event: .turnCompleted(at: start.addingTimeInterval(1)))
+        XCTAssertEqual(session.phase, .waitingForChildren)
+
+        let childWorks = SessionReducer.reduce(
+            session,
+            event: .activityStarted(call(id: "child-bash", owner: "child"), at: start.addingTimeInterval(2))
+        )
+
+        XCTAssertEqual(childWorks.phase, .waitingForChildren, "the parent's turn is over; this is the child's work")
+    }
+
+    private func subagent(id: String) -> SessionActivity {
+        SessionActivity(id: id, kind: .subagent, startedAt: start, outlivesTurn: true)
+    }
+
+    private func call(id: String, owner: String?) -> SessionActivity {
+        SessionActivity(id: id, kind: .shell, startedAt: start, parentID: owner)
     }
 
     private func backgroundActivity(id: String) -> SessionActivity {
