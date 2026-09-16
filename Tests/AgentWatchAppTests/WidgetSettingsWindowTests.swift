@@ -238,6 +238,21 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertEqual(recorder.title, "⌥⌘W", "and the button stops asking for a press")
     }
 
+    /// And the way out the tabs added: the recorder is taken out of the window when another
+    /// tab comes up, which is a change of mind like walking away from it. Without this the
+    /// combination would stay muted with the control that muted it no longer on screen.
+    func testLeavingTheTabMidRecordingLetsTheCombinationSpeakAgain() throws {
+        let (controller, shortcuts) = try makeWindowKeepingItsShortcuts()
+        let recorder = try XCTUnwrap(controller.shortcutRecorder)
+        recorder.sendAction(recorder.action, to: recorder.target)
+        XCTAssertTrue(shortcuts.isMuted, "the old combination goes quiet while a new one is chosen")
+
+        try show(tab: "Row", of: controller)
+
+        XCTAssertFalse(shortcuts.isMuted)
+        XCTAssertEqual(recorder.title, "⌥⌘W", "and the button stops asking for a press")
+    }
+
     /// The same change of mind, made by closing the window rather than by clicking past the
     /// recorder. Worth its own test because the way out is a different one: AppKit does not
     /// promise that closing a window takes the focus off the control inside it.
@@ -317,13 +332,83 @@ final class WidgetSettingsWindowTests: XCTestCase {
 
     func testWhatThatCapCutsOffCanStillBeScrolledTo() throws {
         let controller = try makeWindow().controller
-        let scroll = try XCTUnwrap(
-            controller.window?.contentView as? NSScrollView,
-            "the content is capped by the screen, so it has to scroll"
-        )
+        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
 
-        XCTAssertTrue(scroll.hasVerticalScroller)
-        XCTAssertNotNil(scroll.documentView)
+        for item in tabs.tabViewItems {
+            let scroll = try XCTUnwrap(
+                item.view as? NSScrollView,
+                "\(item.label) is capped by the screen, so it has to scroll"
+            )
+            XCTAssertTrue(scroll.hasVerticalScroller, "\(item.label) has no scroller")
+            XCTAssertNotNil(scroll.documentView, "\(item.label) holds nothing")
+        }
+    }
+
+    /// What the tabs are for. Before them the window was one column of six sections, so it
+    /// asked for the height of all of them at once — 1290 points, capped at the screen and
+    /// scrolled for the rest. A tab is shown on its own, so the window only ever has to be as
+    /// tall as the tallest one.
+    func testTheWindowIsNoTallerThanTheTabThatNeedsTheMostRoom() throws {
+        let controller = try makeWindow().controller
+        let window = try XCTUnwrap(controller.window)
+        let tabs = try XCTUnwrap(window.contentView as? NSTabView)
+        let chrome = tabs.bounds.height - tabs.contentRect.height
+
+        let tallest =
+            try tabs.tabViewItems
+            .map { try XCTUnwrap(($0.view as? NSScrollView)?.documentView).fittingSize.height }
+            .max() ?? 0
+
+        // Both ways round: taller and the window carries dead space under whichever tab is
+        // showing, shorter and the tab it opens on scrolls for no reason.
+        XCTAssertEqual(
+            try XCTUnwrap(window.contentView).frame.height,
+            min(tallest + chrome, WidgetSettingsWindowController.tallestUsefulWindow),
+            accuracy: 1,
+            "the window is not the height of the tab that needs the most room"
+        )
+    }
+
+    func testTheSettingsStandInThreeTabs() throws {
+        let controller = try makeWindow().controller
+        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
+
+        XCTAssertEqual(tabs.tabViewItems.map(\.label), ["Row", "Lamp", "Other"])
+        XCTAssertEqual(
+            tabs.selectedTabViewItem?.label,
+            "Row",
+            "the row is what a person came here for"
+        )
+    }
+
+    /// Which tab each setting is under. The size belongs with the row rather than with the
+    /// background because it is the row it makes larger — the widget has no size of its own
+    /// beyond the rows in it.
+    func testEverySettingStandsUnderTheTabItBelongsTo() throws {
+        let controller = try makeWindow().controller
+        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
+
+        func holds(_ label: String, _ control: NSView?) throws -> Bool {
+            let item = try XCTUnwrap(tabs.tabViewItems.first { $0.label == label })
+            let wanted = try XCTUnwrap(control)
+            return Self.descendants(of: try XCTUnwrap(item.view)).contains { $0 === wanted }
+        }
+
+        XCTAssertTrue(try holds("Row", controller.partBoxes[.name]), "the parts are not in Row")
+        XCTAssertTrue(try holds("Row", controller.scaleSlider), "the size is not in Row")
+        XCTAssertTrue(
+            try holds("Lamp", controller.colorWells[.executing]), "the colours are not in Lamp")
+        XCTAssertTrue(
+            try holds("Other", controller.backgroundButtons[.graphite]),
+            "the background is not in Other"
+        )
+        XCTAssertTrue(try holds("Other", controller.opacitySlider), "the opacity is not in Other")
+        XCTAssertTrue(
+            try holds("Other", controller.shortcutRecorder), "the shortcut is not in Other")
+    }
+
+    private static func descendants(of view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap { descendants(of: $0) }
     }
 
     /// The other half of the same measurement: the window came up 492 points wide around
@@ -332,20 +417,26 @@ final class WidgetSettingsWindowTests: XCTestCase {
     /// past the right edge.
     func testTheWindowIsWideEnoughForEveryControlInIt() throws {
         let controller = try makeWindow().controller
-        let content = try XCTUnwrap(controller.window?.contentView)
-        // The worst case on purpose, and the one this machine does not have: with "Always
-        // show scroll bars" the scroller is a solid strip taking width out of the content
-        // rather than an overlay taking none. The content here is always taller than the
-        // window — that is why it scrolls — so on such a machine the strip is always there.
-        (content as? NSScrollView)?.scrollerStyle = .legacy
-        let document = (content as? NSScrollView)?.documentView ?? content
-        document.layoutSubtreeIfNeeded()
+        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
 
-        XCTAssertGreaterThanOrEqual(
-            document.frame.width,
-            document.fittingSize.width,
-            "the window is narrower than its own controls, and something is cut off"
-        )
+        for item in tabs.tabViewItems {
+            // Each tab in turn, and shown: a tab view lays out the one on top and leaves the
+            // others at whatever size they were born with.
+            tabs.selectTabViewItem(item)
+            let scroll = try XCTUnwrap(item.view as? NSScrollView)
+            // The worst case on purpose, and the one this machine does not have: with "Always
+            // show scroll bars" the scroller is a solid strip taking width out of the content
+            // rather than an overlay taking none.
+            scroll.scrollerStyle = .legacy
+            let document = try XCTUnwrap(scroll.documentView)
+            tabs.layoutSubtreeIfNeeded()
+
+            XCTAssertGreaterThanOrEqual(
+                document.frame.width,
+                document.fittingSize.width,
+                "\(item.label) is narrower than its own controls, and something is cut off"
+            )
+        }
     }
 
     /// For the tests that are about the shortcut itself rather than about the window: the window
@@ -364,7 +455,16 @@ final class WidgetSettingsWindowTests: XCTestCase {
             rowLayouts: RowLayoutStore(preferences: preferences),
             shortcuts: shortcuts
         )
+        // Shown, because recording needs the keyboard focus and a tab that is not on top is
+        // not in the window at all — its controls cannot be focused, which is how a person
+        // reaches them too.
+        try show(tab: "Other", of: window)
         return (window, shortcuts)
+    }
+
+    private func show(tab label: String, of controller: WidgetSettingsWindowController) throws {
+        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
+        tabs.selectTabViewItem(try XCTUnwrap(tabs.tabViewItems.first { $0.label == label }))
     }
 
     private func makeWindow(

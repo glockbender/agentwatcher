@@ -92,7 +92,9 @@ final class WidgetRenderProbe: XCTestCase {
             named: "empty-nothing-installed-narrow",
             in: directory
         )
-        try draw(settingsWindowContent(), named: "settings", in: directory)
+        for (name, view) in try settingsWindowTabs() {
+            try draw(view, named: "settings-\(name)", in: directory)
+        }
         try draw(toolingWindowContent(), named: "tooling", in: directory)
         try draw(toolingWindowOnThisMachine(), named: "tooling-here", in: directory)
     }
@@ -134,11 +136,11 @@ final class WidgetRenderProbe: XCTestCase {
         return view
     }
 
-    /// The settings window as it opens, with nothing chosen yet — nine lamp rows, the
-    /// palette, the opacity slider and the size slider. Drawn rather than measured because a
-    /// grid of colour wells and pop-up buttons is exactly the layout that measures right and
-    /// reads wrong.
-    private func settingsWindowContent() throws -> NSView {
+    /// Each tab of the settings window as it opens, with nothing chosen yet — the row with
+    /// its sample and its parts, the nine lamp rows, and the palette with the sliders. Drawn
+    /// rather than measured because a grid of colour wells and pop-up buttons is exactly the
+    /// layout that measures right and reads wrong.
+    private func settingsWindowTabs() throws -> [(String, NSView)] {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
         let controller = WidgetSettingsWindowController(
@@ -148,17 +150,23 @@ final class WidgetRenderProbe: XCTestCase {
             rowLayouts: RowLayoutStore(preferences: preferences),
             shortcuts: FakeShortcutRegistrar.controller(for: settings)
         )
-        // The document rather than the window's own view: the content scrolls now — it is
-        // taller than a screen — and drawing the window would draw as much of it as the
-        // screen happens to allow.
-        let scroll = try XCTUnwrap(controller.window?.contentView as? NSScrollView)
-        let view = try XCTUnwrap(scroll.documentView)
-        // The window's own background, which `cacheDisplay` does not draw: without it the
-        // labels come out white on nothing and the image reads as a window with no text.
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-        view.layoutSubtreeIfNeeded()
-        return view
+        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
+        return try tabs.tabViewItems.map { item in
+            // Shown before it is drawn: a tab view lays out the one on top and leaves the
+            // others at whatever size they were born with.
+            tabs.selectTabViewItem(item)
+            tabs.layoutSubtreeIfNeeded()
+            // The document rather than the window's own view: a tab scrolls where it does not
+            // fit, and drawing the window would draw as much of it as the screen allows.
+            let scroll = try XCTUnwrap(item.view as? NSScrollView)
+            let view = try XCTUnwrap(scroll.documentView)
+            // The window's own background, which `cacheDisplay` does not draw: without it the
+            // labels come out white on nothing and the image reads as a window with no text.
+            view.wantsLayer = true
+            view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            view.layoutSubtreeIfNeeded()
+            return (item.label.lowercased(), view)
+        }
     }
 
     /// The same window with the IDE section reading this machine instead of a fixture.

@@ -107,64 +107,70 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         let ruleWidth =
             [rowLayout, lamp, palette, opacity, size, shortcut].map(\.fittingSize.width).max() ?? 0
 
-        let content = NSStackView()
-        content.orientation = .vertical
-        content.alignment = .leading
-        content.spacing = 14
-        content.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
-        content.addView(Self.makeSectionTitle("Row layout"), in: .top)
-        content.addView(rowLayout, in: .top)
-        content.addView(Self.makeRule(width: ruleWidth), in: .top)
-        content.addView(Self.makeSectionTitle("Lamp"), in: .top)
-        content.addView(lamp, in: .top)
-        content.addView(makeResetButton(), in: .top)
-        content.addView(Self.makeRule(width: ruleWidth), in: .top)
-        content.addView(Self.makeSectionTitle("Background"), in: .top)
-        content.addView(palette, in: .top)
-        content.addView(Self.makeRule(width: ruleWidth), in: .top)
-        content.addView(Self.makeSectionTitle("Opacity"), in: .top)
-        content.addView(opacity, in: .top)
-        content.addView(Self.makeRule(width: ruleWidth), in: .top)
-        content.addView(Self.makeSectionTitle("Size"), in: .top)
-        content.addView(size, in: .top)
-        content.addView(Self.makeRule(width: ruleWidth), in: .top)
-        content.addView(Self.makeSectionTitle(shortcutSectionTitle), in: .top)
-        content.addView(shortcut, in: .top)
-        content.addView(makeShortcutStatusLabel(width: ruleWidth), in: .top)
-
-        // In a scroll view rather than straight in the window, for the reason the tooling
-        // window is: the content is taller than a screen. Measured — 1290 points of controls
-        // against the 1079 a laptop leaves, with `Size` and `Shortcut` below the bottom edge
-        // and no way to reach them, because a window is not moved above the menu bar.
-        let scroll = NSScrollView()
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
-        scroll.documentView = content
-        content.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            content.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
-            content.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
-            content.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+        // Three tabs rather than one column of six sections. The column asked the window for
+        // the height of every section at once — measured, 1290 points against the 1079 a
+        // laptop leaves — so the window opened as tall as the screen allowed and the rest was
+        // reached by scrolling. A tab is shown on its own, and the window is only ever as tall
+        // as the tallest of the three.
+        //
+        // `Size` stands with the row rather than with the background because it is the row it
+        // makes larger: the widget has no size of its own beyond the rows in it.
+        let rowTab = Self.makeTabContent([
+            rowLayout,
+            Self.makeRule(width: ruleWidth),
+            Self.makeSectionTitle("Size"),
+            size,
         ])
-        window.contentView = scroll
-        // Sized to its content rather than to the number above: the lamp grid's height comes
-        // from nine rows of controls whose size is the system's to decide, not this file's.
+        // No title over the lamp grid, and none over the parts: the tab says it already.
+        let lampTab = Self.makeTabContent([lamp, makeResetButton()])
+        let otherTab = Self.makeTabContent([
+            Self.makeSectionTitle("Background"),
+            palette,
+            Self.makeRule(width: ruleWidth),
+            Self.makeSectionTitle("Opacity"),
+            opacity,
+            Self.makeRule(width: ruleWidth),
+            Self.makeSectionTitle(shortcutSectionTitle),
+            shortcut,
+            makeShortcutStatusLabel(width: ruleWidth),
+        ])
+
+        let tabs = NSTabView()
+        for (label, tab) in [("Row", rowTab), ("Lamp", lampTab), ("Other", otherTab)] {
+            let item = NSTabViewItem()
+            item.label = label
+            item.view = Self.scrolling(tab)
+            tabs.addTabViewItem(item)
+        }
+        window.contentView = tabs
+
+        // Sized to its content rather than to a number written here: the lamp grid's height
+        // comes from nine rows of controls whose size is the system's to decide, not this
+        // file's.
         //
         // The right margin is added by hand, the way the tooling window adds its own: a
         // vertical stack aligned to its leading edge pins nothing to the other one, so its
         // fitting width is the left inset plus the widest section, and the section's last
         // column would sit flush against the window's edge.
-        let fitting = content.fittingSize
-        // And the scroller's own strip where the system draws one. This content is always
-        // taller than the window — that is why it scrolls — so with "Always show scroll bars"
-        // the strip is always there, and it is taken out of the content rather than laid over
-        // it. Measured: 15 points, which is the whole right margin but five.
-        let width = fitting.width + content.edgeInsets.right + Self.scrollerStrip
+        let widest = [rowTab, lampTab, otherTab].map(\.fittingSize.width).max() ?? 0
+        let tallest = [rowTab, lampTab, otherTab].map(\.fittingSize.height).max() ?? 0
+        // What the tab strip and its border take, asked of the tab view rather than guessed:
+        // `contentRect` is the room it leaves for the tab that is showing.
+        let chrome = NSSize(
+            width: tabs.bounds.width - tabs.contentRect.width,
+            height: tabs.bounds.height - tabs.contentRect.height
+        )
+        // And the scroller's own strip where the system draws one. A tab that outgrows the
+        // window scrolls, and with "Always show scroll bars" the strip is taken out of the
+        // content rather than laid over it. Measured: 15 points, which is the whole right
+        // margin but five.
+        let width = widest + rowTab.edgeInsets.right + Self.scrollerStrip + chrome.width
         window.contentMinSize = NSSize(width: width, height: 240)
         window.setContentSize(
-            NSSize(width: width, height: min(fitting.height, Self.tallestUsefulWindow)))
+            NSSize(
+                width: width,
+                height: min(tallest + chrome.height, Self.tallestUsefulWindow)
+            ))
         // The window is the only place a failed registration can be seen, so it listens rather
         // than reading the status once at construction: the combination may be taken by
         // something that starts up after this window did.
@@ -181,6 +187,38 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// thing a window taller than the screen cannot offer.
     static var tallestUsefulWindow: CGFloat {
         (NSScreen.main?.visibleFrame.height ?? 900) * 0.9
+    }
+
+    /// One tab's sections, in the column they are read in.
+    private static func makeTabContent(_ sections: [NSView]) -> NSStackView {
+        let content = NSStackView()
+        content.orientation = .vertical
+        content.alignment = .leading
+        content.spacing = 14
+        content.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
+        for section in sections {
+            content.addView(section, in: .top)
+        }
+        return content
+    }
+
+    /// A tab's content in a scroll view, for the reason the tooling window has one: a tab can
+    /// still be taller than a laptop screen leaves room for, and a window is not moved above
+    /// the menu bar to show the rest. Where it fits, the scroller is not drawn at all.
+    private static func scrolling(_ content: NSStackView) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.documentView = content
+        content.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+            content.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
+            content.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+        ])
+        return scroll
     }
 
     /// What a scroller takes from the content's width, which is nothing unless the system
