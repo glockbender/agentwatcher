@@ -58,6 +58,8 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     private(set) var sampleRow: HUDSessionRowView?
     /// The same sample as a session still at work, which is the row with no × in it.
     private(set) var sampleWorkingRow: HUDSessionRowView?
+    /// One line under the pair, saying what the pair is.
+    private(set) var sampleCaption: NSTextField?
     private let sampleHolder = NSStackView()
     private let partsGrid = NSGridView(numberOfColumns: 6, rows: 0)
 
@@ -313,6 +315,14 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         sampleHolder.layer?.cornerRadius = WidgetStyle.rowCornerRadius
         sampleHolder.layer?.backgroundColor = backgroundStore.selected.color.cgColor
 
+        // Said once, under the pair: two rows alike but for one character read as a mistake,
+        // and the first thing the window was asked is why it draws the same row twice.
+        let caption = NSTextField(
+            labelWithString: "The same session twice: at work, then finished — only a finished row has a ×.")
+        caption.font = WidgetStyle.standard.secondaryFont
+        caption.textColor = .secondaryLabelColor
+        sampleCaption = caption
+
         partsGrid.rowSpacing = 4
         partsGrid.columnSpacing = 10
         partsGrid.xPlacement = .leading
@@ -332,7 +342,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         reset.bezelStyle = .rounded
         reset.toolTip = "Puts back the row this app draws when nobody has changed it."
 
-        let section = NSStackView(views: [sampleHolder, partsGrid, keepColumn, reset])
+        let section = NSStackView(views: [sampleHolder, caption, partsGrid, keepColumn, reset])
         section.orientation = .vertical
         section.alignment = .leading
         section.spacing = 8

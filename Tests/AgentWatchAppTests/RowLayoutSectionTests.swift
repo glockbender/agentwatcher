@@ -207,6 +207,38 @@ final class RowLayoutSectionTests: XCTestCase {
         )
     }
 
+    /// Two rows that differ by one character read as a duplicate: the first question the
+    /// window was asked is why the row settings show the same row twice. The pair cannot go —
+    /// it is the only way `Keep the × column` shows anything — so the caption says what the
+    /// pair is, under the rows and above the list of parts, where it is read before the
+    /// question is asked.
+    func testTheSamplePairSaysWhatItsTwoRowsAre() throws {
+        let (window, _) = try makeWindow()
+        let caption = try XCTUnwrap(window.sampleCaption, "the pair explains nothing")
+        XCTAssertTrue(
+            caption.stringValue.contains("×"),
+            "the caption does not name the one difference between the rows"
+        )
+
+        let root = try XCTUnwrap(window.window?.contentView)
+        root.layoutSubtreeIfNeeded()
+        let finished = try XCTUnwrap(window.sampleRow)
+        var topOfTheList = -CGFloat.greatestFiniteMagnitude
+        for part in RowPart.allCases where part != .gap {
+            let box = try XCTUnwrap(window.partBoxes[part])
+            topOfTheList = max(topOfTheList, box.convert(box.bounds, to: nil).maxY)
+        }
+
+        let stands = caption.convert(caption.bounds, to: nil)
+        XCTAssertLessThanOrEqual(
+            stands.maxY,
+            finished.convert(finished.bounds, to: nil).minY,
+            "the caption does not stand under the pair it explains"
+        )
+        XCTAssertGreaterThanOrEqual(
+            stands.minY, topOfTheList, "the caption has drifted into the list of parts")
+    }
+
     func testKeepingTheDismissColumnIsStored() throws {
         let (window, rowLayouts) = try makeWindow()
         let keep = try XCTUnwrap(window.dismissColumnBox)
