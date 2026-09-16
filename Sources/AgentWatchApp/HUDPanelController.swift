@@ -627,6 +627,12 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         guard let panel = window else {
             return
         }
+        // Whichever way it goes back, say where it went. Unlike the size slider this needs no
+        // guard against a move that moves nothing: both resets are a menu line somebody chose
+        // to press, and a person pressing `Reset Widget Position` is asking where the widget
+        // is at least as much as they are asking for it to be moved. The middle of the main
+        // screen is still a place they have to find.
+        defer { highlight() }
         guard let visibleFrame = NSScreen.screens.first?.visibleFrame else {
             panel.center()
             return
@@ -648,6 +654,9 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         }
         panel.setContentSize(frameStore.size)
         refreshContent()
+        // And the same answer the size slider gives, for the same reason: the window that
+        // changed is somewhere else on the screen while the person is looking at a menu.
+        highlight()
     }
 
     private func applyInteractionLocks(to panel: HUDPanel) {

@@ -655,6 +655,60 @@ final class LampSchemeReachesTheWidgetTests: XCTestCase {
         )
     }
 
+    /// The two menu lines that move the widget without the person touching it. Both are
+    /// pressed from the status menu, with the widget wherever it was — behind something, or on
+    /// a screen the person is not looking at — and both answer a question that starts "where".
+    /// `Reset Widget Position` especially: it is pressed by somebody who has lost the widget,
+    /// and the middle of the main screen is still a place they have to find.
+    func testPuttingTheSizeBackSaysWhereTheWidgetIs() throws {
+        let (controller, panel) = try makeWidget()
+        defer { controller.shutdown() }
+
+        controller.resetSize()
+
+        XCTAssertNotNil(
+            Self.outline(in: panel),
+            "the widget changed size without saying which window it was"
+        )
+    }
+
+    func testPuttingThePositionBackSaysWhereTheWidgetIs() throws {
+        let (controller, panel) = try makeWidget()
+        defer { controller.shutdown() }
+
+        controller.resetPosition()
+
+        XCTAssertNotNil(
+            Self.outline(in: panel),
+            "the widget moved without saying which window it was"
+        )
+    }
+
+    /// A widget on screen at a real size, and nothing lit yet. The size matters: the outline is
+    /// laid out against the content, and against nothing it waits for geometry rather than
+    /// drawing.
+    private func makeWidget() throws -> (HUDPanelController, HUDPanel) {
+        let preferences = try isolatedPreferences()
+        let settings = WidgetSettingsStore(preferences: preferences)
+        let controller = HUDPanelController(
+            reach: { _ in .nowhere },
+            focus: { _ in },
+            remove: { _ in },
+            background: .graphite,
+            lampScheme: LampScheme(),
+            backgroundOpacity: 1,
+            style: WidgetStyle(scale: settings.scale),
+            frameStore: HUDFrameStore(preferences: preferences),
+            settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences)
+        )
+        controller.showWindow(nil)
+        let panel = try XCTUnwrap(controller.window as? HUDPanel)
+        panel.setContentSize(NSSize(width: 600, height: 400))
+        XCTAssertNil(Self.outline(in: panel), "the widget is lit before anything happened")
+        return (controller, panel)
+    }
+
     private static func outline(in panel: HUDPanel) -> HUDHighlightOverlayView? {
         panel.contentView?.subviews.compactMap { $0 as? HUDHighlightOverlayView }.last
     }
