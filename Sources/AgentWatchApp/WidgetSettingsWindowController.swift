@@ -136,13 +136,18 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         ])
 
         let tabs = NSTabView()
+        // Room to lay out in before anything is measured. A tab view still at its birth size
+        // lays its tab out at that size, and the window's own birth size — 400 points, a
+        // number that only exists because a window has to be born with some rectangle — is
+        // narrower than the parts grid's stated columns. Nothing is drawn there, but the
+        // layout is still solved there, and an impossible one is printed to the console.
+        tabs.setFrameSize(NSSize(width: 1_000, height: 1_000))
         for (label, tab) in [("Row", rowTab), ("Lamp", lampTab), ("Other", otherTab)] {
             let item = NSTabViewItem()
             item.label = label
             item.view = Self.scrolling(tab)
             tabs.addTabViewItem(item)
         }
-        window.contentView = tabs
 
         // Sized to its content rather than to a number written here: the lamp grid's height
         // comes from nine rows of controls whose size is the system's to decide, not this
@@ -157,8 +162,8 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         // What the tab strip and its border take, asked of the tab view rather than guessed:
         // `contentRect` is the room it leaves for the tab that is showing.
         let chrome = NSSize(
-            width: tabs.bounds.width - tabs.contentRect.width,
-            height: tabs.bounds.height - tabs.contentRect.height
+            width: tabs.frame.width - tabs.contentRect.width,
+            height: tabs.frame.height - tabs.contentRect.height
         )
         // And the scroller's own strip where the system draws one. A tab that outgrows the
         // window scrolls, and with "Always show scroll bars" the strip is taken out of the
@@ -171,6 +176,10 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
                 width: width,
                 height: min(tallest + chrome.height, Self.tallestUsefulWindow)
             ))
+        // And only now into the window, which is the size its tabs asked for. Put in first,
+        // the tabs would be laid out twice: once at the size the window was born with, and
+        // once here.
+        window.contentView = tabs
         // The window is the only place a failed registration can be seen, so it listens rather
         // than reading the status once at construction: the combination may be taken by
         // something that starts up after this window did.
@@ -212,15 +221,29 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     private static func scrolling(_ content: NSStackView) -> NSScrollView {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
+        // And sideways, for the one case the width below gives up on: a tab narrower than
+        // its own controls is scrolled to rather than cut off. Hidden while it is not needed.
+        scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.documentView = content
         content.translatesAutoresizingMaskIntoConstraints = false
+        // As wide as the window, but not at any cost. Required, this was an impossible demand
+        // whenever the window was narrower than the tab's own controls — and the window is
+        // born 400 points wide and measures its tabs only afterwards, so it passes through
+        // that state every time it opens. AppKit resolved it by breaking a stated column
+        // width in the parts grid and saying so in the console.
+        //
+        // Below required, the same set is satisfiable: the tab keeps the width its controls
+        // need, and the scroll view offers the rest sideways. The trailing edge is not pinned
+        // separately — with the leading edge pinned it is this same constraint said twice,
+        // and at full priority it would have gone on making the demand impossible.
+        let fillsTheWindow = content.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor)
+        fillsTheWindow.priority = .defaultHigh
         NSLayoutConstraint.activate([
             content.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
             content.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
-            content.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            fillsTheWindow,
         ])
         return scroll
     }

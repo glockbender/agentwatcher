@@ -394,6 +394,53 @@ final class WidgetSettingsWindowTests: XCTestCase {
         }
     }
 
+    /// A tab narrower than its own controls keeps the width they need and lets the rest be
+    /// scrolled to, rather than being squeezed into the window.
+    ///
+    /// Squeezed, something has to give, and what gave was the parts grid: AppKit resolves an
+    /// impossible set of constraints by breaking one of them and printing the whole set —
+    /// which is the `Conflicting constraints detected` wall in Xcode's console. The window is
+    /// born 400 points wide and measures its tabs only afterwards, so it passes through
+    /// exactly this state every time it is built.
+    ///
+    /// Held to the narrow width by a constraint rather than by a frame: a window or a view
+    /// given a frame too small for its content simply grows back, and then the scene proves
+    /// nothing.
+    func testATabTooNarrowIsScrolledToRatherThanSqueezed() throws {
+        let controller = try makeWindow().controller
+        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
+        let row = try XCTUnwrap(tabs.tabViewItems.first)
+        let scroll = try XCTUnwrap(row.view as? NSScrollView)
+        // Off the top and out of the tab view's hands, which hand the frame back otherwise.
+        tabs.selectTabViewItem(at: 1)
+        scroll.removeFromSuperview()
+
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 500))
+        host.addSubview(scroll)
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: host.topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            scroll.widthAnchor.constraint(equalToConstant: 380),
+            scroll.heightAnchor.constraint(equalToConstant: 500),
+        ])
+        host.layoutSubtreeIfNeeded()
+
+        let parts = try XCTUnwrap(Self.grid(in: try XCTUnwrap(scroll.documentView)))
+        XCTAssertGreaterThanOrEqual(
+            parts.frame.width,
+            parts.fittingSize.width - 1,
+            "the parts grid was squeezed, so one of its column widths had to be broken"
+        )
+    }
+
+    private static func grid(in view: NSView) -> NSGridView? {
+        if let found = view as? NSGridView {
+            return found
+        }
+        return view.subviews.lazy.compactMap { grid(in: $0) }.first
+    }
+
     func testTheSettingsStandInThreeTabs() throws {
         let controller = try makeWindow().controller
         let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
