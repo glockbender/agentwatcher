@@ -314,6 +314,30 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertEqual(window.partBoxes[.context]?.state, .on)
     }
 
+    /// And the way out of the one state this window refuses to leave by itself. A person who
+    /// has switched parts off until one is left finds that one greyed; reset is what gives it
+    /// back, so a checkbox that stayed grey through it would be a dead end with no way out at
+    /// all.
+    func testResetGivesBackTheCheckboxTheLastPartHadTakenAway() throws {
+        let (window, _) = try makeWindow()
+        for part in RowPart.allCases where part != .gap {
+            guard let box = window.partBoxes[part], box.isEnabled, box.state == .on else {
+                continue
+            }
+            box.state = .off
+            box.sendAction(box.action, to: box.target)
+        }
+
+        window.resetRowLayout()
+
+        for part in RowLayout.standard.parts where part != .gap {
+            XCTAssertTrue(
+                try XCTUnwrap(window.partBoxes[part]).isEnabled,
+                "\(part) came back to the row still greyed"
+            )
+        }
+    }
+
     /// The sample is drawn on the widget's own background, so choosing another one has to
     /// redraw it. Otherwise the window shows a row on a background the widget no longer has —
     /// and the whole reason the sample is a real row is that it does not lie about the widget.
