@@ -289,7 +289,17 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         variantButtons.removeAll()
         flexibleButtons.removeAll()
         counterKindItems.removeAll()
+        // The views go with the row. `removeRow(at:)` takes the row out of the grid and
+        // leaves its controls in the window — the grid stops laying them out, and they go on
+        // drawing where they last stood. Found in the running window with three copies of the
+        // whole section stacked up: one from the window being built, one more from every
+        // visit and every click. Identical copies only read as thick text; once a part had
+        // been moved, the old order and the new one were drawn one over the other.
         while partsGrid.numberOfRows > 0 {
+            let row = partsGrid.row(at: 0)
+            for index in 0..<row.numberOfCells {
+                row.cell(at: index).contentView?.removeFromSuperview()
+            }
             partsGrid.removeRow(at: 0)
         }
 

@@ -265,6 +265,40 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertEqual(window.sampleRow?.drawnOn, .mint)
     }
 
+    /// Found in the running window, which had three copies of the whole section stacked on
+    /// top of each other: `NSGridView.removeRow(at:)` takes the row out of the grid and
+    /// leaves its views where they were, so the grid stopped counting them while the window
+    /// went on drawing them. Identical copies only look thick; once a part had been moved,
+    /// the old order and the new one were drawn one over the other.
+    func testAPartHasOneControlInTheWindowHoweverOftenTheListIsRebuilt() throws {
+        let (window, _) = try makeWindow()
+        let root = try XCTUnwrap(window.window?.contentView)
+
+        // One click, which is all a person needs to do: every change rebuilds the list.
+        let context = try XCTUnwrap(window.partBoxes[.context])
+        context.state = .off
+        context.sendAction(context.action, to: context.target)
+
+        for part in RowPart.allCases where part != .gap {
+            XCTAssertEqual(
+                Self.checkboxes(titled: part.settingsName, in: root).count,
+                1,
+                "\(part) stands in the window more than once"
+            )
+        }
+    }
+
+    /// Every checkbox with this title anywhere in the window, which is the only way to see
+    /// the copies: the controller's own dictionaries hold the newest one alone. Pop-up
+    /// buttons are left out — one of them wears the title `Name` because that is the variant
+    /// the model part is showing, and it is not a second `Name` row.
+    private static func checkboxes(titled title: String, in view: NSView) -> [NSButton] {
+        let here = [view]
+            .compactMap { $0 as? NSButton }
+            .filter { $0.title == title && !($0 is NSPopUpButton) }
+        return here + view.subviews.flatMap { checkboxes(titled: title, in: $0) }
+    }
+
     /// A menu item has no `sendAction` of its own — the menu sends it. Pressed the way
     /// AppKit presses it: the action, to the target, from the item.
     private func press(_ item: NSMenuItem) {
