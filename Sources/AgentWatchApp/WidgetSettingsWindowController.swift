@@ -190,8 +190,12 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     }
 
     /// One tab's sections, in the column they are read in.
+    ///
+    /// Flipped, for the reason the widget's own list is: an unflipped document view is
+    /// anchored at its bottom-left corner, so a tab with less in it than the window is tall
+    /// hung from the bottom edge with the empty half above it.
     private static func makeTabContent(_ sections: [NSView]) -> NSStackView {
-        let content = NSStackView()
+        let content = FlippedStackView()
         content.orientation = .vertical
         content.alignment = .leading
         content.spacing = 14

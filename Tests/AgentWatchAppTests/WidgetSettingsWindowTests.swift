@@ -369,6 +369,31 @@ final class WidgetSettingsWindowTests: XCTestCase {
         )
     }
 
+    /// A tab with less in it than the window is tall still starts at the top. Without this
+    /// the lamp and the rest hung from the bottom edge: an unflipped document view is
+    /// anchored at its bottom-left corner, so a scroll view shorter than its window puts the
+    /// content at the bottom and leaves the empty half above it.
+    func testEveryTabStartsAtTheTopOfTheWindow() throws {
+        let controller = try makeWindow().controller
+        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
+
+        for item in tabs.tabViewItems {
+            tabs.selectTabViewItem(item)
+            tabs.layoutSubtreeIfNeeded()
+            let scroll = try XCTUnwrap(item.view as? NSScrollView)
+            let document = try XCTUnwrap(scroll.documentView)
+
+            // In the window's own coordinates, so the answer does not depend on which of
+            // these views is flipped: `maxY` there is the top edge on screen either way.
+            XCTAssertEqual(
+                document.convert(document.bounds, to: nil).maxY,
+                scroll.contentView.convert(scroll.contentView.bounds, to: nil).maxY,
+                accuracy: 1,
+                "\(item.label) hangs from the bottom of the window"
+            )
+        }
+    }
+
     func testTheSettingsStandInThreeTabs() throws {
         let controller = try makeWindow().controller
         let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
