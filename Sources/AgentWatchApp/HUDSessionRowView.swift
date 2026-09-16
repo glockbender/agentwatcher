@@ -95,9 +95,8 @@ final class HUDSessionRowView: NSStackView {
     let snapshot: SessionSnapshot
     /// Which background this row was drawn against. A row is given its colours once, at
     /// construction, so anything showing a row has to rebuild it when the background changes —
-    /// and this is how a test can tell whether it did.
-    var drawnOn: WidgetBackground { background }
-    private let background: WidgetBackground
+    /// and this is how a caller can tell whether it did.
+    let background: WidgetBackground
     /// Kept because the timer's colour follows it, not only the lamp's — see `timerColor`.
     private let lampScheme: LampScheme
     private let timerLabel: NSTextField
@@ -139,7 +138,10 @@ final class HUDSessionRowView: NSStackView {
         now: Date,
         background: WidgetBackground,
         lampScheme: LampScheme,
-        layout: RowLayout = .standard,
+        /// No default: this is the person's template, and a caller that forgot it would draw
+        /// a row from the app's own — the one mistake nothing downstream could notice, since
+        /// the app's own is what most rows look like anyway.
+        layout: RowLayout,
         style: WidgetStyle = .standard,
         onFocus: @escaping () -> Void,
         dismissal: RowDismissal,
@@ -707,12 +709,27 @@ final class HUDSessionRowView: NSStackView {
         return pair
     }
 
-    /// A part that is one word of text and keeps its width.
+    /// How a word of text is drawn, by which part it is.
     ///
-    /// The name is the row's own subject and is drawn in the foreground colour; everything
-    /// else here — the project, the branch, the model, where it runs, whose thread it is —
-    /// qualifies it, and is drawn the way the counters are so that a glance finds the name
-    /// first. That is the same rule the hover card follows, one line down.
+    /// The name is the row's own subject and takes the foreground colour and its own type;
+    /// everything else here — the project, the branch, the model, where it runs, whose thread
+    /// it is — qualifies it, and is drawn the way the counters are so that a glance finds the
+    /// name first. That is the same rule the hover card follows, one line down.
+    ///
+    /// One place because the rule is asked twice: a part keeps its width, and the part that
+    /// gives way does not, and which of the two a part is must not change how it looks. Said
+    /// in both, the two copies were one edit away from disagreeing.
+    private static func dress(
+        _ label: NSTextField,
+        as part: RowPart?,
+        background: WidgetBackground,
+        style: WidgetStyle
+    ) {
+        label.font = part == .name ? style.titleFont : style.countsFont
+        label.textColor = part == .name ? background.foregroundColor : background.secondaryForegroundColor
+    }
+
+    /// A part that is one word of text and keeps its width.
     private static func makeWord(
         _ text: String,
         part: RowPart,
@@ -720,8 +737,7 @@ final class HUDSessionRowView: NSStackView {
         style: WidgetStyle
     ) -> NSView {
         let label = NSTextField(labelWithString: text)
-        label.font = part == .name ? style.titleFont : style.countsFont
-        label.textColor = part == .name ? background.foregroundColor : background.secondaryForegroundColor
+        dress(label, as: part, background: background, style: style)
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
         return label
@@ -753,8 +769,7 @@ final class HUDSessionRowView: NSStackView {
             default: title
             }
         let label = NSTextField(labelWithString: shown)
-        label.font = part == .name ? style.titleFont : style.countsFont
-        label.textColor = part == .name ? background.foregroundColor : background.secondaryForegroundColor
+        dress(label, as: part, background: background, style: style)
         label.lineBreakMode = .byTruncatingMiddle
 
         var cap: NSLayoutConstraint?

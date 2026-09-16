@@ -62,14 +62,13 @@ final class RowLayoutStore: PreferenceDefaults {
         values(of: .standard)
     }
 
+    /// One write of the whole template, the way the lamp puts its own scheme back.
+    ///
+    /// `PreferenceFile` flushes the whole document on every `set`, so the keys written one by
+    /// one rewrote `settings.json` seven times for a single click — and between the first and
+    /// the last the file held half of one template and half of another.
     func setLayout(_ layout: RowLayout) {
-        for (key, value) in values(of: layout) {
-            switch value {
-            case let .string(text): preferences.set(text, forKey: key)
-            case let .bool(flag): preferences.set(flag, forKey: key)
-            default: break
-            }
-        }
+        preferences.replace(values(of: layout))
         onChange?(.rowLayout)
     }
 
@@ -78,8 +77,10 @@ final class RowLayoutStore: PreferenceDefaults {
     private func values(of layout: RowLayout) -> [String: JSONValue] {
         [
             Key.parts: .string(layout.parts.map(\.rawValue).joined(separator: ",")),
-            // An empty string rather than a missing key: the file holds the configuration
-            // whole, and "no part gives way" is a state, not an absence.
+            // An empty string rather than a missing key, because the file holds the
+            // configuration whole. Read back it means the same as no choice at all, and that
+            // is right: the only template that writes one is a template with nothing that can
+            // give way, and reading it produces the same `nil` again.
             Key.flexible: .string(layout.flexible?.rawValue ?? ""),
             Key.nameStyle: .string(layout.nameStyle.rawValue),
             Key.modelStyle: .string(layout.modelStyle.rawValue),

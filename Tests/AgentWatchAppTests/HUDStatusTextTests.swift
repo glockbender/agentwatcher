@@ -84,7 +84,7 @@ final class HUDStatusTextTests: XCTestCase {
         var session = snapshot(phase: .executing)
         session.contextTelemetry = .init(totalInputTokens: 85_000, usedPercentage: 42.5)
 
-        XCTAssertEqual(widgetContextText(for: session), "43%")
+        XCTAssertEqual(widgetContextText(for: session, style: .percent), "43%")
     }
 
     /// With no percentage the count is all there is, and an empty column would read as
@@ -93,7 +93,7 @@ final class HUDStatusTextTests: XCTestCase {
         var session = snapshot(phase: .executing)
         session.contextTelemetry = .init(totalInputTokens: 85_000, usedPercentage: nil)
 
-        XCTAssertEqual(widgetContextText(for: session), "85k")
+        XCTAssertEqual(widgetContextText(for: session, style: .percent), "85k")
     }
 
     /// The phase, the source and the client are all images now, so no spelling of them may
@@ -105,7 +105,7 @@ final class HUDStatusTextTests: XCTestCase {
         codexCLI.clientKind = .cli
 
         XCTAssertTrue(activityCounts(for: claudeDesktop).isEmpty)
-        XCTAssertNil(widgetContextText(for: claudeDesktop))
+        XCTAssertNil(widgetContextText(for: claudeDesktop, style: .percent))
         XCTAssertTrue(activityCounts(for: codexCLI).isEmpty)
     }
 

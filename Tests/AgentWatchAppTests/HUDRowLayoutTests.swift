@@ -402,6 +402,7 @@ final class HUDRowLayoutTests: XCTestCase {
             now: now,
             background: .graphite,
             lampScheme: LampScheme(),
+            layout: .standard,
             onFocus: {},
             dismissal: .notOffered(until: now + 1_800),
             onRemove: {},
@@ -1102,6 +1103,7 @@ final class HUDRowLayoutTests: XCTestCase {
             now: now,
             background: .graphite,
             lampScheme: LampScheme(),
+            layout: .standard,
             onFocus: {},
             dismissal: SessionPresence.dismissal(of: snapshot, now: now),
             onRemove: {}
@@ -1183,6 +1185,7 @@ final class HUDRowLayoutTests: XCTestCase {
             now: now,
             background: .graphite,
             lampScheme: lampScheme,
+            layout: .standard,
             style: style,
             onFocus: onFocus,
             dismissal: dismissal,

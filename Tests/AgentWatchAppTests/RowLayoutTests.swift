@@ -44,6 +44,14 @@ final class RowLayoutTests: XCTestCase {
         XCTAssertEqual(layout.flexible, .name)
     }
 
+    /// The value invents no row for somebody who asked for none: an empty template is the gap
+    /// and nothing else. What keeps a person from getting there is the settings window, which
+    /// stops at the last part — a repair here would have to put back the part they had just
+    /// switched off, and would read as a click that failed.
+    func testATemplateWithNoPartsInItIsTheGapAlone() {
+        XCTAssertEqual(RowLayout(parts: []).parts, [.gap])
+    }
+
     /// Asked by the hover card, which must not name a session whose rows have stopped naming
     /// it, and by the settings window. One question, one answer, no second flag.
     func testATemplateSaysWhetherItDrawsAPart() {

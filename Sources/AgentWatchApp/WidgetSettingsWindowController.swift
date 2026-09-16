@@ -384,11 +384,12 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         partsGrid.addRow(with: Self.makeColumnCaptions())
 
         for (index, part) in Self.orderedParts(of: layout).enumerated() {
-            // The row's own parts come first, and the ones left out after them, so an arrow
-            // is offered only where there is somewhere within the group to go.
-            let shownCount = layout.parts.count
-            let group = layout.shows(part) ? 0..<shownCount : shownCount..<RowPart.allCases.count
-            partsGrid.addRow(with: makePartRow(part, at: index, within: group, layout: layout))
+            // The row's own parts come first and the ones left out after them, so an arrow is
+            // offered only where there is somewhere in the row to go. A part left out has no
+            // places at all: nothing stores an order for those, and they are listed in the
+            // order this app names them.
+            let places = layout.shows(part) ? 0..<layout.parts.count : nil
+            partsGrid.addRow(with: makePartRow(part, at: index, within: places, layout: layout))
         }
         // The columns that hold text are stated, for the reason the lamp grid states its own:
         // left to itself the grid gave the slack to the widest cell and squeezed the rest —
@@ -419,13 +420,18 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     private func makePartRow(
         _ part: RowPart,
         at index: Int,
-        within group: Range<Int>,
+        within places: Range<Int>?,
         layout: RowLayout
     ) -> [NSView] {
         let isShown = layout.shows(part)
 
         // The gap has no checkbox: a row without one has no right edge. It keeps its arrows.
         let name: NSView
+        // And the last part standing keeps its checkbox on, for a related reason: switched
+        // off one at a time the parts run out, and a template of nothing but the gap draws a
+        // strip 33 points wide in every row. The way back would be `Use the app's own row`,
+        // which puts back everything else a person had arranged.
+        let isTheLastOne = isShown && layout.parts.filter { $0 != .gap }.count == 1
         if part == .gap {
             let label = NSTextField(labelWithString: "↔  \(part.settingsName)")
             label.font = WidgetStyle.standard.titleFont
@@ -439,10 +445,14 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             )
             box.state = isShown ? .on : .off
             box.tag = Self.tag(of: part)
+            box.isEnabled = !isTheLastOne
             partBoxes[part] = box
             name = box
         }
-        name.toolTip = part.appearsWhen
+        name.toolTip =
+            isTheLastOne
+            ? "\(part.appearsWhen)\n\nA row has to draw something, so the last part in it stays."
+            : part.appearsWhen
 
         let when = NSTextField(labelWithString: part.appearsWhenBriefly)
         when.font = WidgetStyle.standard.secondaryFont
@@ -454,7 +464,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         // The arrows beside the part they move, not at the far end of the row: drawn with the
         // choices between them, a part and its own arrows sat two hundred points apart and the
         // eye had to walk back along an empty line to pair them up.
-        return [name] + makeArrowCells(part, at: index, within: group)
+        return [name] + makeArrowCells(part, at: index, within: places)
             + [when, makeChoiceCell(part, isShown: isShown, layout: layout)]
             + [makeFlexibleCell(part, isShown: isShown, layout: layout)]
     }
@@ -545,25 +555,40 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         return radio
     }
 
-    /// - Parameter group: the places this part may move between — the row's own parts, or the
-    ///   ones left out of it. A part cannot cross from one into the other by an arrow: that is
-    ///   what its checkbox does, and an arrow that silently did nothing was the alternative.
-    private func makeArrowCells(_ part: RowPart, at index: Int, within group: Range<Int>) -> [NSView] {
+    /// - Parameter places: where this part may move — the span the row's own parts occupy — or
+    ///   `nil` for a part that is not in the row at all. A part cannot cross from one into the
+    ///   other by an arrow: that is what its checkbox does.
+    ///
+    /// A part left out has no order to change. The list puts those after the row's own in the
+    /// order this app names them, that order is stored nowhere and drawn nowhere, so an arrow
+    /// there has nothing to do. Found live rather than grey: eight of the ten arrows on the
+    /// five parts left out took a press and changed nothing — the very thing the paragraph
+    /// above said had been avoided.
+    private func makeArrowCells(_ part: RowPart, at index: Int, within places: Range<Int>?) -> [NSView] {
         let up = NSButton(title: "↑", target: self, action: #selector(movePartEarlier(_:)))
         up.bezelStyle = .rounded
         up.tag = Self.tag(of: part)
-        up.isEnabled = index > group.lowerBound
-        up.toolTip = "Move this part one place earlier in the row"
+        up.isEnabled = places.map { index > $0.lowerBound } ?? false
+        up.toolTip = Self.arrowHint("earlier", isInTheRow: places != nil)
         moveUpButtons[part] = up
 
         let down = NSButton(title: "↓", target: self, action: #selector(movePartLater(_:)))
         down.bezelStyle = .rounded
         down.tag = Self.tag(of: part)
-        down.isEnabled = index < group.upperBound - 1
-        down.toolTip = "Move this part one place later in the row"
+        down.isEnabled = places.map { index < $0.upperBound - 1 } ?? false
+        down.toolTip = Self.arrowHint("later", isInTheRow: places != nil)
         moveDownButtons[part] = down
 
         return [up, down]
+    }
+
+    /// Greyed is half the answer; this is the other half. A person who finds the arrows dead
+    /// on a part is looking at the one part of this window where the way forward is a
+    /// different control — the checkbox two cells to the left.
+    private static func arrowHint(_ direction: String, isInTheRow: Bool) -> String {
+        isInTheRow
+            ? "Move this part one place \(direction) in the row"
+            : "Only the parts in the row have an order. Switch this one on to place it."
     }
 
     /// The sample, rebuilt: a row is given its parts once, at construction, so showing a new
@@ -685,8 +710,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         movePart(ofTag: sender.tag, by: 1)
     }
 
-    /// Moves within the whole list — the parts in the row followed by the parts left out — so
-    /// that the last arrow down does not disappear into a part that is not drawn.
+    /// Moves within the row's own parts, which are the only ones that have an order at all.
     private func movePart(ofTag tag: Int, by step: Int) {
         guard let part = Self.part(ofTag: tag) else {
             return

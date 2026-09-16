@@ -46,6 +46,34 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertTrue(rowLayouts.layout.shows(.name), "the row beside it is untouched")
     }
 
+    /// Switched off one at a time, the parts run out: measured, a template of nothing but the
+    /// gap draws a strip 33 points wide, and on the widget every row becomes that strip — a
+    /// working session's empty, a finished one's a bare `×`. The way back is
+    /// `Use the app's own row`, which puts back everything else too. So the last part in the
+    /// row stays, greyed, and says why on hover.
+    func testTheLastPartInTheRowCannotBeSwitchedOff() throws {
+        let (window, rowLayouts) = try makeWindow()
+
+        // The way a person empties it: pressing what can be pressed until nothing can.
+        for part in RowPart.allCases where part != .gap {
+            guard let box = window.partBoxes[part], box.isEnabled, box.state == .on else {
+                continue
+            }
+            box.state = .off
+            box.sendAction(box.action, to: box.target)
+        }
+
+        let left = rowLayouts.layout.parts.filter { $0 != .gap }
+        XCTAssertEqual(left.count, 1, "the row was emptied down to its gap")
+        let last = try XCTUnwrap(window.partBoxes[try XCTUnwrap(left.first)])
+        XCTAssertFalse(last.isEnabled, "the last part in the row can still be switched off")
+        XCTAssertEqual(last.state, .on, "and it is still drawn")
+        XCTAssertNotEqual(
+            last.toolTip, left.first?.appearsWhen,
+            "greyed without saying why is half the answer"
+        )
+    }
+
     func testMovingAPartEarlierIsStored() throws {
         let (window, rowLayouts) = try makeWindow()
         let up = try XCTUnwrap(window.moveUpButtons[.lamp])
@@ -84,15 +112,25 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertFalse(down.isEnabled, "\(last) is last in the row and has nowhere to go")
     }
 
-    /// And the first part left out has nowhere up, for the same reason from the other side.
-    func testTheFirstPartLeftOutIsNotOfferedAWayUp() throws {
+    /// And a part that is not in the row has neither arrow, for the same reason from the other
+    /// side: there is no order to move it in. The parts left out are listed in the order this
+    /// app names them, nothing stores an order for them, and nothing on the widget would
+    /// change if it did. Found offered instead — eight of the ten arrows on the five parts
+    /// left out were live, and pressing one changed nothing at all.
+    func testAPartLeftOutOfTheRowIsOfferedNoArrowAtAll() throws {
         let (window, rowLayouts) = try makeWindow()
         let layout = rowLayouts.layout
-        let firstLeftOut = try XCTUnwrap(RowPart.allCases.first { !layout.shows($0) })
 
-        let up = try XCTUnwrap(window.moveUpButtons[firstLeftOut])
-
-        XCTAssertFalse(up.isEnabled, "\(firstLeftOut) is not in the row, so there is no order to move it in")
+        for part in RowPart.allCases where !layout.shows(part) {
+            XCTAssertFalse(
+                try XCTUnwrap(window.moveUpButtons[part]).isEnabled,
+                "\(part) is not in the row and is offered a way up"
+            )
+            XCTAssertFalse(
+                try XCTUnwrap(window.moveDownButtons[part]).isEnabled,
+                "\(part) is not in the row and is offered a way down"
+            )
+        }
     }
 
     func testChoosingWhatTheNameShowsIsStored() throws {
@@ -294,7 +332,7 @@ final class RowLayoutSectionTests: XCTestCase {
 
         mint.performClick(nil)
 
-        XCTAssertEqual(window.sampleRow?.drawnOn, .mint)
+        XCTAssertEqual(window.sampleRow?.background, .mint)
     }
 
     /// Found in the running window, which had three copies of the whole section stacked on

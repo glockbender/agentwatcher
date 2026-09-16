@@ -155,12 +155,14 @@ private func name(for kind: BackgroundWorkKind, count: Int) -> String {
 /// `⚠ no fresh activity` took. The source and the client are not here either: they are
 /// images placed before this text.
 /// - Parameter style: which of the two numbers to draw. The share alone is what every row
-///   drew before the template existed, and it stays the default for the reason above. The
-///   other two are offered because the argument against the count is about the room it takes
-///   in a row somebody else laid out — and this is the row they laid out themselves.
+///   drew before the template existed, and it is what a fresh template asks for, for the
+///   reason above. The other two are offered because the argument against the count is about
+///   the room it takes in a row somebody else laid out — and this is the row they laid out
+///   themselves. No default here, for the reason `hoverCardText` gives: a caller that forgot
+///   it would quietly draw the share in a row that asked for the count.
 func widgetContextText(
     for snapshot: SessionSnapshot,
-    style: RowLayout.ContextStyle = .percent
+    style: RowLayout.ContextStyle
 ) -> String? {
     guard let telemetry = snapshot.contextTelemetry else {
         return nil

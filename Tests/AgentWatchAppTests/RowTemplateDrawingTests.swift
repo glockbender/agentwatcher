@@ -166,6 +166,72 @@ final class RowTemplateDrawingTests: XCTestCase {
         XCTAssertLessThan(working.furnitureWidth, finished.furnitureWidth)
     }
 
+    // MARK: - The width the row is given
+
+    /// The budget for the part that gives way is `furnitureWidth` — the row laid out without
+    /// it — and the comment on it assumed that part came before the gap, because the name
+    /// always did. Put the branch after the gap and the spacer holding the row's slack stands
+    /// between the two.
+    ///
+    /// That template was drawn and looked at (`branch-gives-way` in the render probe) and
+    /// never asserted: a drawing says what the row looks like, not whether it fits the widget
+    /// it was measured for. Wider than the content width, the list gives the row its own
+    /// width instead and the widget scrolls sideways.
+    func testARowWhosePartGivesWayAfterTheGapFitsTheWidgetItWasMeasuredFor() throws {
+        var session = testSession(index: 0, title: "Port the probe", lastObservedAt: now)
+        session.gitBranch = "row-format-with-a-name-far-too-long-for-a-narrow-widget"
+        let layout = RowLayout(
+            parts: [.timer, .lamp, .agent, .name, .gap, .branch, .context],
+            flexible: .branch
+        )
+        let width: CGFloat = 320
+        let style = WidgetStyle.standard
+        let contentWidth = width - 2 * (style.contentInset - style.hoverPadding)
+
+        let list = HUDSessionListView(
+            models: rowModels([session], now: now, layout: layout),
+            usageLimits: [],
+            now: now,
+            availableWidth: width,
+            focus: { _ in },
+            remove: { _ in },
+            background: .graphite,
+            lampScheme: LampScheme(),
+            backgroundOpacity: 1,
+            style: style,
+            restoredScrollOffset: nil,
+            onScroll: { _ in }
+        )
+        place(list, width: width, height: 200)
+
+        let row = try XCTUnwrap(list.row(for: session.id))
+        XCTAssertTrue(row.drawnParts.contains(.branch), "the branch never reached the row")
+        XCTAssertLessThanOrEqual(
+            row.fittingSize.width,
+            contentWidth,
+            "the row is wider than the widget has to give, so the widget scrolls sideways"
+        )
+
+        // And this width really does ask something of the budget: the same row, given the
+        // branch at its full length, does not fit. Without this the assertion above would
+        // hold on any width wide enough to need no arithmetic at all.
+        let unbudgeted = makeRow(session, layout: layout)
+        unbudgeted.setFlexibleText(session.gitBranch, display: .fullName)
+        XCTAssertGreaterThan(unbudgeted.fittingSize.width, contentWidth)
+    }
+
+    private func place(_ list: HUDSessionListView, width: CGFloat, height: CGFloat) {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = list
+        window.setContentSize(NSSize(width: width, height: height))
+        list.layoutSubtreeIfNeeded()
+    }
+
     private func makeRow(
         _ snapshot: SessionSnapshot,
         layout: RowLayout,
