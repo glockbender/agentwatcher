@@ -17,6 +17,11 @@ import XCTest
 final class WidgetRenderProbe: XCTestCase {
     private let now = Date(timeIntervalSince1970: 100_000)
 
+    /// The sizes the widget is drawn at, the tuned one aside — it is drawn anyway, by every
+    /// other scene here.
+    private static let drawnScales: [CGFloat] = [0.5, 0.75, 1.25, 1.5, 2]
+    private static let drawnCustomBackgrounds = ["#FF0000", "#2A9D8F", "#3050C0", "#808080"]
+
     func testDrawTheWidget() throws {
         let requested = ProcessInfo.processInfo.environment["WIDGET_RENDER_DIR"]
         try XCTSkipIf(requested == nil, "a drawing probe, not a check: set WIDGET_RENDER_DIR")
@@ -38,11 +43,14 @@ final class WidgetRenderProbe: XCTestCase {
             named: "branch-gives-way",
             in: directory
         )
-        // The same widget at every size on offer. This is the one part of the app whose whole
+        // The same widget at a handful of sizes. This is the one part of the app whose whole
         // question is how it looks, so it is drawn rather than measured: the numbers already
         // have tests, and what they cannot answer is whether a row at 200% reads as the same
-        // widget made larger or as a row with its parts pulled apart.
-        for scale in WidgetSettingsStore.offeredScales where scale != 1 {
+        // widget made larger or as a row with its parts pulled apart. A handful and not all
+        // thirty-one sizes on offer, because these are pictures for a person to look at and
+        // the two sizes either side of a five percent step are the same picture — the ends
+        // and the quarters between them are where the question is decided.
+        for scale in Self.drawnScales {
             let percent = Int(scale * 100)
             try draw(
                 listView(width: 420, style: WidgetStyle(scale: scale)),
@@ -52,6 +60,18 @@ final class WidgetRenderProbe: XCTestCase {
             try draw(
                 emptyState(complaint: nil, style: WidgetStyle(scale: scale)),
                 named: "empty-\(percent)",
+                in: directory
+            )
+        }
+        // A colour of the person's own takes its text colour from arithmetic rather than from a
+        // hand-sorted list, and the arithmetic cannot say whether the row reads. Pure red is the
+        // hard case — it sits almost exactly where dark text and white stand out equally — and
+        // the others are one of each answer at a middling brightness.
+        for hex in Self.drawnCustomBackgrounds {
+            let background = try XCTUnwrap(NSColor(hex: hex).flatMap(WidgetBackground.init(custom:)))
+            try draw(
+                listView(width: 420, background: background),
+                named: "wide-custom-\(hex.dropFirst())",
                 in: directory
             )
         }
@@ -95,6 +115,10 @@ final class WidgetRenderProbe: XCTestCase {
         for (name, view) in try settingsWindowTabs() {
             try draw(view, named: "settings-\(name)", in: directory)
         }
+        // And the palette once a colour of the person's own is in use: the ring moves off the
+        // swatches onto the well, which is the one mark on this tab drawn by a layer, not an image.
+        let chosen = try settingsWindowTabs(customBackground: "#2A9D8F").first { $0.0 == "other" }
+        try draw(try XCTUnwrap(chosen?.1), named: "settings-other-custom", in: directory)
         try draw(toolingWindowContent(), named: "tooling", in: directory)
         try draw(toolingWindowOnThisMachine(), named: "tooling-here", in: directory)
     }
@@ -140,11 +164,16 @@ final class WidgetRenderProbe: XCTestCase {
     /// its sample and its parts, the nine lamp rows, and the palette with the sliders. Drawn
     /// rather than measured because a grid of colour wells and pop-up buttons is exactly the
     /// layout that measures right and reads wrong.
-    private func settingsWindowTabs() throws -> [(String, NSView)] {
+    private func settingsWindowTabs(customBackground: String? = nil) throws -> [(String, NSView)] {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
+        let backgroundStore = WidgetBackgroundStore(preferences: preferences)
+        if let customBackground {
+            backgroundStore.select(
+                try XCTUnwrap(NSColor(hex: customBackground).flatMap(WidgetBackground.init(custom:))))
+        }
         let controller = WidgetSettingsWindowController(
-            backgroundStore: WidgetBackgroundStore(preferences: preferences),
+            backgroundStore: backgroundStore,
             lampSchemes: LampSchemeStore(preferences: preferences),
             settings: settings,
             rowLayouts: RowLayoutStore(preferences: preferences),
@@ -413,7 +442,8 @@ final class WidgetRenderProbe: XCTestCase {
     private func listView(
         width: CGFloat,
         style: WidgetStyle = .standard,
-        layout: RowLayout = .standard
+        layout: RowLayout = .standard,
+        background: WidgetBackground = .graphite
     ) -> HUDSessionListView {
         let list = HUDSessionListView(
             models: rowModels(sessions(), now: now, layout: layout),
@@ -422,7 +452,7 @@ final class WidgetRenderProbe: XCTestCase {
             availableWidth: width,
             focus: { _ in },
             remove: { _ in },
-            background: .graphite,
+            background: background,
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             style: style,
@@ -432,7 +462,7 @@ final class WidgetRenderProbe: XCTestCase {
         let height = HUDSessionListView.selfSizedHeight(
             sessionCount: sessions().count,
             usageLimits: [AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 17), observedAt: now)],
-            background: .graphite,
+            background: background,
             style: style
         )
         place(list, size: NSSize(width: width, height: height))

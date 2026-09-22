@@ -60,7 +60,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     /// How much larger or smaller than its tuned size the widget may be drawn.
     ///
-    /// Both ways round 1, in equal quarter steps. The range started at 1 and went up, on the
+    /// Both ways round 1, in equal steps. The range started at 1 and went up, on the
     /// reasoning that every number in `WidgetStyle` was chosen at 1 and drawing below it only
     /// makes the widget worse; the owner asked for the other half, and a widget that is
     /// glanced at rather than read is a fair thing to want smaller. So the tuned size is the
@@ -71,10 +71,29 @@ final class WidgetSettingsStore: PreferenceDefaults {
     /// the range only went up, the two were the same number, and turning the range downwards
     /// silently made a fresh install open at half size.
     static let defaultScale: CGFloat = 1
-    /// The stops the slider snaps to. Discrete because the difference between 112% and 115%
-    /// is nothing anybody can see, and a value that lands on a quarter keeps every scaled
-    /// number a whole point without rounding deciding it.
-    static let offeredScales: [CGFloat] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+    /// How far apart the stops the slider snaps to are, in percent.
+    ///
+    /// The range was offered in quarter steps first, which moves a quarter of the widget in
+    /// one step: the owner asked for something finer, five percent at the coarsest. Still
+    /// stops rather than a free slider — a slider with hundreds of positions offers sizes
+    /// nobody can tell apart — but close enough together that a person settles on a size
+    /// instead of choosing between the two either side of the one they wanted.
+    static let scaleStepPercent = 5
+    /// Every size on offer, the floor to the ceiling in `scaleStepPercent` steps.
+    ///
+    /// Counted in whole percents rather than by adding 0.05 repeatedly, because 0.05 is not a
+    /// number a `Double` holds exactly and the last stop has to be `maximumScale` itself: it
+    /// is where the slider ends, and a stop a hair short of it would be a size the widget can
+    /// be set to and the list does not name.
+    ///
+    /// The quarter steps carried a second argument — that a quarter of a tuned number is
+    /// still a whole point. It was never load-bearing: `WidgetStyle.points` rounds every
+    /// scaled number anyway, which is what actually keeps a label off a half point.
+    static let offeredScales: [CGFloat] = stride(
+        from: Int((minimumScale * 100).rounded()),
+        through: Int((maximumScale * 100).rounded()),
+        by: scaleStepPercent
+    ).map { CGFloat($0) / 100 }
 
     /// What a fresh install hides and shows the widget with — `⌥⌘W`.
     ///
@@ -156,9 +175,9 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     /// How much larger than its tuned size the widget draws itself.
     ///
-    /// Clamped rather than refused, unlike the poll interval: a scale out of range is a
-    /// number that still means something — larger, or smaller — where a mistyped interval is
-    /// a file read at a rate nobody chose.
+    /// Clamped and snapped to a stop rather than refused, unlike the poll interval: a scale
+    /// out of range is a number that still means something — larger, or smaller — where a
+    /// mistyped interval is a file read at a rate nobody chose.
     var scale: CGFloat {
         guard let stored = preferences.number(forKey: Key.scale) else {
             return Self.defaultScale
@@ -178,8 +197,19 @@ final class WidgetSettingsStore: PreferenceDefaults {
         onChange?(.scale)
     }
 
+    /// The nearest size on offer, so nothing but a stop is ever stored.
+    ///
+    /// The snapping lives here and not only in the slider, because the slider is not the only
+    /// writer: an edited preferences file is one too, and a stored 1.07 would draw a widget at
+    /// a size the window then reports as 105%.
+    ///
+    /// Counted in percent — `scale * 100 / 5`, not `scale / 0.05` — so the arithmetic stays on
+    /// numbers a `Double` holds: normalizing a normalized value has to give the same value
+    /// back, or `setScale` would write on every frame of a drag that changes nothing.
     private func normalizedScale(_ scale: CGFloat) -> CGFloat {
-        min(max(scale, Self.minimumScale), Self.maximumScale)
+        let clamped = min(max(scale, Self.minimumScale), Self.maximumScale)
+        let step = CGFloat(Self.scaleStepPercent)
+        return (clamped * 100 / step).rounded() * step / 100
     }
 
     /// The combination that hides and shows the widget from anywhere, or nothing.

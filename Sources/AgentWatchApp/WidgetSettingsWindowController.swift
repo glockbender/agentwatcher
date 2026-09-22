@@ -35,6 +35,10 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     private(set) var colorWells: [SessionPhase: NSColorWell] = [:]
     private(set) var motionButtons: [SessionPhase: NSPopUpButton] = [:]
     private(set) var backgroundButtons: [WidgetBackground: NSButton] = [:]
+    /// The well for a colour of the person's own, and the ring around it that says it is the
+    /// one in use — the ring the swatches draw into their own images, which a well cannot.
+    private(set) var customBackgroundWell: BackgroundColorWell?
+    private(set) var customBackgroundRing: NSView?
     private(set) var opacitySlider: NSSlider?
     private(set) var opacityLabel: NSTextField?
     private(set) var scaleSlider: NSSlider?
@@ -123,6 +127,18 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             Self.makeSectionTitle("Size"),
             size,
         ])
+        // The size row is the one section that is stretched rather than left at the width its
+        // controls ask for: its slider carries a tick mark per size on offer, and how far
+        // apart those land is the whole of how the control reads. Everything else in this
+        // window is content whose width means something — a grid's columns, a swatch — and
+        // stretching those would only pull them away from each other.
+        //
+        // Said here rather than inside `makeScaleRow`, because the width being matched is the
+        // tab's, and the row is built before there is a tab to match.
+        size.widthAnchor.constraint(
+            equalTo: rowTab.widthAnchor,
+            constant: -(rowTab.edgeInsets.left + rowTab.edgeInsets.right)
+        ).isActive = true
         // No title over the lamp grid, and none over the parts: the tab says it already.
         let lampTab = Self.makeTabContent([lamp, makeResetButton()])
         let otherTab = Self.makeTabContent([
@@ -155,10 +171,9 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         // comes from nine rows of controls whose size is the system's to decide, not this
         // file's.
         //
-        // The right margin is added by hand, the way the tooling window adds its own: a
-        // vertical stack aligned to its leading edge pins nothing to the other one, so its
-        // fitting width is the left inset plus the widest section, and the section's last
-        // column would sit flush against the window's edge.
+        // Both margins are in this number, which is `makeTabContent`'s doing — it holds every
+        // section off the trailing edge, so a tab's fitting width is the two insets plus its
+        // widest section rather than one inset plus the section.
         let widest = [rowTab, lampTab, otherTab].map(\.fittingSize.width).max() ?? 0
         let tallest = [rowTab, lampTab, otherTab].map(\.fittingSize.height).max() ?? 0
         // What the tab strip and its border take, asked of the tab view rather than guessed:
@@ -171,7 +186,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         // window scrolls, and with "Always show scroll bars" the strip is taken out of the
         // content rather than laid over it. Measured: 15 points, which is the whole right
         // margin but five.
-        let width = widest + rowTab.edgeInsets.right + Self.scrollerStrip + chrome.width
+        let width = widest + Self.scrollerStrip + chrome.width
         window.contentMinSize = NSSize(width: width, height: 240)
         window.setContentSize(
             NSSize(
@@ -213,6 +228,15 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         content.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
         for section in sections {
             content.addView(section, in: .top)
+            // And keep the right margin off the section, which a stack aligned to its leading
+            // edge does not do on its own: it pins nothing to the other side, so its fitting
+            // width was the left inset plus the widest section and the window had to add the
+            // right one by hand afterwards. Said as a limit rather than a pin, because these
+            // sections are as wide as their own controls and only one of them is stretched.
+            section.trailingAnchor.constraint(
+                lessThanOrEqualTo: content.trailingAnchor,
+                constant: -content.edgeInsets.right
+            ).isActive = true
         }
         return content
     }
@@ -1041,6 +1065,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         grid.xPlacement = .leading
         addBackgroundRow(WidgetBackground.dark, titled: "Dark", to: grid)
         addBackgroundRow(WidgetBackground.light, titled: "Light", to: grid)
+        addCustomBackgroundRow(to: grid)
         // Every column stated, for the reason the lamp grid states its own: the slack was
         // going into the last column and left one swatch alone against the far edge.
         grid.column(at: 0).width = 46
@@ -1050,12 +1075,15 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         return grid
     }
 
-    private func addBackgroundRow(_ backgrounds: [WidgetBackground], titled title: String, to grid: NSGridView) {
+    private static func makeBackgroundRowLabel(_ title: String) -> NSTextField {
         let label = NSTextField(labelWithString: title)
         label.font = WidgetStyle.standard.secondaryFont
         label.textColor = .secondaryLabelColor
+        return label
+    }
 
-        var views: [NSView] = [label]
+    private func addBackgroundRow(_ backgrounds: [WidgetBackground], titled title: String, to grid: NSGridView) {
+        var views: [NSView] = [Self.makeBackgroundRowLabel(title)]
         for background in backgrounds {
             let button = NSButton(title: "", target: self, action: #selector(backgroundChosen(_:)))
             button.setButtonType(.toggle)
@@ -1063,7 +1091,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             button.image = Self.swatch(for: background, selected: false)
             button.imagePosition = .imageOnly
             button.toolTip = background.title
-            button.identifier = NSUserInterfaceItemIdentifier(background.rawValue)
+            button.identifier = NSUserInterfaceItemIdentifier(background.storedName)
             button.pinSize(to: Self.swatchSize)
             backgroundButtons[background] = button
             views.append(button)
@@ -1075,8 +1103,8 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
 
     @objc private func backgroundChosen(_ sender: NSButton) {
         guard
-            let rawValue = sender.identifier?.rawValue,
-            let background = WidgetBackground(rawValue: rawValue)
+            let name = sender.identifier?.rawValue,
+            let background = WidgetBackground.preset(named: name)
         else {
             return
         }
@@ -1084,6 +1112,62 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         showSelectedBackground()
         // The sample is a real row, drawn on the widget's background and with its lamp, and a
         // row takes both at construction. So every control that changes either redraws it.
+        showSampleRow(rowLayouts.layout)
+    }
+
+    /// Any colour at all, beside the ten: a colour well that opens the system panel on its
+    /// wheel (`BackgroundColorWell`).
+    ///
+    /// A well rather than one more swatch because it is the control macOS has for "pick a
+    /// colour", and the lamp's colours are already picked with it one tab over. It keeps its own
+    /// size, not a swatch's — given less than its fitting size a well draws its bezel outside
+    /// the frame — so it spans the swatch columns instead of widening the first of them.
+    private func addCustomBackgroundRow(to grid: NSGridView) {
+        let well = BackgroundColorWell()
+        well.target = self
+        well.action = #selector(customBackgroundChosen(_:))
+        // The file keeps `#RRGGBB`, and the opacity is a slider of its own: an alpha picked on the
+        // panel would be dropped without a word.
+        well.supportsAlpha = false
+        well.toolTip = "A colour of your own, picked on the colour wheel"
+        well.translatesAutoresizingMaskIntoConstraints = false
+        well.pinSize(to: Self.colorWellSize)
+        customBackgroundWell = well
+
+        let ring = NSView()
+        ring.wantsLayer = true
+        ring.layer?.cornerRadius = 7
+        ring.layer?.borderWidth = 2
+        ring.addSubview(well)
+        ring.pinSize(
+            to: NSSize(
+                width: Self.colorWellSize.width + 2 * Self.customRingGap,
+                height: Self.colorWellSize.height + 2 * Self.customRingGap
+            ))
+        NSLayoutConstraint.activate([
+            well.centerXAnchor.constraint(equalTo: ring.centerXAnchor),
+            well.centerYAnchor.constraint(equalTo: ring.centerYAnchor),
+        ])
+        customBackgroundRing = ring
+
+        grid.addRow(with: [Self.makeBackgroundRowLabel("Custom"), ring])
+        let row = grid.numberOfRows - 1
+        grid.mergeCells(
+            inHorizontalRange: NSRange(location: 1, length: grid.numberOfColumns - 1),
+            verticalRange: NSRange(location: row, length: 1)
+        )
+        grid.row(at: row).yPlacement = .center
+    }
+
+    /// How far the ring stands off the well: the room a swatch's own ring gets inside its image.
+    private static let customRingGap: CGFloat = 3
+
+    @objc private func customBackgroundChosen(_ sender: NSColorWell) {
+        guard let background = WidgetBackground(custom: sender.color) else {
+            return
+        }
+        backgroundStore.select(background)
+        showSelectedBackground()
         showSampleRow(rowLayouts.layout)
     }
 
@@ -1125,9 +1209,13 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// A slider that snaps to its tick marks rather than a menu of percentages. The widget is
     /// on screen while this window is open and every step redraws it, so the control is the
     /// preview: a person drags until the rows look right instead of choosing a number and
-    /// checking afterwards. Snapping is what keeps that honest — the steps are far enough
-    /// apart that each one is a visible change, where a free slider offers hundreds of
-    /// positions that mostly look identical.
+    /// checking afterwards.
+    ///
+    /// One tick per size on offer, which is what makes the slider snap: AppKit stops the knob
+    /// on a tick and hands back the value of that tick, so the number the store keeps is
+    /// always one of the sizes the list names. That is also why the ticks are as close
+    /// together as they are — the step is the store's (`scaleStepPercent`), and the comb this
+    /// draws is the price of a step small enough to settle on.
     private func makeScaleRow() -> NSView {
         let scales = WidgetSettingsStore.offeredScales
         let slider = NSSlider(
@@ -1140,7 +1228,13 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         slider.numberOfTickMarks = scales.count
         slider.allowsTickMarkValuesOnly = true
         slider.isContinuous = true
-        slider.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        // No width of its own: the row it sits in is stretched across the tab (`init`), and
+        // the slider is the part of that row that takes the room — the readout beside it is
+        // held to its own. Thirty-one tick marks in 260 points read as a picket fence, and the
+        // window is already wider than that for the parts grid's sake, so the width was there
+        // to be used.
+        slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        slider.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.narrowestScaleSlider).isActive = true
         scaleSlider = slider
 
         let readout = NSTextField(labelWithString: "")
@@ -1151,9 +1245,20 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
 
         let row = NSStackView(views: [slider, readout])
         row.orientation = .horizontal
+        // Filled rather than left to the gravity areas: a stack that spreads its spare room
+        // between them would put the readout at the far edge and leave the slider its fitting
+        // width, which is the picket fence again with a gap after it.
+        row.distribution = .fill
         row.spacing = 8
         return row
     }
+
+    /// The narrowest the size slider is allowed to become when the window is dragged in.
+    ///
+    /// The width it used to be fixed at, and the width the opacity slider still is — kept as
+    /// the floor because below it the tick marks start to merge, which is the whole reason
+    /// this one is stretched in the first place.
+    private static let narrowestScaleSlider: CGFloat = 260
 
     @objc private func scaleChanged(_ sender: NSSlider) {
         settings.setScale(CGFloat(sender.doubleValue))
@@ -1182,6 +1287,15 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             let isSelected = background == selected
             button.state = isSelected ? .on : .off
             button.image = Self.swatch(for: background, selected: isSelected)
+        }
+        customBackgroundRing?.layer?.borderColor =
+            (selected.isCustom ? NSColor.controlAccentColor : .clear).cgColor
+        // Left alone while the panel is attached: measured, a colour set into an active well
+        // moves the panel with it, and that is the control the person has their hands on.
+        // Otherwise it shows the colour the person picked last, or — before there is one — the
+        // background in use, so the wheel opens on what the widget looks like now.
+        if let well = customBackgroundWell, !well.isActive {
+            well.color = backgroundStore.customColor ?? selected.color
         }
     }
 

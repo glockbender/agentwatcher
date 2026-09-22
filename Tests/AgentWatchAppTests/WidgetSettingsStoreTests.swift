@@ -103,6 +103,36 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.scale, WidgetSettingsStore.minimumScale)
     }
 
+    /// The slider is not the only writer: a hand-edited preferences file is one too, and a
+    /// stored size between two stops would draw a widget the settings window then reports as
+    /// a size it is not at.
+    func testASizeBetweenTwoStopsIsMovedToTheNearerOne() throws {
+        let store = try makeStore()
+
+        store.setScale(1.07)
+        XCTAssertEqual(store.scale, 1.05, accuracy: 0.0001)
+
+        store.setScale(1.08)
+        XCTAssertEqual(store.scale, 1.1, accuracy: 0.0001)
+    }
+
+    /// Every stop has to survive being stored and read back as itself. The step is five
+    /// percent, which no `Double` holds exactly, so the arithmetic that snaps a value has to
+    /// leave a value that is already on a stop alone — otherwise the widget rebuilds on every
+    /// frame of a drag that is standing still.
+    func testEverySizeOnOfferIsStoredAsItself() throws {
+        let store = try makeStore()
+
+        for scale in WidgetSettingsStore.offeredScales {
+            store.setScale(scale)
+            XCTAssertEqual(
+                store.scale,
+                scale,
+                "\(Int((scale * 100).rounded()))% did not survive being written and read back"
+            )
+        }
+    }
+
     /// The slider behind this fires on every frame of a drag, and each write rebuilds every
     /// row in the widget. A drag that stays on one tick mark must cost nothing.
     func testSettingTheSizeItAlreadyHasTellsNobody() throws {
@@ -116,6 +146,10 @@ final class WidgetSettingsStoreTests: XCTestCase {
 
         store.setScale(1.5)
         store.setScale(1.5)
+        // Two sizes off the grid that snap to the same stop: the dedup has to happen after
+        // the snapping, or every stray fraction of a percent would be a rebuild.
+        store.setScale(1.51)
+        store.setScale(1.49)
         // Clamped to a value it already holds, which is the same drag against the end stop.
         store.setScale(9)
         store.setScale(WidgetSettingsStore.maximumScale)

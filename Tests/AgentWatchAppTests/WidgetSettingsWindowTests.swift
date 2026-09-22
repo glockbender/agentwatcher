@@ -98,6 +98,78 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertEqual(mint.state, .on)
     }
 
+    /// A press on the well is a choice, like a press on a swatch, and it opens the panel on the
+    /// wheel whatever page the panel was last left at.
+    ///
+    /// A mouse event sent to the window rather than `activate` called, and that is the point.
+    /// The trap here is a well made with `init(style:)`, which is a plain `NSColorWell` under a
+    /// subclass's name: a click reaches AppKit's own `activate` and chooses nothing. Called from
+    /// Swift, `activate(true)` ran the override anyway — the class is `final`, so the call never
+    /// asked the object what it really is — and this test passed with the trap in place, which
+    /// is how it came to click.
+    func testTheCustomWellChoosesItsColourAndOpensTheWheel() throws {
+        let (controller, _, backgroundStore, _) = try makeWindow()
+        controller.showWindow(nil)
+        try show(tab: "Other", of: controller)
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        let well = try XCTUnwrap(controller.customBackgroundWell)
+        defer {
+            well.deactivate()
+            NSColorPanel.shared.orderOut(nil)
+            controller.close()
+        }
+        NSColorPanel.shared.mode = .RGB
+
+        try click(well, in: window)
+
+        XCTAssertTrue(well.isActive, "the click did not reach the well")
+        XCTAssertEqual(NSColorPanel.shared.mode, .wheel)
+        XCTAssertTrue(backgroundStore.selected.isCustom)
+        XCTAssertEqual(
+            backgroundStore.selected.color.srgbHex,
+            WidgetBackground.graphite.color.srgbHex,
+            "before the wheel is touched the widget keeps the colour it had"
+        )
+    }
+
+    /// The ring is the only thing that says which background is in use, so it has to leave the
+    /// swatches for the well and come back.
+    func testTheRingMovesBetweenTheSwatchesAndTheWell() throws {
+        let (controller, _, backgroundStore, _) = try makeWindow()
+        let well = try XCTUnwrap(controller.customBackgroundWell)
+        let ring = try XCTUnwrap(controller.customBackgroundRing)
+        let clear = NSColor.clear.cgColor
+
+        well.color = NSColor(srgbRed: 0.2, green: 0.4, blue: 0.6, alpha: 1)
+        well.sendAction(well.action, to: well.target)
+
+        XCTAssertEqual(backgroundStore.selected.color.srgbHex, "#336699")
+        XCTAssertTrue(controller.backgroundButtons.values.allSatisfy { $0.state == .off })
+        // The accent itself, not merely "not clear": a layer's border is black until it is
+        // told otherwise, so a ring nobody set would pass that.
+        XCTAssertEqual(ring.layer?.borderColor, NSColor.controlAccentColor.cgColor)
+
+        try XCTUnwrap(controller.backgroundButtons[.mint]).performClick(nil)
+
+        XCTAssertEqual(ring.layer?.borderColor, clear)
+        XCTAssertEqual(
+            well.color.srgbHex,
+            "#336699",
+            "the well goes on offering the colour after a preset is chosen"
+        )
+    }
+
+    /// Before anybody has picked a colour, the wheel opens on the background in use rather than
+    /// on some colour the widget has never been.
+    func testTheWellStartsFromTheBackgroundInUse() throws {
+        let (controller, _, backgroundStore, _) = try makeWindow()
+        try XCTUnwrap(controller.backgroundButtons[.sand]).performClick(nil)
+
+        XCTAssertNil(backgroundStore.customColor)
+        XCTAssertEqual(controller.customBackgroundWell?.color.srgbHex, WidgetBackground.sand.color.srgbHex)
+    }
+
     /// The floor is the point: at zero the widget disappears and the person who made it
     /// disappear cannot find it again. The slider must not be able to ask for that.
     func testTheOpacitySliderCannotReachInvisible() throws {
@@ -369,6 +441,44 @@ final class WidgetSettingsWindowTests: XCTestCase {
         )
     }
 
+    /// The size slider is as wide as the tab it stands in, and grows with the window.
+    ///
+    /// Not a matter of taste: the slider carries one tick mark per size on offer, and at the
+    /// 260 points it used to be fixed at, thirty-one of them draw as a picket fence. The room
+    /// to spread them is the width the window already has for the parts grid.
+    ///
+    /// Checked at two widths, because a fixed width passes the first assertion on its own —
+    /// 260 points is most of a narrow window — and only a slider that follows the window
+    /// passes the second.
+    func testTheSizeSliderIsAsWideAsTheTab() throws {
+        let controller = try makeWindow().controller
+        let window = try XCTUnwrap(controller.window)
+        let tabs = try XCTUnwrap(window.contentView as? NSTabView)
+        let scroll = try XCTUnwrap(tabs.tabViewItems.first?.view as? NSScrollView)
+        tabs.selectTabViewItem(at: 0)
+        tabs.layoutSubtreeIfNeeded()
+        let slider = try XCTUnwrap(controller.scaleSlider)
+        let document = try XCTUnwrap(scroll.documentView)
+
+        // The readout, the gap before it and the tab's two margins are all that may be left
+        // over: 44 + 8 + 20 + 20, and a point of slack for rounding.
+        XCTAssertGreaterThan(
+            slider.frame.width,
+            document.frame.width - 93,
+            "the size slider does not reach across the tab"
+        )
+
+        let grown = window.frame.width + 200
+        window.setContentSize(NSSize(width: grown, height: window.frame.height))
+        tabs.layoutSubtreeIfNeeded()
+
+        XCTAssertGreaterThan(
+            slider.frame.width,
+            document.frame.width - 93,
+            "the size slider kept its width when the window grew"
+        )
+    }
+
     /// A tab with less in it than the window is tall still starts at the top. Without this
     /// the lamp and the rest hung from the bottom edge: an unflipped document view is
     /// anchored at its bottom-left corner, so a scroll view shorter than its window puts the
@@ -532,6 +642,30 @@ final class WidgetSettingsWindowTests: XCTestCase {
         // reaches them too.
         try show(tab: "Other", of: window)
         return (window, shortcuts)
+    }
+
+    /// A press and a release, the release queued first: a control tracks the mouse from its
+    /// `mouseDown` until a release arrives, so one that was not already waiting would be waited
+    /// for forever. Sent to this window, not posted to the system — it cannot land anywhere else.
+    private func click(_ view: NSView, in window: NSWindow) throws {
+        let point = view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
+        let now = ProcessInfo.processInfo.systemUptime
+        func event(_ type: NSEvent.EventType, at time: TimeInterval) throws -> NSEvent {
+            try XCTUnwrap(
+                NSEvent.mouseEvent(
+                    with: type,
+                    location: point,
+                    modifierFlags: [],
+                    timestamp: time,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: type == .leftMouseDown ? 1 : 0
+                ))
+        }
+        NSApp.postEvent(try event(.leftMouseUp, at: now + 0.05), atStart: false)
+        window.sendEvent(try event(.leftMouseDown, at: now))
     }
 
     private func show(tab label: String, of controller: WidgetSettingsWindowController) throws {

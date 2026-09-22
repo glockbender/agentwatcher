@@ -233,8 +233,8 @@ struct WidgetStyle {
     /// only way that shows.
     ///
     /// Measured, so the numbers are worth stating: the bezel's own height is 19, 23, 23, 23,
-    /// 23 across the five sizes — it stops growing after 125% and the button then sits centred
-    /// in a taller row — while its width goes on growing, 21, 25, 26, 27, 29.
+    /// 23 across the five sizes from 100% to 200% — it stops growing after 125% and the button
+    /// then sits centred in a taller row — while its width goes on growing, 21, 25, 26, 27, 29.
     ///
     /// At the tuned size the height is untouched — the bezel's own 19 points are where the
     /// row's height came from in the first place — and the width gives up one point, 22 to 21,
@@ -252,8 +252,8 @@ struct WidgetStyle {
     /// metrics of its control size and stretches it to whatever frame it is given, so a
     /// `.small` button in a row twice as tall came out as a wide, thin capsule with a small
     /// `×` adrift in it — drawn and looked at, which is the only way that shows. Stepping the
-    /// control size instead keeps the bezel in proportion; three steps for seven scales is as
-    /// close as AppKit's own sizes allow.
+    /// control size instead keeps the bezel in proportion; three steps across the whole range
+    /// is as close as AppKit's own sizes allow.
     var buttonControlSize: NSControl.ControlSize {
         switch scale {
         case ..<1.25: .small
