@@ -67,47 +67,12 @@ public enum BackgroundSessionAttach {
                 let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                 record["kind"] as? String == "interactive",
                 record["parkedJobId"] as? String == jobID,
-                let processID = processID(in: record),
-                isProcessAlive(processID, startedAt(in: record))
+                let identity = ClaudeSessionRecord(record: record),
+                isProcessAlive(identity.processID, identity.startedAt)
             else {
                 continue
             }
-            return processID
-        }
-        return nil
-    }
-
-    /// The record's start of the process: the kernel's own reading first (`procStart`, the
-    /// spelling of `ps -o lstart` — `Sat Sep 12 09:53:31 2026`, a single-digit day padded with
-    /// a space — in UTC, measured three hours behind the local `ps` on eight records), and
-    /// Claude Code's clock (`startedAt`, milliseconds since 1970, 0–3 s later on the same
-    /// records) for a record without it. The kernel's is exact and nothing rewrites it.
-    private static func startedAt(in record: [String: Any]) -> Date? {
-        if let text = record["procStart"] as? String,
-            let date = kernelStartFormatter.date(from: text.split(separator: " ").joined(separator: " "))
-        {
-            return date
-        }
-        guard let milliseconds = record["startedAt"] as? Double else {
-            return nil
-        }
-        return Date(timeIntervalSince1970: milliseconds / 1_000)
-    }
-
-    private static let kernelStartFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.dateFormat = "EEE MMM d HH:mm:ss yyyy"
-        return formatter
-    }()
-
-    private static func processID(in record: [String: Any]) -> Int32? {
-        if let number = record["pid"] as? Int, let processID = Int32(exactly: number) {
-            return processID
-        }
-        if let text = record["pid"] as? String {
-            return Int32(text)
+            return identity.processID
         }
         return nil
     }

@@ -533,7 +533,7 @@ final class SessionSupervisor {
             guard let recordedStart else {
                 return true
             }
-            return abs(startedAt.timeIntervalSince(recordedStart)) < 60
+            return ClaudeSessionRecord.starts(recordedStart, match: startedAt)
         }
     }
 

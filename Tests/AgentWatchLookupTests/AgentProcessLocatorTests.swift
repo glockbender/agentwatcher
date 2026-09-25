@@ -15,7 +15,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ProcessSnapshot(processID: 200, executableName: "goland"),
         ]
 
-        XCTAssertEqual(ClaudeProcessRules().agentProcessID(among: ancestors), 400)
+        XCTAssertEqual(ClaudeProcessRules.byPathAlone.agentProcessID(among: ancestors), 400)
     }
 
     func testDoesNotTreatAnUnrelatedAncestorAsClaude() {
@@ -25,7 +25,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ProcessSnapshot(processID: 200, executableName: "goland"),
         ]
 
-        XCTAssertNil(ClaudeProcessRules().agentProcessID(among: ancestors))
+        XCTAssertNil(ClaudeProcessRules.byPathAlone.agentProcessID(among: ancestors))
     }
 
     func testDoesNotTrustAnAncestorNamedClaudeWithoutAnInstallationPath() {
@@ -33,7 +33,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ProcessSnapshot(processID: 400, executableName: "claude")
         ]
 
-        XCTAssertNil(ClaudeProcessRules().agentProcessID(among: ancestors))
+        XCTAssertNil(ClaudeProcessRules.byPathAlone.agentProcessID(among: ancestors))
     }
 
     func testFindsVersionedClaudeExecutableFromItsInstallationLayout() {
@@ -47,7 +47,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ProcessSnapshot(processID: 300, executableName: "zsh"),
         ]
 
-        XCTAssertEqual(ClaudeProcessRules().agentProcessID(among: ancestors), 400)
+        XCTAssertEqual(ClaudeProcessRules.byPathAlone.agentProcessID(among: ancestors), 400)
     }
 
     func testDoesNotTreatAnArbitraryVersionedExecutableAsClaude() {
@@ -59,7 +59,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             )
         ]
 
-        XCTAssertNil(ClaudeProcessRules().agentProcessID(among: ancestors))
+        XCTAssertNil(ClaudeProcessRules.byPathAlone.agentProcessID(among: ancestors))
     }
 
     func testClassifiesClaudeHookAsCLIWithoutSendingItsHostPath() {
@@ -72,7 +72,11 @@ final class AgentProcessLocatorTests: XCTestCase {
             ),
         ]
 
-        XCTAssertEqual(AgentProcessLocator.clientKind(for: .claude, in: ancestors), .cli)
+        XCTAssertEqual(
+            ClaudeProcessRules.byPathAlone.clientKind(
+                among: ancestors, argumentsOfProcess: AgentProcessLocator.commandArguments(of:)),
+            .cli
+        )
     }
 
     func testClassifiesCodexDesktopFromItsTrustedApplicationBundle() {
@@ -213,14 +217,13 @@ final class AgentProcessLocatorTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            AgentProcessLocator.clientKind(for: .claude, in: ancestors, argumentsOfProcess: { arguments[$0] }),
+            ClaudeProcessRules.byPathAlone.clientKind(among: ancestors, argumentsOfProcess: { arguments[$0] }),
             .background
         )
         // The renamed shape the host had in earlier builds is still a host.
         XCTAssertEqual(
-            AgentProcessLocator.clientKind(
-                for: .claude,
-                in: ancestors,
+            ClaudeProcessRules.byPathAlone.clientKind(
+                among: ancestors,
                 argumentsOfProcess: {
                     $0 == 16043
                         ? ["claude bg-pty-host", "--bg-pty-host", "/private/opaque/pty/b95a16c1.sock"] : arguments[$0]
@@ -246,11 +249,12 @@ final class AgentProcessLocatorTests: XCTestCase {
             "--permission-mode", "auto",
         ]
         XCTAssertEqual(
-            ClaudeProcessRules().forkedFromSessionID(arguments: launchedByClaude, forSessionID: "b95a16c1-0000"),
+            ClaudeProcessRules.byPathAlone.forkedFromSessionID(
+                arguments: launchedByClaude, forSessionID: "b95a16c1-0000"),
             "ab007d7a-9ae2-4888-8b57-2920b3cc1bb9"
         )
         XCTAssertNil(
-            ClaudeProcessRules().forkedFromSessionID(arguments: launchedByClaude, forSessionID: "stub-0000"),
+            ClaudeProcessRules.byPathAlone.forkedFromSessionID(arguments: launchedByClaude, forSessionID: "stub-0000"),
             "the two-second session the resume leaves behind continues nothing"
         )
         // Every spelling of `--resume` Claude Code passes, read the same way.
@@ -260,7 +264,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ["--session-id", "b95a16c1-0000", "--fork-session", "--resume=ab007d7a-9ae2-4888-8b57-2920b3cc1bb9"],
         ] {
             XCTAssertEqual(
-                ClaudeProcessRules().forkedFromSessionID(
+                ClaudeProcessRules.byPathAlone.forkedFromSessionID(
                     arguments: ["claude"] + spelling, forSessionID: "b95a16c1-0000"),
                 "ab007d7a-9ae2-4888-8b57-2920b3cc1bb9",
                 "\(spelling)"
@@ -277,19 +281,20 @@ final class AgentProcessLocatorTests: XCTestCase {
             ["claude", "--fork-session", "--resume=ab007d7a-9ae2-4888-8b57-2920b3cc1bb9"],
         ] {
             XCTAssertNil(
-                ClaudeProcessRules().forkedFromSessionID(arguments: typed, forSessionID: "any"),
+                ClaudeProcessRules.byPathAlone.forkedFromSessionID(arguments: typed, forSessionID: "any"),
                 "\(typed)"
             )
         }
         // A plain resume keeps its identifier, so there is nothing to continue from.
         XCTAssertNil(
-            ClaudeProcessRules().forkedFromSessionID(
+            ClaudeProcessRules.byPathAlone.forkedFromSessionID(
                 arguments: ["claude", "--resume", "/private/opaque/projects/x/ab007d7a-0000.jsonl"], forSessionID: "any"
             )
         )
         // A fork with nothing to fork from, and a resume that names nothing, say nothing.
         for empty in [["claude", "--fork-session"], ["claude", "--fork-session", "--resume"], ["claude"]] {
-            XCTAssertNil(ClaudeProcessRules().forkedFromSessionID(arguments: empty, forSessionID: "any"), "\(empty)")
+            XCTAssertNil(
+                ClaudeProcessRules.byPathAlone.forkedFromSessionID(arguments: empty, forSessionID: "any"), "\(empty)")
         }
     }
 
@@ -317,7 +322,7 @@ final class AgentProcessLocatorTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            AgentProcessLocator.clientKind(for: .claude, in: ancestors, argumentsOfProcess: { arguments[$0] }),
+            ClaudeProcessRules.byPathAlone.clientKind(among: ancestors, argumentsOfProcess: { arguments[$0] }),
             .cli
         )
     }
@@ -337,9 +342,8 @@ final class AgentProcessLocatorTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            AgentProcessLocator.clientKind(
-                for: .claude,
-                in: ancestors,
+            ClaudeProcessRules.byPathAlone.clientKind(
+                among: ancestors,
                 argumentsOfProcess: { _ in
                     ["/private/opaque/claude/versions/2.1.269", "bg-spare", "--bg-spare", "/private/opaque/claim.sock"]
                 }
@@ -361,19 +365,18 @@ final class AgentProcessLocatorTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            AgentProcessLocator.clientKind(
-                for: .claude,
-                in: ancestors,
+            ClaudeProcessRules.byPathAlone.clientKind(
+                among: ancestors,
                 argumentsOfProcess: { _ in ["claude bg-spare", "--bg-spare", "/private/opaque/claim.sock"] }
             ),
             .background
         )
         XCTAssertEqual(
-            AgentProcessLocator.clientKind(for: .claude, in: ancestors, argumentsOfProcess: { _ in ["claude"] }),
+            ClaudeProcessRules.byPathAlone.clientKind(among: ancestors, argumentsOfProcess: { _ in ["claude"] }),
             .cli
         )
         XCTAssertEqual(
-            AgentProcessLocator.clientKind(for: .claude, in: ancestors, argumentsOfProcess: { _ in nil }),
+            ClaudeProcessRules.byPathAlone.clientKind(among: ancestors, argumentsOfProcess: { _ in nil }),
             .cli,
             "a kernel that will not say what the process was started with leaves the ordinary answer standing"
         )

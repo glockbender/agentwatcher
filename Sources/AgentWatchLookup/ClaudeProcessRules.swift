@@ -4,6 +4,12 @@ import Foundation
 /// Claude Code, as the kernel sees it: a program installed under `…/claude/versions/`, a few
 /// long-lived helpers run from the same program, and one session per process a person
 /// started — which is what lets its sessions be found from its processes.
+///
+/// A process is the agent's by its path or by its own record in Claude Code's registry. The
+/// path is how it was installed, and the kernel stops naming it that way in two measured cases
+/// — an update deleted the version, or a background session gave the file a second name — so
+/// the record answers where the path cannot (`ClaudeSessionRegistry`). The path stays, because
+/// not every session gets a record.
 public struct ClaudeProcessRules: AgentProcessRules {
     /// How far up the tree a candidate is checked for an agent above it.
     ///
@@ -11,17 +17,21 @@ public struct ClaudeProcessRules: AgentProcessRules {
     /// a bound is what makes a cycle in the parent chain harmless.
     private static let maximumAncestorDepth = 16
 
-    public init() {}
+    let registry: ClaudeSessionRegistry
+
+    public init(registry: ClaudeSessionRegistry = ClaudeSessionRegistry()) {
+        self.registry = registry
+    }
 
     public func agentProcessID(among ancestors: [ProcessSnapshot]) -> Int32? {
-        ancestors.first(where: Self.isClaudeProcess)?.processID
+        ancestors.first(where: isAgentProcess)?.processID
     }
 
     public func clientKind(
         among ancestors: [ProcessSnapshot],
         argumentsOfProcess: (Int32) -> [String]?
     ) -> SessionClientKind? {
-        guard let agentIndex = ancestors.firstIndex(where: Self.isClaudeProcess) else {
+        guard let agentIndex = ancestors.firstIndex(where: isAgentProcess) else {
             return nil
         }
         // The same process this hook will report as the session's, asked what it is, and
@@ -39,7 +49,7 @@ public struct ClaudeProcessRules: AgentProcessRules {
         // typed there.
         let runsUnderAHelper = ancestors[agentIndex...].contains { process in
             let arguments = argumentsOfProcess(process.processID) ?? []
-            return (Self.isClaudeProcess(process) || Self.isTheAgentsExecutable(arguments))
+            return (isAgentProcess(process) || Self.isTheAgentsExecutable(arguments))
                 && Self.isHelperCommand(arguments)
         }
         return runsUnderAHelper ? .background : .cli
@@ -89,7 +99,7 @@ public struct ClaudeProcessRules: AgentProcessRules {
     /// every executable path 0.9 ms, which is why this can be done wherever the app already
     /// has a reason to look rather than on a timer of its own.
     public func liveSessions() -> [DiscoveredAgentProcess] {
-        let candidates = Self.sessionProcessIDs()
+        let candidates = sessionProcessIDs()
         return
             candidates
             .filter { !Self.hasAgentAncestor($0, among: candidates) }
@@ -121,18 +131,26 @@ public struct ClaudeProcessRules: AgentProcessRules {
     /// press finds the first viewer's tab instead of opening another. Helpers are not dropped
     /// here, because a viewer is one of the processes `sessionProcessIDs` drops.
     public func isRunning(withWords words: [String]) -> Bool {
-        AgentProcessScanner.allProcessIDs().contains { processID in
-            guard let snapshot = AgentProcessLocator.snapshot(of: processID), Self.isClaudeProcess(snapshot) else {
+        let recorded = registry.liveProcessIDs()
+        return AgentProcessScanner.allProcessIDs().contains { processID in
+            guard let snapshot = AgentProcessLocator.snapshot(of: processID),
+                recorded.contains(processID) || Self.isClaudeProcess(snapshot)
+            else {
                 return false
             }
             return Self.commandWords(AgentProcessLocator.commandArguments(of: processID) ?? []) == words
         }
     }
 
-    /// Whether this process is the Claude CLI itself.
+    /// Whether this process is the Claude CLI itself, by its path or by its record.
     ///
     /// Every rule here asks it, the scanner of every process on the machine and the sender of
     /// a hook's ancestors: two answers to "what is a Claude process" would drift apart.
+    func isAgentProcess(_ snapshot: ProcessSnapshot) -> Bool {
+        Self.isClaudeProcess(snapshot) || registry.recordsLiveProcess(snapshot.processID)
+    }
+
+    /// Whether the path is the one Claude Code installs its versions under.
     static func isClaudeProcess(_ snapshot: ProcessSnapshot) -> Bool {
         guard let executablePath = snapshot.executablePath else {
             return false
@@ -232,16 +250,20 @@ public struct ClaudeProcessRules: AgentProcessRules {
         return nil
     }
 
-    private static func sessionProcessIDs() -> Set<Int32> {
+    private func sessionProcessIDs() -> Set<Int32> {
+        // The records are listed once, not looked up for every process on the machine.
+        let recorded = registry.liveProcessIDs()
         var found: Set<Int32> = []
         for processID in AgentProcessScanner.allProcessIDs() {
-            guard let snapshot = AgentProcessLocator.snapshot(of: processID), isClaudeProcess(snapshot) else {
+            guard let snapshot = AgentProcessLocator.snapshot(of: processID),
+                recorded.contains(processID) || Self.isClaudeProcess(snapshot)
+            else {
                 continue
             }
             // Dropped here rather than from the finished list, and the order is the rule: a
             // helper left among the candidates would hide a real session running under it,
             // because the ancestry check below removes anything with an agent above it.
-            guard !isHelperCommand(AgentProcessLocator.commandArguments(of: processID) ?? []) else {
+            guard !Self.isHelperCommand(AgentProcessLocator.commandArguments(of: processID) ?? []) else {
                 continue
             }
             found.insert(processID)

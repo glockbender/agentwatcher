@@ -71,21 +71,45 @@ public enum AgentProcessLocator {
         return rules.forkedFromSessionID(arguments: arguments, forSessionID: sessionID)
     }
 
-    /// A process as the rules look at it, or `nil` when the kernel will not name its
-    /// executable.
+    /// A process as the rules look at it, or `nil` when there is no such process.
     static func snapshot(of processID: Int32) -> ProcessSnapshot? {
-        guard let executablePath = executablePath(for: processID) else {
-            return nil
-        }
-        return ProcessSnapshot(
+        snapshot(
             processID: processID,
-            executableName: URL(fileURLWithPath: executablePath).lastPathComponent,
-            executablePath: executablePath
+            executablePath: executablePath(for: processID),
+            commandName: commandName(of: processID)
         )
     }
 
-    /// A process and its ancestors, nearest first, as far up as the kernel names them.
+    /// The same answer from what the kernel said. A process it names no path for is still a
+    /// process — the agent itself, once an update has deleted the version it runs — and goes
+    /// by the name it runs under, which no path rule will take for an agent's.
+    static func snapshot(processID: Int32, executablePath: String?, commandName: String?) -> ProcessSnapshot? {
+        if let executablePath {
+            return ProcessSnapshot(
+                processID: processID,
+                executableName: URL(fileURLWithPath: executablePath).lastPathComponent,
+                executablePath: executablePath
+            )
+        }
+        guard let commandName else {
+            return nil
+        }
+        return ProcessSnapshot(processID: processID, executableName: commandName, executablePath: nil)
+    }
+
+    /// A process and its ancestors, nearest first.
     static func ancestorSnapshots(startingAt first: Int32 = getppid()) -> [ProcessSnapshot] {
+        ancestorSnapshots(startingAt: first, snapshotOf: snapshot(of:), parentOf: parentProcessID(of:))
+    }
+
+    /// The same walk with the kernel handed in. It stops where there is no process, not where
+    /// there is no path: it used to stop at the first process the kernel named no path for,
+    /// and past a deleted version that was the agent itself.
+    static func ancestorSnapshots(
+        startingAt first: Int32,
+        snapshotOf: (Int32) -> ProcessSnapshot?,
+        parentOf: (Int32) -> Int32?
+    ) -> [ProcessSnapshot] {
         var result: [ProcessSnapshot] = []
         var processID = first
 
@@ -93,12 +117,12 @@ public enum AgentProcessLocator {
             guard processID > 1 else {
                 break
             }
-            guard let snapshot = snapshot(of: processID) else {
+            guard let snapshot = snapshotOf(processID) else {
                 break
             }
 
             result.append(snapshot)
-            guard let parentProcessID = parentProcessID(of: processID), parentProcessID != processID else {
+            guard let parentProcessID = parentOf(processID), parentProcessID != processID else {
                 break
             }
             processID = parentProcessID
@@ -133,6 +157,17 @@ public enum AgentProcessLocator {
         return Date(
             timeIntervalSince1970: Double(startedAt.tv_sec) + Double(startedAt.tv_usec) / 1_000_000
         )
+    }
+
+    /// The name a process runs under, as the kernel keeps it (at most 16 bytes), or `nil` when
+    /// there is no such process.
+    static func commandName(of processID: Int32) -> String? {
+        guard var process = kernelRecord(of: processID) else {
+            return nil
+        }
+        return withUnsafeBytes(of: &process.kp_proc.p_comm) { bytes in
+            String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self)
+        }
     }
 
     /// The parent of a process, or `nil` when there is no such process.
