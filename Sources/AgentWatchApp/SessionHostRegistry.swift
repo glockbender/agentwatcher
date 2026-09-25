@@ -208,7 +208,7 @@ final class SessionHostRegistry {
         let decision = BackgroundSessionAttach.decision(
             among: GhosttyScripting.terminals() ?? [],
             jobID: jobID,
-            viewerIsRunning: AgentProcessScanner.isClaudeRunning(withWords: ["attach", jobID])
+            viewerIsRunning: ClaudeProcessRules().isRunning(withWords: ["attach", jobID])
         )
         switch decision {
         case .focus(let terminalID):

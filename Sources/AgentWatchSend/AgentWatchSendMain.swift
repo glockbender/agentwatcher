@@ -159,14 +159,14 @@ enum AgentWatchSendMain {
             source: options.source,
             declaredEvent: options.event,
             payload: payload,
-            agentProcessID: options.source == .claude ? AgentProcessLocator.currentClaudeProcessID() : nil,
+            agentProcessID: AgentProcessLocator.currentAgentProcessID(for: options.source),
             clientKind: AgentProcessLocator.currentClientKind(for: options.source),
             description: description,
             // On every hook, not only the start: the app may not have been running when the
             // copy started, and the first event it hears has to be the one that says so.
-            forkedFromSessionID: options.source == .claude
-                ? sessionID(in: payload).flatMap(AgentProcessLocator.currentForkedFromSessionID(forSessionID:))
-                : nil
+            forkedFromSessionID: sessionID(in: payload).flatMap {
+                AgentProcessLocator.currentForkedFromSessionID(for: options.source, forSessionID: $0)
+            }
         )
     }
 

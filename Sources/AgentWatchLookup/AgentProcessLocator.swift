@@ -5,7 +5,8 @@ import Foundation
 public struct ProcessSnapshot: Equatable, Sendable {
     public let processID: Int32
     public let executableName: String
-    /// Used only while resolving the local Claude process. It is never sent to Agent Watch.
+    /// Read only by the rules that decide which process is an agent's. It is never sent to
+    /// Agent Watch.
     public let executablePath: String?
 
     public init(processID: Int32, executableName: String, executablePath: String? = nil) {
@@ -15,15 +16,17 @@ public struct ProcessSnapshot: Equatable, Sendable {
     }
 }
 
-/// Finds the long-lived Claude process that launched a short-lived hook command.
-/// Only the selected numeric PID is sent to Agent Watch; executable paths never leave this helper.
+/// Asks the kernel about processes, and knows no agent.
+///
+/// Which process is an agent's, and what it means, is each agent's own rule —
+/// `AgentProcessRules`. The entry points the hook sender calls take the agent and ask its
+/// rules; everything else here is a question any process can be asked. Executable paths never
+/// leave this module (`ProcessSnapshot`): the sender sends a process number and a
+/// `SessionClientKind`, never the path they were read from.
 public enum AgentProcessLocator {
-    public static func currentClaudeProcessID() -> Int32? {
-        findClaudeProcessID(in: ancestorSnapshots())
-    }
-
-    public static func findClaudeProcessID(in ancestors: [ProcessSnapshot]) -> Int32? {
-        ancestors.first(where: isClaudeProcess)?.processID
+    /// The process the hook running this code is to name as its session's.
+    public static func currentAgentProcessID(for source: AgentSource) -> Int32? {
+        source.processRules.agentProcessID(among: ancestorSnapshots())
     }
 
     /// Returns a host kind only when process ancestry makes it trustworthy.
@@ -31,13 +34,6 @@ public enum AgentProcessLocator {
     /// resulting enum value only.
     public static func currentClientKind(for source: AgentSource) -> SessionClientKind? {
         clientKind(for: source, in: ancestorSnapshots())
-    }
-
-    /// The same answer for a Claude process the scanner found, asked of that process and its
-    /// ancestors — so a row built from a process and the row its first hook builds say the
-    /// same thing about where the session runs.
-    public static func clientKind(ofAgentProcess processID: Int32) -> SessionClientKind? {
-        clientKind(for: .claude, in: ancestorSnapshots(startingAt: processID))
     }
 
     public static func clientKind(
@@ -54,206 +50,42 @@ public enum AgentProcessLocator {
         in ancestors: [ProcessSnapshot],
         argumentsOfProcess: (Int32) -> [String]?
     ) -> SessionClientKind? {
-        if source == .codex, ancestors.contains(where: isCodexDesktopProcess) {
-            return .desktop
-        }
-
-        switch source {
-        case .claude:
-            guard let agentIndex = ancestors.firstIndex(where: isClaudeProcess) else {
-                return nil
-            }
-            // The same process this hook will report as the session's, asked what it is, and
-            // then everything above it. A background session has one of the agent's own
-            // helpers somewhere in that chain — it *is* `claude bg-spare`, or it is a session
-            // sent to the background with `/bg`, which the pty host `claude --bg-pty-host`
-            // starts as a child of its own. Either way there is no terminal above it, and so
-            // no window the widget could ever raise. Measured on 2.1.269: the host runs from
-            // `ClaudeCode.app`, not from `versions/`, so it is found by its words, not its path.
-            //
-            // Only Claude's own processes are asked, which is what "helper of the agent's"
-            // means. The words are ordinary ones, and something far above the session may
-            // have been started with them for reasons of its own — `emacs --daemon` is how
-            // Emacs is normally run, and a terminal inside it is the parent of everything
-            // typed there.
-            let runsUnderAHelper = ancestors[agentIndex...].contains { process in
-                let arguments = argumentsOfProcess(process.processID) ?? []
-                return (isClaudeProcess(process) || isTheAgentsExecutable(arguments))
-                    && isHelperCommand(arguments)
-            }
-            return runsUnderAHelper ? .background : .cli
-        case .codex:
-            return ancestors.contains(where: isCodexCLIProcess) ? .cli : nil
-        }
+        source.processRules.clientKind(among: ancestors, argumentsOfProcess: argumentsOfProcess)
     }
 
-    /// The session this one was copied from, when it is a copy — raw, for the redactor.
-    ///
-    /// `/bg` and `/fork` continue a session in a new process under a new identifier, and the
-    /// widget would otherwise draw a second row for the same conversation. No hook field
-    /// names the original; the process's own arguments do.
+    /// The session the one this hook is about was copied from, when it is a copy — raw, for
+    /// the redactor.
     ///
     /// - Parameter sessionID: the session the hook is about, raw, as the payload says it.
     ///   The copy's process runs a second, two-second session first — the one `--resume`
     ///   always leaves behind — and its hooks read the same arguments; only the session the
     ///   process was started for is the copy.
-    public static func currentForkedFromSessionID(forSessionID sessionID: String) -> String? {
-        guard let agent = currentClaudeProcessID(), let arguments = commandArguments(of: agent) else {
+    public static func currentForkedFromSessionID(for source: AgentSource, forSessionID sessionID: String) -> String? {
+        let rules = source.processRules
+        guard
+            let agent = rules.agentProcessID(among: ancestorSnapshots()),
+            let arguments = commandArguments(of: agent)
+        else {
             return nil
         }
-        return forkedFromSessionID(arguments: arguments, forSessionID: sessionID)
+        return rules.forkedFromSessionID(arguments: arguments, forSessionID: sessionID)
     }
 
-    /// Reads the original out of a fork's arguments: `--fork-session` says the process is a
-    /// copy, and `--resume` (or `-r`, or `--resume=…`) names what it was copied from — the
-    /// transcript file, named after the session, when Claude Code started the copy itself;
-    /// the identifier, when a person typed it. Measured on 2.1.269. A resume without
-    /// `--fork-session` keeps its identifier and is nothing to continue from.
-    ///
-    /// Only the session the process was started for is the copy, and `--session-id` is what
-    /// names it — Claude Code always passes it. The stub session `--resume` leaves behind on
-    /// the same process reads the same arguments and is nobody's continuation: aliased onto
-    /// the original's row, its start would reset the row and its end would close it two
-    /// seconds later. So a command without `--session-id` — one a person typed — continues
-    /// nothing, although it may well be a real fork: the copy then gets a row of its own,
-    /// which is one row too many at worst, where a stub read as a copy costs a live row.
-    static func forkedFromSessionID(arguments: [String], forSessionID sessionID: String) -> String? {
-        let words = commandWords(arguments)
-        guard words.contains("--fork-session"), optionValue(named: ["--session-id"], in: words) == sessionID else {
+    /// A process as the rules look at it, or `nil` when the kernel will not name its
+    /// executable.
+    static func snapshot(of processID: Int32) -> ProcessSnapshot? {
+        guard let executablePath = executablePath(for: processID) else {
             return nil
         }
-        guard let resumed = optionValue(named: ["--resume", "-r"], in: words) else {
-            return nil
-        }
-        guard resumed.contains("/") else {
-            return resumed
-        }
-        let identifier = URL(fileURLWithPath: resumed).deletingPathExtension().lastPathComponent
-        return identifier.isEmpty ? nil : identifier
+        return ProcessSnapshot(
+            processID: processID,
+            executableName: URL(fileURLWithPath: executablePath).lastPathComponent,
+            executablePath: executablePath
+        )
     }
 
-    /// The value of an option written either as `--name value` or as `--name=value`; `nil`
-    /// when the option is absent, or has no value, or its value is another option.
-    private static func optionValue(named names: [String], in words: [String]) -> String? {
-        for (index, word) in words.enumerated() {
-            if names.contains(word) {
-                guard words.indices.contains(index + 1) else {
-                    return nil
-                }
-                let value = words[index + 1]
-                return value.isEmpty || value.hasPrefix("-") ? nil : value
-            }
-            for name in names where word.hasPrefix(name + "=") {
-                let value = String(word.dropFirst(name.count + 1))
-                return value.isEmpty ? nil : value
-            }
-        }
-        return nil
-    }
-
-    /// Whether this process is the Claude CLI itself.
-    ///
-    /// Internal rather than private: the scanner asks the same question of every process on
-    /// the machine, and two answers to "what is a Claude process" would drift apart.
-    static func isClaudeProcess(_ snapshot: ProcessSnapshot) -> Bool {
-        guard let executablePath = snapshot.executablePath else {
-            return false
-        }
-        let components = URL(fileURLWithPath: executablePath).pathComponents.map {
-            $0.lowercased()
-        }
-        guard components.count >= 3 else {
-            return false
-        }
-
-        let versionDirectoryIndex = components.count - 2
-        return components[versionDirectoryIndex] == "versions"
-            && components[versionDirectoryIndex - 1] == "claude"
-    }
-
-    /// Whether a process running the Claude executable is one of the agent's own helpers
-    /// rather than a session.
-    ///
-    /// Claude Code runs several long-lived processes from the same executable — measured on
-    /// this machine: `claude daemon run …`, `claude bg-pty-host …` and `claude bg-spare …`.
-    /// They are indistinguishable from a session by executable path, and each one became a
-    /// row nobody could focus and nothing could ever name: a helper sends no hooks, and it
-    /// has no terminal window to bring forward.
-    ///
-    /// The list is what was observed rather than every subcommand Claude Code has. The rule
-    /// only ever removes a row, so a helper it does not know yet is today's behaviour and
-    /// nothing worse.
-    ///
-    /// `attach` is on the list for a reason of its own: not a helper of the agent's but a
-    /// viewer of a person's. It shows a background session in the terminal it is typed into,
-    /// and that session has a row already — the background one, and a click on that row is
-    /// what opens the viewer to begin with (`BackgroundSessionAttach`). A row for the viewer
-    /// too would be nameless, would never hear a hook of its own, and would stand beside the
-    /// row it duplicates.
-    ///
-    /// Asked of a process's arguments and nothing else, so the whole rule can be exercised
-    /// without a machine that happens to be running one.
-    static func isHelperCommand(_ arguments: [String]) -> Bool {
-        guard let subcommand = commandWords(arguments).first else {
-            return false
-        }
-        // `claude bg-pty-host …` in one build, `claude --bg-pty-host …` in the next — the same
-        // helper, named as a word or as a flag. Measured on 2.1.269 and 2.1.270 side by side.
-        // One `--` and no more: everything else a word can start with is somebody else's.
-        let name = subcommand.hasPrefix("--") ? String(subcommand.dropFirst(2)) : subcommand
-        return helperCommands.contains(name)
-    }
-
-    /// Whether these are the arguments of a process running the agent's own program, asked of
-    /// the name it was started under — for the helpers `isClaudeProcess` does not recognise,
-    /// which know themselves by a path ending in `claude` (the pty host runs from
-    /// `ClaudeCode.app`, not from `versions/`, measured on 2.1.269) or by the name a renamed
-    /// process gives itself, `claude <something>`.
-    private static func isTheAgentsExecutable(_ arguments: [String]) -> Bool {
-        guard let program = arguments.first else {
-            return false
-        }
-        return program == "claude" || program.hasSuffix("/claude") || program.hasPrefix("claude ")
-    }
-
-    /// The words a process was started with, after the program itself.
-    ///
-    /// A helper renames itself: `claude bg-pty-host` arrives as one argument, with the job
-    /// written into the name. A subcommand typed by a person is the next argument instead, so
-    /// both shapes are read as the same list of words. Two rules ask it — whether a process is
-    /// one of the agent's helpers, and whether a viewer of one particular job is running — and
-    /// one reading keeps them from drifting apart.
-    static func commandWords(_ arguments: [String]) -> [String] {
-        guard let program = arguments.first else {
-            return []
-        }
-        // A program named by its path carries no words in the first argument, whatever spaces
-        // the path has in it; only a renamed process does, and it renames itself to a bare name.
-        let renamedWords = program.contains("/") ? [] : program.split(separator: " ").dropFirst().map(String.init)
-        return renamedWords + arguments.dropFirst()
-    }
-
-    private static let helperCommands: Set<String> = ["daemon", "bg-pty-host", "bg-spare", "attach"]
-
-    private static func isCodexDesktopProcess(_ snapshot: ProcessSnapshot) -> Bool {
-        guard let executablePath = snapshot.executablePath?.lowercased() else {
-            return false
-        }
-        return executablePath.hasPrefix("/applications/chatgpt.app/")
-            || executablePath.hasPrefix("/applications/codex.app/")
-    }
-
-    private static func isCodexCLIProcess(_ snapshot: ProcessSnapshot) -> Bool {
-        guard let executablePath = snapshot.executablePath?.lowercased() else {
-            return false
-        }
-        let components = URL(fileURLWithPath: executablePath).pathComponents.map { $0.lowercased() }
-        return snapshot.executableName.lowercased() == "codex"
-            && !components.contains("chatgpt.app")
-            && !components.contains("codex.app")
-    }
-
-    private static func ancestorSnapshots(startingAt first: Int32 = getppid()) -> [ProcessSnapshot] {
+    /// A process and its ancestors, nearest first, as far up as the kernel names them.
+    static func ancestorSnapshots(startingAt first: Int32 = getppid()) -> [ProcessSnapshot] {
         var result: [ProcessSnapshot] = []
         var processID = first
 
@@ -261,16 +93,11 @@ public enum AgentProcessLocator {
             guard processID > 1 else {
                 break
             }
-            guard let executablePath = executablePath(for: processID) else {
+            guard let snapshot = snapshot(of: processID) else {
                 break
             }
 
-            result.append(
-                ProcessSnapshot(
-                    processID: processID,
-                    executableName: URL(fileURLWithPath: executablePath).lastPathComponent,
-                    executablePath: executablePath
-                ))
+            result.append(snapshot)
             guard let parentProcessID = parentProcessID(of: processID), parentProcessID != processID else {
                 break
             }
@@ -430,7 +257,7 @@ public enum AgentProcessLocator {
 
     /// The words a process was started with, or `nil` when the kernel will not say.
     ///
-    /// The executable path cannot answer what `isHelperCommand` asks: every Claude process
+    /// The executable path cannot answer what `ClaudeProcessRules.isHelperCommand` asks: every Claude process
     /// on the machine runs the same binary, and only the arguments say whether this one is a
     /// session or one of the agent's own helpers.
     ///

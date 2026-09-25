@@ -15,7 +15,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ProcessSnapshot(processID: 200, executableName: "goland"),
         ]
 
-        XCTAssertEqual(AgentProcessLocator.findClaudeProcessID(in: ancestors), 400)
+        XCTAssertEqual(ClaudeProcessRules().agentProcessID(among: ancestors), 400)
     }
 
     func testDoesNotTreatAnUnrelatedAncestorAsClaude() {
@@ -25,7 +25,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ProcessSnapshot(processID: 200, executableName: "goland"),
         ]
 
-        XCTAssertNil(AgentProcessLocator.findClaudeProcessID(in: ancestors))
+        XCTAssertNil(ClaudeProcessRules().agentProcessID(among: ancestors))
     }
 
     func testDoesNotTrustAnAncestorNamedClaudeWithoutAnInstallationPath() {
@@ -33,7 +33,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ProcessSnapshot(processID: 400, executableName: "claude")
         ]
 
-        XCTAssertNil(AgentProcessLocator.findClaudeProcessID(in: ancestors))
+        XCTAssertNil(ClaudeProcessRules().agentProcessID(among: ancestors))
     }
 
     func testFindsVersionedClaudeExecutableFromItsInstallationLayout() {
@@ -47,7 +47,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ProcessSnapshot(processID: 300, executableName: "zsh"),
         ]
 
-        XCTAssertEqual(AgentProcessLocator.findClaudeProcessID(in: ancestors), 400)
+        XCTAssertEqual(ClaudeProcessRules().agentProcessID(among: ancestors), 400)
     }
 
     func testDoesNotTreatAnArbitraryVersionedExecutableAsClaude() {
@@ -59,7 +59,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             )
         ]
 
-        XCTAssertNil(AgentProcessLocator.findClaudeProcessID(in: ancestors))
+        XCTAssertNil(ClaudeProcessRules().agentProcessID(among: ancestors))
     }
 
     func testClassifiesClaudeHookAsCLIWithoutSendingItsHostPath() {
@@ -130,18 +130,18 @@ final class AgentProcessLocatorTests: XCTestCase {
     /// window to focus and no hook ever coming.
     func testTheAgentsOwnHelpersAreNotSessions() {
         XCTAssertTrue(
-            AgentProcessLocator.isHelperCommand([
+            ClaudeProcessRules.isHelperCommand([
                 "/private/opaque/.local/bin/claude", "daemon", "run", "--origin", "transient",
             ])
         )
         XCTAssertTrue(
-            AgentProcessLocator.isHelperCommand([
+            ClaudeProcessRules.isHelperCommand([
                 "claude bg-pty-host", "--bg-pty-host", "/private/opaque/spare.pty.sock", "200", "50",
             ]),
             "a helper renames itself, so its job is written into the first argument rather than the second"
         )
         XCTAssertTrue(
-            AgentProcessLocator.isHelperCommand(["claude bg-spare", "--bg-spare", "/private/opaque/claim.sock"])
+            ClaudeProcessRules.isHelperCommand(["claude bg-spare", "--bg-spare", "/private/opaque/claim.sock"])
         )
     }
 
@@ -153,33 +153,33 @@ final class AgentProcessLocatorTests: XCTestCase {
     /// background row is what finds that window. Measured: the kernel hands the words back
     /// one by one.
     func testAViewerAttachedToABackgroundSessionIsNotASecondSession() {
-        XCTAssertTrue(AgentProcessLocator.isHelperCommand(["claude", "attach", "3345bfdf"]))
-        XCTAssertTrue(AgentProcessLocator.isHelperCommand(["claude attach 3345bfdf"]))
+        XCTAssertTrue(ClaudeProcessRules.isHelperCommand(["claude", "attach", "3345bfdf"]))
+        XCTAssertTrue(ClaudeProcessRules.isHelperCommand(["claude attach 3345bfdf"]))
     }
 
     /// One reading for both shapes the kernel reports — the words after the program, whether
     /// the program renamed itself into them or not — because two rules ask it: whether a
     /// process is a helper, and whether a viewer of one particular session is running.
     func testTheWordsAfterTheProgramAreReadTheSameWayInBothShapes() {
-        XCTAssertEqual(AgentProcessLocator.commandWords(["claude", "attach", "3345bfdf"]), ["attach", "3345bfdf"])
-        XCTAssertEqual(AgentProcessLocator.commandWords(["claude attach 3345bfdf"]), ["attach", "3345bfdf"])
-        XCTAssertEqual(AgentProcessLocator.commandWords(["/private/opaque/.local/bin/claude"]), [])
-        XCTAssertEqual(AgentProcessLocator.commandWords([]), [])
+        XCTAssertEqual(ClaudeProcessRules.commandWords(["claude", "attach", "3345bfdf"]), ["attach", "3345bfdf"])
+        XCTAssertEqual(ClaudeProcessRules.commandWords(["claude attach 3345bfdf"]), ["attach", "3345bfdf"])
+        XCTAssertEqual(ClaudeProcessRules.commandWords(["/private/opaque/.local/bin/claude"]), [])
+        XCTAssertEqual(ClaudeProcessRules.commandWords([]), [])
         XCTAssertEqual(
-            AgentProcessLocator.commandWords(["/Volumes/My Disk/.local/bin/claude", "daemon", "run"]),
+            ClaudeProcessRules.commandWords(["/Volumes/My Disk/.local/bin/claude", "daemon", "run"]),
             ["daemon", "run"],
             "a path is one word however many spaces it has; only a renamed process carries words in the program's place"
         )
     }
 
     func testASessionIsNotMistakenForAHelper() {
-        XCTAssertFalse(AgentProcessLocator.isHelperCommand(["claude"]))
-        XCTAssertFalse(AgentProcessLocator.isHelperCommand(["claude", "--resume"]))
+        XCTAssertFalse(ClaudeProcessRules.isHelperCommand(["claude"]))
+        XCTAssertFalse(ClaudeProcessRules.isHelperCommand(["claude", "--resume"]))
         XCTAssertFalse(
-            AgentProcessLocator.isHelperCommand(["claude", "daemon of the lamp, explain yourself"]),
+            ClaudeProcessRules.isHelperCommand(["claude", "daemon of the lamp, explain yourself"]),
             "a prompt is one argument, and the word it starts with is not a subcommand"
         )
-        XCTAssertFalse(AgentProcessLocator.isHelperCommand([]))
+        XCTAssertFalse(ClaudeProcessRules.isHelperCommand([]))
     }
 
     /// A session sent to the background with `/bg` keeps running in a fresh `claude` started
@@ -246,11 +246,11 @@ final class AgentProcessLocatorTests: XCTestCase {
             "--permission-mode", "auto",
         ]
         XCTAssertEqual(
-            AgentProcessLocator.forkedFromSessionID(arguments: launchedByClaude, forSessionID: "b95a16c1-0000"),
+            ClaudeProcessRules().forkedFromSessionID(arguments: launchedByClaude, forSessionID: "b95a16c1-0000"),
             "ab007d7a-9ae2-4888-8b57-2920b3cc1bb9"
         )
         XCTAssertNil(
-            AgentProcessLocator.forkedFromSessionID(arguments: launchedByClaude, forSessionID: "stub-0000"),
+            ClaudeProcessRules().forkedFromSessionID(arguments: launchedByClaude, forSessionID: "stub-0000"),
             "the two-second session the resume leaves behind continues nothing"
         )
         // Every spelling of `--resume` Claude Code passes, read the same way.
@@ -260,7 +260,7 @@ final class AgentProcessLocatorTests: XCTestCase {
             ["--session-id", "b95a16c1-0000", "--fork-session", "--resume=ab007d7a-9ae2-4888-8b57-2920b3cc1bb9"],
         ] {
             XCTAssertEqual(
-                AgentProcessLocator.forkedFromSessionID(
+                ClaudeProcessRules().forkedFromSessionID(
                     arguments: ["claude"] + spelling, forSessionID: "b95a16c1-0000"),
                 "ab007d7a-9ae2-4888-8b57-2920b3cc1bb9",
                 "\(spelling)"
@@ -277,19 +277,19 @@ final class AgentProcessLocatorTests: XCTestCase {
             ["claude", "--fork-session", "--resume=ab007d7a-9ae2-4888-8b57-2920b3cc1bb9"],
         ] {
             XCTAssertNil(
-                AgentProcessLocator.forkedFromSessionID(arguments: typed, forSessionID: "any"),
+                ClaudeProcessRules().forkedFromSessionID(arguments: typed, forSessionID: "any"),
                 "\(typed)"
             )
         }
         // A plain resume keeps its identifier, so there is nothing to continue from.
         XCTAssertNil(
-            AgentProcessLocator.forkedFromSessionID(
+            ClaudeProcessRules().forkedFromSessionID(
                 arguments: ["claude", "--resume", "/private/opaque/projects/x/ab007d7a-0000.jsonl"], forSessionID: "any"
             )
         )
         // A fork with nothing to fork from, and a resume that names nothing, say nothing.
         for empty in [["claude", "--fork-session"], ["claude", "--fork-session", "--resume"], ["claude"]] {
-            XCTAssertNil(AgentProcessLocator.forkedFromSessionID(arguments: empty, forSessionID: "any"), "\(empty)")
+            XCTAssertNil(ClaudeProcessRules().forkedFromSessionID(arguments: empty, forSessionID: "any"), "\(empty)")
         }
     }
 
