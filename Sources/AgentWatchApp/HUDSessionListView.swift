@@ -84,6 +84,7 @@ class HUDSessionListView: NSView {
         self.overflowBadgeAbove = HUDOverflowBadge(background: background, style: style)
         self.overflowBadgeBelow = HUDOverflowBadge(background: background, style: style)
         super.init(frame: .zero)
+        appearance = background.controlAppearance
         buildContent()
     }
 

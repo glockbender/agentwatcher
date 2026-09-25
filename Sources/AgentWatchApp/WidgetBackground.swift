@@ -71,6 +71,13 @@ struct WidgetBackground: Hashable {
         isLight ? Self.darkText : NSColor(calibratedWhite: 1, alpha: 1)
     }
 
+    /// The appearance AppKit is to draw controls on this background in — the bezel of a row's
+    /// `×`, which takes the system's own colours rather than these. Left to inherit the Mac's,
+    /// a dark widget under the light appearance drew a near-black `×` on a dark bezel.
+    var controlAppearance: NSAppearance? {
+        NSAppearance(named: isLight ? .aqua : .darkAqua)
+    }
+
     private static let darkText = NSColor(calibratedRed: 0.10, green: 0.12, blue: 0.15, alpha: 1)
 
     /// Whether dark text stands out from this colour more than white does.
