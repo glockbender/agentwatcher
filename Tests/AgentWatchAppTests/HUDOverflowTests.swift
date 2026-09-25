@@ -380,14 +380,18 @@ final class HUDOverflowTests: XCTestCase {
             ] {
                 XCTAssertFalse(badge.isHidden, "at \(percent)% this size really does cut rows off")
                 let mark = try XCTUnwrap(dismissMarkInk(of: try XCTUnwrap(row), in: list))
-                let left = mark.height - badge.convert(badge.bounds, to: list).intersection(mark).height
+                let covering = badge.convert(badge.bounds, to: list)
+                let left = mark.height - covering.intersection(mark).height
+                // Where each one lies, so that a failure on another machine says why: this one
+                // failed only on CI, at a screen scale this machine does not have.
+                let geometry = "mark \(mark), badge \(covering), \(list.window?.backingScaleFactor ?? 0)x"
 
-                XCTAssertGreaterThan(left, 0, "at \(percent)% the mark is wholly covered")
+                XCTAssertGreaterThan(left, 0, "at \(percent)% the mark is wholly covered — \(geometry)")
                 if scale >= 1 {
                     XCTAssertGreaterThanOrEqual(
                         left,
                         mark.height / 2,
-                        "at \(percent)% half the mark has to stay in sight"
+                        "at \(percent)% half the mark has to stay in sight — \(geometry)"
                     )
                 }
             }

@@ -17,7 +17,6 @@ public enum UnixSocketIngressError: Error, Equatable, Sendable {
 
 public final class UnixSocketIngress: @unchecked Sendable {
     public static let maximumMessageByteCount = HookCaptureRedactor.maximumInputByteCount + 65_536
-    private static let readTimeoutMilliseconds: Int32 = 200
 
     /// Called once per connection, in the order the connections arrived.
     ///
@@ -29,6 +28,8 @@ public final class UnixSocketIngress: @unchecked Sendable {
 
     private let socketPath: String
     private let handler: Handler
+    /// How long one connection may take to deliver its message before it is abandoned.
+    private let readTimeoutMilliseconds: Int32
     private let stateLock = NSLock()
     private let acceptQueue = DispatchQueue(label: "AgentWatch.UnixSocketIngress.accept")
     /// Serial, and that is the point rather than an oversight.
@@ -67,8 +68,13 @@ public final class UnixSocketIngress: @unchecked Sendable {
         }
     }
 
-    public init(socketPath: String, handler: @escaping Handler) {
+    /// - Parameter readTimeoutMilliseconds: 200 in the app. A test that holds a connection
+    ///   open on purpose gives itself room here, so that a slow machine does not turn its
+    ///   pause into an abandoned connection — the CI machine did, and the ordering test failed
+    ///   with the first event missing.
+    public init(socketPath: String, readTimeoutMilliseconds: Int32 = 200, handler: @escaping Handler) {
         self.socketPath = socketPath
+        self.readTimeoutMilliseconds = readTimeoutMilliseconds
         self.handler = handler
     }
 
@@ -163,7 +169,7 @@ public final class UnixSocketIngress: @unchecked Sendable {
 
     private func readAndHandleConnection(_ descriptor: Int32) {
         do {
-            let request = try Self.readRequest(from: descriptor)
+            let request = try Self.readRequest(from: descriptor, timeoutMilliseconds: readTimeoutMilliseconds)
             handler(.success(request))
         } catch let error as UnixSocketIngressError {
             handler(.failure(error))
@@ -201,10 +207,10 @@ public final class UnixSocketIngress: @unchecked Sendable {
         }
     }
 
-    private static func readRequest(from descriptor: Int32) throws -> HookIngressRequest {
+    private static func readRequest(from descriptor: Int32, timeoutMilliseconds: Int32) throws -> HookIngressRequest {
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 8_192)
-        let deadline = PosixSocket.deadline(afterMilliseconds: readTimeoutMilliseconds)
+        let deadline = PosixSocket.deadline(afterMilliseconds: timeoutMilliseconds)
 
         while true {
             guard PosixSocket.waitForEvents(Int16(POLLIN), on: descriptor, until: deadline) != nil else {

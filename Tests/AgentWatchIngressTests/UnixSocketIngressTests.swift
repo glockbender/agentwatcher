@@ -543,7 +543,9 @@ final class UnixSocketIngressTests: XCTestCase {
         let results = IngressResults()
         let received = expectation(description: "both events")
         received.expectedFulfillmentCount = 2
-        let ingress = UnixSocketIngress(socketPath: socketPath) { result in
+        // The pause below is the point of the test and must never be what fails it: with the
+        // app's 200 ms the CI machine ran past the deadline and dropped the first event.
+        let ingress = UnixSocketIngress(socketPath: socketPath, readTimeoutMilliseconds: 5_000) { result in
             results.append(result)
             received.fulfill()
         }
@@ -562,8 +564,8 @@ final class UnixSocketIngressTests: XCTestCase {
         try writeBytes(second, to: secondDescriptor)
         _ = shutdown(secondDescriptor, SHUT_WR)
 
-        // Well inside the reader's own 200 ms deadline, so the first connection is slow
-        // rather than abandoned.
+        // Far inside the reader's deadline, so the first connection is slow rather than
+        // abandoned.
         Thread.sleep(forTimeInterval: 0.06)
         try writeBytes(first.suffix(1), to: firstDescriptor)
         _ = shutdown(firstDescriptor, SHUT_WR)
