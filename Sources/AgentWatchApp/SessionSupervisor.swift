@@ -31,6 +31,15 @@ final class SessionSupervisor {
     /// When a process started, asked of the system. Injected for the same reason, and used
     /// for one thing: half the identity of a pairing, since macOS reuses process numbers.
     private let agentProcessStartedAt: (Int32) -> Date?
+    /// Whether an agent still has the terminal it was started in, asked of the kernel.
+    /// Injected like the two above: the state it looks for — a terminal closed while its
+    /// agent stayed behind — is not one a test machine can be relied on to be in.
+    private let terminalState: (Int32) -> AgentProcessLocator.TerminalState?
+    /// The terminal device an agent holds on its own descriptors.
+    private let terminalDevicePath: (Int32) -> String?
+    /// Discards the output waiting in a terminal, which is what ends an agent that hangs
+    /// without one. Injected so a test never flushes a real terminal.
+    private let releaseTerminal: (String) -> Bool
     /// Which session each live agent process is, by process number.
     ///
     /// Written down the moment a hook tells the app both halves, kept across restarts, and
@@ -105,6 +114,9 @@ final class SessionSupervisor {
         now: @escaping () -> Date = { .now },
         liveAgentProcesses: @escaping () -> [DiscoveredAgentProcess] = AgentProcessScanner.liveAgentProcesses,
         agentProcessStartedAt: @escaping (Int32) -> Date? = AgentProcessLocator.startTime(of:),
+        terminalState: @escaping (Int32) -> AgentProcessLocator.TerminalState? = AgentProcessLocator.terminalState(of:),
+        terminalDevicePath: @escaping (Int32) -> String? = AgentProcessLocator.terminalDevicePath(of:),
+        releaseTerminal: @escaping (String) -> Bool = ClosedTerminal.discardUnreadOutput(devicePath:),
         onChange: @escaping ([SessionSnapshot], [AgentUsageLimits]) -> Void,
         onNotableEvent: @escaping (String) -> Void
     ) {
@@ -116,6 +128,9 @@ final class SessionSupervisor {
         self.now = now
         self.liveAgentProcesses = liveAgentProcesses
         self.agentProcessStartedAt = agentProcessStartedAt
+        self.terminalState = terminalState
+        self.terminalDevicePath = terminalDevicePath
+        self.releaseTerminal = releaseTerminal
         self.onChange = onChange
         self.onNotableEvent = onNotableEvent
     }
@@ -243,7 +258,12 @@ final class SessionSupervisor {
     }
 
     func reach(for snapshot: SessionSnapshot) -> SessionReach {
-        hostRegistry.reach(for: snapshot)
+        // Before the host: the process tree still leads to the IDE the terminal was in, and
+        // raising it would show a window with no tab left for this session.
+        guard snapshot.phase != .terminalClosed else {
+            return .closedTerminal(devicePath: snapshot.agentProcessID.flatMap(terminalDevicePath))
+        }
+        return hostRegistry.reach(for: snapshot)
     }
 
     /// A click that reached nothing is said out loud rather than swallowed.
@@ -253,6 +273,18 @@ final class SessionSupervisor {
     /// its own. The card said as much before the click; this is the record afterwards.
     @discardableResult
     func focus(_ snapshot: SessionSnapshot) -> Bool {
+        if snapshot.phase == .terminalClosed {
+            releaseAgent(of: snapshot)
+            return false
+        }
+        // Asked at the click as well as on a scan, because a click is exactly when a person
+        // wants the answer. Found now, the row is only marked: a click that ends a process
+        // has to have been announced by the card first, and this row's card did not say so.
+        if let marked = markTerminalClosed(snapshot) {
+            publish()
+            onNotableEvent(Self.terminalClosedNote(for: marked))
+            return false
+        }
         let outcome = hostRegistry.focus(snapshot)
         if !outcome.raised {
             // With the reason when there is one: a background session's click can fail on the
@@ -417,6 +449,47 @@ final class SessionSupervisor {
             : "\(label) · background session started; no row until it takes a turn"
     }
 
+    /// Marks the row when its agent's terminal is gone, and answers with it when that
+    /// changed anything. A terminal session only — the engine refuses the rest, and the
+    /// kernel is not asked about a row it would refuse.
+    private func markTerminalClosed(_ snapshot: SessionSnapshot) -> SessionSnapshot? {
+        guard
+            snapshot.clientKind == .cli,
+            snapshot.phase != .terminalClosed,
+            let agentProcessID = snapshot.agentProcessID,
+            terminalState(agentProcessID) == .lost
+        else {
+            return nil
+        }
+        return engine.markTerminalClosed(forSessionWithID: snapshot.id)
+    }
+
+    /// Ends the agent a closed terminal left behind by discarding the output it waits on.
+    ///
+    /// Everything is asked again first, because the scan that marked the row may be minutes
+    /// old: the agent may have gone since, and its terminal been handed to somebody's new
+    /// tab, whose output this must never throw away. The row is not touched here — the
+    /// agent's exit, a moment later, is reported by the watch on its process like any other.
+    private func releaseAgent(of snapshot: SessionSnapshot) {
+        guard let agentProcessID = snapshot.agentProcessID, terminalState(agentProcessID) == .lost else {
+            onNotableEvent(
+                "\(Self.label(snapshot)) · its agent no longer hangs without a terminal; nothing was discarded")
+            return
+        }
+        guard let devicePath = terminalDevicePath(agentProcessID) else {
+            onNotableEvent("\(Self.label(snapshot)) · no descriptor of its agent names a terminal; nothing to discard")
+            return
+        }
+        onNotableEvent(
+            releaseTerminal(devicePath)
+                ? "\(Self.label(snapshot)) · discarded the output its closed terminal held; the agent should exit now"
+                : "\(Self.label(snapshot)) · could not discard the output in \(devicePath)")
+    }
+
+    private static func terminalClosedNote(for snapshot: SessionSnapshot) -> String {
+        "\(label(snapshot)) · terminal closed; its agent hangs without it, and a click ends it"
+    }
+
     private static func viewerGoneNote(for snapshot: SessionSnapshot) -> String {
         "\(label(snapshot)) · its terminal is gone; a click now opens it with `claude attach`"
     }
@@ -532,10 +605,18 @@ final class SessionSupervisor {
         let change = engine.reconcileDiscoveredProcesses(
             live.filter { !dismissedRowIDs.contains($0.snapshotID) }
         )
+        // Every row, not only the ones this scan built: a session that spoke is the commoner
+        // case, and until a restart the reported one was exactly that. After the reconcile,
+        // so a row built a moment ago is asked too. Here because nothing announces a closed
+        // terminal — the agent does not exit, so no exit watch fires — and the triggers this
+        // scan already has are the ones allowed.
+        let markedTerminalClosed = engine.snapshots.values
+            .sorted { $0.arrivalIndex < $1.arrivalIndex }
+            .compactMap(markTerminalClosed)
         // A forgotten pairing is a change with no row to show for it, and it still has to
         // reach the file: publishing is the only thing that writes, and skipping it would
         // leave the list growing on disk for as long as the app kept running.
-        if !change.isEmpty || sessionsByAgentProcess != pairingsBefore {
+        if !change.isEmpty || !markedTerminalClosed.isEmpty || sessionsByAgentProcess != pairingsBefore {
             for id in change.removedIDs {
                 hostRegistry.forgetSession(id: id)
                 // Said out loud, like the arrival above. A row that leaves silently is the
@@ -549,6 +630,10 @@ final class SessionSupervisor {
                 // until somebody dismissed it.
                 hostRegistry.associate(snapshot)
                 onNotableEvent("\(Self.label(snapshot)) · agent running, nothing heard from it")
+            }
+            // After the arrivals, so a row found and marked by one scan reads in that order.
+            for snapshot in markedTerminalClosed {
+                onNotableEvent(Self.terminalClosedNote(for: snapshot))
             }
             publish()
         }

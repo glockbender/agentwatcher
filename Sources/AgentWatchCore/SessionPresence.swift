@@ -56,13 +56,17 @@ public enum SessionPresence {
     /// it does not, and a person should not have to wait half an hour to clear a row that has
     /// already announced it may be wrong.
     ///
+    /// A closed terminal is the fifth, and needs no threshold: its agent is hung on the way
+    /// out and cannot speak again, which the app has read off the process rather than
+    /// inferred from a silence.
+    ///
     /// Everything else splits by whether the session has finished. A row that has — completed
     /// or failed — is offered its button greyed, because the question "why can I not close
     /// this?" is asked exactly there. Anything still live is offered nothing, `idle`
     /// included: resting between turns is a session waiting for its person to type, and a
     /// button on a session that started a moment ago is a control nobody was looking for.
     public static func dismissal(of snapshot: SessionSnapshot, now: Date) -> RowDismissal {
-        if snapshot.phase == .sessionClosed || snapshot.phase == .disconnected {
+        if snapshot.phase == .sessionClosed || snapshot.phase == .disconnected || snapshot.phase == .terminalClosed {
             return .now
         }
         if snapshot.monitoringFault != nil {

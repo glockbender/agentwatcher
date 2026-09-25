@@ -16,6 +16,7 @@ final class SessionAttentionTests: XCTestCase {
         let expected: [SessionPhase: SessionAttention] = [
             .waitingForUser: .needsPerson,
             .failed: .needsPerson,
+            .terminalClosed: .needsPerson,
             .planning: .working,
             .executing: .working,
             .waitingForChildren: .working,

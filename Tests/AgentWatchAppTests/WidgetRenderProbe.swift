@@ -100,6 +100,16 @@ final class WidgetRenderProbe: XCTestCase {
             named: "card-background-work",
             in: directory
         )
+        // The card for a session whose terminal was closed: the one click in the widget that
+        // ends something, said before it is done, and the command that does it by hand — long
+        // enough that how it wraps is the question.
+        // Through the reducer, as the app marks it: what was running goes with the terminal.
+        let abandoned = SessionReducer.reduce(sessions()[0], event: .terminalClosed)
+        try draw(
+            hoverCard(for: abandoned, reach: .closedTerminal(devicePath: "/dev/ttys012")),
+            named: "card-terminal-closed",
+            in: directory
+        )
         try draw(dismissStates(style: WidgetStyle(scale: 0.5)), named: "dismiss-50", in: directory)
         try draw(emptyState(complaint: nil), named: "empty", in: directory)
         try draw(
@@ -544,13 +554,14 @@ final class WidgetRenderProbe: XCTestCase {
     /// looking at — a mock-up of a card would only prove the mock-up looks right.
     private func hoverCard(
         for snapshot: SessionSnapshot? = nil,
+        reach: SessionReach = .anApplication,
         style: WidgetStyle = .standard
     ) -> NSView {
         let text = hoverCardText(
             for: snapshot ?? sessions()[0],
             now: now,
             layout: .standard,
-            reach: .anApplication
+            reach: reach
         )
         let label = NSTextField(labelWithString: text)
         label.font = style.secondaryFont

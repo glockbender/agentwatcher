@@ -487,6 +487,26 @@ public struct SessionStateEngine: Sendable {
         snapshots.values.first { $0.source == source && $0.continuedBy?.contains(sessionLabel) == true }
     }
 
+    /// Marks a terminal session whose terminal was closed while its agent stayed behind, and
+    /// answers with the row when that changed it.
+    ///
+    /// Told rather than found, like the viewer below: whether a process still has its
+    /// terminal is the kernel's to say, and the application asks. Only a `cli` row can lose
+    /// one — a background session runs in the agent's own pty, a desktop one in an
+    /// application — and a closed row is left alone.
+    ///
+    /// What the mark clears is `SessionReducer`'s to say, like every other way out of a
+    /// working phase.
+    @discardableResult
+    public mutating func markTerminalClosed(forSessionWithID id: String) -> SessionSnapshot? {
+        guard let snapshot = liveRow(id), snapshot.clientKind == .cli, snapshot.phase != .terminalClosed else {
+            return nil
+        }
+        let marked = SessionReducer.reduce(snapshot, event: .terminalClosed)
+        snapshots[id] = marked
+        return marked
+    }
+
     /// Records which terminal process shows this session, or that none does.
     ///
     /// Told rather than found: which process is attached to a background job is Claude

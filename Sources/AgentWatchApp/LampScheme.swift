@@ -37,6 +37,11 @@ extension SessionPhase {
             LampStyle(color: NSColor(sRGB: "#CED4D0"), motion: .steady)
         case .failed:
             LampStyle(color: NSColor(sRGB: "#FF453A"), motion: .urgent)
+        case .terminalClosed:
+            // The failure's red, still. It is a failure a person has to deal with, but nothing
+            // is lost by waiting, and a row like this can stand for days — blinking all that
+            // time would be a nag, not news.
+            LampStyle(color: NSColor(sRGB: "#FF453A"), motion: .steady)
         case .disconnected:
             LampStyle(color: NSColor(sRGB: "#BB7F7C"), motion: .pulse)
         case .sessionClosed:

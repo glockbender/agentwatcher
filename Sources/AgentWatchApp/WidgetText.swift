@@ -423,9 +423,13 @@ func dismissHint(_ dismissal: RowDismissal, now: Date) -> String? {
 /// both repeated what the card already carried — the project has a line of its own, and the
 /// session's name is the card's first line.
 ///
-/// What is left are the two cases where a click does something else: there is nothing to
-/// raise, or there is no window at all and the click opens a terminal tab instead.
+/// What is left are the cases where a click does something else: there is nothing to
+/// raise, there is no window at all and the click opens a terminal tab instead, or the
+/// terminal was closed and the click ends the agent it left behind.
 func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
+    if case let .closedTerminal(devicePath) = reach {
+        return closedTerminalHint(devicePath: devicePath)
+    }
     // Nobody asked where the session is, or an application holds it — and an application that
     // can be brought forward is the ordinary case, which says nothing.
     guard reach == .nowhere else {
@@ -438,6 +442,23 @@ func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
     return runsWithoutAWindow
         ? "Click opens it in a new Ghostty tab with `claude attach` — a background session has no window of its own"
         : "No window to bring forward"
+}
+
+/// What a click on a row whose terminal was closed does, said before it is done — the one
+/// click in the widget that ends something.
+///
+/// The command is on the card because the card cannot be selected: it takes no mouse events,
+/// so a command a person wants to run somewhere else has to be readable, not copyable.
+func closedTerminalHint(devicePath: String?) -> String {
+    guard let devicePath else {
+        return "Nothing here can end it: none of the agent's descriptors names its terminal"
+    }
+    return """
+        Click ends it: the agent is waiting for its closed terminal to take its last output, \
+        and discarding that output lets it exit.
+        By hand:
+        \(ClosedTerminal.releaseCommand(devicePath: devicePath))
+        """
 }
 
 /// Whose thread a row is, when it is not a person's.
@@ -525,6 +546,7 @@ extension SessionPhase {
         case .waitingForUser: "Waiting for you"
         case .completed: "Completed"
         case .failed: "Failed"
+        case .terminalClosed: "Terminal closed"
         case .disconnected: "No signal"
         case .sessionClosed: "Session closed"
         }
@@ -547,6 +569,11 @@ extension SessionPhase {
             "The last turn finished, and the session is waiting for what you say next."
         case .failed:
             "A tool or the agent itself ended with an error."
+        case .terminalClosed:
+            """
+            The terminal the session ran in was closed, and the agent did not exit: it hangs \
+            waiting for the terminal to take its last output. A click on the row ends it.
+            """
         case .disconnected:
             """
             Nothing has arrived for a long time and nothing can confirm what the session is \

@@ -48,6 +48,11 @@ public enum SessionEvent: Equatable, Sendable {
     /// A person stopped the turn. Distinct from `turnCompleted` because nothing completed.
     case turnInterrupted(at: Date)
     case failed(at: Date)
+    /// The session's terminal was closed and its agent stayed behind, hung on its way out.
+    ///
+    /// No date, unlike every case beside it: this is the app's finding about the process, not
+    /// something the session did, and the row's age keeps saying how long it has been silent.
+    case terminalClosed
     case disconnected(at: Date)
     case sessionClosed(at: Date)
 }
@@ -261,6 +266,15 @@ public enum SessionReducer {
             next.phase = .disconnected
             next.clearAwaited()
             next.lastObservedAt = observedAt
+
+        case .terminalClosed:
+            // What was running went with the terminal, exactly as when a session closes: the
+            // dialogs were on the screen that is gone, and the calls belong to an agent that
+            // can no longer do anything but finish exiting.
+            next.phase = .terminalClosed
+            next.clearAwaited()
+            next.activities = []
+            next.backgroundWork = nil
 
         case let .sessionClosed(observedAt):
             next.phase = .sessionClosed

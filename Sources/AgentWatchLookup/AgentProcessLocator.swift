@@ -316,6 +316,74 @@ public enum AgentProcessLocator {
         kernelRecord(of: processID)?.kp_eproc.e_ppid
     }
 
+    /// What became of the terminal a process was started in.
+    public enum TerminalState: Equatable, Sendable {
+        /// The process still has its controlling terminal.
+        case attached
+        /// It had one, and the terminal went away while the process stayed.
+        ///
+        /// Measured on Claude Code 2.1.270 and 2.1.280 in a JetBrains terminal tab: after the
+        /// tab was closed the IDE still held the pty open, the agent's shutdown waited in
+        /// `tcsetattr` for output nothing drained, and neither `SIGTERM` nor `SIGKILL` got it
+        /// past that wait. `docs/agent-integration.md` has the reproduction.
+        case lost
+        /// It never had one — an application, or a child given a pty only for its output.
+        case neverHad
+    }
+
+    /// Whether a process still has the terminal it was started in, or `nil` when there is
+    /// no such process.
+    public static func terminalState(of processID: Int32) -> TerminalState? {
+        guard let process = kernelRecord(of: processID) else {
+            return nil
+        }
+        return terminalState(
+            controlsATerminal: process.kp_proc.p_flag & P_CONTROLT != 0,
+            terminalDevice: process.kp_eproc.e_tdev
+        )
+    }
+
+    /// The same answer from the two fields it is read from, so the rule can be checked
+    /// against the values measured without a process that happens to be in that state.
+    ///
+    /// Both fields, because neither says it alone. The kernel clears the device when the
+    /// terminal's session ends but leaves the flag, which is set only on a process that once
+    /// had a controlling terminal — so a missing device on its own is every application.
+    static func terminalState(controlsATerminal: Bool, terminalDevice: dev_t) -> TerminalState {
+        guard controlsATerminal else {
+            return .neverHad
+        }
+        return terminalDevice == noDevice ? .lost : .attached
+    }
+
+    /// `NODEV` from `<sys/param.h>`, which Swift does not import: the macro is a cast.
+    private static let noDevice: dev_t = -1
+
+    /// The terminal device a process reads and writes through, from its own standard
+    /// descriptors, or `nil` when none of them is one.
+    ///
+    /// Not the kernel's record of the controlling terminal: for the one case this is asked
+    /// about — a terminal that was lost — that record is exactly what has been cleared,
+    /// while the descriptors still hold the device open.
+    public static func terminalDevicePath(of processID: Int32) -> String? {
+        for descriptor: Int32 in 0...2 {
+            var info = vnode_fdinfowithpath()
+            let size = Int32(MemoryLayout<vnode_fdinfowithpath>.size)
+            guard proc_pidfdinfo(processID, descriptor, PROC_PIDFDVNODEPATHINFO, &info, size) == size else {
+                continue
+            }
+            let path = withUnsafePointer(to: &info.pvip.vip_path) {
+                $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) {
+                    String(cString: $0)
+                }
+            }
+            if path.hasPrefix("/dev/tty") {
+                return path
+            }
+        }
+        return nil
+    }
+
     /// The kernel's record of a process, or `nil` when there is no such process.
     ///
     /// One call answers both questions, which is why it is one call. A PID nobody holds makes

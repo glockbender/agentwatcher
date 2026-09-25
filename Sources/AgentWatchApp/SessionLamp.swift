@@ -61,7 +61,9 @@ enum SessionLamp {
         let isFilled =
             switch snapshot.phase {
             case .disconnected, .sessionClosed: false
-            case .idle, .planning, .executing, .waitingForChildren, .waitingForUser, .completed, .failed: true
+            case .idle, .planning, .executing, .waitingForChildren, .waitingForUser, .completed, .failed,
+                .terminalClosed:
+                true
             }
         let name =
             switch snapshot.phase {
@@ -72,6 +74,7 @@ enum SessionLamp {
             case .waitingForUser: snapshot.userInputRequestKind == .selection ? "choice needed" : "approval needed"
             case .completed: "completed"
             case .failed: "failed"
+            case .terminalClosed: "terminal closed"
             case .disconnected: "no signal"
             case .sessionClosed: "session closed"
             }
