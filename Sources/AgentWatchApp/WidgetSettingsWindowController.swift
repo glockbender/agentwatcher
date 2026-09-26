@@ -306,9 +306,15 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         orderTab.setShown(false)
     }
 
-    /// The `Order` tab's list plays only while that tab is the one on top.
+    /// The `Order` tab's list plays only while that tab is the one on top — and is drawn again
+    /// each time it comes back, because the row, the background and the lamp it is drawn in are
+    /// changed on the other tabs, where it cannot be seen going stale.
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
-        orderTab.setShown(window?.isVisible == true && tabViewItem?.label == "Order")
+        let isOrder = tabViewItem?.label == "Order"
+        if isOrder {
+            orderTab.showCurrentValues()
+        }
+        orderTab.setShown(window?.isVisible == true && isOrder)
     }
 
     /// And leaving for another application, which is neither of the above: the window stays

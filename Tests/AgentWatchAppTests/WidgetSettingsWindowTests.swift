@@ -643,6 +643,22 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertEqual(tabs.selectedTabViewItem?.label, "Order")
     }
 
+    /// The list is drawn in the widget's look, and the look is changed on the other tabs. So
+    /// coming back to `Order` shows it as it now is, not as it was when the window opened.
+    func testTheOrderListIsDrawnAgainWhenItsTabComesBack() throws {
+        let (controller, _, backgroundStore, _) = try makeWindow()
+        controller.showWindow(nil)
+        addTeardownBlock { controller.close() }
+        try show(tab: "Order", of: controller)
+        let chosen: WidgetBackground = backgroundStore.selected == .pearl ? .slate : .pearl
+
+        try show(tab: "Other", of: controller)
+        backgroundStore.select(chosen)
+        try show(tab: "Order", of: controller)
+
+        XCTAssertEqual(controller.orderTab.preview.layer?.backgroundColor, chosen.color.cgColor)
+    }
+
     /// For the tests that are about the shortcut itself rather than about the window: the window
     /// does not hand its collaborators back, and it should not have to grow a way to just for a
     /// test.
