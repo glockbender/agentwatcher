@@ -297,6 +297,12 @@ public enum SessionReducer {
             next.monitoringFault = nil
         }
 
+        // Here for the reason just given: every way into a phase of a turn runs through this
+        // function. Only ever set — a session that has worked stays one that has.
+        if next.phase.meansTheSessionHasWorked {
+            next.workedOnce = true
+        }
+
         return next
     }
 

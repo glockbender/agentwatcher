@@ -39,6 +39,11 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// Where the widget reads the time. One place, so a test can move it: a row gains its `×`
     /// by the clock alone, and only a clock the test holds can stage that crossing.
     var clock: () -> Date = { .now }
+    /// How the rows are ordered, at a moment. The arrival order unless the app hands over the
+    /// one it shares with the menu; a test that is not about order keeps the default.
+    var order: ([SessionSnapshot], Date) -> [SessionSnapshot] = { sessions, _ in orderedForDisplay(sessions) }
+    /// The sessions on screen, top to bottom, as last laid out.
+    private(set) var shownOrder: [String] = []
 
     init(
         reach: @escaping (SessionSnapshot) -> SessionReach,
@@ -84,6 +89,11 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 return
             }
             apply(hover.pointerLeftWidget())
+            // The order held while the pointer was here gives way to the real one now, and
+            // not at the next event, which may be minutes away.
+            if let panel = window as? HUDPanel, !state.sessions.isEmpty {
+                showRows(in: panel)
+            }
         }
         container.onResizeBegan = { [weak self] in
             self?.isUserResizing = true
@@ -297,7 +307,14 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         // One moment for the models and for the rows built from them: two readings of the
         // clock would let a row's age disagree with the thresholds decided beside it.
         let moment = now ?? clock()
-        let models = orderedForDisplay(state.sessions).map { snapshot in
+        // Held while the pointer is over the widget: a row that moved then would move out from
+        // under the pointer, onto the next row's click. The real order waits for the pointer
+        // to leave.
+        let ordered = order(state.sessions, moment)
+        let shown =
+            container.isPointerInside ? SessionOrdering.holdingPlaces(of: shownOrder, in: ordered) : ordered
+        shownOrder = shown.map(\.id)
+        let models = shown.map { snapshot in
             HUDRowModel(snapshot: snapshot, now: moment, layout: rowLayouts.layout)
         }
 
@@ -406,6 +423,16 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// its own, so this is how a test sees it.
     var visibleHoverCardText: String? {
         hoverCard.isVisible ? hoverCard.text : nil
+    }
+
+    /// The pointer arriving over the widget, as its container reports it — for a test.
+    func pointerEnteredWidget() {
+        container.pointerEntered()
+    }
+
+    /// The pointer leaving the widget, as its container reports it — for a test.
+    func pointerLeftWidget() {
+        container.pointerLeft()
     }
 
     func currentRow(for sessionID: String) -> HUDSessionRowView? {

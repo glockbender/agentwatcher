@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     )
     private let history = SessionHistoryStore()
+    private lazy var orderBook = SessionOrderBook(settings: settings)
     private lazy var tooling: ToolingCoordinator = {
         let coordinator = ToolingCoordinator(installer: installer, heard: heard)
         coordinator.onLog = { [weak self] message in
@@ -75,24 +76,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.recordDebug(message)
         }
     )
-    private lazy var hudController: HUDPanelController = HUDPanelController(
-        reach: { [weak self] snapshot in
-            self?.supervisor.reach(for: snapshot) ?? .nowhere
-        },
-        focus: { [weak self] snapshot in
-            self?.supervisor.focus(snapshot)
-        },
-        remove: { [weak self] snapshot in
-            self?.supervisor.remove(snapshot)
-        },
-        background: backgroundStore.selected,
-        lampScheme: lampSchemes.scheme,
-        backgroundOpacity: backgroundStore.opacity,
-        style: WidgetStyle(scale: settings.scale),
-        frameStore: frameStore,
-        settings: settings,
-        rowLayouts: rowLayouts
-    )
+    private lazy var hudController: HUDPanelController = {
+        let controller = HUDPanelController(
+            reach: { [weak self] snapshot in
+                self?.supervisor.reach(for: snapshot) ?? .nowhere
+            },
+            focus: { [weak self] snapshot in
+                self?.supervisor.focus(snapshot)
+            },
+            remove: { [weak self] snapshot in
+                self?.supervisor.remove(snapshot)
+            },
+            background: backgroundStore.selected,
+            lampScheme: lampSchemes.scheme,
+            backgroundOpacity: backgroundStore.opacity,
+            style: WidgetStyle(scale: settings.scale),
+            frameStore: frameStore,
+            settings: settings,
+            rowLayouts: rowLayouts
+        )
+        // The order the menu shows too — see `SessionOrderBook`.
+        controller.order = { [orderBook] sessions, now in
+            orderBook.order(sessions, now: now)
+        }
+        return controller
+    }()
     private lazy var settingsWindow: WidgetSettingsWindowController = WidgetSettingsWindowController(
         backgroundStore: backgroundStore,
         lampSchemes: lampSchemes,
@@ -362,6 +370,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             applyShortcut()
         case .menuBarCounts:
             applyMenuBarIcon()
+        case .sessionOrder:
+            // A new order is a new set of rows, and the menu's lines follow it as well.
+            hudController.refreshSettings()
+            statusMenu?.refreshSessions()
         case .menuSessions:
             // The menu refreshes itself after its own choice; this is for a write from anywhere
             // else, which would otherwise show only on the next opening.
@@ -413,7 +425,7 @@ extension AppDelegate: StatusMenuHost {
     }
 
     var sessions: [SessionSnapshot] {
-        supervisor.sessions
+        orderBook.order(supervisor.sessions, now: .now)
     }
 
     func reach(for snapshot: SessionSnapshot) -> SessionReach {

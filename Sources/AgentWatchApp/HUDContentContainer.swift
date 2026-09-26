@@ -12,6 +12,8 @@ final class HUDContentContainer: NSView {
     private(set) var body: NSView?
     /// Called when the pointer leaves the widget altogether.
     var onPointerLeft: () -> Void = {}
+    /// Whether the pointer is over the widget, which is when its rows hold their places.
+    private(set) var isPointerInside = false
     private var exitTracking: NSTrackingArea?
 
     /// Passed through to the edge overlay, which performs the resize itself.
@@ -60,7 +62,21 @@ final class HUDContentContainer: NSView {
         exitTracking = area
     }
 
+    override func mouseEntered(with event: NSEvent) {
+        pointerEntered()
+    }
+
     override func mouseExited(with event: NSEvent) {
+        pointerLeft()
+    }
+
+    /// The entry and the exit, apart from their events, so a test can stage them.
+    func pointerEntered() {
+        isPointerInside = true
+    }
+
+    func pointerLeft() {
+        isPointerInside = false
         // The edge highlight goes out here as well as on its own exit. A pointer that leaves
         // the widget fast enough, or leaves while the zones are being re-cut, can skip the
         // strip's own exit; this one cannot be missed.

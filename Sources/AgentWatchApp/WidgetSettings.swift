@@ -35,6 +35,7 @@ enum WidgetSetting {
     case rowLayout
     case menuBarCounts
     case menuSessions
+    case sessionOrder
 }
 
 /// Widget preferences that are not about colour.
@@ -118,6 +119,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let showsMenuBarCounts = "showsMenuBarCounts"
         static let listsSessionsInMenu = "listsSessionsInMenu"
         static let menuSessionAttentions = "menuSessionAttentions"
+        static let sessionOrder = "sessionOrder"
+        static let sessionBlockOrder = "sessionBlockOrder"
     }
 
     /// Something waiting for the person, and something finished for them to look at: the two
@@ -137,6 +140,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.showsMenuBarCounts: .bool(true),
             Key.listsSessionsInMenu: .bool(true),
             Key.menuSessionAttentions: .array(Self.stored(Self.defaultMenuSessionAttentions).map(JSONValue.string)),
+            Key.sessionOrder: .string(SessionOrder.arrival.rawValue),
+            Key.sessionBlockOrder: .array(SessionBlock.defaultOrder.map { .string($0.rawValue) }),
         ]
     }
 
@@ -283,6 +288,28 @@ final class WidgetSettingsStore: PreferenceDefaults {
     /// In the order the icon reads them, so the file does not reorder itself with every click.
     private static func stored(_ attentions: Set<SessionAttention>) -> [String] {
         SessionAttention.counted.filter(attentions.contains).map(\.rawValue)
+    }
+
+    /// How the widget and the menu order their sessions. The order sessions arrived in until a
+    /// person picks another: it is the one where no row moves by itself.
+    var sessionOrder: SessionOrder {
+        preferences.string(forKey: Key.sessionOrder).flatMap(SessionOrder.init(rawValue:)) ?? .arrival
+    }
+
+    func setSessionOrder(_ order: SessionOrder) {
+        preferences.set(order.rawValue, forKey: Key.sessionOrder)
+        onChange?(.sessionOrder)
+    }
+
+    /// The blocks top to bottom, for `SessionOrder.blocks`: every block once, whatever the file
+    /// holds — see `SessionBlock.normalized`.
+    var sessionBlockOrder: [SessionBlock] {
+        SessionBlock.normalized(preferences.strings(forKey: Key.sessionBlockOrder) ?? [])
+    }
+
+    func setSessionBlockOrder(_ blocks: [SessionBlock]) {
+        preferences.set(SessionBlock.normalized(blocks.map(\.rawValue)).map(\.rawValue), forKey: Key.sessionBlockOrder)
+        onChange?(.sessionOrder)
     }
 
     func setToggleShortcut(_ shortcut: WidgetShortcut?) {

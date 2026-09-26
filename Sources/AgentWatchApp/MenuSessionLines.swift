@@ -11,11 +11,11 @@ struct MenuSessionLine: Equatable {
     let isEnabled: Bool
 }
 
-/// The sessions the menu lists, in the widget's order, and what each line says.
+/// The sessions the menu lists, and what each line says, in the order they are handed over.
 ///
-/// The widget's order rather than one of the menu's own: a person who knows where a row sits
-/// in the widget finds its line in the same place. A closed session is never listed, whatever
-/// the setting names (ADR-0002).
+/// The caller hands them in the widget's order, from the one `SessionOrderBook` both share: a
+/// person who knows where a row sits in the widget finds its line in the same place. A closed
+/// session is never listed, whatever the setting names (ADR-0002).
 ///
 /// `reach` is asked only about a session whose terminal was closed. It is the one session
 /// whose line reads differently for the answer, and asking walks the process tree — once per
@@ -25,7 +25,7 @@ func menuSessionLines(
     listing attentions: Set<SessionAttention>,
     reach: (SessionSnapshot) -> SessionReach
 ) -> [MenuSessionLine] {
-    orderedForDisplay(sessions).compactMap { snapshot in
+    sessions.compactMap { snapshot in
         let attention = snapshot.phase.attention
         guard SessionAttention.counted.contains(attention), attentions.contains(attention) else {
             return nil

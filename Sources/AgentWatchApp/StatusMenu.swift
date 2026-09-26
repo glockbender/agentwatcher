@@ -15,7 +15,7 @@ protocol StatusMenuHost: AnyObject {
     var checksForUpdatesOnLaunch: Bool { get set }
     var isReadingTranscripts: Bool { get }
     var transcriptFaultedSessionCount: Int { get }
-    /// Every session the widget has, in any order: the menu puts them in the widget's.
+    /// Every session the widget has, in the widget's order.
     var sessions: [SessionSnapshot] { get }
     func reach(for snapshot: SessionSnapshot) -> SessionReach
     /// A click on a session's line, which is a click on its row in the widget.

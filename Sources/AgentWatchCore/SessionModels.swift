@@ -113,6 +113,17 @@ public enum SessionPhase: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// Whether a session in this phase has had at least one turn — the only way into it.
+    ///
+    /// Written out rather than read off `attention`: a closed terminal and a lost signal can
+    /// happen to a session that never worked, and waiting for a person cannot.
+    public var meansTheSessionHasWorked: Bool {
+        switch self {
+        case .planning, .executing, .waitingForChildren, .waitingForUser, .completed, .failed: true
+        case .idle, .terminalClosed, .disconnected, .sessionClosed: false
+        }
+    }
+
     /// Whether the session says work is under way right now.
     ///
     /// The three that claim work are also the three where quiet means nothing by itself: a
@@ -354,6 +365,10 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     /// card and the debug window all show the same value, and a second store would be a
     /// second thing to keep in step with the sessions appearing and leaving.
     public var monitoringFault: MonitoringFault?
+    /// Set once the session has had a turn, and never taken back. Optional for the reason
+    /// `discoveredProcess` gives: a memory file written before this existed has to decode.
+    /// Read it through `hasWorked`.
+    public var workedOnce: Bool?
     /// The live process this row was built from, when nothing else built it.
     ///
     /// Set on a row the app made out of a running agent it has never heard a hook from, and
@@ -451,6 +466,12 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     /// has to spell the empty case twice.
     public var unansweredDialogs: [AwaitedDialog] {
         awaitedDialogs ?? []
+    }
+
+    /// Whether the session has had a turn since the app first saw it — as far as the app
+    /// knows. A session found only as a running process may have worked before, unseen.
+    public var hasWorked: Bool {
+        workedOnce == true
     }
 
     /// Whether somebody is still being waited for. The list's own question, named.

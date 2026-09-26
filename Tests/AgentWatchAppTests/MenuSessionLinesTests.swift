@@ -24,15 +24,13 @@ final class MenuSessionLinesTests: XCTestCase {
         XCTAssertEqual(lines.map(\.attention), [.needsPerson, .done])
     }
 
-    /// The widget's order, not a second one: a person who knows where a row sits in the widget
-    /// finds its line in the same place.
-    func testLinesKeepTheWidgetsOrder() {
+    /// The order is the widget's, handed over already made: the lines add none of their own.
+    func testLinesKeepTheOrderTheyAreHanded() {
         let sessions = [session(2, .completed), session(0, .failed), session(1, .waitingForUser)]
 
         let lines = menuSessionLines(for: sessions, listing: Set(SessionAttention.counted), reach: { _ in .nowhere })
 
-        XCTAssertEqual(lines.map(\.sessionID), orderedForDisplay(sessions).map(\.id))
-        XCTAssertEqual(lines.map(\.sessionID), [id(0), id(1), id(2)])
+        XCTAssertEqual(lines.map(\.sessionID), [id(2), id(0), id(1)])
     }
 
     /// ADR-0002: over is over. Not even a hand-edited setting that names `closed` lists one.

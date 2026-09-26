@@ -72,7 +72,7 @@ public enum SessionPresence {
         if snapshot.monitoringFault != nil {
             return .now
         }
-        let silentUntil = snapshot.lastObservedAt + SessionFreshnessEvaluator.defaultDisconnectAfter
+        let silentUntil = silenceEnds(for: snapshot)
         if now >= silentUntil {
             return .now
         }
@@ -80,5 +80,15 @@ public enum SessionPresence {
             return .notOffered(until: silentUntil)
         }
         return .notYet(at: silentUntil)
+    }
+
+    /// When a session has been silent long enough to say nobody is coming.
+    ///
+    /// Two rules wait for this moment — the `×` above, and a session that never worked
+    /// dropping out of the active ones (`SessionBlock`) — and the owner asked for them to be
+    /// one. Written once so that they stay one, and so the widget's single timer for the
+    /// first also wakes it for the second.
+    public static func silenceEnds(for snapshot: SessionSnapshot) -> Date {
+        snapshot.lastObservedAt + SessionFreshnessEvaluator.defaultDisconnectAfter
     }
 }

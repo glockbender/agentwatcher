@@ -630,22 +630,20 @@ class HUDSessionListView: NSView {
     }
 }
 
-/// The order rows appear in.
+/// The order rows appear in when nobody has chosen another: the order sessions arrived in,
+/// closed ones last.
 ///
 /// Live sessions keep the order they arrived in and never move. Sorting by the most recent
 /// event instead kept lifting whichever session spoke last to the top, so a row moved out
-/// from under the pointer every few seconds. Only a closed session changes place, sinking
-/// below the live ones: it is finished, and retention is about to remove it anyway.
+/// from under the pointer every few seconds — that is `SessionOrder.recentActivity` now, for a
+/// person who asks for it. Only a closed session changes place, sinking below the live ones:
+/// it is finished, and retention is about to remove it anyway.
 ///
 /// A disconnected session deliberately stays put. `no signal` is reversible — one event
 /// brings it back — and sinking it would make it jump twice for nothing.
 func orderedForDisplay(_ sessions: [SessionSnapshot]) -> [SessionSnapshot] {
-    sessions.sorted { left, right in
-        if (left.phase == .sessionClosed) != (right.phase == .sessionClosed) {
-            return right.phase == .sessionClosed
-        }
-        return left.arrivalIndex < right.arrivalIndex
-    }
+    var arrival = SessionOrdering()
+    return arrival.order(sessions, mode: .arrival, blocks: SessionBlock.defaultOrder, now: .distantPast)
 }
 
 /// A `+N` counter, as a badge drawn over an end row rather than beside it.
