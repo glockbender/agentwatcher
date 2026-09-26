@@ -74,9 +74,12 @@ let package = Package(
             name: "AgentWatchLookupTests",
             dependencies: ["AgentWatchLookup"]
         ),
+        // The app's own flag, so a test sees the menu a debug build shows — the recording lines
+        // included — and a stand-in for the app can supply what those lines ask of it.
         .testTarget(
             name: "AgentWatchAppTests",
-            dependencies: ["AgentWatchApp", "AgentWatchTestSupport"]
+            dependencies: ["AgentWatchApp", "AgentWatchTestSupport"],
+            swiftSettings: [.define("AGENT_WATCH_DEBUG_CAPTURE", .when(configuration: .debug))]
         ),
     ],
     swiftLanguageModes: [.v6]

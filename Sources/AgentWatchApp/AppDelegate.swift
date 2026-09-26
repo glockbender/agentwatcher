@@ -4,32 +4,18 @@ import AgentWatchSender
 import AppKit
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
+    private var statusMenu: StatusMenu?
     /// The counts drawn into the status item, or `nil` while it shows the plain app glyph.
     private var menuBarIconView: MenuBarIconView?
-    /// The line at the top of the menu that says in words what the icon says in numbers.
-    private var menuBarSummaryItem: NSMenuItem?
-    private var menuBarCountsMenuItem: NSMenuItem?
     /// What the icon is currently showing. Kept so that the drawing follows a change rather
     /// than every report: most of what happens to a session moves none of these four numbers.
     private var menuBarCounts = SessionAttentionCounts.empty
-    private var widgetMenuItem: NSMenuItem?
-    private var debugMenuItem: NSMenuItem?
-    #if AGENT_WATCH_DEBUG_CAPTURE
-        private var rawCaptureMenuItem: NSMenuItem?
-        private var deleteRecordingsMenuItem: NSMenuItem?
-    #endif
-    private var lockPositionMenuItem: NSMenuItem?
-    private var lockSizeMenuItem: NSMenuItem?
-    private var updateOnLaunchMenuItem: NSMenuItem?
-    private var closedSessionMenuItems: [NSMenuItem] = []
-    private var transcriptMenuItems: [NSMenuItem] = []
     private let installer = ToolingInstaller()
     /// What the widget says instead of "No active sessions", as last read from the agents'
     /// own configuration files. Read at four moments, shown on every redraw.
     private var widgetComplaint: String?
-    private var transcriptSummaryMenuItem: NSMenuItem?
     private let singleInstanceCoordinator: SingleInstanceCoordinator
     private let backgroundStore: WidgetBackgroundStore
     private let settings: WidgetSettingsStore
@@ -206,142 +192,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func toggleHUD() {
-        hudController.toggle()
-    }
-
-    @objc private func highlightHUD() {
-        hudController.highlight()
-    }
-
-    @objc private func showSettings() {
-        settingsWindow.present()
-    }
-
     func revealExistingInstance() {
         hudController.show()
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
-    @objc private func quit() {
-        NSApplication.shared.terminate(nil)
-    }
-
-    @objc private func toggleDebug() {
-        debugController.toggle()
-    }
-
-    #if AGENT_WATCH_DEBUG_CAPTURE
-        @objc private func toggleRawHookCapture() {
-            if DebugHookCaptureControl.isEnabled() {
-                DebugHookCaptureControl.disable()
-            } else {
-                _ = DebugHookCaptureControl.enable()
-            }
-        }
-
-        /// Deliberately its own action, and its own menu line.
-        ///
-        /// The recording switch limits how long payloads are written; nothing limited how
-        /// long they stayed. A capture that stopped in the morning still held that morning's
-        /// paths and shell commands at midnight, and the app offered no way to remove them.
-        /// Merging this into the stop would be worse — stopping is what a person does in
-        /// order to read what they recorded.
-        @objc private func deleteRawHookRecordings() {
-            let bytes = DebugHookCaptureControl.recordedByteCount()
-            DebugHookCaptureControl.deleteRecordings()
-            recordDebug(
-                "Deleted \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))"
-                    + " of recorded hook payloads")
-            updateRawHookCaptureMenuItem()
-        }
-    #endif
-
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-
-        let menu = NSMenu()
-        menu.delegate = self
-        // First, and never clickable: what the icon means, spelled out. The icon is read at a
-        // glance and the menu is opened when the glance was not enough.
-        let summaryItem = NSMenuItem(title: MenuBarSummaryText.line(for: menuBarCounts), action: nil, keyEquivalent: "")
-        summaryItem.isEnabled = false
-        menu.addItem(summaryItem)
-        menuBarSummaryItem = summaryItem
-        let countsItem = NSMenuItem(
-            title: "Show Counts in Menu Bar",
-            action: #selector(toggleMenuBarCounts),
-            keyEquivalent: ""
-        )
-        countsItem.target = self
-        menu.addItem(countsItem)
-        menuBarCountsMenuItem = countsItem
-        menu.addItem(.separator())
-        let toggleItem = NSMenuItem(
-            title: "Show Widget",
-            action: #selector(toggleHUD),
-            keyEquivalent: ""
-        )
-        toggleItem.target = self
-        menu.addItem(toggleItem)
-        widgetMenuItem = toggleItem
-        let highlightItem = NSMenuItem(
-            title: "Highlight Widget",
-            action: #selector(highlightHUD),
-            keyEquivalent: ""
-        )
-        highlightItem.target = self
-        menu.addItem(highlightItem)
-        // No key equivalent. This application is an accessory and is never the active one, so a
-        // shortcut printed here would answer nothing anywhere but inside the open menu — a
-        // promise the menu cannot keep. The line above it is the exception, and it earns the
-        // exception: something registered that combination with the system, which is what
-        // `WidgetShortcutController` is for. Nothing else here has asked to be worth that.
-        let settingsItem = NSMenuItem(
-            title: "Widget Settings…",
-            action: #selector(showSettings),
-            keyEquivalent: ""
-        )
-        settingsItem.target = self
-        menu.addItem(settingsItem)
-        menu.addItem(makeBehaviorMenuItem())
-        let debugItem = NSMenuItem(
-            title: "Show Event Debug",
-            action: #selector(toggleDebug),
-            keyEquivalent: ""
-        )
-        debugItem.target = self
-        menu.addItem(debugItem)
-        debugMenuItem = debugItem
-        menu.addItem(makeToolingMenuItem())
-        menu.addItem(makeTranscriptMenuItem())
-        menu.addItem(makeUpdateMenuItem())
-        #if AGENT_WATCH_DEBUG_CAPTURE
-            let rawCaptureItem = NSMenuItem(
-                title: "Record Raw Hook Payloads for 30 Minutes",
-                action: #selector(toggleRawHookCapture),
-                keyEquivalent: ""
-            )
-            rawCaptureItem.target = self
-            rawCaptureItem.toolTip = "Debug only: saves original hook payloads locally for a limited time"
-            menu.addItem(rawCaptureItem)
-            rawCaptureMenuItem = rawCaptureItem
-            let deleteRecordingsItem = NSMenuItem(
-                title: "Delete Recorded Payloads",
-                action: #selector(deleteRawHookRecordings),
-                keyEquivalent: ""
-            )
-            deleteRecordingsItem.target = self
-            menu.addItem(deleteRecordingsItem)
-            deleteRecordingsMenuItem = deleteRecordingsItem
-        #endif
-        menu.addItem(.separator())
-
-        let quitItem = NSMenuItem(title: "Quit Agent Watch", action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-
-        item.menu = menu
+        let menu = StatusMenu(settings: settings, version: updater.ownVersion, host: self)
+        item.menu = menu.menu
+        statusMenu = menu
         statusItem = item
         applyMenuBarIcon()
     }
@@ -422,138 +282,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStatusItemWording()
     }
 
-    @objc private func toggleMenuBarCounts() {
-        settings.setShowsMenuBarCounts(!settings.showsMenuBarCounts)
-    }
-
-    func menuWillOpen(_ menu: NSMenu) {
-        // Opening the menu is a person asking what is going on, which is the moment an agent
-        // the app has never heard from is most worth finding. It costs about a millisecond
-        // and saves a timer: see `SessionSupervisor.discoverAgentProcesses`.
-        supervisor.discoverAgentProcesses()
-        menuBarSummaryItem?.title = MenuBarSummaryText.line(for: menuBarCounts)
-        menuBarCountsMenuItem?.state = settings.showsMenuBarCounts ? .on : .off
-        widgetMenuItem?.title = hudController.window?.isVisible == true ? "Hide Widget" : "Show Widget"
-        if let widgetMenuItem {
-            shortcuts.showShortcut(on: widgetMenuItem)
-        }
-        debugMenuItem?.title = debugController.isVisible ? "Hide Event Debug" : "Show Event Debug"
-        #if AGENT_WATCH_DEBUG_CAPTURE
-            updateRawHookCaptureMenuItem()
-        #endif
-        lockPositionMenuItem?.state = settings.locksPosition ? .on : .off
-        lockSizeMenuItem?.state = settings.locksSize ? .on : .off
-        updateOnLaunchMenuItem?.state = updater.checksOnLaunch ? .on : .off
-        updateClosedSessionMenuSelection()
-        updateTranscriptMenu()
-        // The files belong to other programs and other people, so what the widget complains
-        // about is read again rather than remembered from the last time this app looked.
-        refreshToolingComplaint()
-    }
-
-    private func makeBehaviorMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Widget Behavior", action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: "Widget Behavior")
-
-        let lockPosition = NSMenuItem(
-            title: "Lock Position",
-            action: #selector(toggleLockPosition),
-            keyEquivalent: ""
-        )
-        lockPosition.target = self
-        lockPosition.toolTip = "Stops an accidental drag from moving the widget"
-        submenu.addItem(lockPosition)
-        lockPositionMenuItem = lockPosition
-
-        let lockSize = NSMenuItem(title: "Lock Size", action: #selector(toggleLockSize), keyEquivalent: "")
-        lockSize.target = self
-        lockSize.toolTip = "Stops an accidental drag on an edge from resizing the widget"
-        submenu.addItem(lockSize)
-        lockSizeMenuItem = lockSize
-
-        let resetPosition = NSMenuItem(
-            title: "Reset Widget Position",
-            action: #selector(resetWidgetPosition),
-            keyEquivalent: ""
-        )
-        resetPosition.target = self
-        resetPosition.toolTip = "Brings the widget back to the middle of the main screen"
-        submenu.addItem(resetPosition)
-
-        let resetSize = NSMenuItem(title: "Reset Widget Size", action: #selector(resetWidgetSize), keyEquivalent: "")
-        resetSize.target = self
-        resetSize.toolTip = "Lets the widget size itself to the number of sessions again"
-        submenu.addItem(resetSize)
-
-        submenu.addItem(.separator())
-        submenu.addItem(makeClosedSessionMenuItem())
-
-        item.submenu = submenu
-        return item
-    }
-
-    /// The second source of truth, and the only setting that can turn it off.
-    ///
-    /// Its own menu rather than a line in `Widget Behavior`, because it is not about the
-    /// widget: it decides how much the app can know about a session, and it is where a
-    /// failure to read is reported.
-    /// Where a person can see how far Agent Watch got into their tooling, and change it.
-    ///
-    /// Every line is both the state and the switch: not installed puts it in, installed takes
-    /// it out. Rebuilt on each open rather than kept in step, because what it describes lives
-    /// in files other programs and other people also write.
-    private func makeToolingMenuItem() -> NSMenuItem {
-        // One line and a window behind it. This used to be a submenu whose every line was
-        // both the state and the switch, and the answer stopped fitting on a menu line once
-        // it had to carry the sender's path and the step Codex still needs from a person.
-        let item = NSMenuItem(title: "Tooling…", action: #selector(showTooling), keyEquivalent: "")
-        item.target = self
-        return item
-    }
-
-    @objc private func showTooling() {
-        toolingController.present()
-    }
-
-    /// The version this copy is, and the two decisions about newer ones.
-    ///
-    /// A submenu rather than a line, because the version belongs in the interface somewhere:
-    /// it is the first thing anybody reporting a problem is asked for, and an app with no
-    /// window of its own has nowhere else to put it.
-    private func makeUpdateMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Updates", action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-        let version = NSMenuItem(
-            title: updater.ownVersion.map { "Agent Watch \($0)" } ?? "Agent Watch (development build)",
-            action: nil,
-            keyEquivalent: ""
-        )
-        version.isEnabled = false
-        submenu.addItem(version)
-        submenu.addItem(.separator())
-        let check = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
-        check.target = self
-        submenu.addItem(check)
-        let onLaunch = NSMenuItem(
-            title: "Check on Launch",
-            action: #selector(toggleUpdateCheckOnLaunch),
-            keyEquivalent: ""
-        )
-        onLaunch.target = self
-        submenu.addItem(onLaunch)
-        updateOnLaunchMenuItem = onLaunch
-        item.submenu = submenu
-        return item
-    }
-
-    @objc private func checkForUpdates() {
-        updater.checkNow()
-    }
-
-    @objc private func toggleUpdateCheckOnLaunch() {
-        updater.checksOnLaunch.toggle()
-    }
-
     /// Keeps the widget's own complaint in step with what is actually installed.
     ///
     /// Cheap — it reads two small files — and it runs where the widget is redrawn rather than
@@ -595,114 +323,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateMenuBarIcon(sessions: shown)
     }
 
-    private func makeTranscriptMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Read Session Transcripts", action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: "Read Session Transcripts")
-
-        let summary = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        summary.isEnabled = false
-        submenu.addItem(summary)
-        transcriptSummaryMenuItem = summary
-        submenu.addItem(.separator())
-
-        transcriptMenuItems = WidgetSettingsStore.offeredTranscriptPollIntervals.map { interval in
-            let entry = NSMenuItem(
-                title: transcriptIntervalMenuTitle(interval: interval),
-                action: #selector(selectTranscriptPollInterval(_:)),
-                keyEquivalent: ""
-            )
-            entry.target = self
-            // Zero stands for off. An absent `representedObject` cannot be told apart from
-            // one that was never set, and "off" has to be a choice like the others.
-            entry.representedObject = NSNumber(value: interval ?? 0)
-            submenu.addItem(entry)
-            return entry
-        }
-
-        item.submenu = submenu
-        return item
-    }
-
-    @objc private func selectTranscriptPollInterval(_ sender: NSMenuItem) {
-        guard let seconds = (sender.representedObject as? NSNumber)?.doubleValue else {
-            return
-        }
-        settings.setTranscriptPollInterval(seconds > 0 ? seconds : nil)
-    }
-
-    private func updateTranscriptMenu() {
-        let selected = settings.transcriptPollInterval
-        for item in transcriptMenuItems {
-            let seconds = (item.representedObject as? NSNumber)?.doubleValue ?? 0
-            item.state = (seconds > 0 ? seconds : nil) == selected ? .on : .off
-        }
-        transcriptSummaryMenuItem?.title = transcriptMenuSummary(
-            interval: selected,
-            isReading: supervisor.isReadingTranscripts,
-            faultedSessionCount: supervisor.faultedSessionCount
-        )
-    }
-
-    private func makeClosedSessionMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Closed Sessions", action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: "Closed Sessions")
-        closedSessionMenuItems = WidgetSettingsStore.offeredClosedSessionRetentions.map { retention in
-            let entry = NSMenuItem(
-                title: Self.title(for: retention),
-                action: #selector(selectClosedSessionRetention(_:)),
-                keyEquivalent: ""
-            )
-            entry.target = self
-            entry.representedObject = retention.seconds
-            submenu.addItem(entry)
-            return entry
-        }
-        item.submenu = submenu
-        return item
-    }
-
-    private static func title(for retention: ClosedSessionRetention) -> String {
-        switch retention {
-        case .manual:
-            "Keep until dismissed"
-        case let .after(seconds):
-            seconds < 120
-                ? "Remove after \(Int(seconds)) seconds"
-                : "Remove after \(Int(seconds / 60)) minutes"
-        }
-    }
-
-    private func updateClosedSessionMenuSelection() {
-        let selected = settings.closedSessionRetention.seconds
-        for item in closedSessionMenuItems {
-            let seconds = item.representedObject as? TimeInterval
-            item.state = seconds == selected ? .on : .off
-        }
-    }
-
-    @objc private func toggleLockPosition() {
-        settings.setLocksPosition(!settings.locksPosition)
-    }
-
-    @objc private func toggleLockSize() {
-        settings.setLocksSize(!settings.locksSize)
-    }
-
-    @objc private func resetWidgetPosition() {
-        hudController.resetPosition()
-    }
-
-    @objc private func resetWidgetSize() {
-        hudController.resetSize()
-    }
-
-    @objc private func selectClosedSessionRetention(_ sender: NSMenuItem) {
-        guard let seconds = sender.representedObject as? TimeInterval else {
-            return
-        }
-        settings.setClosedSessionRetention(ClosedSessionRetention(seconds: seconds))
-    }
-
     /// Who has to be told when a setting changes, written once.
     ///
     /// Nothing here is new — each line used to sit in the menu action that made the write.
@@ -718,11 +338,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // skips a report that changes nothing so the row under the pointer survives.
             hudController.refreshSettings()
         case .closedSessionRetention:
-            updateClosedSessionMenuSelection()
+            statusMenu?.refresh()
             supervisor.runMaintenance()
         case .transcriptPollInterval:
             supervisor.transcriptSettingsChanged()
-            updateTranscriptMenu()
+            statusMenu?.refresh()
         case .background:
             hudController.setBackground(backgroundStore.selected)
         case .lampScheme:
@@ -760,29 +380,107 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         debugLog.append(entry)
         debugController.append(entry)
     }
+}
+
+extension AppDelegate: StatusMenuHost {
+    var attentionCounts: SessionAttentionCounts {
+        menuBarCounts
+    }
+
+    var isWidgetVisible: Bool {
+        hudController.window?.isVisible == true
+    }
+
+    var isEventDebugVisible: Bool {
+        debugController.isVisible
+    }
+
+    var checksForUpdatesOnLaunch: Bool {
+        get { updater.checksOnLaunch }
+        set { updater.checksOnLaunch = newValue }
+    }
+
+    var isReadingTranscripts: Bool {
+        supervisor.isReadingTranscripts
+    }
+
+    var transcriptFaultedSessionCount: Int {
+        supervisor.faultedSessionCount
+    }
+
+    func menuWillOpen() {
+        // Opening the menu is a person asking what is going on, which is the moment an agent
+        // the app has never heard from is most worth finding. It costs about a millisecond
+        // and saves a timer: see `SessionSupervisor.discoverAgentProcesses`.
+        supervisor.discoverAgentProcesses()
+        // The files belong to other programs and other people, so what the widget complains
+        // about is read again rather than remembered from the last time this app looked.
+        refreshToolingComplaint()
+    }
+
+    func showShortcut(on item: NSMenuItem) {
+        shortcuts.showShortcut(on: item)
+    }
+
+    func toggleWidget() {
+        hudController.toggle()
+    }
+
+    func highlightWidget() {
+        hudController.highlight()
+    }
+
+    func showWidgetSettings() {
+        settingsWindow.present()
+    }
+
+    func showTooling() {
+        toolingController.present()
+    }
+
+    func toggleEventDebug() {
+        debugController.toggle()
+    }
+
+    func checkForUpdates() {
+        updater.checkNow()
+    }
+
+    func resetWidgetPosition() {
+        hudController.resetPosition()
+    }
+
+    func resetWidgetSize() {
+        hudController.resetSize()
+    }
+
+    func quit() {
+        NSApplication.shared.terminate(nil)
+    }
 
     #if AGENT_WATCH_DEBUG_CAPTURE
-        private func updateRawHookCaptureMenuItem(now: Date = .now) {
-            // Shown only when there is something to delete, so its presence is itself the
-            // answer to "is any of this still on disk", which nothing used to state.
-            if let deleteItem = deleteRecordingsMenuItem {
-                let bytes = DebugHookCaptureControl.recordedByteCount()
-                deleteItem.isHidden = bytes == 0
-                deleteItem.title =
-                    "Delete Recorded Payloads"
-                    + " (\(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)))"
+        var rawCaptureExpiry: Date? {
+            DebugHookCaptureControl.expiry()
+        }
+
+        var recordedPayloadBytes: Int {
+            DebugHookCaptureControl.recordedByteCount()
+        }
+
+        func toggleRawHookCapture() {
+            if DebugHookCaptureControl.isEnabled() {
+                DebugHookCaptureControl.disable()
+            } else {
+                _ = DebugHookCaptureControl.enable()
             }
-            guard let item = rawCaptureMenuItem else {
-                return
-            }
-            guard let expiry = DebugHookCaptureControl.expiry(), expiry > now else {
-                item.title = "Record Raw Hook Payloads for 30 Minutes"
-                item.state = .off
-                return
-            }
-            let remainingMinutes = max(1, Int(ceil(expiry.timeIntervalSince(now) / 60)))
-            item.title = "Stop Recording Raw Hook Payloads (\(remainingMinutes)m)"
-            item.state = .on
+        }
+
+        func deleteRawHookRecordings() {
+            let bytes = DebugHookCaptureControl.recordedByteCount()
+            DebugHookCaptureControl.deleteRecordings()
+            recordDebug(
+                "Deleted \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))"
+                    + " of recorded hook payloads")
         }
     #endif
 }
