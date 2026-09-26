@@ -141,6 +141,14 @@ public enum SessionAttention: String, CaseIterable, Sendable {
     case quiet
     /// Over. Counted nowhere — see ADR-0002.
     case closed
+
+    /// The states a person is shown, in the order everything that lists them reads them: the
+    /// menu bar's cells, the summary line, the menu's choice of which sessions it lists.
+    ///
+    /// Derived from the declaration rather than written out, so that a state added above
+    /// joins every one of those at once — and the app's exhaustive switches over this type
+    /// then refuse to compile until it has a mark and words of its own.
+    public static let counted: [SessionAttention] = allCases.filter { $0 != .closed }
 }
 
 public enum UserInputRequestKind: String, Codable, Sendable {

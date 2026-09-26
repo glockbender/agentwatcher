@@ -39,6 +39,18 @@ public struct SessionAttentionCounts: Equatable, Sendable {
         self.init(needsPerson: needsPerson, working: working, done: done, quiet: quiet)
     }
 
+    /// The count for one state, for whatever walks `SessionAttention.counted` rather than
+    /// naming the four fields.
+    public func count(of attention: SessionAttention) -> Int {
+        switch attention {
+        case .needsPerson: needsPerson
+        case .working: working
+        case .done: done
+        case .quiet: quiet
+        case .closed: 0
+        }
+    }
+
     /// How many sessions were counted at all — which is not how many there are.
     public var counted: Int {
         needsPerson + working + done + quiet

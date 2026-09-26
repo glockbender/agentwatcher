@@ -72,34 +72,27 @@ struct MenuBarIconCell: Equatable {
     /// something. Movement has to mean "there is something here"; a breathing zero would say
     /// the opposite with the same gesture.
     static func grid(for counts: SessionAttentionCounts) -> [MenuBarIconCell] {
-        [
+        SessionAttention.counted.map { attention in
             MenuBarIconCell(
-                symbol: "exclamationmark.circle.fill",
-                count: counts.needsPerson,
-                accent: MenuBarIconPalette.needsPerson,
-                // Deeper than working, at the same rhythm: the one that needs a person has to
-                // carry further across a glance without becoming a blink.
-                breathDepth: 0.65
-            ),
-            MenuBarIconCell(
-                symbol: "play.circle.fill",
-                count: counts.working,
-                accent: MenuBarIconPalette.working,
-                breathDepth: 0.45
-            ),
-            MenuBarIconCell(
-                symbol: "checkmark.circle.fill",
-                count: counts.done,
-                accent: MenuBarIconPalette.done,
-                breathDepth: 0
-            ),
-            MenuBarIconCell(
-                symbol: "minus.circle.fill",
-                count: counts.quiet,
-                accent: MenuBarIconPalette.quiet,
-                breathDepth: 0
-            ),
-        ]
+                symbol: attention.symbolName,
+                count: counts.count(of: attention),
+                accent: attention.accent,
+                breathDepth: attention.breathDepth
+            )
+        }
+    }
+}
+
+extension SessionAttention {
+    /// How far this state's cell fades at the bottom of its breath; zero for a still one.
+    fileprivate var breathDepth: CGFloat {
+        switch self {
+        // Deeper than working, at the same rhythm: the one that needs a person has to carry
+        // further across a glance without becoming a blink.
+        case .needsPerson: 0.65
+        case .working: 0.45
+        case .done, .quiet, .closed: 0
+        }
     }
 }
 

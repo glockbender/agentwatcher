@@ -82,6 +82,20 @@ final class SessionAttentionTests: XCTestCase {
         XCTAssertEqual(before, after)
     }
 
+    /// Written out, for the reason the phase table above is: the list is what the icon, the
+    /// summary line and the menu all read, so a state joining it or moving in it changes all
+    /// of them at once — which should take a change here too.
+    func testTheCountedStatesAreEveryStateButClosedInReadingOrder() {
+        XCTAssertEqual(SessionAttention.counted, [.needsPerson, .working, .done, .quiet])
+    }
+
+    func testACountIsAskedForByState() {
+        let counts = SessionAttentionCounts(needsPerson: 1, working: 2, done: 3, quiet: 4)
+
+        XCTAssertEqual(SessionAttention.counted.map(counts.count(of:)), [1, 2, 3, 4])
+        XCTAssertEqual(counts.count(of: .closed), 0, "a closed session is counted nowhere")
+    }
+
     private func session(_ index: Int, _ phase: SessionPhase) -> SessionSnapshot {
         testSession(index: index, phase: phase, lastObservedAt: observed)
     }

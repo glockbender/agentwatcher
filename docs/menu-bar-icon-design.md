@@ -395,6 +395,9 @@ public struct SessionAttentionCounts: Equatable, Sendable {
 `AgentWatchCore`, не знает про AppKit и проверяется в `AgentWatchCoreTests` без запуска
 приложения.
 
+Ячейки перечисляются не руками: сетка идёт по `SessionAttention.counted`, а символ, цвет и слово
+сводки каждой группы берёт из `SessionAttentionAppearance.swift` — там же, откуда их берёт меню.
+
 ### `AgentWatchApp` — рисование и элемент
 
 - Отрисовщик: новый файл с эталонным кодом из приложения к документу. Знает про геометрию, цвета

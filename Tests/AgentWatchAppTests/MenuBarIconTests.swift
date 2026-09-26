@@ -222,6 +222,27 @@ final class MenuBarIconTests: XCTestCase {
         XCTAssertFalse(MenuBarIconView().show(cells), "the view claimed it drew a grid it has no symbols for")
     }
 
+    /// What each cell is, pinned as it shipped: the grid is built from the shared list of
+    /// states now, and that must not have moved a symbol, a colour or a breath.
+    func testTheGridIsTheCountedStatesInOrder() {
+        let cells = MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 1, working: 2, done: 3, quiet: 4))
+
+        XCTAssertEqual(
+            cells.map(\.symbol),
+            ["exclamationmark.circle.fill", "play.circle.fill", "checkmark.circle.fill", "minus.circle.fill"]
+        )
+        XCTAssertEqual(cells.map(\.count), [1, 2, 3, 4])
+        XCTAssertEqual(
+            cells.map(\.accent),
+            [
+                MenuBarIconPalette.needsPerson, MenuBarIconPalette.working, MenuBarIconPalette.done,
+                MenuBarIconPalette.quiet,
+            ]
+        )
+        XCTAssertEqual(cells.map(\.breathDepth), [0.65, 0.45, 0, 0])
+        XCTAssertEqual(cells.map(\.symbol), SessionAttention.counted.map(\.symbolName))
+    }
+
     /// Movement means "there is something here", so a zero never breathes.
     func testOnlyTheTwoCellsAPersonCanActOnBreatheAndOnlyWhenTheyHoldSomething() {
         let view = MenuBarIconView()

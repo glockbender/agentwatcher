@@ -13,18 +13,9 @@ enum MenuBarSummaryText {
     /// have to find it again. In a sentence it earns nothing — "0 done" is a word about
     /// something that did not happen.
     static func line(for counts: SessionAttentionCounts) -> String {
-        var parts: [String] = []
-        if counts.needsPerson > 0 {
-            parts.append(counts.needsPerson == 1 ? "1 needs you" : "\(counts.needsPerson) need you")
-        }
-        if counts.working > 0 {
-            parts.append("\(counts.working) working")
-        }
-        if counts.done > 0 {
-            parts.append("\(counts.done) done")
-        }
-        if counts.quiet > 0 {
-            parts.append("\(counts.quiet) idle")
+        let parts = SessionAttention.counted.compactMap { attention -> String? in
+            let count = counts.count(of: attention)
+            return count > 0 ? attention.summaryPhrase(count: count) : nil
         }
         guard !parts.isEmpty else {
             // The words the widget uses when it has nothing to show. One application, one
