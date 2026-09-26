@@ -776,7 +776,9 @@ Reference](https://code.claude.com/docs/en/hooks)
 Правило «какие строки и с каким текстом» — чистая функция `menuSessionLines` (`MenuSessionLinesTests`),
 вставку строк в меню проверяют `StatusMenuTests`.
 
-Выбор — подменю `Settings ▸ Sessions in Menu`: общий переключатель `List Sessions in Menu` и под ним
+Выбор — подменю `Settings ▸ Sessions in Menu`
+([ADR-0014](adr/0014-a-menu-choice-of-several-is-lines-that-draw-themselves.md)): общий переключатель
+`List Sessions in Menu` и под ним
 по строке на группу, в порядке `SessionAttention.counted`. Это единственное подменю, строки
 которого не закрывают меню при выборе, — все, переключатель тоже, чтобы включить список и выбрать
 группы за одно открытие. У обычной строки меню флага «не закрывать» нет: `NSMenu.selectionMode =

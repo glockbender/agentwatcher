@@ -1,7 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// A checkbox line in a menu that takes a click without closing the menu.
+/// A checkbox line in a menu that takes a click without closing the menu. See ADR-0014.
 ///
 /// An ordinary menu line closes the menu on every click, and no flag of its own changes that:
 /// `NSMenu.selectionMode = .selectAny` manages checkmarks only, and measured, the menu still
