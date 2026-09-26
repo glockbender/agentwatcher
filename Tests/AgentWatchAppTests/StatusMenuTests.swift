@@ -25,7 +25,7 @@ final class StatusMenuTests: XCTestCase {
                 "Highlight Widget",
                 "---",
                 "Settings",
-                "  Widget Appearance…",
+                "  Widget Settings…",
                 "  Tooling…",
                 "  ---",
                 "  Show Counts in Menu Bar",
@@ -129,7 +129,7 @@ final class StatusMenuTests: XCTestCase {
         let expected: [(title: String, call: String)] = [
             ("Show Widget", "toggleWidget"),
             ("Highlight Widget", "highlightWidget"),
-            ("Widget Appearance…", "showWidgetSettings"),
+            ("Widget Settings…", "showWidgetSettings"),
             ("Reset Widget Position", "resetWidgetPosition"),
             ("Reset Widget Size", "resetWidgetSize"),
             ("Show Event Debug", "toggleEventDebug"),

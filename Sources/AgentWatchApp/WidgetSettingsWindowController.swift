@@ -15,9 +15,10 @@ import AppKit
 ///
 /// The shortcut is the one thing here that is not appearance, and it is here because it cannot
 /// be anywhere else: recording a combination needs a control that takes a key press, and a menu
-/// line cannot be one.
+/// line cannot be one. The order of the rows is the other, for the same kind of reason: what
+/// an order does is seen in a list that moves, and a menu cannot show one.
 @MainActor
-final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate {
+final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate, NSTabViewDelegate {
     private let backgroundStore: WidgetBackgroundStore
     private let lampSchemes: LampSchemeStore
     private let settings: WidgetSettingsStore
@@ -65,6 +66,8 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// One line under the pair, saying what the pair is.
     private(set) var sampleCaption: NSTextField?
     private let sampleHolder = NSStackView()
+    /// The `Order` tab, which plays a list while it is in sight and only then.
+    let orderTab: SessionOrderTab
     private let partsGrid = NSGridView(numberOfColumns: 6, rows: 0)
 
     init(
@@ -79,6 +82,12 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         self.settings = settings
         self.rowLayouts = rowLayouts
         self.shortcuts = shortcuts
+        orderTab = SessionOrderTab(
+            settings: settings,
+            backgroundStore: backgroundStore,
+            lampSchemes: lampSchemes,
+            rowLayouts: rowLayouts
+        )
 
         let window = NSWindow(
             // Replaced by the content's own fitting size below; a window needs some rect to
@@ -141,6 +150,8 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         ).isActive = true
         // No title over the lamp grid, and none over the parts: the tab says it already.
         let lampTab = Self.makeTabContent([lamp, makeResetButton()])
+        // Beside the row, because it is the rows it arranges.
+        let orderContent = Self.makeTabContent([orderTab.view])
         let otherTab = Self.makeTabContent([
             Self.makeSectionTitle("Background"),
             palette,
@@ -160,7 +171,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         // narrower than the parts grid's stated columns. Nothing is drawn there, but the
         // layout is still solved there, and an impossible one is printed to the console.
         tabs.setFrameSize(NSSize(width: 1_000, height: 1_000))
-        for (label, tab) in [("Row", rowTab), ("Lamp", lampTab), ("Other", otherTab)] {
+        for (label, tab) in [("Row", rowTab), ("Order", orderContent), ("Lamp", lampTab), ("Other", otherTab)] {
             let item = NSTabViewItem()
             item.label = label
             item.view = Self.scrolling(tab)
@@ -174,8 +185,9 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         // Both margins are in this number, which is `makeTabContent`'s doing — it holds every
         // section off the trailing edge, so a tab's fitting width is the two insets plus its
         // widest section rather than one inset plus the section.
-        let widest = [rowTab, lampTab, otherTab].map(\.fittingSize.width).max() ?? 0
-        let tallest = [rowTab, lampTab, otherTab].map(\.fittingSize.height).max() ?? 0
+        let contents = [rowTab, orderContent, lampTab, otherTab]
+        let widest = contents.map(\.fittingSize.width).max() ?? 0
+        let tallest = contents.map(\.fittingSize.height).max() ?? 0
         // What the tab strip and its border take, asked of the tab view rather than guessed:
         // `contentRect` is the room it leaves for the tab that is showing.
         let chrome = NSSize(
@@ -197,6 +209,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         // the tabs would be laid out twice: once at the size the window was born with, and
         // once here.
         window.contentView = tabs
+        tabs.delegate = self
         // The window is the only place a failed registration can be seen, so it listens rather
         // than reading the status once at construction: the combination may be taken by
         // something that starts up after this window did.
@@ -289,6 +302,13 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// doing nothing until the next visit here.
     func windowWillClose(_ notification: Notification) {
         stopRecordingShortcut()
+        // Nobody is watching the list any more, so it stops playing.
+        orderTab.setShown(false)
+    }
+
+    /// The `Order` tab's list plays only while that tab is the one on top.
+    func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        orderTab.setShown(window?.isVisible == true && tabViewItem?.label == "Order")
     }
 
     /// And leaving for another application, which is neither of the above: the window stays
@@ -320,6 +340,8 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         showCurrentValues()
         showWindow(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
+        let tabs = window?.contentView as? NSTabView
+        orderTab.setShown(tabs?.selectedTabViewItem?.label == "Order")
     }
 
     // MARK: - The row layout
@@ -1279,6 +1301,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         showOpacity()
         showScale()
         showShortcut()
+        orderTab.showCurrentValues()
     }
 
     private func showSelectedBackground() {

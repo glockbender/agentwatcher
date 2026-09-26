@@ -551,11 +551,11 @@ final class WidgetSettingsWindowTests: XCTestCase {
         return view.subviews.lazy.compactMap { grid(in: $0) }.first
     }
 
-    func testTheSettingsStandInThreeTabs() throws {
+    func testTheSettingsStandInFourTabs() throws {
         let controller = try makeWindow().controller
         let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
 
-        XCTAssertEqual(tabs.tabViewItems.map(\.label), ["Row", "Lamp", "Other"])
+        XCTAssertEqual(tabs.tabViewItems.map(\.label), ["Row", "Order", "Lamp", "Other"])
         XCTAssertEqual(
             tabs.selectedTabViewItem?.label,
             "Row",
@@ -619,6 +619,28 @@ final class WidgetSettingsWindowTests: XCTestCase {
                 "\(item.label) is narrower than its own controls, and something is cut off"
             )
         }
+    }
+
+    /// The `Order` tab's list plays only while that tab is on top of an open window: switching
+    /// to another tab stops it, and so does closing the window.
+    func testTheOrderListPlaysOnlyWhileItsTabIsInSight() throws {
+        let (controller, _, _, settings) = try makeWindow()
+        settings.setSessionOrder(.attention)
+        controller.orderTab.showCurrentValues()
+        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
+        controller.showWindow(nil)
+        addTeardownBlock { controller.close() }
+
+        try show(tab: "Order", of: controller)
+        XCTAssertTrue(controller.orderTab.isPlaying, "the tab is on top and the list stands still")
+
+        try show(tab: "Lamp", of: controller)
+        XCTAssertFalse(controller.orderTab.isPlaying, "the list plays behind another tab")
+
+        try show(tab: "Order", of: controller)
+        controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
+        XCTAssertFalse(controller.orderTab.isPlaying, "the list plays in a closed window")
+        XCTAssertEqual(tabs.selectedTabViewItem?.label, "Order")
     }
 
     /// For the tests that are about the shortcut itself rather than about the window: the window

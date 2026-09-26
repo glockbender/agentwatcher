@@ -13,7 +13,7 @@ Clicking a row brings forward the terminal tab that session runs in. Hovering it
 with everything the row cannot fit.
 
 `⌥⌘W` shows and hides it from wherever you are. That combination is taken system-wide on the first
-launch; `Settings ▸ Widget Appearance…` records a different one, or clears it.
+launch; `Settings ▸ Widget Settings…` records a different one, or clears it.
 
 Alpha: it works and is used daily, but what it shows is still moving.
 

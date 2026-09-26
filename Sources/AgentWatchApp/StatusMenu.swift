@@ -130,7 +130,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         // anywhere but inside the open menu — a promise the menu cannot keep. The widget line at
         // the top is the exception, and it earns the exception: something registered that
         // combination with the system, which is what `WidgetShortcutController` is for.
-        submenu.addItem(line("Widget Appearance…", #selector(showWidgetSettings)))
+        submenu.addItem(line("Widget Settings…", #selector(showWidgetSettings)))
         // One line and a window behind it. This used to be a submenu whose every line was
         // both the state and the switch, and the answer stopped fitting on a menu line once
         // it had to carry the sender's path and the step Codex still needs from a person.
