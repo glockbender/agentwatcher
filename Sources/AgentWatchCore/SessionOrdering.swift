@@ -197,10 +197,24 @@ public struct SessionOrdering: Sendable {
         return byArrival(left, right)
     }
 
+    /// When a session most likely got into the group it is in now.
+    ///
+    /// Three answers, because a snapshot's date means the moment the session spoke, and two
+    /// kinds of change are not the session speaking. A drop by silence happened when the
+    /// silence ran out. A lost signal and a closed terminal are the app's findings: the reducer
+    /// dates the first at the last thing heard, and the second keeps its silence, so either
+    /// date would place a session that has only just been found below one that failed long
+    /// before. They joined when the list first saw them. Everything else joined at its event.
     private static func likelyJoined(_ snapshot: SessionSnapshot, now: Date) -> Date {
-        SessionBlock.of(snapshot, now: now) == .neverStarted
-            ? SessionPresence.silenceEnds(for: snapshot)
-            : snapshot.lastObservedAt
+        if SessionBlock.of(snapshot, now: now) == .neverStarted {
+            return SessionPresence.silenceEnds(for: snapshot)
+        }
+        switch snapshot.phase {
+        case .disconnected, .terminalClosed:
+            return now
+        case .idle, .planning, .executing, .waitingForUser, .waitingForChildren, .completed, .failed, .sessionClosed:
+            return snapshot.lastObservedAt
+        }
     }
 
     private static func byArrival(_ left: SessionSnapshot, _ right: SessionSnapshot) -> Bool {

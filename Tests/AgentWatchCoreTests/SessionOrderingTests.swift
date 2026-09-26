@@ -208,12 +208,31 @@ final class SessionOrderingTests: XCTestCase {
     func testSessionsThatJoinedABlockUnseenArePlacedByWhenTheyJoined() {
         var ordering = SessionOrdering()
         let sessions = [
-            worked(session(0, .disconnected, at: start + 30)),
-            worked(session(1, .disconnected, at: start + 10)),
-            worked(session(2, .disconnected, at: start + 20)),
+            worked(session(0, .failed, at: start + 30)),
+            worked(session(1, .failed, at: start + 10)),
+            worked(session(2, .failed, at: start + 20)),
         ]
 
         XCTAssertEqual(order(&ordering, sessions, .blocks), [0, 2, 1])
+    }
+
+    /// A lost signal and a closed terminal are the app's findings, not the session's events:
+    /// the reducer dates a lost signal at the last thing heard, and a closed terminal keeps its
+    /// silence. Placed by that date, a session that has only just lost its signal sank below
+    /// one that failed long before — the reverse of "the latest to join comes first". They
+    /// joined when the list first saw them.
+    func testAFindingJoinsItsBlockWhenTheListSeesItNotWhenTheSessionLastSpoke() {
+        var ordering = SessionOrdering()
+        let failed = worked(session(0, .failed, at: start + 20))
+        let lost = worked(session(1, .disconnected, at: start + 10))
+        let hung = worked(session(2, .terminalClosed, at: start + 5))
+
+        XCTAssertEqual(order(&ordering, [failed, lost, hung], .blocks, now: start + 40).prefix(1), [2])
+        XCTAssertEqual(
+            order(&ordering, [failed, lost, hung], .blocks, now: start + 40),
+            [2, 1, 0],
+            "the two findings joined at the moment the list saw them, after the failure"
+        )
     }
 
     func testOrderingTheSameSessionsAgainChangesNothing() {
