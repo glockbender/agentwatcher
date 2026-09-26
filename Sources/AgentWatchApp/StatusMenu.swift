@@ -348,9 +348,15 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     /// The mark the state has in the menu bar, in its colour. The shape tells the states apart
     /// on its own, so the colour only speeds the reading (ADR-0003).
-    private static func mark(for attention: SessionAttention) -> NSImage? {
+    ///
+    /// Two palette colours, the mark first. Given only the accent, the palette paints every
+    /// layer with it — drawn offscreen, all four came out as plain discs of four colours, which
+    /// is the one thing ADR-0003 rules out. The menu bar cuts the mark out of the disc instead;
+    /// a menu has a background of its own, so a white mark reads the same on a light and a dark
+    /// one.
+    static func mark(for attention: SessionAttention) -> NSImage? {
         let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [attention.accent]))
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white, attention.accent]))
         return NSImage(systemSymbolName: attention.symbolName, accessibilityDescription: attention.name)?
             .withSymbolConfiguration(configuration)
     }

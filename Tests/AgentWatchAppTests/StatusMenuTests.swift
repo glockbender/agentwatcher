@@ -236,6 +236,57 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertNil(line.action)
     }
 
+    /// The mark is what tells the states apart, so it has to be drawn: a palette given one
+    /// colour paints the mark the colour of its disc, and all four lines showed a plain dot.
+    func testEveryLinesMarkIsDrawnInsideItsDisc() throws {
+        for attention in SessionAttention.counted {
+            let image = try XCTUnwrap(StatusMenu.mark(for: attention), "\(attention) has no mark")
+            let inked = try inkedPixels(of: image)
+
+            let white = inked.filter { $0.redComponent > 0.9 && $0.greenComponent > 0.9 && $0.blueComponent > 0.9 }
+            // Measured at 4x: the thinnest marks, `!` and `−`, are 4.1 % and 4.8 % of the ink,
+            // and a mark painted the colour of its disc is exactly 0 %.
+            XCTAssertGreaterThan(
+                Double(white.count) / Double(inked.count), 0.02,
+                "\(attention.name): no mark inside the disc"
+            )
+            XCTAssertLessThan(
+                Double(white.count) / Double(inked.count), 0.6, "\(attention.name): no disc around the mark")
+        }
+    }
+
+    /// Every pixel of an image drawn at four times its size that is more ink than not.
+    private func inkedPixels(of image: NSImage) throws -> [NSColor] {
+        let scale = 4
+        let bitmap = try XCTUnwrap(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: Int(image.size.width) * scale,
+                pixelsHigh: Int(image.size.height) * scale,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            ))
+        bitmap.size = image.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        image.draw(in: NSRect(origin: .zero, size: image.size))
+        NSGraphicsContext.restoreGraphicsState()
+        var inked: [NSColor] = []
+        for x in 0..<bitmap.pixelsWide {
+            for y in 0..<bitmap.pixelsHigh {
+                if let color = bitmap.colorAt(x: x, y: y), color.alphaComponent > 0.9 {
+                    inked.append(color)
+                }
+            }
+        }
+        return inked
+    }
+
     private func session(_ index: Int, _ title: String, _ phase: SessionPhase) -> SessionSnapshot {
         testSession(index: index, title: title, phase: phase, lastObservedAt: Date(timeIntervalSince1970: 1_000))
     }
