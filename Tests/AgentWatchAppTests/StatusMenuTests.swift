@@ -8,7 +8,9 @@ import XCTest
 /// what each one does when chosen.
 @MainActor
 final class StatusMenuTests: XCTestCase {
-    func testTheMenuReadsAsItShipped() throws {
+    /// What a person does while working at the top; every setting, and every window that
+    /// holds settings, one level down.
+    func testTheMenuPutsActionsFirstAndEverySettingUnderSettings() throws {
         let (menu, _, _) = try makeMenu()
 
         menu.menuWillOpen(menu.menu)
@@ -17,36 +19,40 @@ final class StatusMenuTests: XCTestCase {
             outline(menu.menu),
             [
                 "No active sessions",
-                "Show Counts in Menu Bar",
                 "---",
                 "Show Widget",
                 "Highlight Widget",
-                "Widget Settings…",
-                "Widget Behavior",
-                "  Lock Position",
-                "  Lock Size",
-                "  Reset Widget Position",
-                "  Reset Widget Size",
+                "---",
+                "Settings",
+                "  Widget Appearance…",
+                "  Tooling…",
                 "  ---",
+                "  Show Counts in Menu Bar",
+                "  Widget Behavior",
+                "    Lock Position",
+                "    Lock Size",
+                "    ---",
+                "    Reset Widget Position",
+                "    Reset Widget Size",
                 "  Closed Sessions",
                 "    Remove after 2 minutes",
                 "    Remove after 10 minutes",
                 "    Keep until dismissed",
-                "Show Event Debug",
-                "Tooling…",
-                "Read Session Transcripts",
-                "  Nothing to read — no session is working",
+                "  Read Session Transcripts",
+                "    Nothing to read — no session is working",
+                "    ---",
+                "    At most every 3 seconds",
+                "    At most every 5 seconds",
+                "    At most every 10 seconds",
+                "    Off",
+                "  Updates",
+                "    Agent Watch (development build)",
+                "    ---",
+                "    Check for Updates…",
+                "    Check on Launch",
                 "  ---",
-                "  At most every 3 seconds",
-                "  At most every 5 seconds",
-                "  At most every 10 seconds",
-                "  Off",
-                "Updates",
-                "  Agent Watch (development build)",
-                "  ---",
-                "  Check for Updates…",
-                "  Check on Launch",
-                "Record Raw Hook Payloads for 30 Minutes",
+                "  Show Event Debug",
+                "  Record Raw Hook Payloads for 30 Minutes",
                 "---",
                 "Quit Agent Watch",
             ]
@@ -115,7 +121,7 @@ final class StatusMenuTests: XCTestCase {
         let expected: [(title: String, call: String)] = [
             ("Show Widget", "toggleWidget"),
             ("Highlight Widget", "highlightWidget"),
-            ("Widget Settings…", "showWidgetSettings"),
+            ("Widget Appearance…", "showWidgetSettings"),
             ("Reset Widget Position", "resetWidgetPosition"),
             ("Reset Widget Size", "resetWidgetSize"),
             ("Show Event Debug", "toggleEventDebug"),

@@ -74,6 +74,14 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         build()
     }
 
+    /// What a person does at the top, and every setting one level down under `Settings`.
+    ///
+    /// The menu kept growing a line per setting, most of them chosen once and never again, and
+    /// the lines about to be added at the top — the sessions themselves — need the room. The
+    /// test for the top level is "is this something a person does while working": showing the
+    /// widget, finding it, quitting. Everything that configures the app goes one level down,
+    /// the windows that configure it included — and so does the debug window, which a person
+    /// opens to look into the app rather than to get on with their work.
     private func build() {
         // First, and never clickable: what the icon means, spelled out. The icon is read at a
         // glance and the menu is opened when the glance was not enough.
@@ -81,39 +89,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         summary.isEnabled = false
         menu.addItem(summary)
         summaryItem = summary
-        let counts = line("Show Counts in Menu Bar", #selector(toggleMenuBarCounts))
-        menu.addItem(counts)
-        countsItem = counts
         menu.addItem(.separator())
         let widget = line("Show Widget", #selector(toggleWidget))
         menu.addItem(widget)
         widgetItem = widget
         menu.addItem(line("Highlight Widget", #selector(highlightWidget)))
-        // No key equivalent. This application is an accessory and is never the active one, so a
-        // shortcut printed here would answer nothing anywhere but inside the open menu — a
-        // promise the menu cannot keep. The line above it is the exception, and it earns the
-        // exception: something registered that combination with the system, which is what
-        // `WidgetShortcutController` is for. Nothing else here has asked to be worth that.
-        menu.addItem(line("Widget Settings…", #selector(showWidgetSettings)))
-        menu.addItem(makeBehaviorMenuItem())
-        let debug = line("Show Event Debug", #selector(toggleEventDebug))
-        menu.addItem(debug)
-        debugItem = debug
-        // One line and a window behind it. This used to be a submenu whose every line was
-        // both the state and the switch, and the answer stopped fitting on a menu line once
-        // it had to carry the sender's path and the step Codex still needs from a person.
-        menu.addItem(line("Tooling…", #selector(showTooling)))
-        menu.addItem(makeTranscriptMenuItem())
-        menu.addItem(makeUpdateMenuItem())
-        #if AGENT_WATCH_DEBUG_CAPTURE
-            let rawCapture = line("Record Raw Hook Payloads for 30 Minutes", #selector(toggleRawHookCapture))
-            rawCapture.toolTip = "Debug only: saves original hook payloads locally for a limited time"
-            menu.addItem(rawCapture)
-            rawCaptureItem = rawCapture
-            let deleteRecordings = line("Delete Recorded Payloads", #selector(deleteRawHookRecordings))
-            menu.addItem(deleteRecordings)
-            deleteRecordingsItem = deleteRecordings
-        #endif
+        menu.addItem(.separator())
+        menu.addItem(makeSettingsMenuItem())
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Agent Watch", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -124,6 +106,49 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         if let host {
             summary.title = MenuBarSummaryText.line(for: host.attentionCounts)
         }
+    }
+
+    private func makeSettingsMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Settings")
+        // The two windows first: they are where most of the settings are, and a line that opens
+        // a window reads differently from a line that is itself the switch.
+        //
+        // No key equivalent on either, nor anywhere in this menu. This application is an
+        // accessory and is never the active one, so a shortcut printed here would answer nothing
+        // anywhere but inside the open menu — a promise the menu cannot keep. The widget line at
+        // the top is the exception, and it earns the exception: something registered that
+        // combination with the system, which is what `WidgetShortcutController` is for.
+        submenu.addItem(line("Widget Appearance…", #selector(showWidgetSettings)))
+        // One line and a window behind it. This used to be a submenu whose every line was
+        // both the state and the switch, and the answer stopped fitting on a menu line once
+        // it had to carry the sender's path and the step Codex still needs from a person.
+        submenu.addItem(line("Tooling…", #selector(showTooling)))
+        submenu.addItem(.separator())
+        let counts = line("Show Counts in Menu Bar", #selector(toggleMenuBarCounts))
+        submenu.addItem(counts)
+        countsItem = counts
+        submenu.addItem(makeBehaviorMenuItem())
+        // One level up from where it used to be, inside `Widget Behavior`: under `Settings` that
+        // would have been a third level, which a pointer has to travel along without slipping.
+        submenu.addItem(makeClosedSessionMenuItem())
+        submenu.addItem(makeTranscriptMenuItem())
+        submenu.addItem(makeUpdateMenuItem())
+        submenu.addItem(.separator())
+        let debug = line("Show Event Debug", #selector(toggleEventDebug))
+        submenu.addItem(debug)
+        debugItem = debug
+        #if AGENT_WATCH_DEBUG_CAPTURE
+            let rawCapture = line("Record Raw Hook Payloads for 30 Minutes", #selector(toggleRawHookCapture))
+            rawCapture.toolTip = "Debug only: saves original hook payloads locally for a limited time"
+            submenu.addItem(rawCapture)
+            rawCaptureItem = rawCapture
+            let deleteRecordings = line("Delete Recorded Payloads", #selector(deleteRawHookRecordings))
+            submenu.addItem(deleteRecordings)
+            deleteRecordingsItem = deleteRecordings
+        #endif
+        item.submenu = submenu
+        return item
     }
 
     private func line(_ title: String, _ action: Selector, toolTip: String? = nil) -> NSMenuItem {
@@ -148,6 +173,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         )
         submenu.addItem(lockSize)
         lockSizeItem = lockSize
+        submenu.addItem(.separator())
         submenu.addItem(
             line(
                 "Reset Widget Position", #selector(resetWidgetPosition),
@@ -158,8 +184,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
                 "Reset Widget Size", #selector(resetWidgetSize),
                 toolTip: "Lets the widget size itself to the number of sessions again"
             ))
-        submenu.addItem(.separator())
-        submenu.addItem(makeClosedSessionMenuItem())
         item.submenu = submenu
         return item
     }
@@ -219,8 +243,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// The version this copy is, and the two decisions about newer ones.
     ///
     /// A submenu rather than a line, because the version belongs in the interface somewhere:
-    /// it is the first thing anybody reporting a problem is asked for, and an app with no
-    /// window of its own has nowhere else to put it.
+    /// it is the first thing anybody reporting a problem is asked for, and none of the app's
+    /// windows is about the app itself.
     private func makeUpdateMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "Updates", action: nil, keyEquivalent: "")
         let submenu = NSMenu()

@@ -13,7 +13,7 @@ Clicking a row brings forward the terminal tab that session runs in. Hovering it
 with everything the row cannot fit.
 
 `⌥⌘W` shows and hides it from wherever you are. That combination is taken system-wide on the first
-launch; `Widget Settings…` records a different one, or clears it.
+launch; `Settings ▸ Widget Appearance…` records a different one, or clears it.
 
 Alpha: it works and is used daily, but what it shows is still moving.
 
@@ -53,7 +53,7 @@ settings as a plain `settings.json` you can edit, and the sessions of the last l
 does not leave the widget empty.
 
 Nothing about your work leaves the machine. The one request the app makes is to GitHub's public API,
-to see whether a newer build exists — at launch, and when you ask from the `Updates` menu. It carries
+to see whether a newer build exists — at launch, and when you ask from `Settings ▸ Updates`. It carries
 no parameters and nothing about you, not even the version you run, because the comparison happens
 here — the one header the app sets names it, `AgentWatch`, where the system would otherwise have
 written the version in. The app offers to download and install the update itself, and the launch check can be turned
