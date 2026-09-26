@@ -8,8 +8,8 @@ import Foundation
 /// forever without a jump back to the start. Each step changes one session, which is all a
 /// person needs to follow a row: something happened, and it moved or it did not.
 ///
-/// Six sessions, one per thing an order has to place — at work, waiting, finished, opened and
-/// never used, lost, closed — so that every block of `SessionBlock` has something in it.
+/// Seven sessions, one per thing an order has to place — at work, waiting, finished, opened and
+/// never used, lost, failed, closed — so that every block of `SessionBlock` has something in it.
 struct SessionOrderDemo {
     private(set) var sessions: [SessionSnapshot]
     private(set) var now: Date
@@ -27,7 +27,7 @@ struct SessionOrderDemo {
         (2, .completed),
         (1, .waitingForUser),
         (0, .executing),
-        (4, .disconnected),
+        (4, .failed),
     ]
 
     /// Whether the window plays the list for this order. Only where rows move by themselves:
@@ -65,8 +65,9 @@ struct SessionOrderDemo {
             // Opened long enough ago to have dropped out of the active ones, and never asked a
             // thing — the row names its project, the way a real one does.
             session(3, nil, .idle, heard: now - 7_200, worked: false),
-            session(4, "Refactor the ingress", .disconnected, heard: now - 2_400, worked: true),
+            session(4, "Refactor the ingress", .failed, heard: now - 240, worked: true),
             session(5, "Update the dependencies", .sessionClosed, heard: now - 600, worked: true),
+            session(6, "Tidy the changelog", .disconnected, heard: now - 2_400, worked: true),
         ]
     }
 

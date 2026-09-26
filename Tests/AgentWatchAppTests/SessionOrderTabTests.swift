@@ -33,7 +33,7 @@ final class SessionOrderTabTests: XCTestCase {
     /// placed by `SessionBlock.of`, never by a list written for the builder.
     func testTheBuilderShowsEveryBlockWithTheRowsTheWidgetWouldPutInIt() throws {
         let (tab, settings) = try makeTab()
-        settings.setSessionBlockOrder([.closed, .broken, .neverStarted, .active])
+        settings.setSessionBlockOrder([.closed, .broken, .inactive, .active])
         try choose(.blocks, in: tab)
         let demo = SessionOrderDemo()
 
@@ -50,11 +50,11 @@ final class SessionOrderTabTests: XCTestCase {
         let (tab, settings) = try makeTab()
         try choose(.blocks, in: tab)
 
-        let up = try XCTUnwrap(tab.moveUpButtons[.neverStarted])
+        let up = try XCTUnwrap(tab.moveUpButtons[.inactive])
         up.sendAction(up.action, to: up.target)
 
-        XCTAssertEqual(settings.sessionBlockOrder, [.neverStarted, .active, .broken, .closed])
-        let top = try XCTUnwrap(tab.moveUpButtons[.neverStarted])
+        XCTAssertEqual(settings.sessionBlockOrder, [.inactive, .active, .broken, .closed])
+        let top = try XCTUnwrap(tab.moveUpButtons[.inactive])
         XCTAssertFalse(top.isEnabled)
         XCTAssertEqual(top.toolTip, "This block is already at the top")
         let bottom = try XCTUnwrap(tab.moveDownButtons[.closed])
@@ -109,7 +109,7 @@ final class SessionOrderTabTests: XCTestCase {
     func testTheResetPutsBackTheArrivalOrderAndTheFirstBlockOrder() throws {
         let (tab, settings) = try makeTab()
         settings.setSessionOrder(.blocks)
-        settings.setSessionBlockOrder([.closed, .broken, .neverStarted, .active])
+        settings.setSessionBlockOrder([.closed, .broken, .inactive, .active])
 
         tab.resetOrder()
 

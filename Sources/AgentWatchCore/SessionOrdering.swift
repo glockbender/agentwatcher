@@ -5,17 +5,18 @@ import Foundation
 public enum SessionBlock: String, CaseIterable, Sendable {
     /// Alive, in any phase, and either at work at some point or new enough to still be.
     case active
-    /// Never had a turn, and silent long enough to say nobody is coming to give it one.
-    case neverStarted
-    /// Stopped by something going wrong: a failed turn, a lost signal, a terminal closed under
-    /// a running agent.
+    /// Nothing is happening and nothing is expected: the app has no signal from it, or it never
+    /// had a turn and has been silent long enough to say nobody is coming to give it one.
+    case inactive
+    /// Stopped by something going wrong: a failed turn, or a terminal closed under a running
+    /// agent.
     case broken
     /// Over.
     case closed
 
-    /// The order a fresh install shows them in: what a person is working with, then what they
-    /// opened and left, then what went wrong, then what is finished.
-    public static let defaultOrder: [SessionBlock] = [.active, .neverStarted, .broken, .closed]
+    /// The order a fresh install shows them in: what a person is working with, then what is
+    /// just sitting there, then what went wrong, then what is finished.
+    public static let defaultOrder: [SessionBlock] = [.active, .inactive, .broken, .closed]
 
     /// The block a session is in at this moment.
     ///
@@ -27,16 +28,21 @@ public enum SessionBlock: String, CaseIterable, Sendable {
         case .sessionClosed:
             return .closed
         // A failed turn is also what the icon counts as needing a person. In blocks it goes
-        // with the other two things that went wrong, as the owner chose.
-        case .failed, .disconnected, .terminalClosed:
+        // with the other thing that went wrong, as the owner chose.
+        case .failed, .terminalClosed:
             return .broken
+        // The app not hearing, not the session going wrong: after a restart every remembered
+        // session is here until it speaks. Counted as broken, a restart filled that block with
+        // sessions that had never even started; the owner asked for it to mean inactive.
+        case .disconnected:
+            return .inactive
         case .idle, .planning, .executing, .waitingForUser, .waitingForChildren, .completed:
             break
         }
         guard !snapshot.hasWorked, now >= SessionPresence.silenceEnds(for: snapshot) else {
             return .active
         }
-        return .neverStarted
+        return .inactive
     }
 
     /// Every block exactly once, in the stored order where the file gives one.
@@ -206,14 +212,13 @@ public struct SessionOrdering: Sendable {
     /// date would place a session that has only just been found below one that failed long
     /// before. They joined when the list first saw them. Everything else joined at its event.
     private static func likelyJoined(_ snapshot: SessionSnapshot, now: Date) -> Date {
-        if SessionBlock.of(snapshot, now: now) == .neverStarted {
-            return SessionPresence.silenceEnds(for: snapshot)
-        }
         switch snapshot.phase {
         case .disconnected, .terminalClosed:
             return now
         case .idle, .planning, .executing, .waitingForUser, .waitingForChildren, .completed, .failed, .sessionClosed:
-            return snapshot.lastObservedAt
+            return SessionBlock.of(snapshot, now: now) == .inactive
+                ? SessionPresence.silenceEnds(for: snapshot)
+                : snapshot.lastObservedAt
         }
     }
 

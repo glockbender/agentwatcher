@@ -54,11 +54,11 @@ final class WidgetOrderTests: XCTestCase {
         XCTAssertEqual(settings.sessionBlockOrder, SessionBlock.defaultOrder)
 
         settings.setSessionOrder(.blocks)
-        settings.setSessionBlockOrder([.broken, .active, .closed, .neverStarted])
+        settings.setSessionBlockOrder([.broken, .active, .closed, .inactive])
 
         let reopened = WidgetSettingsStore(preferences: preferences)
         XCTAssertEqual(reopened.sessionOrder, .blocks)
-        XCTAssertEqual(reopened.sessionBlockOrder, [.broken, .active, .closed, .neverStarted])
+        XCTAssertEqual(reopened.sessionBlockOrder, [.broken, .active, .closed, .inactive])
         XCTAssertEqual(announced, 2)
     }
 
@@ -72,7 +72,7 @@ final class WidgetOrderTests: XCTestCase {
         let settings = WidgetSettingsStore(preferences: preferences)
 
         XCTAssertEqual(settings.sessionOrder, .arrival)
-        XCTAssertEqual(settings.sessionBlockOrder, [.closed, .active, .neverStarted, .broken])
+        XCTAssertEqual(settings.sessionBlockOrder, [.closed, .active, .inactive, .broken])
     }
 
     private func session(_ index: Int, at observed: Date? = nil) -> SessionSnapshot {

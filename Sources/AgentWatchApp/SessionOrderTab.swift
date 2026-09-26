@@ -27,7 +27,7 @@ extension SessionBlock {
     var settingsTitle: String {
         switch self {
         case .active: "Active"
-        case .neverStarted: "Never started"
+        case .inactive: "Inactive"
         case .broken: "Broken"
         case .closed: "Closed"
         }
@@ -36,8 +36,8 @@ extension SessionBlock {
     var settingsExplanation: String {
         switch self {
         case .active: "alive, in any state"
-        case .neverStarted: "opened, never asked a thing, silent for half an hour"
-        case .broken: "failed, lost its signal, or its terminal was closed"
+        case .inactive: "no signal, or opened and never asked a thing for half an hour"
+        case .broken: "its turn failed, or its terminal was closed under it"
         case .closed: "finished"
         }
     }

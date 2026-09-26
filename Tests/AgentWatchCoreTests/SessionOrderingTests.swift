@@ -70,7 +70,7 @@ final class SessionOrderingTests: XCTestCase {
         let expected: [(SessionPhase, SessionBlock)] = [
             (.planning, .active), (.executing, .active), (.waitingForChildren, .active),
             (.waitingForUser, .active), (.completed, .active), (.idle, .active),
-            (.failed, .broken), (.disconnected, .broken), (.terminalClosed, .broken),
+            (.failed, .broken), (.disconnected, .inactive), (.terminalClosed, .broken),
             (.sessionClosed, .closed),
         ]
         XCTAssertEqual(expected.count, SessionPhase.allCases.count, "a new phase needs a block")
@@ -87,7 +87,7 @@ final class SessionOrderingTests: XCTestCase {
         let wakes = try XCTUnwrap(SessionPresence.dismissal(of: session, now: start).becomesDismissibleAt)
 
         XCTAssertEqual(SessionBlock.of(session, now: wakes - 1), .active)
-        XCTAssertEqual(SessionBlock.of(session, now: wakes), .neverStarted)
+        XCTAssertEqual(SessionBlock.of(session, now: wakes), .inactive)
         XCTAssertEqual(
             SessionBlock.of(worked(session), now: wakes + 3_600),
             .active,
@@ -100,7 +100,7 @@ final class SessionOrderingTests: XCTestCase {
     func testAStoredBlockOrderAlwaysHoldsEveryBlockOnce() {
         XCTAssertEqual(
             SessionBlock.normalized(["closed", "sleeping", "closed", "active"]),
-            [.closed, .active, .neverStarted, .broken]
+            [.closed, .active, .inactive, .broken]
         )
         XCTAssertEqual(SessionBlock.normalized([]), SessionBlock.defaultOrder)
     }
@@ -162,11 +162,11 @@ final class SessionOrderingTests: XCTestCase {
             worked(session(2, .sessionClosed)),
             worked(session(3, .failed)),
         ]
-        let chosen: [SessionBlock] = [.broken, .active, .closed, .neverStarted]
+        let chosen: [SessionBlock] = [.broken, .active, .closed, .inactive]
 
         XCTAssertEqual(order(&ordering, sessions, .blocks, chosen), [3, 1, 0, 2])
 
-        sessions[1] = worked(session(1, .disconnected, at: start + 5))
+        sessions[1] = worked(session(1, .failed, at: start + 5))
         XCTAssertEqual(order(&ordering, sessions, .blocks, chosen), [1, 3, 0, 2], "1 joined the broken last")
     }
 
@@ -182,7 +182,7 @@ final class SessionOrderingTests: XCTestCase {
         sessions[1] = worked(session(1, .completed, at: start + 10))
         XCTAssertEqual(order(&ordering, sessions, .blocks), [0, 1], "a change inside a block moves nothing")
 
-        XCTAssertEqual(order(&ordering, sessions, .blocks, [.closed, .active, .broken, .neverStarted]), [0, 1])
+        XCTAssertEqual(order(&ordering, sessions, .blocks, [.closed, .active, .broken, .inactive]), [0, 1])
     }
 
     /// The one change no event announces. It is noticed by the next ordering after the moment,
@@ -196,7 +196,7 @@ final class SessionOrderingTests: XCTestCase {
         XCTAssertEqual(order(&ordering, [quiet, busy], .blocks, now: wakes - 1), [1, 0])
         XCTAssertEqual(
             ordering.order(
-                [quiet, busy], mode: .blocks, blocks: [.neverStarted, .active, .broken, .closed], now: wakes
+                [quiet, busy], mode: .blocks, blocks: [.inactive, .active, .broken, .closed], now: wakes
             )
             .map(\.arrivalIndex),
             [0, 1]
@@ -224,15 +224,25 @@ final class SessionOrderingTests: XCTestCase {
     func testAFindingJoinsItsBlockWhenTheListSeesItNotWhenTheSessionLastSpoke() {
         var ordering = SessionOrdering()
         let failed = worked(session(0, .failed, at: start + 20))
-        let lost = worked(session(1, .disconnected, at: start + 10))
         let hung = worked(session(2, .terminalClosed, at: start + 5))
+        let lost = worked(session(1, .disconnected, at: start + 10))
+        let resting = session(3, .idle, at: start - 3_600)
 
-        XCTAssertEqual(order(&ordering, [failed, lost, hung], .blocks, now: start + 40).prefix(1), [2])
         XCTAssertEqual(
-            order(&ordering, [failed, lost, hung], .blocks, now: start + 40),
-            [2, 1, 0],
-            "the two findings joined at the moment the list saw them, after the failure"
+            order(&ordering, [failed, hung, lost, resting], .blocks, now: start + 40),
+            [1, 3, 2, 0],
+            "each finding joined at the moment the list saw it, after what came before it"
         )
+    }
+
+    /// No signal is the app not hearing, and after a restart every remembered session is in it
+    /// until it speaks. As broken, a restart filled that block with sessions that had never
+    /// even started.
+    func testNoSignalIsInactiveNotBroken() {
+        let neverWorked = testSession(phase: .disconnected, lastObservedAt: start)
+
+        XCTAssertEqual(SessionBlock.of(neverWorked, now: start), .inactive)
+        XCTAssertEqual(SessionBlock.of(worked(neverWorked), now: start), .inactive)
     }
 
     func testOrderingTheSameSessionsAgainChangesNothing() {
