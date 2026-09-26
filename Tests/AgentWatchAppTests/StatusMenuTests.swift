@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchTestSupport
 import AppKit
 import XCTest
 
@@ -161,6 +162,84 @@ final class StatusMenuTests: XCTestCase {
         }
     #endif
 
+    // MARK: - Sessions in the menu
+
+    /// Directly under the summary, so the line that counts the sessions heads the list of them.
+    func testListedSessionsAreTheFirstLinesUnderTheSummary() throws {
+        let (menu, host, _) = try makeMenu()
+        host.sessions = [
+            session(0, "Waiting on a question", .waitingForUser),
+            session(1, "Still building", .executing),
+            session(2, "Finished the port", .completed),
+        ]
+
+        menu.menuWillOpen(menu.menu)
+
+        XCTAssertEqual(
+            Array(outline(menu.menu).prefix(5)),
+            ["No active sessions", "Waiting on a question", "Finished the port", "---", "Show Widget"],
+            "the defaults list the sessions that need a person or are done, and no others"
+        )
+        XCTAssertEqual(
+            menu.sessionLineItems.map { $0.image?.accessibilityDescription },
+            ["Needs You", "Done"],
+            "every line carries its state's mark, and the mark says its state out loud"
+        )
+    }
+
+    func testChoosingALineIsAClickOnThatSessionsRow() throws {
+        let (menu, host, _) = try makeMenu()
+        host.sessions = [session(0, "Waiting on a question", .waitingForUser)]
+        menu.menuWillOpen(menu.menu)
+        host.calls = []
+
+        try choose(XCTUnwrap(menu.sessionLineItems.first))
+
+        XCTAssertEqual(host.calls, ["focusSession claude:session-0"])
+    }
+
+    func testOpeningTheMenuAgainListsTheSessionsAsTheyAreNow() throws {
+        let (menu, host, _) = try makeMenu()
+        host.sessions = [session(0, "First", .waitingForUser), session(1, "Second", .completed)]
+        menu.menuWillOpen(menu.menu)
+
+        host.sessions = [session(1, "Second", .completed)]
+        menu.menuWillOpen(menu.menu)
+
+        XCTAssertEqual(menu.sessionLineItems.map(\.title), ["Second"])
+        XCTAssertEqual(outline(menu.menu).filter { $0 == "Second" }.count, 1, "a line was left behind")
+    }
+
+    /// Off keeps the chosen states, and the menu goes back to the summary alone.
+    func testTurningTheListOffTakesItsLinesAway() throws {
+        let (menu, host, settings) = try makeMenu()
+        host.sessions = [session(0, "Waiting on a question", .waitingForUser)]
+        menu.menuWillOpen(menu.menu)
+
+        settings.setListsSessionsInMenu(false)
+        menu.refresh()
+
+        XCTAssertEqual(menu.sessionLineItems, [])
+        XCTAssertEqual(Array(outline(menu.menu).prefix(2)), ["No active sessions", "---"])
+    }
+
+    /// A menu enables its own lines as it opens, so a line is greyed by having nothing to do.
+    func testALineWhoseClickCouldDoNothingIsGreyed() throws {
+        let (menu, host, _) = try makeMenu()
+        host.sessions = [session(0, "Left behind", .terminalClosed)]
+        host.reaches = ["claude:session-0": .closedTerminal(devicePath: nil)]
+
+        menu.menuWillOpen(menu.menu)
+
+        let line = try XCTUnwrap(menu.sessionLineItems.first)
+        XCTAssertEqual(line.title, "Left behind — terminal closed, nothing here can end it")
+        XCTAssertNil(line.action)
+    }
+
+    private func session(_ index: Int, _ title: String, _ phase: SessionPhase) -> SessionSnapshot {
+        testSession(index: index, title: title, phase: phase, lastObservedAt: Date(timeIntervalSince1970: 1_000))
+    }
+
     // MARK: - Helpers
 
     private func makeMenu() throws -> (StatusMenu, FakeStatusMenuHost, WidgetSettingsStore) {
@@ -215,6 +294,14 @@ final class FakeStatusMenuHost: StatusMenuHost {
     var checksForUpdatesOnLaunch = true
     var isReadingTranscripts = false
     var transcriptFaultedSessionCount = 0
+    var sessions: [SessionSnapshot] = []
+    var reaches: [String: SessionReach] = [:]
+
+    func reach(for snapshot: SessionSnapshot) -> SessionReach {
+        reaches[snapshot.id] ?? .anApplication
+    }
+
+    func focusSession(id: String) { calls.append("focusSession \(id)") }
 
     func menuWillOpen() { calls.append("menuWillOpen") }
     func showShortcut(on item: NSMenuItem) { calls.append("showShortcut") }

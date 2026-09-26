@@ -32,6 +32,17 @@ extension SessionAttention {
         }
     }
 
+    /// The state's name where a person chooses it, and what a screen reader says for its mark.
+    var name: String {
+        switch self {
+        case .needsPerson: "Needs You"
+        case .working: "Working"
+        case .done: "Done"
+        case .quiet: "Idle"
+        case .closed: "Closed"
+        }
+    }
+
     /// How many sessions are in this state, as the summary line says it.
     func summaryPhrase(count: Int) -> String {
         switch self {

@@ -70,8 +70,26 @@ final class PreferenceFile {
         return value
     }
 
+    /// The words in a list, or `nil` when the key holds no list. Whatever else a hand-edited
+    /// list holds is skipped, and its words are still read.
+    func strings(forKey key: String) -> [String]? {
+        guard case let .array(values) = values[key] else {
+            return nil
+        }
+        return values.compactMap { value in
+            guard case let .string(word) = value else {
+                return nil
+            }
+            return word
+        }
+    }
+
     func set(_ value: String, forKey key: String) {
         write(.string(value), forKey: key)
+    }
+
+    func set(_ value: [String], forKey key: String) {
+        write(.array(value.map(JSONValue.string)), forKey: key)
     }
 
     func set(_ value: Double, forKey key: String) {

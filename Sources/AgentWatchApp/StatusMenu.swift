@@ -15,6 +15,11 @@ protocol StatusMenuHost: AnyObject {
     var checksForUpdatesOnLaunch: Bool { get set }
     var isReadingTranscripts: Bool { get }
     var transcriptFaultedSessionCount: Int { get }
+    /// Every session the widget has, in any order: the menu puts them in the widget's.
+    var sessions: [SessionSnapshot] { get }
+    func reach(for snapshot: SessionSnapshot) -> SessionReach
+    /// A click on a session's line, which is a click on its row in the widget.
+    func focusSession(id: String)
     /// Called before anything is refreshed, so what the menu then reads is current.
     func menuWillOpen()
     /// Puts the registered combination on the widget line, or takes it off.
@@ -51,6 +56,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// The lines whose title or checkmark depends on something, kept to be refreshed. Visible
     /// to the tests, which read them the way a person reads the menu.
     private(set) var summaryItem: NSMenuItem?
+    /// One line per listed session, directly under the summary. Rebuilt each time rather
+    /// than kept in step: they are a handful, and the list changes between two openings.
+    private(set) var sessionLineItems: [NSMenuItem] = []
     private(set) var countsItem: NSMenuItem?
     private(set) var widgetItem: NSMenuItem?
     private(set) var debugItem: NSMenuItem?
@@ -277,6 +285,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             return
         }
         summaryItem?.title = MenuBarSummaryText.line(for: host.attentionCounts)
+        showSessionLines(host: host)
         countsItem?.state = settings.showsMenuBarCounts ? .on : .off
         widgetItem?.title = host.isWidgetVisible ? "Hide Widget" : "Show Widget"
         if let widgetItem {
@@ -305,6 +314,47 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         #endif
     }
 
+    /// Under the summary, so the line that counts the sessions reads as the heading of the
+    /// list of them.
+    private func showSessionLines(host: StatusMenuHost) {
+        for item in sessionLineItems {
+            menu.removeItem(item)
+        }
+        sessionLineItems = []
+        guard settings.listsSessionsInMenu else {
+            return
+        }
+        let lines = menuSessionLines(
+            for: host.sessions,
+            listing: settings.menuSessionAttentions,
+            reach: host.reach(for:)
+        )
+        let first = summaryItem.map { menu.index(of: $0) + 1 } ?? 0
+        sessionLineItems = lines.enumerated().map { offset, line in
+            // A line with nothing to do has no action, which is how a menu that enables its
+            // own items knows to grey it: `isEnabled` alone is overwritten when it opens.
+            let item = NSMenuItem(
+                title: line.title,
+                action: line.isEnabled ? #selector(focusSession(_:)) : nil,
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = line.sessionID
+            item.image = Self.mark(for: line.attention)
+            menu.insertItem(item, at: first + offset)
+            return item
+        }
+    }
+
+    /// The mark the state has in the menu bar, in its colour. The shape tells the states apart
+    /// on its own, so the colour only speeds the reading (ADR-0003).
+    private static func mark(for attention: SessionAttention) -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [attention.accent]))
+        return NSImage(systemSymbolName: attention.symbolName, accessibilityDescription: attention.name)?
+            .withSymbolConfiguration(configuration)
+    }
+
     #if AGENT_WATCH_DEBUG_CAPTURE
         private func refreshRawHookCapture(host: StatusMenuHost, now: Date = .now) {
             // Shown only when there is something to delete, so its presence is itself the
@@ -331,6 +381,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     #endif
 
     // MARK: - Actions
+
+    @objc private func focusSession(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else {
+            return
+        }
+        host?.focusSession(id: id)
+    }
 
     @objc private func toggleMenuBarCounts() {
         settings.setShowsMenuBarCounts(!settings.showsMenuBarCounts)

@@ -1,3 +1,4 @@
+import AgentWatchCore
 import XCTest
 
 @testable import AgentWatchApp
@@ -196,6 +197,68 @@ final class WidgetSettingsStoreTests: XCTestCase {
 
         store.setToggleShortcut(WidgetShortcut(keyCode: 96, modifiers: [.control]))
         store.setToggleShortcut(nil)
+
+        XCTAssertEqual(announced, 2)
+    }
+
+    /// On, and for the two states where a person has a next move: something is waiting for
+    /// them, or something is finished for them to look at.
+    func testTheMenuListsSessionsThatNeedYouOrAreDoneUntilAskedOtherwise() throws {
+        let store = try makeStore()
+
+        XCTAssertTrue(store.listsSessionsInMenu)
+        XCTAssertEqual(store.menuSessionAttentions, [.needsPerson, .done])
+    }
+
+    /// Two keys, so switching the list off keeps the states chosen for it.
+    func testTurningTheListOffKeepsTheStatesChosenForIt() throws {
+        let preferences = try isolatedPreferences()
+        let store = WidgetSettingsStore(preferences: preferences)
+
+        store.setMenuLists(.working, true)
+        store.setMenuLists(.done, false)
+        store.setListsSessionsInMenu(false)
+
+        let reopened = WidgetSettingsStore(preferences: preferences)
+        XCTAssertFalse(reopened.listsSessionsInMenu)
+        XCTAssertEqual(reopened.menuSessionAttentions, [.needsPerson, .working])
+    }
+
+    /// Stored in the order the icon reads them, so the file does not reorder itself with
+    /// every click.
+    func testTheStatesAreStoredByNameInReadingOrder() throws {
+        let preferences = try isolatedPreferences()
+        let store = WidgetSettingsStore(preferences: preferences)
+
+        store.setMenuLists(.quiet, true)
+        store.setMenuLists(.working, true)
+
+        XCTAssertEqual(
+            preferences.strings(forKey: "menuSessionAttentions"),
+            ["needsPerson", "working", "done", "quiet"]
+        )
+    }
+
+    /// A name this version does not know is skipped rather than failing the whole list, and a
+    /// closed session is never listed — the icon counts it nowhere either (ADR-0002).
+    func testANameThisVersionCannotListIsLeftOut() throws {
+        let preferences = try isolatedPreferences()
+        preferences.set(["done", "sleeping", "closed"], forKey: "menuSessionAttentions")
+
+        XCTAssertEqual(WidgetSettingsStore(preferences: preferences).menuSessionAttentions, [.done])
+    }
+
+    func testChangingTheListIsAnnounced() throws {
+        let store = try makeStore()
+        var announced = 0
+        store.onChange = { setting in
+            if case .menuSessions = setting {
+                announced += 1
+            }
+        }
+
+        store.setListsSessionsInMenu(false)
+        store.setMenuLists(.quiet, true)
 
         XCTAssertEqual(announced, 2)
     }

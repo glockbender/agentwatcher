@@ -27,6 +27,27 @@ final class PreferenceFileTests: XCTestCase {
         XCTAssertEqual(reopened.flag(forKey: "lockWidgetSize"), true)
     }
 
+    func testAListOfWordsSurvivesIntoTheNextLaunch() throws {
+        let directory = try makeDirectory()
+
+        PreferenceFile(directoryURL: directory).set(["needsPerson", "done"], forKey: "menuSessionAttentions")
+
+        let reopened = PreferenceFile(directoryURL: directory)
+        XCTAssertEqual(reopened.strings(forKey: "menuSessionAttentions"), ["needsPerson", "done"])
+    }
+
+    /// A person may edit the file by hand. What is not a word in a list is not read as one, and
+    /// the words beside it still are.
+    func testAListKeepsItsWordsAndDropsWhatIsNotAWord() throws {
+        let preferences = PreferenceFile(directoryURL: try makeDirectory())
+
+        preferences.replace(["menuSessionAttentions": .array([.string("done"), .number(1), .null])])
+        preferences.set("done", forKey: "notAList")
+
+        XCTAssertEqual(preferences.strings(forKey: "menuSessionAttentions"), ["done"])
+        XCTAssertNil(preferences.strings(forKey: "notAList"), "a single word is not a list of one")
+    }
+
     /// `README.md` invites a person to edit this file. A file the app cannot read was read as
     /// empty, and the next write — the defaults, at launch — went straight over it: the whole
     /// lamp scheme gone for a typo, or for a write that was cut short. Kept aside instead, the

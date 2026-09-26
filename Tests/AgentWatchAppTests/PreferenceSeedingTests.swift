@@ -21,7 +21,8 @@ final class PreferenceSeedingTests: XCTestCase {
                 XCTAssertTrue(
                     preferences.string(forKey: key) != nil
                         || preferences.number(forKey: key) != nil
-                        || preferences.flag(forKey: key) != nil,
+                        || preferences.flag(forKey: key) != nil
+                        || preferences.strings(forKey: key) != nil,
                     "\(key) was not written"
                 )
             }

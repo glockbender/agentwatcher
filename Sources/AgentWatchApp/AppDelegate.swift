@@ -362,6 +362,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             applyShortcut()
         case .menuBarCounts:
             applyMenuBarIcon()
+        case .menuSessions:
+            // The lines at the top follow at once: the menu may be open while this is chosen.
+            statusMenu?.refresh()
         }
     }
 
@@ -406,6 +409,24 @@ extension AppDelegate: StatusMenuHost {
 
     var transcriptFaultedSessionCount: Int {
         supervisor.faultedSessionCount
+    }
+
+    var sessions: [SessionSnapshot] {
+        supervisor.sessions
+    }
+
+    func reach(for snapshot: SessionSnapshot) -> SessionReach {
+        supervisor.reach(for: snapshot)
+    }
+
+    /// Looked up at the click, not taken from when the menu opened: the session may have moved
+    /// on, or gone, while the menu stood open.
+    func focusSession(id: String) {
+        guard let snapshot = supervisor.sessions.first(where: { $0.id == id }) else {
+            recordDebug("Menu · the session was gone before the click; nothing to bring forward")
+            return
+        }
+        supervisor.focus(snapshot)
     }
 
     func menuWillOpen() {

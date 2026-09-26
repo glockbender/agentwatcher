@@ -34,6 +34,7 @@ enum WidgetSetting {
     case toggleShortcut
     case rowLayout
     case menuBarCounts
+    case menuSessions
 }
 
 /// Widget preferences that are not about colour.
@@ -115,7 +116,13 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let scale = "widgetScale"
         static let toggleShortcut = "toggleWidgetShortcut"
         static let showsMenuBarCounts = "showsMenuBarCounts"
+        static let listsSessionsInMenu = "listsSessionsInMenu"
+        static let menuSessionAttentions = "menuSessionAttentions"
     }
+
+    /// Something waiting for the person, and something finished for them to look at: the two
+    /// states where a switch to the session has a next move behind it.
+    static let defaultMenuSessionAttentions: Set<SessionAttention> = [.needsPerson, .done]
 
     private let preferences: PreferenceFile
 
@@ -128,6 +135,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.scale: .number(Double(Self.defaultScale)),
             Key.toggleShortcut: .string(Self.defaultToggleShortcut),
             Key.showsMenuBarCounts: .bool(true),
+            Key.listsSessionsInMenu: .bool(true),
+            Key.menuSessionAttentions: .array(Self.stored(Self.defaultMenuSessionAttentions).map(JSONValue.string)),
         ]
     }
 
@@ -232,6 +241,48 @@ final class WidgetSettingsStore: PreferenceDefaults {
     func setShowsMenuBarCounts(_ isShown: Bool) {
         preferences.set(isShown, forKey: Key.showsMenuBarCounts)
         onChange?(.menuBarCounts)
+    }
+
+    /// Whether the menu opens with a line for each session it is set to list.
+    ///
+    /// On for the reason the counts are: a feature that exists to be seen is not served by a
+    /// switch nobody would find, and this one is two levels down.
+    var listsSessionsInMenu: Bool {
+        preferences.flag(forKey: Key.listsSessionsInMenu) ?? true
+    }
+
+    func setListsSessionsInMenu(_ isListed: Bool) {
+        preferences.set(isListed, forKey: Key.listsSessionsInMenu)
+        onChange?(.menuSessions)
+    }
+
+    /// The states whose sessions the menu lists, kept when the list itself is off.
+    ///
+    /// Only the counted states can be here: a closed session is over, and nothing lists it
+    /// (ADR-0002). A name this version does not know is skipped, so a file written by a newer
+    /// one still reads.
+    var menuSessionAttentions: Set<SessionAttention> {
+        guard let stored = preferences.strings(forKey: Key.menuSessionAttentions) else {
+            return Self.defaultMenuSessionAttentions
+        }
+        let named = Set(stored.compactMap(SessionAttention.init(rawValue:)))
+        return named.intersection(SessionAttention.counted)
+    }
+
+    func setMenuLists(_ attention: SessionAttention, _ isListed: Bool) {
+        var listed = menuSessionAttentions
+        if isListed {
+            listed.insert(attention)
+        } else {
+            listed.remove(attention)
+        }
+        preferences.set(Self.stored(listed), forKey: Key.menuSessionAttentions)
+        onChange?(.menuSessions)
+    }
+
+    /// In the order the icon reads them, so the file does not reorder itself with every click.
+    private static func stored(_ attentions: Set<SessionAttention>) -> [String] {
+        SessionAttention.counted.filter(attentions.contains).map(\.rawValue)
     }
 
     func setToggleShortcut(_ shortcut: WidgetShortcut?) {
