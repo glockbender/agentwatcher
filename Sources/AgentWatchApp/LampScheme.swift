@@ -1,10 +1,15 @@
 import AgentWatchCore
 import AppKit
 
-/// One phase's lamp: the two fields a person chooses.
+/// One phase's lamp, including the colour endpoints and animation period.
 struct LampStyle: Equatable {
     var color: NSColor
     var motion: SessionLampAppearance.Motion
+    var gradientColor: NSColor = NSColor(sRGB: "#FFFFFF")
+    /// A full dim/bright or colour round trip, in seconds.
+    var animationCycle: TimeInterval = 2.8
+
+    static let animationCycleRange: ClosedRange<Double> = 0.5...10
 }
 
 extension SessionPhase {
@@ -26,24 +31,26 @@ extension SessionPhase {
         case .idle:
             LampStyle(color: NSColor(sRGB: "#98989D"), motion: .steady)
         case .planning:
-            LampStyle(color: NSColor(sRGB: "#00EEEC"), motion: .pulse)
+            LampStyle(color: NSColor(sRGB: "#00EEEC"), motion: .dim)
         case .executing:
-            LampStyle(color: NSColor(sRGB: "#00FF5C"), motion: .pulse)
+            LampStyle(color: NSColor(sRGB: "#00FF5C"), motion: .dim)
         case .waitingForChildren:
-            LampStyle(color: NSColor(sRGB: "#6AC4DC"), motion: .pulse)
+            LampStyle(color: NSColor(sRGB: "#6AC4DC"), motion: .dim)
         case .waitingForUser:
-            LampStyle(color: NSColor(sRGB: "#FF9F0A"), motion: .urgent)
+            LampStyle(color: NSColor(sRGB: "#FF9F0A"), motion: .dim, animationCycle: 1.1)
         case .completed:
             LampStyle(color: NSColor(sRGB: "#CED4D0"), motion: .steady)
+        case .rateLimited:
+            LampStyle(color: NSColor(sRGB: "#BF9BFA"), motion: .steady)
         case .failed:
-            LampStyle(color: NSColor(sRGB: "#FF453A"), motion: .urgent)
+            LampStyle(color: NSColor(sRGB: "#FF453A"), motion: .dim, animationCycle: 1.1)
         case .terminalClosed:
             // The failure's red, still. It is a failure a person has to deal with, but nothing
             // is lost by waiting, and a row like this can stand for days — blinking all that
             // time would be a nag, not news.
             LampStyle(color: NSColor(sRGB: "#FF453A"), motion: .steady)
         case .disconnected:
-            LampStyle(color: NSColor(sRGB: "#BB7F7C"), motion: .pulse)
+            LampStyle(color: NSColor(sRGB: "#BB7F7C"), motion: .dim)
         case .sessionClosed:
             // `systemGray` as it resolves on a dark machine, like the rest of this table.
             // It was `#000000`, which is a black ring on a near-black widget: 1.6:1 against
@@ -62,8 +69,8 @@ extension SessionPhase {
 /// "every field is written" true by type rather than by discipline — there is no half-set
 /// phase to reason about, and no optional to answer for at the drawing end.
 ///
-/// Only the colour and the motion. The shape — a ring for a session that has stopped
-/// speaking — and the wording in the hover card stay the app's.
+/// Colours, motion and fade period. The shape — disc, ring or pause — and the wording
+/// in the hover card stay the app's.
 struct LampScheme: Equatable {
     private var styles: [SessionPhase: LampStyle]
 
@@ -95,6 +102,8 @@ struct LampScheme: Equatable {
             let style = style(for: phase)
             let fallback = phase.defaultLampStyle
             return style.motion == fallback.motion && style.color.srgbHex == fallback.color.srgbHex
+                && style.gradientColor.srgbHex == fallback.gradientColor.srgbHex
+                && style.animationCycle == fallback.animationCycle
         }
     }
 }

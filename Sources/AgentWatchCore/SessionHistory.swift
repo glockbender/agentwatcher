@@ -58,6 +58,7 @@ public enum SessionHistory {
     ) -> SessionSnapshot {
         var remembered = snapshot
         remembered.activities = []
+        remembered.rateLimitReachedAt = nil
         // And what the last turn left running goes with them, for the same reason: the row
         // draws that list as something happening now, and after a restart nobody is left to
         // correct it until the session speaks again. Keeping it would also draw two sessions

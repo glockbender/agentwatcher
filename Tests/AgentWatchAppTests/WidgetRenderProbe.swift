@@ -27,6 +27,9 @@ final class WidgetRenderProbe: XCTestCase {
         try XCTSkipIf(requested == nil, "a drawing probe, not a check: set WIDGET_RENDER_DIR")
         let directory = try XCTUnwrap(requested)
 
+        if let (_, lampTab) = try settingsWindowTabs(gradient: true).first(where: { $0.0 == "lamp" }) {
+            try draw(lampTab, named: "settings-lamp-gradient", in: directory)
+        }
         try draw(listView(width: 420), named: "wide", in: directory)
         // A template nobody would get by default, and the one the arithmetic was never proved
         // against: the part that gives way sits *after* the gap, where `furnitureWidth` — whose
@@ -174,7 +177,9 @@ final class WidgetRenderProbe: XCTestCase {
     /// its sample and its parts, the nine lamp rows, and the palette with the sliders. Drawn
     /// rather than measured because a grid of colour wells and pop-up buttons is exactly the
     /// layout that measures right and reads wrong.
-    private func settingsWindowTabs(customBackground: String? = nil) throws -> [(String, NSView)] {
+    private func settingsWindowTabs(customBackground: String? = nil, gradient: Bool = false) throws -> [(
+        String, NSView
+    )] {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
         let backgroundStore = WidgetBackgroundStore(preferences: preferences)
@@ -182,9 +187,15 @@ final class WidgetRenderProbe: XCTestCase {
             backgroundStore.select(
                 try XCTUnwrap(NSColor(hex: customBackground).flatMap(WidgetBackground.init(custom:))))
         }
+        let lamps = LampSchemeStore(preferences: preferences)
+        if gradient {
+            lamps.setMotion(.gradient, for: .executing)
+            lamps.setGradientColor(NSColor(sRGB: "#BF9BFA"), for: .executing)
+            lamps.setAnimationCycle(4, for: .executing)
+        }
         let controller = WidgetSettingsWindowController(
             backgroundStore: backgroundStore,
-            lampSchemes: LampSchemeStore(preferences: preferences),
+            lampSchemes: lamps,
             settings: settings,
             rowLayouts: RowLayoutStore(preferences: preferences),
             shortcuts: FakeShortcutRegistrar.controller(for: settings)
@@ -389,7 +400,8 @@ final class WidgetRenderProbe: XCTestCase {
         ).row(arrivalIndex: 9)
 
         return [
-            working, waiting, compacting, consulting, background, leftRunning, headless,
+            working, waiting, session(20, "Claude · limit reached", .rateLimited, secondsAgo: 120),
+            compacting, consulting, background, leftRunning, headless,
             unnamed, codex, lost, session(4, "Старая сессия", .sessionClosed, secondsAgo: 30),
             discovered,
         ]

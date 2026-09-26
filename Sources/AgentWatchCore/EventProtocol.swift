@@ -13,6 +13,7 @@ public enum EventKind: String, Codable, Sendable {
     case turnCompleted
     /// The turn ended in an API error rather than an answer (`StopFailure`).
     case turnFailed
+    case turnRateLimited
     /// A person stopped the turn. Only Codex reports this; for Claude the same fact is
     /// readable only from the transcript, which is why reading it on silence exists.
     case turnInterrupted
@@ -441,7 +442,8 @@ public enum HookEventNormalizer {
                 }
             )
         case .stopFailure:
-            return envelope(.turnFailed)
+            return envelope(
+                source == .claude && string("error", in: fields) == "rate_limit" ? .turnRateLimited : .turnFailed)
         case .interrupt:
             return envelope(.turnInterrupted)
         case .permissionRequest:

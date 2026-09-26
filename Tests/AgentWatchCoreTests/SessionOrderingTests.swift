@@ -39,7 +39,7 @@ final class SessionOrderingTests: XCTestCase {
     /// The phases a session reaches only once a turn has begun, written out.
     func testEveryPhaseSaysWhetherASessionInItHasWorked() {
         let working: Set<SessionPhase> = [
-            .planning, .executing, .waitingForChildren, .waitingForUser, .completed, .failed,
+            .planning, .executing, .waitingForChildren, .waitingForUser, .completed, .failed, .rateLimited,
         ]
         for phase in SessionPhase.allCases {
             XCTAssertEqual(phase.meansTheSessionHasWorked, working.contains(phase), "\(phase)")
@@ -71,7 +71,7 @@ final class SessionOrderingTests: XCTestCase {
             (.planning, .active), (.executing, .active), (.waitingForChildren, .active),
             (.waitingForUser, .active), (.completed, .active), (.idle, .active),
             (.failed, .broken), (.disconnected, .inactive), (.terminalClosed, .broken),
-            (.sessionClosed, .closed),
+            (.sessionClosed, .closed), (.rateLimited, .inactive),
         ]
         XCTAssertEqual(expected.count, SessionPhase.allCases.count, "a new phase needs a block")
         for (phase, block) in expected {

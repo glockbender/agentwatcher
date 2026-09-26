@@ -356,6 +356,8 @@ public struct SessionStateEngine: Sendable {
                     event: .backgroundWorkReported(backgroundWork, at: event.observedAt)
                 )
             }
+        case .turnRateLimited:
+            snapshot = SessionReducer.reduce(snapshot, event: .rateLimited(at: event.observedAt))
         case .turnFailed:
             snapshot = SessionReducer.reduce(snapshot, event: .failed(at: event.observedAt))
         case .turnInterrupted:

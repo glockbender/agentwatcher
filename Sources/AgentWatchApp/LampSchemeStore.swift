@@ -5,9 +5,7 @@ import AppKit
 ///
 /// One key per phase and per field, spelled out rather than nested, because the file is meant
 /// to be read and corrected by hand: `lampColor.executing` says what it is without a legend.
-/// A phase nobody has touched has no keys at all, which is what keeps the app's own lamp — a
-/// system colour that follows the appearance of the machine — from being frozen into a
-/// fixed one the first time the window is opened.
+/// Missing fields use the phase's defaults, so an older file keeps its existing appearance.
 final class LampSchemeStore: PreferenceDefaults {
     private let preferences: PreferenceFile
 
@@ -16,6 +14,28 @@ final class LampSchemeStore: PreferenceDefaults {
 
     init(preferences: PreferenceFile) {
         self.preferences = preferences
+        migrateAnimationSettings()
+    }
+
+    /// Convert the two old brightness modes before default seeding can hide their speed.
+    /// The new cycle belongs to both animated modes; a chosen colour-fade period survives.
+    private func migrateAnimationSettings() {
+        var migrated: [String: JSONValue] = [:]
+        for phase in SessionPhase.allCases {
+            let motion = preferences.string(forKey: Self.motionKey(phase))
+            let legacyDim = motion == "pulse" || motion == "urgent"
+            if legacyDim {
+                migrated[Self.motionKey(phase)] = .string("dim")
+            }
+            if preferences.number(forKey: Self.animationCycleKey(phase)) == nil {
+                let oldCycle = preferences.number(forKey: "lampGradientCycle.\(phase.rawValue)")
+                let cycle = legacyDim ? (motion == "urgent" ? 1.1 : 2.8) : oldCycle
+                if let cycle, cycle.isFinite {
+                    migrated[Self.animationCycleKey(phase)] = .number(Self.clampedCycle(cycle))
+                }
+            }
+        }
+        if !migrated.isEmpty { preferences.replace(migrated) }
     }
 
     var scheme: LampScheme {
@@ -27,11 +47,14 @@ final class LampSchemeStore: PreferenceDefaults {
             let color = preferences.string(forKey: Self.colorKey(phase)).flatMap(NSColor.init(hex:))
             let motion = preferences.string(forKey: Self.motionKey(phase))
                 .flatMap(SessionLampAppearance.Motion.init(rawValue:))
-            guard color != nil || motion != nil else {
-                continue
-            }
             let fallback = phase.defaultLampStyle
-            styles[phase] = LampStyle(color: color ?? fallback.color, motion: motion ?? fallback.motion)
+            let gradientColor = preferences.string(forKey: Self.gradientColorKey(phase)).flatMap(NSColor.init(hex:))
+            let cycle = preferences.number(forKey: Self.animationCycleKey(phase))
+            styles[phase] = LampStyle(
+                color: color ?? fallback.color, motion: motion ?? fallback.motion,
+                gradientColor: gradientColor ?? fallback.gradientColor,
+                animationCycle: cycle.flatMap { $0.isFinite ? Self.clampedCycle($0) : nil } ?? fallback.animationCycle
+            )
         }
         return LampScheme(styles: styles)
     }
@@ -47,6 +70,8 @@ final class LampSchemeStore: PreferenceDefaults {
                 values[Self.colorKey(phase)] = .string(hex)
             }
             values[Self.motionKey(phase)] = .string(style.motion.rawValue)
+            values[Self.gradientColorKey(phase)] = .string(style.gradientColor.srgbHex ?? "#FFFFFF")
+            values[Self.animationCycleKey(phase)] = .number(style.animationCycle)
         }
         return values
     }
@@ -62,6 +87,22 @@ final class LampSchemeStore: PreferenceDefaults {
     func setMotion(_ motion: SessionLampAppearance.Motion, for phase: SessionPhase) {
         preferences.set(motion.rawValue, forKey: Self.motionKey(phase))
         onChange?(.lampScheme)
+    }
+
+    func setGradientColor(_ color: NSColor, for phase: SessionPhase) {
+        guard let hex = color.srgbHex else { return }
+        preferences.set(hex, forKey: Self.gradientColorKey(phase))
+        onChange?(.lampScheme)
+    }
+
+    func setAnimationCycle(_ seconds: TimeInterval, for phase: SessionPhase) {
+        guard seconds.isFinite else { return }
+        preferences.set(Self.clampedCycle(seconds), forKey: Self.animationCycleKey(phase))
+        onChange?(.lampScheme)
+    }
+
+    private static func clampedCycle(_ seconds: TimeInterval) -> TimeInterval {
+        min(max(seconds, LampStyle.animationCycleRange.lowerBound), LampStyle.animationCycleRange.upperBound)
     }
 
     /// Back to the app's own lamp, every phase at once.
@@ -81,6 +122,14 @@ final class LampSchemeStore: PreferenceDefaults {
 
     private static func motionKey(_ phase: SessionPhase) -> String {
         "lampMotion.\(phase.rawValue)"
+    }
+
+    private static func gradientColorKey(_ phase: SessionPhase) -> String {
+        "lampGradientColor.\(phase.rawValue)"
+    }
+
+    private static func animationCycleKey(_ phase: SessionPhase) -> String {
+        "lampAnimationCycle.\(phase.rawValue)"
     }
 }
 

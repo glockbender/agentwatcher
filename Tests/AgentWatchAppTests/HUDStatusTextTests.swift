@@ -136,7 +136,7 @@ final class HUDStatusTextTests: XCTestCase {
                     continue
                 }
                 XCTAssertTrue(
-                    one.motion != other.motion || one.isFilled != other.isFilled,
+                    one.motion != other.motion || one.shape != other.shape,
                     "\(onePhase) and \(otherPhase) share a colour with nothing else to separate them"
                 )
             }
@@ -148,21 +148,21 @@ final class HUDStatusTextTests: XCTestCase {
     func testEveryPhaseIsDrawnDifferentlyFromEveryOther() {
         let drawings = SessionPhase.allCases.map { phase in
             let look = SessionLamp.builtInAppearance(for: snapshot(phase: phase))
-            return "\(look.color.srgbHex ?? "?")-\(look.motion)-\(look.isFilled)"
+            return "\(look.color.srgbHex ?? "?")-\(look.motion)-\(look.shape)"
         }
 
         XCTAssertEqual(Set(drawings).count, SessionPhase.allCases.count)
     }
 
     func testWorkAndAttentionAreDistinguishedByMotionNotOnlyColour() {
-        XCTAssertEqual(SessionLamp.builtInAppearance(for: snapshot(phase: .executing)).motion, .pulse)
+        XCTAssertEqual(SessionLamp.builtInAppearance(for: snapshot(phase: .executing)).motion, .dim)
         XCTAssertEqual(SessionLamp.builtInAppearance(for: snapshot(phase: .idle)).motion, .steady)
         XCTAssertEqual(
             SessionLamp.builtInAppearance(for: snapshot(phase: .waitingForUser, userInputRequestKind: .approval))
                 .motion,
-            .urgent
+            .dim
         )
-        XCTAssertEqual(SessionLamp.builtInAppearance(for: snapshot(phase: .failed)).motion, .urgent)
+        XCTAssertEqual(SessionLamp.builtInAppearance(for: snapshot(phase: .failed)).motion, .dim)
     }
 
     func testTheTooltipSaysWhichKindOfAnswerIsWanted() {

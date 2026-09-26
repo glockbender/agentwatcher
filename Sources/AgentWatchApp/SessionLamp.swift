@@ -5,33 +5,41 @@ import AppKit
 ///
 /// Colour is never the only carrier, as ADR-0003 requires. Each phase also
 /// has its own motion — still, a slow pulse, or an urgent blink — a closed session is drawn
-/// as a ring rather than a disc, and the row's hover card spells the phase out in words.
+/// as a ring rather than a disc, a rate limit as a pause, and the hover card names each phase.
 struct SessionLampAppearance: Equatable {
     enum Motion: String, CaseIterable, Equatable {
-        /// Nothing is happening and nothing is wrong.
+        /// The lamp holds its colour.
         case steady
-        /// Work in progress.
-        case pulse
-        /// Someone has to look at this session.
-        case urgent
+        /// A smooth change in brightness.
+        case dim
+        /// A smooth trip between two colours, without fading the lamp away.
+        case gradient
 
         /// What the settings window calls it. Describes what the dot does, not what it means:
         /// the meaning is the phase's, and one motion serves several phases.
         var title: String {
             switch self {
-            case .steady: "Still"
-            case .pulse: "Slow pulse"
-            case .urgent: "Fast blink"
+            case .steady: "None"
+            case .dim: "Dim"
+            case .gradient: "Two-color fade"
             }
         }
     }
 
-    /// Settable because these two are the person's to choose; the shape and the wording are
+    /// Settable because the appearance is the person's to choose; the shape and wording are
     /// the app's. See `LampScheme`.
     var color: NSColor
     var motion: Motion
-    /// A ring instead of a disc, for a session that has ended.
-    let isFilled: Bool
+    var gradientColor: NSColor = NSColor(sRGB: "#FFFFFF")
+    var animationCycle: TimeInterval = 2.8
+    enum Shape: Equatable {
+        case disc
+        case ring
+        case pause
+    }
+
+    let shape: Shape
+    var isFilled: Bool { shape != .ring }
     /// The wording the card and the settings window use, since a dot cannot be read aloud.
     let name: String
 }
@@ -44,6 +52,8 @@ enum SessionLamp {
         let style = scheme.style(for: snapshot.phase)
         look.color = style.color
         look.motion = style.motion
+        look.gradientColor = style.gradientColor
+        look.animationCycle = style.animationCycle
         return look
     }
 
@@ -58,12 +68,13 @@ enum SessionLamp {
         // A ring for a session that has stopped speaking, a disc for one that has not. This
         // is what keeps the dot from depending on its colour: `no signal` pulses like live
         // work because it may still come back, while a closed session is still.
-        let isFilled =
+        let shape: SessionLampAppearance.Shape =
             switch snapshot.phase {
-            case .disconnected, .sessionClosed: false
+            case .disconnected, .sessionClosed: .ring
+            case .rateLimited: .pause
             case .idle, .planning, .executing, .waitingForChildren, .waitingForUser, .completed, .failed,
                 .terminalClosed:
-                true
+                .disc
             }
         let name =
             switch snapshot.phase {
@@ -73,6 +84,7 @@ enum SessionLamp {
             case .waitingForChildren: "waiting for subtasks"
             case .waitingForUser: snapshot.userInputRequestKind == .selection ? "choice needed" : "approval needed"
             case .completed: "completed"
+            case .rateLimited: "limit reached"
             case .failed: "failed"
             case .terminalClosed: "terminal closed"
             case .disconnected: "no signal"
@@ -81,7 +93,9 @@ enum SessionLamp {
         return SessionLampAppearance(
             color: style.color,
             motion: style.motion,
-            isFilled: isFilled,
+            gradientColor: style.gradientColor,
+            animationCycle: style.animationCycle,
+            shape: shape,
             name: name
         )
     }
@@ -138,7 +152,20 @@ final class SessionLampView: NSView {
             return
         }
 
-        layer.cornerRadius = diameter / 2
+        layer.cornerRadius = look.shape == .pause ? 0 : diameter / 2
+        layer.mask = nil
+        if look.shape == .pause {
+            let path = CGMutablePath()
+            for x in [diameter * 0.15, diameter * 0.6] {
+                path.addRoundedRect(
+                    in: CGRect(x: x, y: diameter * 0.05, width: diameter * 0.25, height: diameter * 0.9),
+                    cornerWidth: diameter * 0.06, cornerHeight: diameter * 0.06
+                )
+            }
+            let mask = CAShapeLayer()
+            mask.path = path
+            layer.mask = mask
+        }
         if look.isFilled {
             layer.backgroundColor = look.color.cgColor
             layer.borderWidth = 0
@@ -153,19 +180,19 @@ final class SessionLampView: NSView {
         }
 
         layer.removeAnimation(forKey: Self.blinkKey)
+        layer.opacity = 1
         switch look.motion {
         case .steady:
-            layer.opacity = 1
-        // Slow and shallow: a breath rather than a flash. Work in progress is the ordinary
-        // state of this widget, and a lamp that demanded attention for it would leave
-        // nothing to say with when a session actually wants something.
-        case .pulse:
-            // A ring needs a deeper breath than a disc for the same amount of movement to
-            // register, for the same reason it needs a heavier border.
-            blink(everySeconds: 1.4, downTo: look.isFilled ? 0.55 : 0.3)
-        // Faster and deeper, because this one is asking to be noticed.
-        case .urgent:
-            blink(everySeconds: 0.55, downTo: 0.2)
+            break
+        case .gradient:
+            guard look.color.srgbHex != look.gradientColor.srgbHex else { return }
+            let animation = CABasicAnimation(keyPath: look.isFilled ? "backgroundColor" : "borderColor")
+            animation.fromValue = look.color.cgColor
+            animation.toValue = look.gradientColor.cgColor
+            animate(animation, everySeconds: look.animationCycle / 2)
+        case .dim:
+            // A ring needs a deeper fade than a disc for the movement to register.
+            blink(everySeconds: look.animationCycle / 2, downTo: look.isFilled ? 0.55 : 0.3)
         }
     }
 
@@ -175,6 +202,10 @@ final class SessionLampView: NSView {
         let animation = CABasicAnimation(keyPath: "opacity")
         animation.fromValue = 1
         animation.toValue = dimmest
+        animate(animation, everySeconds: duration)
+    }
+
+    private func animate(_ animation: CABasicAnimation, everySeconds duration: TimeInterval) {
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         animation.duration = duration
         animation.autoreverses = true

@@ -76,7 +76,7 @@ final class LampSchemeStoreTests: XCTestCase {
         let preferences = try isolatedPreferences()
         let store = LampSchemeStore(preferences: preferences)
         store.setColor(NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1), for: .idle)
-        store.setMotion(.urgent, for: .completed)
+        store.setMotion(.dim, for: .completed)
 
         store.reset()
 
@@ -95,13 +95,15 @@ final class LampSchemeStoreTests: XCTestCase {
         }
     }
 
-    func testTheDefaultsCoverEveryPhaseAndBothOfItsFields() {
+    func testTheDefaultsCoverEveryPhaseAndAllItsFields() {
         let defaults = LampSchemeStore(preferences: PreferenceFile(directoryURL: nil)).defaultValues
 
-        XCTAssertEqual(defaults.count, SessionPhase.allCases.count * 2)
+        XCTAssertEqual(defaults.count, SessionPhase.allCases.count * 4)
         for phase in SessionPhase.allCases {
             XCTAssertNotNil(defaults["lampColor.\(phase.rawValue)"], "\(phase)")
             XCTAssertNotNil(defaults["lampMotion.\(phase.rawValue)"], "\(phase)")
+            XCTAssertNotNil(defaults["lampGradientColor.\(phase.rawValue)"], "\(phase)")
+            XCTAssertNotNil(defaults["lampAnimationCycle.\(phase.rawValue)"], "\(phase)")
         }
     }
 

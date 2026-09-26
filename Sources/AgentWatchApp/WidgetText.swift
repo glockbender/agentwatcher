@@ -545,6 +545,7 @@ extension SessionPhase {
         case .waitingForChildren: "Waiting for subtasks"
         case .waitingForUser: "Waiting for you"
         case .completed: "Completed"
+        case .rateLimited: "Limit reached"
         case .failed: "Failed"
         case .terminalClosed: "Terminal closed"
         case .disconnected: "No signal"
@@ -567,6 +568,8 @@ extension SessionPhase {
             "The turn has stopped until you answer — a permission request, or a choice."
         case .completed:
             "The last turn finished, and the session is waiting for what you say next."
+        case .rateLimited:
+            "The provider stopped the turn at a usage or rate limit. The session is inactive until work resumes."
         case .failed:
             "A tool or the agent itself ended with an error."
         case .terminalClosed:

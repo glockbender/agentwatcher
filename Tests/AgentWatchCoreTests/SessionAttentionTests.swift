@@ -22,6 +22,7 @@ final class SessionAttentionTests: XCTestCase {
             .waitingForChildren: .working,
             .completed: .done,
             .idle: .quiet,
+            .rateLimited: .quiet,
             .disconnected: .quiet,
             .sessionClosed: .closed,
         ]

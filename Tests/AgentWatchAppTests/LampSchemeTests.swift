@@ -7,6 +7,18 @@ import XCTest
 
 @MainActor
 final class LampSchemeTests: XCTestCase {
+    func testRateLimitIsAStillLilacPause() {
+        let look = SessionLamp.appearance(for: session(in: .rateLimited), scheme: LampScheme())
+        XCTAssertEqual(look.name, "limit reached")
+        XCTAssertEqual(look.shape, .pause)
+        XCTAssertEqual(look.motion, .steady)
+        XCTAssertEqual(look.color.srgbHex, "#BF9BFA")
+        let view = SessionLampView(appearance: look, diameter: 12)
+        XCTAssertFalse(view.isBlinking)
+        XCTAssertNotNil(view.layer?.mask, "the pause must be drawn, not only named")
+        XCTAssertEqual(view.paintedColor?.srgbHex, "#BF9BFA")
+    }
+
     func testAnUntouchedSchemeLeavesEveryPhaseAsTheAppDrewIt() {
         let scheme = LampScheme()
 
@@ -15,7 +27,7 @@ final class LampSchemeTests: XCTestCase {
             let builtIn = SessionLamp.builtInAppearance(for: session(in: phase))
             XCTAssertEqual(look.color, builtIn.color, "\(phase)")
             XCTAssertEqual(look.motion, builtIn.motion, "\(phase)")
-            XCTAssertEqual(look.isFilled, builtIn.isFilled, "\(phase)")
+            XCTAssertEqual(look.shape, builtIn.shape, "\(phase)")
             XCTAssertEqual(look.name, builtIn.name, "\(phase)")
         }
     }

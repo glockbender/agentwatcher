@@ -34,7 +34,7 @@ public enum SessionBlock: String, CaseIterable, Sendable {
         // The app not hearing, not the session going wrong: after a restart every remembered
         // session is here until it speaks. Counted as broken, a restart filled that block with
         // sessions that had never even started; the owner asked for it to mean inactive.
-        case .disconnected:
+        case .disconnected, .rateLimited:
             return .inactive
         case .idle, .planning, .executing, .waitingForUser, .waitingForChildren, .completed:
             break
@@ -213,6 +213,8 @@ public struct SessionOrdering: Sendable {
     /// before. They joined when the list first saw them. Everything else joined at its event.
     private static func likelyJoined(_ snapshot: SessionSnapshot, now: Date) -> Date {
         switch snapshot.phase {
+        case .rateLimited:
+            return snapshot.lastObservedAt
         case .disconnected, .terminalClosed:
             return now
         case .idle, .planning, .executing, .waitingForUser, .waitingForChildren, .completed, .failed, .sessionClosed:

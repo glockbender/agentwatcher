@@ -85,6 +85,8 @@ public enum SessionPhase: String, Codable, CaseIterable, Sendable {
     case waitingForChildren
     case completed
     case failed
+    /// The turn stopped because the provider reported a usage or rate limit.
+    case rateLimited
     /// The terminal the session ran in was closed and its agent stayed behind, hung on its
     /// way out: nothing can reach it and it will not speak again. Found by the app from the
     /// process itself, never reported by the agent — see `AgentProcessLocator.TerminalState`.
@@ -108,7 +110,7 @@ public enum SessionPhase: String, Codable, CaseIterable, Sendable {
         case .waitingForUser, .failed, .terminalClosed: .needsPerson
         case .planning, .executing, .waitingForChildren: .working
         case .completed: .done
-        case .idle, .disconnected: .quiet
+        case .idle, .rateLimited, .disconnected: .quiet
         case .sessionClosed: .closed
         }
     }
@@ -119,7 +121,7 @@ public enum SessionPhase: String, Codable, CaseIterable, Sendable {
     /// happen to a session that never worked, and waiting for a person cannot.
     public var meansTheSessionHasWorked: Bool {
         switch self {
-        case .planning, .executing, .waitingForChildren, .waitingForUser, .completed, .failed: true
+        case .planning, .executing, .waitingForChildren, .waitingForUser, .completed, .failed, .rateLimited: true
         case .idle, .terminalClosed, .disconnected, .sessionClosed: false
         }
     }
@@ -127,7 +129,7 @@ public enum SessionPhase: String, Codable, CaseIterable, Sendable {
     /// Whether the session says work is under way right now.
     ///
     /// The three that claim work are also the three where quiet means nothing by itself: a
-    /// build runs for minutes without a word. The other seven explain their own silence — the
+    /// build runs for minutes without a word. The other phases explain their own silence — the
     /// turn ended, a person is being waited for, the session is closed or lost, its terminal
     /// is gone, or it is at rest between turns.
     public var claimsWork: Bool {
@@ -339,6 +341,9 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     /// Settable only through `setAwaitedDialogs` and `clearAwaited`, because the row's own
     /// summary of it — `userInputRequestKind` — has to change with it.
     public internal(set) var awaitedDialogs: [AwaitedDialog]?
+    /// The foreground turn's limit survives a child dialog temporarily taking the row.
+    /// Cleared by foreground resumption, another ending, or loss of the observed state.
+    public var rateLimitReachedAt: Date?
     public var activities: [SessionActivity]
     public var lastObservedAt: Date
     public var agentProcessID: Int32?

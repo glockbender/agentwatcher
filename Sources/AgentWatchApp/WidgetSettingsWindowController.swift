@@ -35,6 +35,10 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// then send the action. Nothing outside this file changes them.
     private(set) var colorWells: [SessionPhase: NSColorWell] = [:]
     private(set) var motionButtons: [SessionPhase: NSPopUpButton] = [:]
+    private(set) var gradientColorWells: [SessionPhase: NSColorWell] = [:]
+    private(set) var animationCycleSliders: [SessionPhase: NSSlider] = [:]
+    private(set) var animationCycleLabels: [SessionPhase: NSTextField] = [:]
+    private(set) var lampPreviewHolders: [SessionPhase: NSView] = [:]
     private(set) var backgroundButtons: [WidgetBackground: NSButton] = [:]
     /// The well for a colour of the person's own, and the ring around it that says it is the
     /// one in use — the ring the swatches draw into their own images, which a well cannot.
@@ -149,7 +153,15 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             constant: -(rowTab.edgeInsets.left + rowTab.edgeInsets.right)
         ).isActive = true
         // No title over the lamp grid, and none over the parts: the tab says it already.
-        let lampTab = Self.makeTabContent([lamp, makeResetButton()])
+        let lampHelp = NSTextField(
+            wrappingLabelWithString:
+                "Dim changes brightness. Two-color fade changes color. Full cycle sets the time out and back. None stops animation."
+        )
+        lampHelp.font = WidgetStyle.standard.secondaryFont
+        lampHelp.textColor = .secondaryLabelColor
+        lampHelp.preferredMaxLayoutWidth = lamp.fittingSize.width
+        lampHelp.widthAnchor.constraint(equalToConstant: lamp.fittingSize.width).isActive = true
+        let lampTab = Self.makeTabContent([lampHelp, lamp, makeResetButton()])
         // Beside the row, because it is the rows it arranges.
         let orderContent = Self.makeTabContent([orderTab.view])
         let otherTab = Self.makeTabContent([
@@ -875,16 +887,25 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     private func makeLampGrid() -> NSView {
         // The phase first, then what to do about it: a settings row reads as a sentence, and
         // a colour well with no name in front of it says nothing.
-        let grid = NSGridView(numberOfColumns: 3, rows: 0)
+        let grid = NSGridView(numberOfColumns: 6, rows: 0)
         grid.rowSpacing = 6
         grid.columnSpacing = 12
         grid.xPlacement = .leading
+
+        grid.addRow(
+            with: ["State", "Color", "Motion", "To color", "Full cycle", "Preview"].map {
+                let label = NSTextField(labelWithString: $0)
+                label.font = WidgetStyle.standard.secondaryFont
+                label.textColor = .secondaryLabelColor
+                return label
+            })
 
         for phase in SessionPhase.allCases {
             let well = NSColorWell(style: .default)
             well.target = self
             well.action = #selector(colorChanged(_:))
             well.tag = Self.tag(of: phase)
+            well.supportsAlpha = false
             // The well's own fitting size, measured rather than chosen. Given anything
             // smaller it draws its bezel outside the frame — at 24 points high a pale edge
             // showed along the left and bottom of every colour — and given a grid column with
@@ -903,6 +924,24 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             }
             motionButtons[phase] = motion
 
+            let secondColor = NSColorWell(style: .default)
+            secondColor.supportsAlpha = false
+            secondColor.target = self
+            secondColor.action = #selector(gradientColorChanged(_:))
+            secondColor.tag = Self.tag(of: phase)
+            secondColor.pinSize(to: Self.colorWellSize)
+            secondColor.toolTip = "The second color. Used only by Two-color fade."
+            gradientColorWells[phase] = secondColor
+
+            let cycle = makeAnimationCycleControl(for: phase)
+            let preview = NSView()
+            preview.wantsLayer = true
+            preview.layer?.backgroundColor = WidgetBackground.graphite.color.cgColor
+            preview.layer?.cornerRadius = 5
+            preview.pinSize(to: NSSize(width: 46, height: 28))
+            preview.toolTip = "Live preview on Graphite"
+            lampPreviewHolders[phase] = preview
+
             let name = NSTextField(labelWithString: phase.settingsName)
             name.font = WidgetStyle.standard.titleFont
 
@@ -911,15 +950,79 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             for view in [well, motion, name] as [NSView] {
                 view.toolTip = phase.explanation
             }
-            grid.addRow(with: [name, well, motion])
+            grid.addRow(with: [name, well, motion, secondColor, cycle, preview])
         }
         // Stated rather than left to the grid. Given a width to fill — and the separator
         // below sets one — `NSGridView` spreads the slack across its columns, which put 127
         // points of nothing between a colour and the motion beside it.
         grid.column(at: 0).width = Self.phaseColumnWidth
         grid.column(at: 1).width = Self.colorWellSize.width
-        grid.column(at: 2).width = 108
+        grid.column(at: 2).width = 140
+        grid.column(at: 3).width = max(Self.colorWellSize.width, 52)
+        grid.column(at: 4).width = 140
+        grid.column(at: 5).width = 46
         return grid
+    }
+
+    private func makeAnimationCycleControl(for phase: SessionPhase) -> NSView {
+        let slider = NSSlider(
+            value: 2.8, minValue: LampStyle.animationCycleRange.lowerBound,
+            maxValue: LampStyle.animationCycleRange.upperBound,
+            target: self, action: #selector(animationCycleChanged(_:))
+        )
+        slider.tag = Self.tag(of: phase)
+        slider.isContinuous = true
+        slider.widthAnchor.constraint(equalToConstant: 90).isActive = true
+        slider.toolTip = "Seconds for one complete animation, out and back."
+        slider.setAccessibilityLabel("\(phase.settingsName) animation cycle")
+        animationCycleSliders[phase] = slider
+        let label = NSTextField(labelWithString: "")
+        label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        label.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        animationCycleLabels[phase] = label
+        let row = NSStackView(views: [slider, label])
+        row.orientation = .horizontal
+        row.spacing = 6
+        return row
+    }
+
+    private func showLampPreview(for phase: SessionPhase) {
+        guard let holder = lampPreviewHolders[phase] else { return }
+        holder.subviews.forEach { $0.removeFromSuperview() }
+        let lamp = SessionLampView(
+            appearance: SessionLamp.appearance(for: Self.exampleSession(in: phase), scheme: lampSchemes.scheme),
+            diameter: 12
+        )
+        lamp.frame.origin = NSPoint(x: 17, y: 8)
+        holder.addSubview(lamp)
+    }
+
+    private func showAnimationControls(for phase: SessionPhase) {
+        let style = lampSchemes.scheme.style(for: phase)
+        let enabled = style.motion == .gradient
+        gradientColorWells[phase]?.isEnabled = enabled
+        gradientColorWells[phase]?.isHidden = !enabled
+        let animated = style.motion != .steady
+        animationCycleSliders[phase]?.isEnabled = animated
+        animationCycleSliders[phase]?.superview?.isHidden = !animated
+        animationCycleSliders[phase]?.doubleValue = style.animationCycle
+        animationCycleLabels[phase]?.stringValue = String(format: "%.1f s", style.animationCycle)
+        animationCycleLabels[phase]?.textColor = animated ? .labelColor : .disabledControlTextColor
+    }
+
+    @objc private func gradientColorChanged(_ sender: NSColorWell) {
+        guard let phase = Self.phase(ofTag: sender.tag) else { return }
+        lampSchemes.setGradientColor(sender.color, for: phase)
+        showLampPreview(for: phase)
+        showSampleRow(rowLayouts.layout)
+    }
+
+    @objc private func animationCycleChanged(_ sender: NSSlider) {
+        guard let phase = Self.phase(ofTag: sender.tag) else { return }
+        lampSchemes.setAnimationCycle((sender.doubleValue * 10).rounded() / 10, for: phase)
+        showAnimationControls(for: phase)
+        showLampPreview(for: phase)
+        showSampleRow(rowLayouts.layout)
     }
 
     /// Wide enough for the longest phase name at the row font, measured once rather than
@@ -1061,6 +1164,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             return
         }
         lampSchemes.setColor(sender.color, for: phase)
+        showLampPreview(for: phase)
         // The sample only, not the whole section: a colour well reports every shade the
         // pointer passes over, and rebuilding thirteen rows of controls on each of those is
         // work nobody asked for — none of them says anything about a colour.
@@ -1076,6 +1180,8 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             return
         }
         lampSchemes.setMotion(motion, for: phase)
+        showAnimationControls(for: phase)
+        showLampPreview(for: phase)
         showSampleRow(rowLayouts.layout)
     }
 
@@ -1301,6 +1407,9 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             let look = SessionLamp.appearance(for: Self.exampleSession(in: phase), scheme: scheme)
             colorWells[phase]?.color = look.color
             motionButtons[phase]?.selectItem(at: Self.index(of: look.motion))
+            gradientColorWells[phase]?.color = look.gradientColor
+            showAnimationControls(for: phase)
+            showLampPreview(for: phase)
         }
         showRowLayout()
         showSelectedBackground()

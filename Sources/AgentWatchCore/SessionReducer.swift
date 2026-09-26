@@ -48,6 +48,7 @@ public enum SessionEvent: Equatable, Sendable {
     /// A person stopped the turn. Distinct from `turnCompleted` because nothing completed.
     case turnInterrupted(at: Date)
     case failed(at: Date)
+    case rateLimited(at: Date)
     /// The session's terminal was closed and its agent stayed behind, hung on its way out.
     ///
     /// No date, unlike every case beside it: this is the app's finding about the process, not
@@ -66,6 +67,7 @@ public enum SessionReducer {
 
         switch event {
         case let .sessionStarted(mode, observedAt):
+            next.rateLimitReachedAt = nil
             next.mode = mode ?? .unknown
             next.phase = .idle
             next.clearAwaited()
@@ -76,6 +78,7 @@ public enum SessionReducer {
             next.lastObservedAt = observedAt
 
         case let .turnStarted(mode, observedAt):
+            next.rateLimitReachedAt = nil
             next.mode = mode
             // A new prompt ends the previous turn whatever became of it, so the same sweep as
             // `turnCompleted` runs here — and for the same reason, with the same exception for
@@ -132,6 +135,9 @@ public enum SessionReducer {
             next.lastObservedAt = observedAt
 
         case let .activityStarted(activity, observedAt):
+            if activity.parentID == nil && activity.kind != .subagent {
+                next.rateLimitReachedAt = nil
+            }
             next.activities.removeAll { $0.id == activity.id }
             next.activities.append(activity)
             // A *new* call starting does end a wait, and it is the exit that matters most:
@@ -154,7 +160,7 @@ public enum SessionReducer {
             // all: a call from the main thread means the session is working. A subagent's
             // does not, since it says nothing about what the session as a whole is doing.
             if !next.isAwaitingAnswer, wasAwaiting || activity.parentID == nil {
-                next.phase = next.mode == .plan ? .planning : .executing
+                next.phase = phaseAfterAnswer(next)
             }
             next.lastObservedAt = observedAt
 
@@ -190,6 +196,9 @@ public enum SessionReducer {
             next.lastObservedAt = observedAt
 
         case let .userInputRequired(reason, activityID, agentID, observedAt):
+            if agentID == nil {
+                next.rateLimitReachedAt = nil
+            }
             next.phase = .waitingForUser
             // A permission request names no tool of its own — measured on 2.1.272, it is the
             // one tool hook with no `tool_use_id` — but it always follows the start of the
@@ -214,12 +223,13 @@ public enum SessionReducer {
             // behind it is the session's own record saying nothing is being asked of
             // anybody (ADR-0010), not one call or one agent reporting for itself.
             if next.phase == .waitingForUser {
-                next.phase = next.mode == .plan ? .planning : .executing
+                next.phase = phaseAfterAnswer(next)
                 next.clearAwaited()
             }
             next.lastObservedAt = observedAt
 
         case let .turnCompleted(observedAt):
+            next.rateLimitReachedAt = nil
             // `Stop` settles the turn: whatever it issued is over. Only a subagent can still
             // be running, so every other open call is dropped rather than kept as a child.
             //
@@ -244,6 +254,7 @@ public enum SessionReducer {
             next.lastObservedAt = observedAt
 
         case let .turnInterrupted(observedAt):
+            next.rateLimitReachedAt = nil
             // Everything the turn issued stops with it, a subagent included: the interruption
             // is aimed at the whole turn, not at one call. That is the difference from
             // `turnCompleted`, where a subagent goes on working and reports its own end.
@@ -257,17 +268,30 @@ public enum SessionReducer {
             next.clearAwaited()
             next.lastObservedAt = observedAt
 
+        case let .rateLimited(observedAt):
+            next.rateLimitReachedAt = observedAt
+            next.endDialogs { $0.agentID == nil }
+            if !next.isAwaitingAnswer {
+                next.phase = .rateLimited
+            }
+            // The foreground turn stopped; independently running work may survive it.
+            next.activities.removeAll { !$0.outlivesTurn }
+            next.lastObservedAt = observedAt
+
         case let .failed(observedAt):
+            next.rateLimitReachedAt = nil
             next.phase = .failed
             next.clearAwaited()
             next.lastObservedAt = observedAt
 
         case let .disconnected(observedAt):
+            next.rateLimitReachedAt = nil
             next.phase = .disconnected
             next.clearAwaited()
             next.lastObservedAt = observedAt
 
         case .terminalClosed:
+            next.rateLimitReachedAt = nil
             // What was running went with the terminal, exactly as when a session closes: the
             // dialogs were on the screen that is gone, and the calls belong to an agent that
             // can no longer do anything but finish exiting.
@@ -277,6 +301,7 @@ public enum SessionReducer {
             next.backgroundWork = nil
 
         case let .sessionClosed(observedAt):
+            next.rateLimitReachedAt = nil
             next.phase = .sessionClosed
             next.clearAwaited()
             next.activities = []
@@ -304,6 +329,13 @@ public enum SessionReducer {
         }
 
         return next
+    }
+
+    private static func phaseAfterAnswer(_ snapshot: SessionSnapshot) -> SessionPhase {
+        if snapshot.rateLimitReachedAt != nil {
+            return .rateLimited
+        }
+        return snapshot.mode == .plan ? .planning : .executing
     }
 
     /// What the end of one activity means for one dialog.
@@ -351,7 +383,7 @@ public enum SessionReducer {
             return dialogEnds(dialog, atActivityID: id)
         }
         if !next.isAwaitingAnswer {
-            next.phase = next.mode == .plan ? .planning : .executing
+            next.phase = phaseAfterAnswer(next)
         }
     }
 }

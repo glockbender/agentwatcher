@@ -412,6 +412,17 @@ Claude Code загружает любой каталог под `~/.claude/skill
 `PermissionDenied`, `PreToolUse`, `PostToolUseFailure`, `PreCompact`, `PostCompact`,
 `SubagentStart`, `SubagentStop`.
 
+### Остановка по лимиту
+
+Claude сообщает остановку по лимиту событием `StopFailure` с `error: "rate_limit"`
+([контракт](https://code.claude.com/docs/en/hooks#stopfailure)). Отправитель и приложение
+сохраняют только это разрешённое значение `error`; текст ошибки и её подробности не
+используются для определения состояния. После обоих проходов редактирования событие
+нормализуется в `turnRateLimited`, а строка получает фазу `rateLimited`: лиловая пауза,
+без мигания, в группе неактивных. Другие и отсутствующие причины остаются `turnFailed`.
+Новый запрос или начало работы снимает паузу; получение status line её не снимает.
+Старый отправитель, который ещё удаляет `error`, продолжит давать обычную ошибку до обновления.
+
 ### Codex — 11
 
 `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`, `Interrupt`, `PermissionRequest`,

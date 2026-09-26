@@ -299,6 +299,7 @@ public enum HookCaptureRedactor {
 
     private static let safeValueKeys: Set<String> = [
         "hook_event_name",
+        "error",
         "permission_mode",
         "source",
         "tool_name",
@@ -323,6 +324,8 @@ public enum HookCaptureRedactor {
 
     private static func supportedValues(for key: String) -> Set<String> {
         switch key {
+        case "error":
+            ["rate_limit"]
         case "hook_event_name":
             supportedEventNames
         case "permission_mode":

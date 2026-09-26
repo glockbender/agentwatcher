@@ -17,9 +17,85 @@ final class WidgetSettingsWindowTests: XCTestCase {
             XCTAssertEqual(motion.toolTip, phase.explanation)
             XCTAssertEqual(
                 motion.itemTitles,
-                SessionLampAppearance.Motion.allCases.map(\.title),
-                "every phase offers the same three motions"
+                ["None", "Dim", "Two-color fade"],
+                "every phase offers the same motions"
             )
+        }
+    }
+
+    func testColorFadeControlsUpdateTheStoredSchemeAndLivePreview() throws {
+        let (controller, store, _, _) = try makeWindow()
+        let motion = try XCTUnwrap(controller.motionButtons[.rateLimited])
+        let second = try XCTUnwrap(controller.gradientColorWells[.rateLimited])
+        let cycle = try XCTUnwrap(controller.animationCycleSliders[.rateLimited])
+        XCTAssertFalse(second.isEnabled)
+        XCTAssertFalse(cycle.isEnabled)
+        XCTAssertTrue(second.isHidden)
+        XCTAssertEqual(cycle.superview?.isHidden, true)
+        motion.selectItem(withTitle: "Two-color fade")
+        motion.sendAction(motion.action, to: motion.target)
+        XCTAssertTrue(second.isEnabled)
+        XCTAssertTrue(cycle.isEnabled)
+        XCTAssertFalse(second.isHidden)
+        XCTAssertEqual(cycle.superview?.isHidden, false)
+        second.color = NSColor(sRGB: "#00EEEC")
+        second.sendAction(second.action, to: second.target)
+        cycle.doubleValue = 4.6
+        cycle.sendAction(cycle.action, to: cycle.target)
+        XCTAssertEqual(store.scheme.style(for: .rateLimited).gradientColor.srgbHex, "#00EEEC")
+        XCTAssertEqual(store.scheme.style(for: .rateLimited).animationCycle, 4.6)
+        XCTAssertEqual(controller.animationCycleLabels[.rateLimited]?.stringValue, "4.6 s")
+        let lamp = try XCTUnwrap(controller.lampPreviewHolders[.rateLimited]?.subviews.first as? SessionLampView)
+        let animation = try XCTUnwrap(lamp.layer?.animation(forKey: "lamp") as? CABasicAnimation)
+        XCTAssertEqual(animation.keyPath, "backgroundColor")
+        XCTAssertEqual(animation.duration, 2.3)
+        XCTAssertNotNil(lamp.layer?.mask, "a color fade keeps the pause shape")
+        motion.selectItem(withTitle: "None")
+        motion.sendAction(motion.action, to: motion.target)
+        XCTAssertFalse(second.isEnabled)
+        XCTAssertFalse(cycle.isEnabled)
+        XCTAssertTrue(second.isHidden)
+        XCTAssertEqual(cycle.superview?.isHidden, true)
+        let stopped = try XCTUnwrap(controller.lampPreviewHolders[.rateLimited]?.subviews.first as? SessionLampView)
+        XCTAssertFalse(stopped.isBlinking)
+        XCTAssertEqual(store.scheme.style(for: .rateLimited).gradientColor.srgbHex, "#00EEEC")
+        motion.selectItem(withTitle: "Two-color fade")
+        motion.sendAction(motion.action, to: motion.target)
+        XCTAssertFalse(second.isHidden)
+        XCTAssertEqual(second.color.srgbHex, "#00EEEC")
+        XCTAssertEqual(cycle.doubleValue, 4.6)
+        controller.resetLamp()
+        XCTAssertFalse(second.isEnabled)
+        XCTAssertEqual(second.color.srgbHex, "#FFFFFF")
+        XCTAssertEqual(cycle.doubleValue, 2.8)
+        let reset = try XCTUnwrap(controller.lampPreviewHolders[.rateLimited]?.subviews.first as? SessionLampView)
+        XCTAssertFalse(reset.isBlinking)
+    }
+
+    func testDimShowsOnlyCycleAndSharesItWithColorFade() throws {
+        let (controller, store, _, _) = try makeWindow()
+        let motion = try XCTUnwrap(controller.motionButtons[.failed])
+        let second = try XCTUnwrap(controller.gradientColorWells[.failed])
+        let cycle = try XCTUnwrap(controller.animationCycleSliders[.failed])
+        XCTAssertEqual(motion.titleOfSelectedItem, "Dim")
+        XCTAssertTrue(second.isHidden)
+        XCTAssertFalse(second.isEnabled)
+        XCTAssertEqual(cycle.superview?.isHidden, false)
+        XCTAssertTrue(cycle.isEnabled)
+        XCTAssertEqual(cycle.doubleValue, 1.1)
+        cycle.doubleValue = 5.4
+        cycle.sendAction(cycle.action, to: cycle.target)
+        XCTAssertEqual(store.scheme.style(for: .failed).animationCycle, 5.4)
+        let lamp = try XCTUnwrap(controller.lampPreviewHolders[.failed]?.subviews.first as? SessionLampView)
+        let animation = try XCTUnwrap(lamp.layer?.animation(forKey: "lamp") as? CABasicAnimation)
+        XCTAssertEqual(animation.keyPath, "opacity")
+        XCTAssertEqual(animation.duration, 2.7)
+        for title in ["None", "Two-color fade", "Dim"] {
+            motion.selectItem(withTitle: title)
+            motion.sendAction(motion.action, to: motion.target)
+            XCTAssertEqual(cycle.doubleValue, 5.4)
+            XCTAssertEqual(cycle.superview?.isHidden, title == "None")
+            XCTAssertEqual(second.isHidden, title != "Two-color fade")
         }
     }
 
@@ -52,7 +128,9 @@ final class WidgetSettingsWindowTests: XCTestCase {
     func testTheWindowOpensShowingWhatWasChosenBefore() throws {
         let preferences = try isolatedPreferences()
         let lampSchemes = LampSchemeStore(preferences: preferences)
-        lampSchemes.setMotion(.urgent, for: .idle)
+        lampSchemes.setMotion(.gradient, for: .idle)
+        lampSchemes.setGradientColor(NSColor(sRGB: "#BF9BFA"), for: .idle)
+        lampSchemes.setAnimationCycle(6, for: .idle)
         lampSchemes.setColor(NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1), for: .idle)
 
         let settings = WidgetSettingsStore(preferences: preferences)
@@ -66,9 +144,12 @@ final class WidgetSettingsWindowTests: XCTestCase {
 
         XCTAssertEqual(
             controller.motionButtons[.idle]?.titleOfSelectedItem,
-            SessionLampAppearance.Motion.urgent.title
+            SessionLampAppearance.Motion.gradient.title
         )
         XCTAssertEqual(controller.colorWells[.idle]?.color.srgbHex, "#FF0000")
+        XCTAssertEqual(controller.gradientColorWells[.idle]?.color.srgbHex, "#BF9BFA")
+        XCTAssertEqual(controller.animationCycleSliders[.idle]?.doubleValue, 6)
+        XCTAssertEqual(controller.animationCycleSliders[.idle]?.isEnabled, true)
     }
 
     func testResetPutsEveryRowBackToTheAppsOwnLamp() throws {
