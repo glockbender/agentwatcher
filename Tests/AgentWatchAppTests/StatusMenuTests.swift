@@ -346,16 +346,42 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertFalse(settings.menuSessionAttentions.contains(.quiet), "a greyed line took a click")
     }
 
-    /// Return on a highlighted line is the item's action, and it toggles the same way a click
-    /// on the line does.
-    func testTheItemsOwnActionTogglesItsLine() throws {
+    /// The menu hands its keys to the highlighted line: Return and Space choose it, and every
+    /// other key goes on to the menu. Measured on macOS 15.3.1 — and the item's own action is
+    /// never called for a line with a view, so it is not where the keyboard is handled.
+    func testReturnAndSpaceChooseALineAndOtherKeysGoOnToTheMenu() throws {
         let (menu, _, settings) = try makeMenu()
         menu.menuWillOpen(menu.menu)
+        let idle = try XCTUnwrap(menu.attentionRows[.quiet])
+        XCTAssertTrue(idle.acceptsFirstResponder, "without it the menu keeps its keys to itself")
 
-        try choose(XCTUnwrap(item(titled: "Idle", in: menu.menu)))
+        idle.keyDown(with: try key(36))
+        XCTAssertTrue(settings.menuSessionAttentions.contains(.quiet), "Return did not choose the line")
+        idle.keyDown(with: try key(49))
+        XCTAssertFalse(settings.menuSessionAttentions.contains(.quiet), "Space did not choose the line")
+        XCTAssertEqual(idle.accessibilityValue() as? Bool, false)
 
-        XCTAssertTrue(settings.menuSessionAttentions.contains(.quiet))
-        XCTAssertEqual(menu.attentionRows[.quiet]?.accessibilityValue() as? Bool, true)
+        let responder = KeyRecorder()
+        idle.nextResponder = responder
+        idle.keyDown(with: try key(125))
+        XCTAssertEqual(responder.keyCodes, [125], "the arrow did not reach the menu")
+        XCTAssertFalse(settings.menuSessionAttentions.contains(.quiet), "an arrow chose the line")
+    }
+
+    private func key(_ code: UInt16) throws -> NSEvent {
+        try XCTUnwrap(
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: false,
+                keyCode: code
+            ))
     }
 
     private func session(_ index: Int, _ title: String, _ phase: SessionPhase) -> SessionSnapshot {
@@ -404,6 +430,15 @@ final class StatusMenuTests: XCTestCase {
     private func choose(_ item: NSMenuItem) throws {
         let action = try XCTUnwrap(item.action, "\(item.title) does nothing")
         _ = (item.target as AnyObject).perform(action, with: item)
+    }
+}
+
+/// Stands where the menu stands behind a line, and writes down the keys passed on to it.
+final class KeyRecorder: NSResponder {
+    var keyCodes: [UInt16] = []
+
+    override func keyDown(with event: NSEvent) {
+        keyCodes.append(event.keyCode)
     }
 }
 

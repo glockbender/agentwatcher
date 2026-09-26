@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 /// A checkbox line in a menu that takes a click without closing the menu.
 ///
@@ -9,10 +10,9 @@ import AppKit
 /// four states ticked with four clicks, rather than with four trips down two submenus.
 ///
 /// The price is the drawing: a line with a view draws nothing of its own, so the highlight,
-/// the checkmark and the greyed look are drawn here, in the system's colours.
-///
-/// The item keeps an action as well, which calls the same toggle: that is the way in for the
-/// keyboard, where Return on a highlighted line is the item's business, not the view's.
+/// the checkmark and the greyed look are drawn here, in the system's colours. And the
+/// keyboard: measured, the menu never calls the item's action on Return for a line like this,
+/// but it hands its keys to the highlighted line's view — only if that view accepts them.
 @MainActor
 final class MenuToggleRowView: NSView {
     let title: String
@@ -66,6 +66,23 @@ final class MenuToggleRowView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         toggle()
+    }
+
+    /// Without this the menu keeps its keys to itself, and Return and Space did nothing.
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    /// Return, Space and the keypad's Enter choose the line and leave the menu open, as a click
+    /// does. Every other key goes on to the menu, which is how the arrows still move between
+    /// lines and Escape still closes it.
+    override func keyDown(with event: NSEvent) {
+        switch Int(event.keyCode) {
+        case kVK_Return, kVK_Space, kVK_ANSI_KeypadEnter:
+            toggle()
+        default:
+            super.keyDown(with: event)
+        }
     }
 
     override func accessibilityPerformPress() -> Bool {

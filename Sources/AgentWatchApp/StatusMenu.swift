@@ -205,12 +205,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     }
 
     /// A menu item that carries a toggle row, titled for type-select and for a reader of the
-    /// menu, and with an action for the keyboard.
+    /// menu. No action: the menu does not call one for a line with a view, and the row takes
+    /// its clicks and its keys itself.
     private func toggleItem(_ row: MenuToggleRowView) -> NSMenuItem {
-        let item = NSMenuItem(title: row.title, action: #selector(toggleRow(_:)), keyEquivalent: "")
-        item.target = self
+        let item = NSMenuItem(title: row.title, action: nil, keyEquivalent: "")
         item.view = row
-        item.representedObject = row
         return item
     }
 
@@ -457,10 +456,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     #endif
 
     // MARK: - Actions
-
-    @objc private func toggleRow(_ sender: NSMenuItem) {
-        (sender.representedObject as? MenuToggleRowView)?.toggle()
-    }
 
     @objc private func focusSession(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else {
