@@ -29,6 +29,13 @@ final class StatusMenuTests: XCTestCase {
                 "  Tooling…",
                 "  ---",
                 "  Show Counts in Menu Bar",
+                "  Sessions in Menu",
+                "    List Sessions in Menu",
+                "    ---",
+                "    Needs You",
+                "    Working",
+                "    Done",
+                "    Idle",
                 "  Widget Behavior",
                 "    Lock Position",
                 "    Lock Size",
@@ -285,6 +292,70 @@ final class StatusMenuTests: XCTestCase {
             }
         }
         return inked
+    }
+
+    // MARK: - Choosing which sessions
+
+    func testTheChoiceOffersEveryCountedStateAndShowsWhatIsStored() throws {
+        let (menu, _, _) = try makeMenu()
+
+        menu.menuWillOpen(menu.menu)
+
+        XCTAssertEqual(menu.listSessionsRow?.isOn, true)
+        XCTAssertEqual(Set(menu.attentionRows.keys), Set(SessionAttention.counted))
+        XCTAssertEqual(
+            SessionAttention.counted.filter { menu.attentionRows[$0]?.isOn == true },
+            [.needsPerson, .done]
+        )
+        XCTAssertEqual(
+            menu.attentionRows[.working]?.accessibilityRole(),
+            .checkBox,
+            "a line that draws itself says what it is to a screen reader"
+        )
+    }
+
+    /// The menu is still open when a state is chosen, and the lines at its top follow at once.
+    func testChoosingAStateListsItsSessionsWithoutReopeningTheMenu() throws {
+        let (menu, host, settings) = try makeMenu()
+        host.sessions = [session(0, "Still building", .executing)]
+        menu.menuWillOpen(menu.menu)
+        XCTAssertEqual(menu.sessionLineItems, [], "working is not listed by default")
+
+        try XCTUnwrap(menu.attentionRows[.working]).toggle()
+
+        XCTAssertTrue(settings.menuSessionAttentions.contains(.working))
+        XCTAssertEqual(menu.attentionRows[.working]?.isOn, true)
+        XCTAssertEqual(menu.sessionLineItems.map(\.title), ["Still building"])
+    }
+
+    /// Off greys the states rather than hiding them, keeps what they were, and takes the lines
+    /// away at once.
+    func testTheSwitchGreysTheStatesAndKeepsThem() throws {
+        let (menu, host, settings) = try makeMenu()
+        host.sessions = [session(0, "Waiting on a question", .waitingForUser)]
+        menu.menuWillOpen(menu.menu)
+
+        try XCTUnwrap(menu.listSessionsRow).toggle()
+
+        XCTAssertFalse(settings.listsSessionsInMenu)
+        XCTAssertEqual(menu.sessionLineItems, [])
+        XCTAssertEqual(menu.attentionRows.values.map(\.isAvailable), [false, false, false, false])
+        XCTAssertEqual(menu.attentionRows[.needsPerson]?.isOn, true, "the choice is kept for later")
+
+        try XCTUnwrap(menu.attentionRows[.quiet]).toggle()
+        XCTAssertFalse(settings.menuSessionAttentions.contains(.quiet), "a greyed line took a click")
+    }
+
+    /// Return on a highlighted line is the item's action, and it toggles the same way a click
+    /// on the line does.
+    func testTheItemsOwnActionTogglesItsLine() throws {
+        let (menu, _, settings) = try makeMenu()
+        menu.menuWillOpen(menu.menu)
+
+        try choose(XCTUnwrap(item(titled: "Idle", in: menu.menu)))
+
+        XCTAssertTrue(settings.menuSessionAttentions.contains(.quiet))
+        XCTAssertEqual(menu.attentionRows[.quiet]?.accessibilityValue() as? Bool, true)
     }
 
     private func session(_ index: Int, _ title: String, _ phase: SessionPhase) -> SessionSnapshot {

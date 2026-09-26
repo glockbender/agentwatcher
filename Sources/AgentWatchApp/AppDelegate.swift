@@ -363,8 +363,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .menuBarCounts:
             applyMenuBarIcon()
         case .menuSessions:
-            // The lines at the top follow at once: the menu may be open while this is chosen.
-            statusMenu?.refresh()
+            // The menu refreshes itself after its own choice; this is for a write from anywhere
+            // else, which would otherwise show only on the next opening.
+            statusMenu?.refreshSessions()
         }
     }
 

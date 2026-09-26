@@ -59,6 +59,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// One line per listed session, directly under the summary. Rebuilt each time rather
     /// than kept in step: they are a handful, and the list changes between two openings.
     private(set) var sessionLineItems: [NSMenuItem] = []
+    /// The switch for the list and one line per state it can hold, in the icon's order.
+    private(set) var listSessionsRow: MenuToggleRowView?
+    private(set) var attentionRows: [SessionAttention: MenuToggleRowView] = [:]
     private(set) var countsItem: NSMenuItem?
     private(set) var widgetItem: NSMenuItem?
     private(set) var debugItem: NSMenuItem?
@@ -136,6 +139,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let counts = line("Show Counts in Menu Bar", #selector(toggleMenuBarCounts))
         submenu.addItem(counts)
         countsItem = counts
+        submenu.addItem(makeSessionsInMenuItem())
         submenu.addItem(makeBehaviorMenuItem())
         // One level up from where it used to be, inside `Widget Behavior`: under `Settings` that
         // would have been a third level, which a pointer has to travel along without slipping.
@@ -156,6 +160,57 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             deleteRecordingsItem = deleteRecordings
         #endif
         item.submenu = submenu
+        return item
+    }
+
+    /// The one submenu whose lines do not close the menu when chosen — all of them, the switch
+    /// included, so a person can turn the list on and pick its states in one visit. Mixed in
+    /// one submenu, lines that close and lines that stay would leave a person guessing which
+    /// is which.
+    ///
+    /// The states are `SessionAttention.counted`, walked rather than written out, so the
+    /// choice cannot drift from what the icon counts.
+    private func makeSessionsInMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Sessions in Menu", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Sessions in Menu")
+        let listSessions = MenuToggleRowView(title: "List Sessions in Menu", isOn: settings.listsSessionsInMenu)
+        listSessions.onToggle = { [weak self] in
+            guard let self else {
+                return
+            }
+            settings.setListsSessionsInMenu(!settings.listsSessionsInMenu)
+            refreshSessions()
+        }
+        submenu.addItem(toggleItem(listSessions))
+        listSessionsRow = listSessions
+        submenu.addItem(.separator())
+        for attention in SessionAttention.counted {
+            let row = MenuToggleRowView(
+                title: attention.name,
+                image: Self.mark(for: attention),
+                isOn: settings.menuSessionAttentions.contains(attention)
+            )
+            row.onToggle = { [weak self] in
+                guard let self else {
+                    return
+                }
+                settings.setMenuLists(attention, !settings.menuSessionAttentions.contains(attention))
+                refreshSessions()
+            }
+            submenu.addItem(toggleItem(row))
+            attentionRows[attention] = row
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    /// A menu item that carries a toggle row, titled for type-select and for a reader of the
+    /// menu, and with an action for the keyboard.
+    private func toggleItem(_ row: MenuToggleRowView) -> NSMenuItem {
+        let item = NSMenuItem(title: row.title, action: #selector(toggleRow(_:)), keyEquivalent: "")
+        item.target = self
+        item.view = row
+        item.representedObject = row
         return item
     }
 
@@ -285,7 +340,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             return
         }
         summaryItem?.title = MenuBarSummaryText.line(for: host.attentionCounts)
-        showSessionLines(host: host)
+        refreshSessions()
         countsItem?.state = settings.showsMenuBarCounts ? .on : .off
         widgetItem?.title = host.isWidgetVisible ? "Hide Widget" : "Show Widget"
         if let widgetItem {
@@ -312,6 +367,21 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         #if AGENT_WATCH_DEBUG_CAPTURE
             refreshRawHookCapture(host: host)
         #endif
+    }
+
+    /// The listed sessions and the lines that choose them, read again from the setting. Called
+    /// straight after a choice as well as on opening: the menu is still open then, and the
+    /// lines at its top show the effect while the pointer is still in the submenu.
+    func refreshSessions() {
+        listSessionsRow?.isOn = settings.listsSessionsInMenu
+        let listed = settings.menuSessionAttentions
+        for (attention, row) in attentionRows {
+            row.isOn = listed.contains(attention)
+            row.isAvailable = settings.listsSessionsInMenu
+        }
+        if let host {
+            showSessionLines(host: host)
+        }
     }
 
     /// Under the summary, so the line that counts the sessions reads as the heading of the
@@ -387,6 +457,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     #endif
 
     // MARK: - Actions
+
+    @objc private func toggleRow(_ sender: NSMenuItem) {
+        (sender.representedObject as? MenuToggleRowView)?.toggle()
+    }
 
     @objc private func focusSession(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else {
