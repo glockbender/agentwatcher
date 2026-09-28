@@ -29,9 +29,9 @@ final class WidgetSettingsWindowTests: XCTestCase {
         let second = try XCTUnwrap(controller.gradientColorWells[.rateLimited])
         let cycle = try XCTUnwrap(controller.animationCycleSliders[.rateLimited])
         XCTAssertFalse(second.isEnabled)
-        XCTAssertFalse(cycle.isEnabled)
+        XCTAssertTrue(cycle.isEnabled)
         XCTAssertTrue(second.isHidden)
-        XCTAssertEqual(cycle.superview?.isHidden, true)
+        XCTAssertEqual(cycle.superview?.isHidden, false)
         motion.selectItem(withTitle: "Two-color fade")
         motion.sendAction(motion.action, to: motion.target)
         XCTAssertTrue(second.isEnabled)
@@ -67,9 +67,9 @@ final class WidgetSettingsWindowTests: XCTestCase {
         controller.resetLamp()
         XCTAssertFalse(second.isEnabled)
         XCTAssertEqual(second.color.srgbHex, "#FFFFFF")
-        XCTAssertEqual(cycle.doubleValue, 2.8)
+        XCTAssertEqual(cycle.doubleValue, 2)
         let reset = try XCTUnwrap(controller.lampPreviewHolders[.rateLimited]?.subviews.first as? SessionLampView)
-        XCTAssertFalse(reset.isBlinking)
+        XCTAssertTrue(reset.isBlinking)
     }
 
     func testDimShowsOnlyCycleAndSharesItWithColorFade() throws {
@@ -82,7 +82,7 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertFalse(second.isEnabled)
         XCTAssertEqual(cycle.superview?.isHidden, false)
         XCTAssertTrue(cycle.isEnabled)
-        XCTAssertEqual(cycle.doubleValue, 1.1)
+        XCTAssertEqual(cycle.doubleValue, 1)
         cycle.doubleValue = 5.4
         cycle.sendAction(cycle.action, to: cycle.target)
         XCTAssertEqual(store.scheme.style(for: .failed).animationCycle, 5.4)
@@ -209,7 +209,7 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertTrue(backgroundStore.selected.isCustom)
         XCTAssertEqual(
             backgroundStore.selected.color.srgbHex,
-            WidgetBackground.graphite.color.srgbHex,
+            WidgetBackground.defaultBackground.color.srgbHex,
             "before the wheel is touched the widget keeps the colour it had"
         )
     }

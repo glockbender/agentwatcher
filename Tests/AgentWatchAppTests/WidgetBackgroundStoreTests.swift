@@ -4,10 +4,10 @@ import XCTest
 @testable import AgentWatchApp
 
 final class WidgetBackgroundStoreTests: XCTestCase {
-    func testUsesGraphiteWhenNoPreferenceWasSaved() throws {
+    func testUsesBlueWhenNoPreferenceWasSaved() throws {
         let preferences = try isolatedPreferences()
 
-        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).selected, .graphite)
+        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).selected, .defaultBackground)
     }
 
     func testPersistsTheSelectedBackground() throws {
@@ -22,7 +22,7 @@ final class WidgetBackgroundStoreTests: XCTestCase {
     func testUsesTheExistingBackgroundOpacityByDefault() throws {
         let preferences = try isolatedPreferences()
 
-        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).opacity, 0.96)
+        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).opacity, 0.82)
     }
 
     func testPersistsTheSelectedBackgroundOpacity() throws {
@@ -72,7 +72,7 @@ final class WidgetBackgroundStoreTests: XCTestCase {
         let store = WidgetBackgroundStore(preferences: try isolatedPreferences())
 
         XCTAssertNil(store.customColor)
-        XCTAssertFalse(store.selected.isCustom)
+        XCTAssertEqual(store.selected.color.srgbHex, "#006996")
     }
 
     func testPersistsAColourOfThePersonsOwn() throws {
@@ -100,14 +100,14 @@ final class WidgetBackgroundStoreTests: XCTestCase {
     /// The file is meant to be corrected by hand, so `custom` with nothing readable behind it is
     /// a real input — and the app's own background is the answer to it, as it is to a mistyped
     /// preset name.
-    func testCustomWithNoColourBehindItReadsAsGraphite() throws {
+    func testCustomWithNoColourBehindItReadsAsDefaultBlue() throws {
         let preferences = try isolatedPreferences()
         let store = WidgetBackgroundStore(preferences: preferences)
         preferences.set("custom", forKey: "widgetBackground")
 
-        for unreadable in [WidgetBackgroundStore.noCustomColor, "#12345", "teal"] {
+        for unreadable in ["", "#12345", "teal"] {
             preferences.set(unreadable, forKey: "widgetBackgroundCustomColor")
-            XCTAssertEqual(store.selected, .graphite, unreadable)
+            XCTAssertEqual(store.selected, .defaultBackground, unreadable)
         }
     }
 

@@ -116,7 +116,7 @@ final class LampGradientTests: XCTestCase {
         XCTAssertEqual(store.scheme.style(for: .idle).gradientColor.srgbHex, "#FFFFFF")
         store.reset()
         XCTAssertTrue(store.scheme.isDefault)
-        XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, 2.8)
+        XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, 2.5)
     }
 
     func testInvalidSettingsCannotProduceAnInvalidAnimationPeriod() throws {
@@ -124,8 +124,8 @@ final class LampGradientTests: XCTestCase {
         let store = LampSchemeStore(preferences: preferences)
         preferences.set("not a color", forKey: "lampGradientColor.executing")
         preferences.set("fast", forKey: "lampAnimationCycle.executing")
-        XCTAssertEqual(store.scheme.style(for: .executing).gradientColor.srgbHex, "#FFFFFF")
-        XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, 2.8)
+        XCTAssertEqual(store.scheme.style(for: .executing).gradientColor.srgbHex, "#00A900")
+        XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, 2.5)
         for (stored, expected) in [(-1.0, 0.5), (0, 0.5), (50, 10)] {
             preferences.set(stored, forKey: "lampAnimationCycle.executing")
             XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, expected)

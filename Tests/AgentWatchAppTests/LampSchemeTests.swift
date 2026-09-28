@@ -7,14 +7,14 @@ import XCTest
 
 @MainActor
 final class LampSchemeTests: XCTestCase {
-    func testRateLimitIsAStillLilacPause() {
+    func testRateLimitIsAPulsingLilacPause() {
         let look = SessionLamp.appearance(for: session(in: .rateLimited), scheme: LampScheme())
         XCTAssertEqual(look.name, "limit reached")
         XCTAssertEqual(look.shape, .pause)
-        XCTAssertEqual(look.motion, .steady)
+        XCTAssertEqual(look.motion, .dim)
         XCTAssertEqual(look.color.srgbHex, "#BF9BFA")
         let view = SessionLampView(appearance: look, diameter: 12)
-        XCTAssertFalse(view.isBlinking)
+        XCTAssertTrue(view.isBlinking)
         XCTAssertNotNil(view.layer?.mask, "the pause must be drawn, not only named")
         XCTAssertEqual(view.paintedColor?.srgbHex, "#BF9BFA")
     }
@@ -33,26 +33,40 @@ final class LampSchemeTests: XCTestCase {
     }
 
     /// Every lamp has to be visible against the surface it is drawn on, which is the one
-    /// thing comparing the phases against each other cannot check.
+    /// thing comparing the phases against each other cannot check. `sessionClosed` was once
+    /// `#000000` on the near-black Graphite: 1.35:1, a ring nobody could see.
     ///
-    /// `sessionClosed` was `#000000` — a black ring on a near-black widget, at 1.35:1 where
-    /// every other phase sat at 4.58:1 or better. It is the only failure this shape of
-    /// mistake has, and it is invisible to a test that asks whether two phases differ.
-    ///
-    /// Measured against the default background alone, on purpose. The palette is built for a
-    /// dark widget: `executing` reaches only 1.17:1 on the lightest background, and holding
-    /// all ten to a threshold would be asserting a design decision nobody made.
-    func testEveryLampIsVisibleAgainstTheDefaultBackground() {
-        let background = WidgetBackground.graphite.color
+    /// The blue default leaves six phases under 3:1 by choice — the reason is on
+    /// `defaultLampStyle`. They are named here so the list changes only on purpose: a phase
+    /// that newly drops below fails, and so does one that no longer needs its place.
+    func testEveryLampIsVisibleAgainstTheDefaultBackgroundExceptTheOnesAcceptedByName() {
+        let accepted: Set<SessionPhase> = [
+            .idle, .waitingForUser, .rateLimited, .failed, .terminalClosed, .disconnected,
+        ]
+        let background = WidgetBackground.defaultBackground.color
 
         for phase in SessionPhase.allCases {
             let contrast = contrastRatio(phase.defaultLampStyle.color, background)
-            XCTAssertGreaterThan(
-                contrast,
-                3,
-                "\(phase) draws at \(String(format: "%.2f", contrast)):1 on the default background"
-            )
+            let reading = "\(phase) draws at \(String(format: "%.2f", contrast)):1 on the default background"
+            if accepted.contains(phase) {
+                XCTAssertLessThanOrEqual(contrast, 3, "\(reading); take it off the accepted list")
+            } else {
+                XCTAssertGreaterThan(contrast, 3, reading)
+            }
         }
+    }
+
+    func testDefaultsKeepTheSelectedPaletteAndDistinctAnimationCycles() {
+        let work = SessionPhase.executing.defaultLampStyle
+        XCTAssertEqual(work.color.srgbHex, "#00FF5C")
+        XCTAssertEqual(work.animationCycle, 2.5)
+        let attention = SessionPhase.waitingForUser.defaultLampStyle
+        XCTAssertEqual(attention.motion, .gradient)
+        XCTAssertEqual(attention.color.srgbHex, "#FF9F0A")
+        XCTAssertEqual(attention.gradientColor.srgbHex, "#FFFB00")
+        XCTAssertEqual(attention.animationCycle, 0.5)
+        XCTAssertEqual(SessionPhase.planning.defaultLampStyle.animationCycle, 1.5)
+        XCTAssertEqual(SessionPhase.failed.defaultLampStyle.animationCycle, 1)
     }
 
     /// WCAG relative luminance. Written out rather than taken from AppKit because what is
