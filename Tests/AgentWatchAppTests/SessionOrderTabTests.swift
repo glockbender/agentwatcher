@@ -123,6 +123,24 @@ final class SessionOrderTabTests: XCTestCase {
         button.sendAction(button.action, to: button.target)
     }
 
+    func testRefreshingTheOrderPreviewAppliesAChangedRowLayout() throws {
+        let preferences = try isolatedPreferences()
+        let layouts = RowLayoutStore(preferences: preferences)
+        let tab = SessionOrderTab(
+            settings: WidgetSettingsStore(preferences: preferences),
+            backgroundStore: WidgetBackgroundStore(preferences: preferences),
+            lampSchemes: LampSchemeStore(preferences: preferences), rowLayouts: layouts)
+        func lamps(in view: NSView) -> Int {
+            (view is SessionLampView ? 1 : 0) + view.subviews.reduce(0) { $0 + lamps(in: $1) }
+        }
+        XCTAssertGreaterThan(lamps(in: tab.preview), 0)
+
+        layouts.setLayout(layouts.layout.changing(parts: layouts.layout.parts.filter { $0 != .lamp }))
+        tab.showCurrentValues()
+
+        XCTAssertEqual(lamps(in: tab.preview), 0, "the rows still use the previous layout")
+    }
+
     private func makeTab() throws -> (SessionOrderTab, WidgetSettingsStore) {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)

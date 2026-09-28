@@ -188,6 +188,43 @@ final class ClosedTerminalRowTests: XCTestCase {
         XCTAssertEqual(released, [])
     }
 
+    func testAMenuClickDoesNotEndAnAgentUnlessTheDisplayedLineAnnouncedIt() throws {
+        var state = AgentProcessLocator.TerminalState.attached
+        var released: [String] = []
+        var notes: [String] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in state }, released: { released.append($0) }, notes: { notes.append($0) })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "UserPromptSubmit", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        let ordinary = try XCTUnwrap(
+            menuSessionLines(
+                for: supervisor.sessions, listing: Set(SessionAttention.counted), reach: supervisor.reach(for:)
+            ).first)
+
+        state = .lost
+        supervisor.discoverAgentProcesses()
+        XCTAssertEqual(try XCTUnwrap(supervisor.sessions.first).phase, .terminalClosed)
+        supervisor.focusSession(id: ordinary.sessionID, endingAgentWasAnnounced: ordinary.endingAgentWasAnnounced)
+        XCTAssertEqual(released, [], "a change since the menu opened must not turn focus into terminal release")
+
+        let announced = try XCTUnwrap(
+            menuSessionLines(
+                for: supervisor.sessions, listing: Set(SessionAttention.counted), reach: supervisor.reach(for:)
+            ).first)
+        XCTAssertTrue(announced.title.contains("click ends the agent"))
+        supervisor.focusSession(id: announced.sessionID, endingAgentWasAnnounced: announced.endingAgentWasAnnounced)
+        XCTAssertEqual(released, [device])
+
+        supervisor.ingest(testRequest(event: "SessionEnd", sessionID: "devx"))
+        supervisor.focusSession(id: announced.sessionID, endingAgentWasAnnounced: true)
+        XCTAssertEqual(released, [device], "an old announced action must still check the current session")
+        XCTAssertTrue(notes.contains { $0.contains("ended while the menu was open") }, "said, not swallowed: \(notes)")
+        supervisor.focusSession(id: "gone", endingAgentWasAnnounced: true)
+        XCTAssertEqual(released, [device])
+    }
+
     // MARK: - Scaffolding
 
     private func makeSupervisor(

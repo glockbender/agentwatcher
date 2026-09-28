@@ -66,6 +66,33 @@ final class SessionOrderingTests: XCTestCase {
 
     // MARK: - Blocks
 
+    func testAConfirmedWaitFromOldHistoryProvesTheSessionHasWorked() throws {
+        let dialog = AwaitedDialog(agentID: nil, activityID: "tool", kind: .approval)
+        var old = testSession(phase: .waitingForUser, lastObservedAt: start)
+        old.setAwaitedDialogs([dialog])
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as? [String: Any])
+        object.removeValue(forKey: "workedOnce")
+        let decoded = try JSONDecoder().decode(
+            SessionSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertNil(decoded.workedOnce)
+        var engine = SessionStateEngine()
+        engine.restore([decoded])
+        let evidence = SessionHistory.RememberedWaitEvidence(
+            dialogs: [.init(dialog: dialog, callEndedAt: nil)], newestInterruptionAt: nil)
+
+        let restored = try XCTUnwrap(engine.confirmRememberedWait(forSessionWithID: old.id, evidence: evidence))
+
+        XCTAssertEqual(restored.phase, .waitingForUser)
+        XCTAssertTrue(restored.hasWorked)
+        XCTAssertEqual(SessionBlock.of(restored, now: start + 3_600), .active)
+        let remembered = try JSONDecoder().decode(
+            SessionSnapshot.self, from: JSONEncoder().encode(SessionHistory.remembered(restored)))
+        XCTAssertTrue(remembered.hasWorked, "the inferred fact must survive the next restart")
+        let idle = SessionReducer.reduce(remembered, event: .sessionStarted(mode: nil, at: start + 4_000))
+        XCTAssertTrue(idle.hasWorked)
+        XCTAssertEqual(SessionBlock.of(idle, now: start + 8_000), .active)
+    }
+
     func testEachSessionIsInTheBlockItsStateNames() {
         let expected: [(SessionPhase, SessionBlock)] = [
             (.planning, .active), (.executing, .active), (.waitingForChildren, .active),

@@ -36,7 +36,7 @@ extension SessionBlock {
     var settingsExplanation: String {
         switch self {
         case .active: "alive, in any state"
-        case .inactive: "no signal, or opened and never asked a thing for half an hour"
+        case .inactive: "limit reached, no signal, or never used for half an hour"
         case .broken: "its turn failed, or its terminal was closed under it"
         case .closed: "finished"
         }
@@ -386,7 +386,9 @@ final class SessionOrderPreviewView: NSView {
     ) {
         var next: [String: (row: HUDSessionRowView, snapshot: SessionSnapshot)] = [:]
         for snapshot in sessions {
-            if let existing = rows[snapshot.id], existing.snapshot == snapshot {
+            // A non-animated refresh also picks up settings changed on another tab. Equal
+            // snapshots alone do not mean equal lamps, row layouts or background colours.
+            if animated, let existing = rows[snapshot.id], existing.snapshot == snapshot {
                 next[snapshot.id] = existing
                 continue
             }

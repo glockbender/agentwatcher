@@ -19,7 +19,7 @@ protocol StatusMenuHost: AnyObject {
     var sessions: [SessionSnapshot] { get }
     func reach(for snapshot: SessionSnapshot) -> SessionReach
     /// A click on a session's line, which is a click on its row in the widget.
-    func focusSession(id: String)
+    func focusSession(id: String, endingAgentWasAnnounced: Bool)
     /// Called before anything is refreshed, so what the menu then reads is current.
     func menuWillOpen()
     /// Puts the registered combination on the widget line, or takes it off.
@@ -408,7 +408,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
                 keyEquivalent: ""
             )
             item.target = self
-            item.representedObject = line.sessionID
+            item.representedObject = line
             item.image = Self.mark(for: line.attention)
             menu.insertItem(item, at: first + offset)
             return item
@@ -458,10 +458,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     // MARK: - Actions
 
     @objc private func focusSession(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else {
+        guard let line = sender.representedObject as? MenuSessionLine else {
             return
         }
-        host?.focusSession(id: id)
+        host?.focusSession(id: line.sessionID, endingAgentWasAnnounced: line.endingAgentWasAnnounced)
     }
 
     @objc private func toggleMenuBarCounts() {

@@ -9,6 +9,8 @@ struct MenuSessionLine: Equatable {
     let title: String
     /// `false` only when a click could do nothing at all — and the title then says why.
     let isEnabled: Bool
+    /// Whether the displayed wording announced that choosing this line ends the agent.
+    let endingAgentWasAnnounced: Bool
 }
 
 /// The sessions the menu lists, and what each line says, in the order they are handed over.
@@ -32,7 +34,9 @@ func menuSessionLines(
         }
         let name = menuSessionName(for: snapshot)
         guard snapshot.phase == .terminalClosed else {
-            return MenuSessionLine(sessionID: snapshot.id, attention: attention, title: name, isEnabled: true)
+            return MenuSessionLine(
+                sessionID: snapshot.id, attention: attention, title: name, isEnabled: true,
+                endingAgentWasAnnounced: false)
         }
         // The one click in the app that ends something. The widget's card says so before it
         // is made; a menu line has no card, so the line says it itself.
@@ -41,14 +45,16 @@ func menuSessionLines(
                 sessionID: snapshot.id,
                 attention: attention,
                 title: "\(name) — terminal closed, nothing here can end it",
-                isEnabled: false
+                isEnabled: false,
+                endingAgentWasAnnounced: false
             )
         }
         return MenuSessionLine(
             sessionID: snapshot.id,
             attention: attention,
             title: "\(name) — terminal closed, click ends the agent",
-            isEnabled: true
+            isEnabled: true,
+            endingAgentWasAnnounced: true
         )
     }
 }

@@ -852,6 +852,9 @@ public struct SessionStateEngine: Sendable {
             return nil
         }
         snapshot.phase = .waitingForUser
+        // Older history has no workedOnce field. The confirmed dialog proves that a turn
+        // happened, even though restoration does not pass through the event reducer.
+        snapshot.workedOnce = true
         snapshot.setAwaitedDialogs(wait.dialogs)
         snapshots[id] = snapshot
         return snapshot

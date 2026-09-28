@@ -434,12 +434,8 @@ extension AppDelegate: StatusMenuHost {
 
     /// Looked up at the click, not taken from when the menu opened: the session may have moved
     /// on, or gone, while the menu stood open.
-    func focusSession(id: String) {
-        guard let snapshot = supervisor.sessions.first(where: { $0.id == id }) else {
-            recordDebug("Menu · the session was gone before the click; nothing to bring forward")
-            return
-        }
-        supervisor.focus(snapshot)
+    func focusSession(id: String, endingAgentWasAnnounced: Bool) {
+        supervisor.focusSession(id: id, endingAgentWasAnnounced: endingAgentWasAnnounced)
     }
 
     func menuWillOpen() {

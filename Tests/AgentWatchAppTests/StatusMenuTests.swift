@@ -203,6 +203,25 @@ final class StatusMenuTests: XCTestCase {
         try choose(XCTUnwrap(menu.sessionLineItems.first))
 
         XCTAssertEqual(host.calls, ["focusSession claude:session-0"])
+        XCTAssertEqual(host.announcedReleases, [false])
+    }
+
+    func testChoosingALinePreservesTheActionThatWasDisplayed() throws {
+        let (menu, host, _) = try makeMenu()
+        host.sessions = [session(0, "Session", .completed)]
+        menu.menuWillOpen(menu.menu)
+        let ordinary = try XCTUnwrap(menu.sessionLineItems.first)
+
+        host.sessions = [session(0, "Session", .terminalClosed)]
+        host.reaches = ["claude:session-0": .closedTerminal(devicePath: "/dev/ttys004")]
+        try choose(ordinary)
+        XCTAssertEqual(host.announcedReleases, [false], "the old title announced no terminal release")
+
+        menu.menuWillOpen(menu.menu)
+        let announced = try XCTUnwrap(menu.sessionLineItems.first)
+        XCTAssertTrue(announced.title.contains("click ends the agent"))
+        try choose(announced)
+        XCTAssertEqual(host.announcedReleases, [false, true])
     }
 
     func testOpeningTheMenuAgainListsTheSessionsAsTheyAreNow() throws {
@@ -445,6 +464,7 @@ final class KeyRecorder: NSResponder {
 @MainActor
 final class FakeStatusMenuHost: StatusMenuHost {
     var calls: [String] = []
+    var announcedReleases: [Bool] = []
     var attentionCounts = SessionAttentionCounts.empty
     var isWidgetVisible = false
     var isEventDebugVisible = false
@@ -458,7 +478,10 @@ final class FakeStatusMenuHost: StatusMenuHost {
         reaches[snapshot.id] ?? .anApplication
     }
 
-    func focusSession(id: String) { calls.append("focusSession \(id)") }
+    func focusSession(id: String, endingAgentWasAnnounced: Bool) {
+        calls.append("focusSession \(id)")
+        announcedReleases.append(endingAgentWasAnnounced)
+    }
 
     func menuWillOpen() { calls.append("menuWillOpen") }
     func showShortcut(on item: NSMenuItem) { calls.append("showShortcut") }

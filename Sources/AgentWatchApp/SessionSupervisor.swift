@@ -266,6 +266,24 @@ final class SessionSupervisor {
         return hostRegistry.reach(for: snapshot)
     }
 
+    /// Menu rows keep their wording while the session can change. Resolve the current row,
+    /// but never turn a displayed focus action into an unannounced terminal release (ADR-0013).
+    func focusSession(id: String, endingAgentWasAnnounced: Bool) {
+        guard let snapshot = sessions.first(where: { $0.id == id }) else {
+            onNotableEvent("Menu · the session was gone before the click; nothing to bring forward")
+            return
+        }
+        guard snapshot.phase != .sessionClosed else {
+            onNotableEvent("Menu · the session ended while the menu was open; nothing was done")
+            return
+        }
+        guard snapshot.phase != .terminalClosed || endingAgentWasAnnounced else {
+            onNotableEvent("Menu · terminal closed; open the menu again to choose the announced action")
+            return
+        }
+        focus(snapshot)
+    }
+
     /// A click that reached nothing is said out loud rather than swallowed.
     ///
     /// The row always answers a click, so "nothing happened" is a state a person can now

@@ -740,6 +740,36 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertEqual(controller.orderTab.preview.layer?.backgroundColor, chosen.color.cgColor)
     }
 
+    func testReturningToOrderRebuildsTheLampsEvenWhenTheDemoSnapshotsAreUnchanged() throws {
+        func lampViews(in view: NSView) -> [SessionLampView] {
+            if let lamp = view as? SessionLampView { return [lamp] }
+            return view.subviews.flatMap { lampViews(in: $0) }
+        }
+        let (controller, lamps, _, settings) = try makeWindow()
+        controller.showWindow(nil)
+        defer { controller.close() }
+        for mode: SessionOrder in [.arrival, .attention, .recentActivity] {
+            settings.setSessionOrder(mode)
+            try show(tab: "Order", of: controller)
+            let initial = try XCTUnwrap(lampViews(in: controller.orderTab.preview).first)
+            let chosen = initial.paintedColor?.srgbHex == "#123456" ? "#654321" : "#123456"
+
+            try show(tab: "Lamp", of: controller)
+            for phase in SessionPhase.allCases {
+                lamps.setColor(NSColor(sRGB: chosen), for: phase)
+                lamps.setMotion(.steady, for: phase)
+            }
+            try show(tab: "Order", of: controller)
+
+            let shown = lampViews(in: controller.orderTab.preview)
+            XCTAssertEqual(shown.count, SessionOrderDemo().sessions.count)
+            for lamp in shown {
+                XCTAssertEqual(lamp.paintedColor?.srgbHex, chosen, "\(mode)")
+                XCTAssertFalse(lamp.isBlinking, "\(mode)")
+            }
+        }
+    }
+
     /// For the tests that are about the shortcut itself rather than about the window: the window
     /// does not hand its collaborators back, and it should not have to grow a way to just for a
     /// test.
