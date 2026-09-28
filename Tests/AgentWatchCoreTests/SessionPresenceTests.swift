@@ -45,11 +45,14 @@ final class SessionPresenceTests: XCTestCase {
         XCTAssertEqual(SessionPresence.dismissal(of: faulted, now: now), .now)
     }
 
-    /// The half of the answer the old `Bool` could not carry: a row whose session has
-    /// finished offers its `×` greyed, with the moment it starts working — and a row still
-    /// live offers none at all, `idle` included: resting between turns is not finished.
+    /// The half of the answer the old `Bool` could not carry: a row whose turn has ended
+    /// offers its `×` greyed, with the moment it starts working — and a row still live offers
+    /// none at all, `idle` included: resting between turns is not finished.
+    ///
+    /// A limit is an ended turn like the other two, and no more than they are: offered, greyed,
+    /// and working only once the same silence has passed.
     func testARowThatIsOverButStillHeldSaysWhenItsButtonStartsWorking() {
-        for phase in [SessionPhase.completed, .failed] {
+        for phase in [SessionPhase.completed, .failed, .rateLimited] {
             XCTAssertEqual(
                 SessionPresence.dismissal(of: snapshot(phase: phase), now: now),
                 .notYet(at: now + SessionFreshnessEvaluator.defaultDisconnectAfter),
@@ -64,6 +67,16 @@ final class SessionPresenceTests: XCTestCase {
                 "\(phase) is live work, and a button for it would promise something else"
             )
         }
+    }
+
+    /// Reaching a limit says nothing about whether anybody is coming back to the session, so
+    /// its row is closed by hand only after the silence every other ended turn waits out.
+    func testALimitedRowBecomesDismissibleOnlyAfterTheSilence() {
+        let limited = snapshot(phase: .rateLimited)
+        let silence = SessionFreshnessEvaluator.defaultDisconnectAfter
+        XCTAssertEqual(SessionPresence.dismissal(of: limited, now: now), .notYet(at: now + silence))
+        XCTAssertEqual(SessionPresence.dismissal(of: limited, now: now + silence - 1), .notYet(at: now + silence))
+        XCTAssertEqual(SessionPresence.dismissal(of: limited, now: now + silence), .now)
     }
 
     /// Every phase lands in exactly one of the three, and the two that mean "no button now"
@@ -81,11 +94,9 @@ final class SessionPresenceTests: XCTestCase {
         }
     }
 
+    /// Every phase there is, so a phase added later is checked without anybody listing it here.
     private var allPhases: [SessionPhase] {
-        [
-            .idle, .planning, .executing, .waitingForUser, .waitingForChildren,
-            .completed, .failed, .disconnected, .sessionClosed,
-        ]
+        SessionPhase.allCases
     }
 
     private func snapshot(phase: SessionPhase) -> SessionSnapshot {

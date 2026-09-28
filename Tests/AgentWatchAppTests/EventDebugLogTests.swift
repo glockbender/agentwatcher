@@ -131,6 +131,28 @@ final class EventDebugLogTests: XCTestCase {
         XCTAssertLessThanOrEqual(text.utf8.count, 500 * 1025)
     }
 
+    /// Entries that arrive while the window is hidden do not scroll it, so opening it has to:
+    /// otherwise it opens at the top, and the lines a person opened it for are out of sight.
+    func testOpeningTheDebugWindowShowsTheNewestEntry() throws {
+        let controller = EventDebugWindowController(initialEntries: [])
+        defer { controller.window?.orderOut(nil) }
+        for index in 0..<200 {
+            controller.append("entry \(index)")
+        }
+
+        controller.toggle()
+
+        let scroll = try XCTUnwrap(controller.window?.contentView as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView as? NSTextView)
+        // Laid out here rather than left to the scroll: measured, a text view nobody scrolled
+        // is still its initial 300 pt, and the check below would pass or fail on that instead.
+        let container = try XCTUnwrap(document.textContainer)
+        document.layoutManager?.ensureLayout(for: container)
+        let clip = scroll.contentView
+        XCTAssertGreaterThan(document.frame.height, clip.bounds.height * 2, "the log is not long enough to scroll")
+        XCTAssertEqual(clip.bounds.maxY, document.frame.maxY, accuracy: 1, "the window did not open at its end")
+    }
+
     func testFailedCompactionDoesNotAllowTheFileToKeepGrowing() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let file = directory.appendingPathComponent("event-debug.log")
@@ -145,6 +167,32 @@ final class EventDebugLogTests: XCTestCase {
         XCTAssertThrowsError(try Data().write(to: directory.appendingPathComponent("blocked")))
         for _ in 0..<600 { log.append("must not bypass failed compaction") }
         XCTAssertEqual(try Data(contentsOf: file), before)
+    }
+
+    /// A rewrite that failed is not tried again on the very next event, which is what a full
+    /// or read-only disk used to cost: the whole log joined and written for every entry. It is
+    /// tried again after as many entries as a working log takes between two rewrites.
+    func testAFailedRewriteWaitsBeforeItIsTriedAgain() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file = directory.appendingPathComponent("event-debug.log")
+        let log = EventDebugLog(directoryURL: directory)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        for _ in 0..<1000 { log.append("entry") }
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+        log.append("refused")
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        let afterFailure = try Data(contentsOf: file)
+
+        for _ in 0..<EventDebugLog.maximumEntryCount { log.append("while waiting") }
+        XCTAssertEqual(try Data(contentsOf: file), afterFailure, "tried again before its turn")
+
+        log.append("newest")
+        let lines = try String(contentsOf: file, encoding: .utf8).split(separator: "\n")
+        XCTAssertEqual(lines.last, "newest", "the disk works again, so the log should reach it")
+        XCTAssertLessThanOrEqual(lines.count, EventDebugLog.maximumEntryCount + 1)
     }
 
 }

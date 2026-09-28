@@ -19,6 +19,32 @@ final class AgentInstallationLookupTests: XCTestCase {
         }
     }
 
+    /// Launched from Finder, the app sees none of the directories a shell adds to `PATH`, so
+    /// the places installers and Node version managers use are looked at by name.
+    func testTheHomeDirectoryPlacesAreFoundWithoutPath() throws {
+        let layouts: [(AgentSource, String)] = [
+            (.claude, ".claude/local/claude"),
+            (.claude, ".volta/bin/claude"),
+            (.codex, ".bun/bin/codex"),
+            (.codex, ".nvm/versions/node/v22.11.0/bin/codex"),
+        ]
+        for (source, relative) in layouts {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let file = root.appendingPathComponent(relative)
+            try FileManager.default.createDirectory(
+                at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("#!/bin/sh\nexit 99\n".utf8).write(to: file)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
+
+            XCTAssertEqual(
+                AgentInstallationLookup.executable(for: source, home: root, searchPath: "", applications: []),
+                file.path,
+                relative
+            )
+        }
+    }
+
     func testDirectoryAndNonExecutableFileAreNotInstallationEvidence() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(

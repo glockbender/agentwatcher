@@ -50,7 +50,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
     private lazy var toolingController = ToolingWindowController(
         facts: { [weak self] in
-            self?.tooling.facts ?? ToolingWindowFacts.unavailable
+            guard let self else {
+                return ToolingWindowFacts.unavailable
+            }
+            var facts = tooling.facts
+            if case let .active(shortcut) = shortcuts.status {
+                facts.widgetShortcut = shortcut.displayed
+            }
+            return facts
         },
         act: { [weak self] press in
             self?.tooling.press(press)
@@ -301,6 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBarCounts = counts
         menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
         updateStatusItemWording()
+        statusMenu?.refreshSummary()
     }
 
     /// Keeps the widget's own complaint in step with what is actually installed.
@@ -382,17 +390,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .toggleShortcut:
             applyShortcut()
         case .menuBarIcon:
+            // The icon only. The menu is the only writer of this setting and of the list below,
+            // and refreshes its own lines after each choice; refreshed here as well, every click
+            // rebuilt them twice. A second writer would add the menu's refresh here.
             applyMenuBarIcon()
-            // As for the list below: the menu refreshes itself after its own choice.
-            statusMenu?.refreshMenuBarIcon()
         case .sessionOrder:
-            // A new order is a new set of rows, and the menu's lines follow it as well.
+            // A new order is a new set of rows, and the menu's lines follow it as well. Written
+            // by the settings window, so nothing else refreshes them.
             hudController.refreshSettings()
             statusMenu?.refreshSessions()
         case .menuSessions:
-            // The menu refreshes itself after its own choice; this is for a write from anywhere
-            // else, which would otherwise show only on the next opening.
-            statusMenu?.refreshSessions()
+            // Nothing: the menu wrote it and has already refreshed its lines, as for the icon.
+            break
         }
     }
 
@@ -480,6 +489,7 @@ extension AppDelegate: StatusMenuHost {
     }
 
     func showTooling() {
+        tooling.forgetLastError()
         toolingController.present()
     }
 

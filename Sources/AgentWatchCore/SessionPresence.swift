@@ -60,11 +60,13 @@ public enum SessionPresence {
     /// out and cannot speak again, which the app has read off the process rather than
     /// inferred from a silence.
     ///
-    /// Everything else splits by whether the session has finished. A row that has — completed
-    /// or failed — is offered its button greyed, because the question "why can I not close
-    /// this?" is asked exactly there. Anything still live is offered nothing, `idle`
-    /// included: resting between turns is a session waiting for its person to type, and a
-    /// button on a session that started a moment ago is a control nobody was looking for.
+    /// Everything else splits by whether the session's turn has ended. A row whose turn has —
+    /// completed, failed, or stopped by a limit — is offered its button greyed, because the
+    /// question "why can I not close this?" is asked exactly there. A limit gets no more than
+    /// that: the session is still there and resumes with the next prompt, so reaching one does
+    /// not make it closable at once. Anything still live is offered nothing, `idle` included:
+    /// resting between turns is a session waiting for its person to type, and a button on a
+    /// session that started a moment ago is a control nobody was looking for.
     public static func dismissal(of snapshot: SessionSnapshot, now: Date) -> RowDismissal {
         if snapshot.phase == .sessionClosed || snapshot.phase == .disconnected || snapshot.phase == .terminalClosed {
             return .now
@@ -76,7 +78,7 @@ public enum SessionPresence {
         if now >= silentUntil {
             return .now
         }
-        guard snapshot.phase == .completed || snapshot.phase == .failed else {
+        guard snapshot.phase == .completed || snapshot.phase == .failed || snapshot.phase == .rateLimited else {
             return .notOffered(until: silentUntil)
         }
         return .notYet(at: silentUntil)

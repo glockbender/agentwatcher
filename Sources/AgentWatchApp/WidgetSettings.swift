@@ -235,7 +235,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
         )
     }
 
-    /// What the status item draws: the counts unless a person picks otherwise.
+    /// What the status item draws: the sphere unless a person picks otherwise.
     ///
     /// The sphere until a person picks the grid — and that includes a copy updating into this
     /// version, where the key is missing, and one that stored a style this version no longer

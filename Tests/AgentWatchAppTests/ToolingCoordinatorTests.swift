@@ -93,6 +93,11 @@ final class ToolingCoordinatorTests: XCTestCase {
             logged.contains { $0.hasPrefix("Tooling change failed") },
             "a change that silently did nothing is the one outcome nobody can diagnose: \(logged)"
         )
+        XCTAssertEqual(coordinator.facts.lastError, coordinator.lastError, "the window is shown the failure")
+
+        // The next visit to the window starts without it, whether or not the cause is gone.
+        coordinator.forgetLastError()
+        XCTAssertNil(coordinator.facts.lastError)
     }
 
     func testStartupAndInstallationHandTheSameLinkToTheNextBuild() throws {

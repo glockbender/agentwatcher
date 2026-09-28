@@ -76,6 +76,9 @@ final class EventDebugWindowController: NSWindowController {
             window.orderOut(nil)
         } else {
             showWindow(nil)
+            // A hidden window is not scrolled as entries arrive, so it opens where it was left;
+            // the newest entries are what a person opens it to read.
+            textView.scrollToEndOfDocument(nil)
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
     }

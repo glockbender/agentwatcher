@@ -112,11 +112,17 @@ public struct SessionOrdering: Sendable {
                 })
         case .attention:
             let groups = SessionAttention.allCases.map(\.rawValue)
-            return grouped(sessions, groups: groups, now: now) { snapshot, _ in snapshot.phase.attention.rawValue }
+            return grouped(
+                sessions, groups: groups, now: now,
+                group: { snapshot, _ in snapshot.phase.attention.rawValue },
+                joined: Self.likelyJoinedAttention
+            )
         case .blocks:
-            return grouped(sessions, groups: blocks.map(\.rawValue), now: now) { snapshot, now in
-                SessionBlock.of(snapshot, now: now).rawValue
-            }
+            return grouped(
+                sessions, groups: blocks.map(\.rawValue), now: now,
+                group: { snapshot, now in SessionBlock.of(snapshot, now: now).rawValue },
+                joined: Self.likelyJoinedBlock
+            )
         }
     }
 
@@ -142,14 +148,15 @@ public struct SessionOrdering: Sendable {
         _ sessions: [SessionSnapshot],
         groups: [String],
         now: Date,
-        group: (SessionSnapshot, Date) -> String
+        group: (SessionSnapshot, Date) -> String,
+        joined: (SessionSnapshot, Date) -> Date
     ) -> [SessionSnapshot] {
         var rank: [String: Int] = [:]
         for (place, name) in groups.enumerated() where rank[name] == nil {
             rank[name] = place
         }
         let members = sessions.map { Member(snapshot: $0, group: group($0, now)) }
-        record(members, now: now)
+        record(members, now: now, joined: joined)
         let placed: [Placed] = members.map { member in
             Placed(
                 snapshot: member.snapshot,
@@ -178,15 +185,24 @@ public struct SessionOrdering: Sendable {
     /// Notes every session whose group is not the one it was last seen in, and forgets the
     /// sessions that are gone.
     ///
-    /// Several found in a new group at once are numbered by when each most likely got there —
-    /// the moment its silence ran out for a drop by time alone, its last event otherwise — so
-    /// sessions that changed while nobody was looking still come out in the order they changed.
-    private mutating func record(_ members: [Member], now: Date) {
+    /// Several found in a new group at once are numbered by when each most likely got there,
+    /// which the mode's own rule answers — so sessions that changed while nobody was looking
+    /// still come out in the order they changed.
+    private mutating func record(
+        _ members: [Member],
+        now: Date,
+        joined likelyJoined: (SessionSnapshot, Date) -> Date
+    ) {
         let present = Set(members.map(\.snapshot.id))
         memberships = memberships.filter { present.contains($0.key) }
         let joined = members.filter { memberships[$0.snapshot.id]?.group != $0.group }
         let inOrder = joined.sorted { left, right in
-            Self.joinedEarlier(left.snapshot, right.snapshot, now: now)
+            let leftMoment = likelyJoined(left.snapshot, now)
+            let rightMoment = likelyJoined(right.snapshot, now)
+            guard leftMoment == rightMoment else {
+                return leftMoment < rightMoment
+            }
+            return Self.byArrival(left.snapshot, right.snapshot)
         }
         for member in inOrder {
             memberships[member.snapshot.id] = Membership(group: member.group, sequence: nextSequence)
@@ -194,16 +210,7 @@ public struct SessionOrdering: Sendable {
         }
     }
 
-    private static func joinedEarlier(_ left: SessionSnapshot, _ right: SessionSnapshot, now: Date) -> Bool {
-        let leftMoment = likelyJoined(left, now: now)
-        let rightMoment = likelyJoined(right, now: now)
-        guard leftMoment == rightMoment else {
-            return leftMoment < rightMoment
-        }
-        return byArrival(left, right)
-    }
-
-    /// When a session most likely got into the group it is in now.
+    /// When a session most likely got into the block it is in now.
     ///
     /// Three answers, because a snapshot's date means the moment the session spoke, and two
     /// kinds of change are not the session speaking. A drop by silence happened when the
@@ -211,16 +218,33 @@ public struct SessionOrdering: Sendable {
     /// dates the first at the last thing heard, and the second keeps its silence, so either
     /// date would place a session that has only just been found below one that failed long
     /// before. They joined when the list first saw them. Everything else joined at its event.
-    private static func likelyJoined(_ snapshot: SessionSnapshot, now: Date) -> Date {
+    private static func likelyJoinedBlock(_ snapshot: SessionSnapshot, now: Date) -> Date {
+        if let found = likelyFound(snapshot, now: now) {
+            return found
+        }
+        // A limit is inactive from its own event; only a session that never worked gets there
+        // by silence.
+        let droppedBySilence = snapshot.phase != .rateLimited && SessionBlock.of(snapshot, now: now) == .inactive
+        return droppedBySilence ? SessionPresence.silenceEnds(for: snapshot) : snapshot.lastObservedAt
+    }
+
+    /// When a session most likely got into the attention group it is in now.
+    ///
+    /// Two of the block rule's three answers. Silence moves nobody between these groups — a
+    /// session that never worked is as quiet before its half hour as after it — so a date the
+    /// silence gives would place it by a change that did not happen here.
+    private static func likelyJoinedAttention(_ snapshot: SessionSnapshot, now: Date) -> Date {
+        likelyFound(snapshot, now: now) ?? snapshot.lastObservedAt
+    }
+
+    /// The list's own moment for the phases the app finds rather than the session reports.
+    private static func likelyFound(_ snapshot: SessionSnapshot, now: Date) -> Date? {
         switch snapshot.phase {
-        case .rateLimited:
-            return snapshot.lastObservedAt
         case .disconnected, .terminalClosed:
-            return now
-        case .idle, .planning, .executing, .waitingForUser, .waitingForChildren, .completed, .failed, .sessionClosed:
-            return SessionBlock.of(snapshot, now: now) == .inactive
-                ? SessionPresence.silenceEnds(for: snapshot)
-                : snapshot.lastObservedAt
+            now
+        case .idle, .planning, .executing, .waitingForUser, .waitingForChildren, .completed, .failed, .rateLimited,
+            .sessionClosed:
+            nil
         }
     }
 

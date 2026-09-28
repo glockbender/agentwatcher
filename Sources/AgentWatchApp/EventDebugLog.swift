@@ -19,6 +19,10 @@ final class EventDebugLog {
     /// The window's backlog, kept here rather than re-read from disk on every append.
     private var entries: [String]
     private var linesOnDisk: Int
+    /// Entries still to arrive before a failed rewrite is tried again, or `nil` when the last
+    /// one worked. Without it a disk that refuses the rewrite — full, or read-only — had the
+    /// whole log joined and written out again for every event, each time for nothing.
+    private var entriesBeforeRetry: Int?
 
     /// - Parameter directoryURL: where the log lives. Given only by tests, which must not
     ///   write into the running user's Application Support.
@@ -76,6 +80,12 @@ final class EventDebugLog {
             entries.removeFirst(entries.count - Self.maximumEntryCount)
         }
 
+        if let waiting = entriesBeforeRetry, waiting > 0 {
+            // Nothing reaches the disk meanwhile: an append would be the growth the failed
+            // compaction was meant to stop. The window still has every entry.
+            entriesBeforeRetry = waiting - 1
+            return
+        }
         guard linesOnDisk < Self.maximumLinesOnDisk, appendLine(entry, to: fileURL) else {
             rewrite(to: fileURL)
             return
@@ -111,8 +121,11 @@ final class EventDebugLog {
             try contents.write(to: fileURL, atomically: true, encoding: .utf8)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
             linesOnDisk = entries.count
+            entriesBeforeRetry = nil
         } catch {
-            // Keep the old count so a failed compaction cannot reopen an append allowance.
+            // Keep the old count so a failed compaction cannot reopen an append allowance, and
+            // wait as long as a working log waits between two rewrites before trying again.
+            entriesBeforeRetry = Self.maximumEntryCount
         }
     }
 

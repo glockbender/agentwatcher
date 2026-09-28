@@ -33,7 +33,10 @@ of a branch that is not checked out. To commit part of the tree, set the rest as
 The IDE plugin needs nothing installed for itself: its Gradle wrapper fetches Gradle and its own
 JDK. It compiles against a JetBrains IDE, taken from this machine when one is here (GoLand or
 IntelliJ IDEA, 2026.1 or newer — an older one is refused with the reason) and downloaded when none
-is — `task plugin-download` forces the downloaded path.
+is — `task plugin-download` forces the downloaded path. Of the tasks, only
+`task plugin` and `task plugin-download` stage the ZIP, in
+`~/Library/Application Support/AgentWatch/ide-plugin/` — the one directory Tooling's
+`Open Plugins` offers a plugin from.
 
 Add or update tests for every domain-state transition. Keep UI thin enough that important behaviour
 can be tested in `AgentWatchCoreTests` without launching an application.

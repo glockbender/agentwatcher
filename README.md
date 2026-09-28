@@ -7,7 +7,7 @@
 
 Agent Watch is a small menu bar app for **Apple Silicon Macs running macOS 14+**.
 Its floating widget shows your sessions together. Click a row to return to the session;
-hover for details. `⌥⌘W` shows or hides the widget, and Widget Settings lets you change the shortcut.
+hover for details.
 
 <img src="docs/images/widget.png" alt="Five sessions in a compact blue Agent Watch widget" width="339">
 
@@ -26,6 +26,7 @@ Clicking a row activates its host; exact tab selection is available in Ghostty a
 with the optional plugin below.
 
 **Alpha:** used daily, still being refined. The steps below are for the current download, `0.1.0`.
+The images show the next release; what it adds is listed under *Coming in the next release*.
 
 ## Install and connect
 
@@ -57,7 +58,13 @@ existing status-line command is kept. You can connect just one agent.
 - **Program markers.** Tooling shows whether each agent's program was found, separately from
   whether it is connected. “Not found” only means that the executable is not in the usual
   locations; you can still connect an agent installed elsewhere.
+- **Row order and a shortcut.** Widget Settings chooses how rows are ordered (the demo above uses
+  **By blocks**; `0.1.0` keeps arrival order) and a global shortcut, `⌥⌘W` by default.
 - **A blue default palette.** The images on this page use it; `0.1.0` starts with Graphite.
+- **A shorter menu.** Sessions are listed at the top; settings, **Tooling…** included, move under
+  **Settings**.
+- **Updates from the app.** It checks GitHub for a newer release at launch and installs one when
+  you ask. **Settings → Updates** turns the launch check off.
 
 <details>
 <summary>See the connection guide</summary>
@@ -80,9 +87,7 @@ It needs the Agent Watch macOS app and does nothing on its own.
 4. Start an agent in that IDE's terminal and click its widget row to check the jump.
 
 Marketplace publication is still part of the [release plan](docs/release-plan.md).
-The app does not yet download the plugin for you. Its **Open Plugins** shortcut requires a plugin
-ZIP staged in `~/Library/Application Support/AgentWatch/ide-plugin/`; installing from disk in the IDE
-works without that shortcut.
+The app does not download the plugin for you yet, so install the ZIP from disk as above.
 
 ## If no session appears
 
@@ -97,9 +102,6 @@ works without that shortcut.
 Session monitoring stays on your Mac. Hooks send local events and fail open when Agent Watch
 is not running. Settings and remembered sessions live in
 `~/Library/Application Support/AgentWatch/`.
-
-The app contacts GitHub to check for updates and download a release when you request installation.
-The launch check can be disabled under **Settings → Updates**.
 See [agent integration](docs/agent-integration.md) for the files it writes and
 [architecture](docs/architecture.md) for the privacy boundaries.
 
@@ -112,7 +114,8 @@ task verify   # formatting, tests, debug/release builds and app bundle
 task run      # run the app
 ```
 
-`task plugin-check` builds and tests the IDE plugin. Development details are in [AGENTS.md](AGENTS.md).
+`task plugin` builds the IDE plugin and places it where Tooling's **Open Plugins** finds it.
+Development details are in [AGENTS.md](AGENTS.md).
 
 ## Documentation
 

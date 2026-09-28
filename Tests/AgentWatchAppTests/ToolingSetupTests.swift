@@ -40,6 +40,33 @@ final class ToolingSetupTests: XCTestCase {
         XCTAssertEqual(controller.journey?.step, .verify)
     }
 
+    /// Centred the first time, then where the person put it: the guide is followed beside a
+    /// terminal, and a window that jumped back to the middle at every visit would cover it.
+    func testTheWindowOpensWhereItWasLeft() throws {
+        let controller = ToolingWindowController(facts: { self.facts() }, act: { _ in })
+        defer { controller.window?.orderOut(nil) }
+        let window = try XCTUnwrap(controller.window)
+        controller.present()
+        let moved = NSPoint(x: window.frame.minX + 40, y: window.frame.minY - 30)
+        window.setFrameOrigin(moved)
+        window.orderOut(nil)
+
+        controller.present()
+
+        XCTAssertEqual(window.frame.origin, moved)
+    }
+
+    /// The guide prints the combination only while it works, as the menu does.
+    func testTheGuideNamesTheShortcutOnlyWhileItWorks() {
+        XCTAssertEqual(
+            setupWidgetToggleText(shortcut: "⌃⌥K"),
+            "⌃⌥K shows or hides the widget (you can change this in Widget Settings)."
+        )
+        let without = setupWidgetToggleText(shortcut: nil)
+        XCTAssertFalse(without.contains("⌥⌘W"), without)
+        XCTAssertTrue(without.hasPrefix("Show Widget in the menu bar"), without)
+    }
+
     func testEmptyWidgetOffersAnAccessibleControlThatCannotDragTheWindow() throws {
         var opened = false
         let view = HUDEmptyStateView(

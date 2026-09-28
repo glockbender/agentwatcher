@@ -21,6 +21,10 @@ final class ToolingWindowController: NSWindowController {
     private let act: (ToolingPress) -> Void
     private(set) var journey: SetupJourney?
     private var lastReceived: Set<AgentSource> = []
+    /// Centred once, the first time it is shown. After that it opens where the person left it:
+    /// the guide is followed beside a terminal, and a window that jumped back to the middle of
+    /// the screen at every visit would cover it again.
+    private var hasBeenPlaced = false
 
     /// Flipped, because it is a scroll view's document: an unflipped one shorter than the
     /// window sinks to the bottom and leaves the slack above it.
@@ -93,8 +97,11 @@ final class ToolingWindowController: NSWindowController {
         if journey == nil && AgentSource.allCases.allSatisfy({ reading.hookState($0) == .absent }) {
             journey = SetupJourney()
         }
-        rebuild()
-        window?.center()
+        rebuild(reading)
+        if !hasBeenPlaced {
+            window?.center()
+            hasBeenPlaced = true
+        }
         showWindow(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
@@ -103,13 +110,15 @@ final class ToolingWindowController: NSWindowController {
     /// pressed — installing points the sender link at this build, which is a line in every
     /// other row — and a window rebuilt from one reading of the disk cannot show two rows
     /// that disagree about the same file.
-    func rebuild() {
+    ///
+    /// - Parameter reading: what the caller has just read, so one visit reads the disk once.
+    func rebuild(_ reading: ToolingWindowFacts? = nil) {
         for view in content.views {
             content.removeView(view)
         }
         actionButtons.removeAll()
 
-        let reading = facts()
+        let reading = reading ?? facts()
         lastReceived = reading.receivedSources
         if journey != nil {
             showSetup(reading)
@@ -412,6 +421,9 @@ struct ToolingWindowFacts {
     var agentPaths: [AgentSource: String] = [:]
     var receivedSources: Set<AgentSource> = []
     var lastError: String?
+    /// The widget's combination as the menu prints it, only while it is registered and so
+    /// really works; `nil` otherwise. Filled in by the application, which holds the shortcut.
+    var widgetShortcut: String?
 
     /// What the window shows when the application that answers these questions has gone —
     /// which happens only while it is shutting down. Nothing is claimed and nothing is

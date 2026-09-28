@@ -262,6 +262,18 @@ final class SessionOrderingTests: XCTestCase {
         )
     }
 
+    /// By state, silence moves nobody: a session that never worked is quiet from its start, so
+    /// it joined the quiet group at its last event even once the half hour has run out. Dated
+    /// by the silence instead — the blocks' rule — it would count as joining after one that
+    /// really went quiet later, and come first; here it came out as `[0, 1]`.
+    func testByStateTheSilenceDoesNotDateAJoin() {
+        var ordering = SessionOrdering()
+        let longQuiet = session(0, .idle, at: start)
+        let laterQuiet = session(1, .idle, at: start + 1_200)
+
+        XCTAssertEqual(order(&ordering, [longQuiet, laterQuiet], .attention, now: start + 2_400), [1, 0])
+    }
+
     /// No signal is the app not hearing, and after a restart every remembered session is in it
     /// until it speaks. As broken, a restart filled that block with sessions that had never
     /// even started.

@@ -69,6 +69,12 @@ final class ToolingCoordinator {
         )
     }
 
+    /// A failure belongs to the attempt that produced it. A new visit to the window starts
+    /// without it; the rows already say what is wrong now, and another press says it again.
+    func forgetLastError() {
+        lastError = nil
+    }
+
     var receivedSources: Set<AgentSource> {
         Set(AgentSource.allCases.filter { heard.delivery(for: $0) == .arrived })
     }

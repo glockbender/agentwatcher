@@ -163,10 +163,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         return item
     }
 
-    /// The one submenu whose lines do not close the menu when chosen — all of them, the switch
+    /// A submenu whose lines do not close the menu when chosen — all of them, the switch
     /// included, so a person can turn the list on and pick its states in one visit. Mixed in
     /// one submenu, lines that close and lines that stay would leave a person guessing which
-    /// is which.
+    /// is which. `Menu Bar Icon` is the other one built this way (ADR-0014).
     ///
     /// The states are `SessionAttention.counted`, walked rather than written out, so the
     /// choice cannot drift from what the icon counts.
@@ -386,7 +386,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         guard let host else {
             return
         }
-        summaryItem?.title = MenuBarSummaryText.line(for: host.attentionCounts)
+        refreshSummary()
         refreshSessions()
         refreshMenuBarIcon()
         widgetItem?.title = host.isWidgetVisible ? "Hide Widget" : "Show Widget"
@@ -414,6 +414,17 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         #if AGENT_WATCH_DEBUG_CAPTURE
             refreshRawHookCapture(host: host)
         #endif
+    }
+
+    /// The first line, read again from the counts — on opening, and whenever the icon's counts
+    /// move, the menu open or not. The one line kept live: it is never a target, so nothing can
+    /// move out from under a click. The session lines below it keep their wording until the
+    /// menu opens again, and a click on one is checked against the session as it is then.
+    func refreshSummary() {
+        guard let host else {
+            return
+        }
+        summaryItem?.title = MenuBarSummaryText.line(for: host.attentionCounts)
     }
 
     /// The listed sessions and the lines that choose them, read again from the setting. Called

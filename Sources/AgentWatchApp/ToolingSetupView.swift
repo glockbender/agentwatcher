@@ -5,6 +5,15 @@ func agentInstallationText(_ path: String?) -> String {
     path == nil ? "○ Not found in common locations · you can still connect it" : "✓ Installed on this Mac"
 }
 
+/// How the guide says the widget is shown and hidden. The combination only while it works: a
+/// guide that printed a dead one would promise what the menu, for the same reason, will not.
+func setupWidgetToggleText(shortcut: String?) -> String {
+    guard let shortcut else {
+        return "Show Widget in the menu bar shows or hides the widget. A shortcut can be set in Widget Settings."
+    }
+    return "\(shortcut) shows or hides the widget (you can change this in Widget Settings)."
+}
+
 enum SetupAction {
     case choose(AgentSource), back, next, overview, press(ToolingPress)
 }
@@ -149,7 +158,8 @@ final class ToolingSetupView: NSStackView {
         addArrangedSubview(label("Read the widget", size: 15, weight: .semibold))
         addArrangedSubview(
             label(
-                "Working → Needs you → Done\nClick a session to return to it. Hover for details. ⌥⌘W shows or hides the widget (you can change this in Widget Settings)."
+                "Working → Needs you → Done\nClick a session to return to it. Hover for details. "
+                    + setupWidgetToggleText(shortcut: facts.widgetShortcut)
             ))
         addArrangedSubview(label("Using a JetBrains terminal?", size: 15, weight: .semibold))
         addArrangedSubview(

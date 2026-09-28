@@ -404,6 +404,24 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(row.frame.width, 23 + mark + 6 + needed, "the note runs past the line")
     }
 
+    /// The counts can move while the menu is open. The first line follows them; the session
+    /// lines keep their wording until the menu opens again, so none moves under the pointer.
+    func testTheFirstLineFollowsTheCountsWhileTheMenuIsOpen() throws {
+        let (menu, host, settings) = try makeMenu()
+        settings.setMenuLists(.working, true)
+        host.sessions = [session(0, "Still building", .executing)]
+        host.attentionCounts = SessionAttentionCounts(needsPerson: 0, working: 1, done: 0, quiet: 0)
+        menu.menuWillOpen(menu.menu)
+        let linesBefore = menu.sessionLineItems
+
+        host.sessions = [session(0, "Still building", .waitingForUser)]
+        host.attentionCounts = SessionAttentionCounts(needsPerson: 1, working: 0, done: 0, quiet: 0)
+        menu.refreshSummary()
+
+        XCTAssertEqual(menu.summaryItem?.title, "1 needs you")
+        XCTAssertEqual(menu.sessionLineItems, linesBefore)
+    }
+
     /// The menu is still open when a state is chosen, and the lines at its top follow at once.
     func testChoosingAStateListsItsSessionsWithoutReopeningTheMenu() throws {
         let (menu, host, settings) = try makeMenu()
