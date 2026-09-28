@@ -15,15 +15,32 @@ set -euo pipefail
 # how a release and the plugin are published, with CI running its own checks on it — so the
 # gate runs only when a branch is going out.
 branches=0
+elsewhere=0
+head_sha="$(git rev-parse HEAD)"
 while read -r _local_ref local_sha remote_ref _remote_sha; do
     if [[ "$local_sha" =~ ^0+$ ]] || [[ "$remote_ref" == refs/tags/* ]]; then
         continue
     fi
     branches=$((branches + 1))
+    [[ "$local_sha" == "$head_sha" ]] || elsewhere=$((elsewhere + 1))
 done
 if [[ "$branches" -eq 0 ]]; then
     echo "pre-push: only tags or deletions are going out; the gate is for branches"
     exit 0
+fi
+
+# The gate checks the working tree, while a push sends commits — the same gap the commit gate
+# closes. A green run proves something only when the tree is exactly the commit going out.
+if [[ "$elsewhere" -gt 0 ]]; then
+    echo "pre-push: a branch other than the checked-out commit is going out." >&2
+    echo "  task verify-all checks the working tree; check that branch out and push it from there." >&2
+    exit 1
+fi
+if ! git diff --quiet HEAD || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    echo "pre-push: the working tree holds changes that are not committed." >&2
+    echo "  task verify-all would check them instead of what is being pushed." >&2
+    echo "  Commit them, or set them aside first: git stash push --include-untracked" >&2
+    exit 1
 fi
 
 task verify-all
