@@ -8,8 +8,8 @@ import XCTest
 ///
 /// Skipped unless `MENU_BAR_RENDER_DIR` names a directory. Four backgrounds, because the bar
 /// is not the app's to paint (ADR-0012): dark, light, and two bare wallpaper gradients, which
-/// are worse than a real bar and are there to be the worst case. The pie is drawn at every
-/// blend width that was compared when one was chosen, so the choice can be looked at again.
+/// are worse than a real bar and are there to be the worst case. The sphere is drawn at actual
+/// size, four times larger, and once at twelve pixels a point to see its shading.
 ///
 ///     MENU_BAR_RENDER_DIR=/tmp/render swift test --filter MenuBarIconStyleProbe
 @MainActor
@@ -54,61 +54,45 @@ final class MenuBarIconStyleProbe: XCTestCase {
         try XCTSkipIf(requested == nil, "a drawing probe, not a check: set MENU_BAR_RENDER_DIR")
         let directory = try XCTUnwrap(requested)
 
-        let pieCounts: [[Int]] = [
-            [1, 1, 1, 1], [2, 3, 1, 6], [1, 15, 0, 0], [5, 0, 0, 0], [0, 4, 2, 0], [0, 0, 0, 0],
+        let sphereCounts: [[Int]] = [
+            [1, 0, 0, 11], [1, 3, 1, 6], [0, 4, 2, 0], [0, 0, 0, 5], [2, 0, 1, 0], [5, 5, 0, 0], [0, 0, 0, 0],
         ]
-        let blends: [CGFloat] = [0, 6, 12, 20, 90]
-        var pieRows: [Row] = []
-        for blend in blends {
-            for backdrop in Self.backdrops {
-                var tiles: [(NSImage?, String)] = pieCounts.map { counts in
+        for zoom in [1, 4] {
+            var sphereRows: [Row] = []
+            for backdrop in zoom == 1 ? Self.backdrops : Array(Self.backdrops.prefix(2)) {
+                var tiles: [(NSImage?, String)] = sphereCounts.map { counts in
                     (
-                        MenuBarPieRenderer.draw(cells(counts), dark: backdrop.dark, blendHalfWidth: blend)?
-                            .composited(),
+                        MenuBarSphereRenderer.draw(cells(counts), dark: backdrop.dark)?.composited(),
                         counts.map(String.init).joined(separator: "/")
                     )
                 }
-                for phase in [0.25, 0.5] {
-                    tiles.append(
-                        (
-                            MenuBarPieRenderer.draw(cells([2, 3, 1, 6]), dark: backdrop.dark, blendHalfWidth: blend)?
-                                .composited(phase: phase),
-                            "breath \(phase)"
-                        )
+                // The bottom of a breath, which only a sphere with somebody waiting takes.
+                tiles.append(
+                    (
+                        MenuBarSphereRenderer.draw(cells([1, 0, 0, 11]), dark: backdrop.dark)?.composited(phase: 0.5),
+                        "breath"
                     )
-                }
-                pieRows.append(Row(label: "blend ±\(Int(blend))°", backdrop: backdrop, tiles: tiles))
+                )
+                sphereRows.append(Row(label: "sphere", backdrop: backdrop, tiles: tiles))
             }
+            try write(
+                sheet(sphereRows, tileWidth: zoom == 1 ? 44 : 30),
+                named: zoom == 1 ? "sphere" : "sphere-zoom",
+                in: directory,
+                zoom: zoom
+            )
         }
-        try write(sheet(pieRows, tileWidth: 44), named: "pie", in: directory)
 
-        // The same pies, each pixel made a block of four: at actual size a blend is too small
-        // to judge.
-        var zoomRows: [Row] = []
-        for blend in blends {
-            for backdrop in Self.backdrops.prefix(2) {
-                var tiles: [(NSImage?, String)] = [[1, 1, 1, 1], [2, 3, 1, 6], [0, 4, 2, 0]].map { counts in
-                    (
-                        MenuBarPieRenderer.draw(cells(counts), dark: backdrop.dark, blendHalfWidth: blend)?
-                            .composited(),
-                        counts.map(String.init).joined(separator: "/")
-                    )
-                }
-                // Through one breath of 1/1/1/1: needs you and working fade, and the boundary
-                // between them is where the lower sector's extension shows through the upper.
-                for phase in [0.25, 0.5, 0.75] {
-                    tiles.append(
-                        (
-                            MenuBarPieRenderer.draw(cells([1, 1, 1, 1]), dark: backdrop.dark, blendHalfWidth: blend)?
-                                .composited(phase: phase),
-                            "\(phase)"
-                        )
-                    )
-                }
-                zoomRows.append(Row(label: "blend ±\(Int(blend))°", backdrop: backdrop, tiles: tiles))
-            }
+        // Straight from the sphere's own bitmap, painted at twelve pixels a point.
+        for counts in [[1, 3, 1, 6], [1, 0, 0, 11]] {
+            let drawn = try XCTUnwrap(MenuBarSphereRenderer.draw(cells(counts), dark: true, scale: 12))
+            let map = try XCTUnwrap(drawn.parts.first?.image.representations.first as? NSBitmapImageRep)
+            try XCTUnwrap(map.representation(using: .png, properties: [:]))
+                .write(
+                    to: URL(fileURLWithPath: directory)
+                        .appendingPathComponent("sphere-large-\(counts.map(String.init).joined(separator: "-")).png")
+                )
         }
-        try write(sheet(zoomRows, tileWidth: 30), named: "pie-zoom", in: directory, zoom: 4)
 
         let subsets: [(String, Set<SessionAttention>)] = [
             ("all four", [.needsPerson, .working, .done, .quiet]),

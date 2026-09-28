@@ -31,7 +31,7 @@ final class StatusMenuTests: XCTestCase {
                 "  Menu Bar Icon",
                 "    App Icon",
                 "    Counts",
-                "    Pie Chart",
+                "    Sphere",
                 "    ---",
                 "    Needs You",
                 "    Working",
@@ -86,7 +86,7 @@ final class StatusMenuTests: XCTestCase {
 
     func testOpeningTheMenuShowsWhatIsStoredAndWhatIsGoingOn() throws {
         let (menu, host, settings) = try makeMenu()
-        settings.setMenuBarIconStyle(.pie)
+        settings.setMenuBarIconStyle(.sphere)
         settings.setMenuBarIconShows(.quiet, false)
         settings.setLocksPosition(true)
         settings.setClosedSessionRetention(.manual)
@@ -99,7 +99,7 @@ final class StatusMenuTests: XCTestCase {
         menu.menuWillOpen(menu.menu)
 
         XCTAssertEqual(menu.summaryItem?.title, "1 needs you · 2 working")
-        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.pie])
+        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.sphere])
         XCTAssertEqual(
             SessionAttention.counted.filter { menu.iconAttentionRows[$0]?.isOn == true },
             [.needsPerson, .working, .done]
@@ -351,11 +351,11 @@ final class StatusMenuTests: XCTestCase {
         menu.menuWillOpen(menu.menu)
         XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.counts])
 
-        try XCTUnwrap(menu.iconStyleRows[.pie]).toggle()
+        try XCTUnwrap(menu.iconStyleRows[.sphere]).toggle()
 
-        XCTAssertEqual(settings.menuBarIconStyle, .pie)
-        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.pie])
-        XCTAssertEqual(menu.iconStyleRows[.pie]?.accessibilityRole(), .radioButton)
+        XCTAssertEqual(settings.menuBarIconStyle, .sphere)
+        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.sphere])
+        XCTAssertEqual(menu.iconStyleRows[.sphere]?.accessibilityRole(), .radioButton)
         XCTAssertEqual(menu.iconAttentionRows[.working]?.accessibilityRole(), .checkBox)
     }
 

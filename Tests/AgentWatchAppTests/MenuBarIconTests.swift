@@ -54,8 +54,9 @@ final class MenuBarIconTests: XCTestCase {
     /// Drawing each glyph from its own left edge lines up their left sides, so a narrow symbol
     /// sits visibly left of a round one and drags its digit along with it.
     func testANarrowGlyphIsCentredOnTheSameLineAsAWideOne() throws {
-        let narrow = MenuBarIconCell(symbol: "play.fill", count: 1, accent: .white, breathDepth: 0)
-        let wide = MenuBarIconCell(symbol: "checkmark.circle.fill", count: 1, accent: .white, breathDepth: 0)
+        let narrow = MenuBarIconCell(attention: .quiet, symbol: "play.fill", count: 1, accent: .white, breathDepth: 0)
+        let wide = MenuBarIconCell(
+            attention: .quiet, symbol: "checkmark.circle.fill", count: 1, accent: .white, breathDepth: 0)
 
         // The same narrow glyph in two columns: one where it is the widest and sets the slot
         // itself, one where the glyph below it is wider. The same symbol both times, so
@@ -212,10 +213,11 @@ final class MenuBarIconTests: XCTestCase {
     /// glyph back and the icon says less instead of not being there.
     func testAMissingSymbolLeavesNoDrawingRatherThanHalfOne() {
         let cells = [
-            MenuBarIconCell(symbol: "circle.fill", count: 1, accent: .white, breathDepth: 0),
-            MenuBarIconCell(symbol: "not.a.symbol.in.any.release", count: 1, accent: .white, breathDepth: 0),
-            MenuBarIconCell(symbol: "circle.fill", count: 1, accent: .white, breathDepth: 0),
-            MenuBarIconCell(symbol: "circle.fill", count: 1, accent: .white, breathDepth: 0),
+            MenuBarIconCell(attention: .quiet, symbol: "circle.fill", count: 1, accent: .white, breathDepth: 0),
+            MenuBarIconCell(
+                attention: .quiet, symbol: "not.a.symbol.in.any.release", count: 1, accent: .white, breathDepth: 0),
+            MenuBarIconCell(attention: .quiet, symbol: "circle.fill", count: 1, accent: .white, breathDepth: 0),
+            MenuBarIconCell(attention: .quiet, symbol: "circle.fill", count: 1, accent: .white, breathDepth: 0),
         ]
 
         XCTAssertNil(MenuBarIconRenderer.draw(cells, dark: true))

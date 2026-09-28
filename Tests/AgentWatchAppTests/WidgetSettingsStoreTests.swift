@@ -275,12 +275,12 @@ final class WidgetSettingsStoreTests: XCTestCase {
         let preferences = try isolatedPreferences()
         let store = WidgetSettingsStore(preferences: preferences)
 
-        store.setMenuBarIconStyle(.pie)
+        store.setMenuBarIconStyle(.sphere)
         store.setMenuBarIconShows(.quiet, false)
         store.setMenuBarIconShows(.done, false)
 
         let reopened = WidgetSettingsStore(preferences: preferences)
-        XCTAssertEqual(reopened.menuBarIconStyle, .pie)
+        XCTAssertEqual(reopened.menuBarIconStyle, .sphere)
         XCTAssertEqual(reopened.menuBarIconAttentions, [.needsPerson, .working])
         XCTAssertEqual(preferences.strings(forKey: "menuBarIconAttentions"), ["needsPerson", "working"])
     }
@@ -317,10 +317,11 @@ final class WidgetSettingsStoreTests: XCTestCase {
     }
 
     /// An edited file is the only way to an empty list or a name this version does not know,
-    /// and neither may leave the icon blank.
+    /// and neither may leave the icon blank. The name is the pie's, which the sphere replaced
+    /// before any release: a build from between the two left it behind.
     func testAnIconFileThisVersionCannotReadStillDrawsSomething() throws {
         let preferences = try isolatedPreferences()
-        preferences.set("sphere", forKey: "menuBarIconStyle")
+        preferences.set("pie", forKey: "menuBarIconStyle")
         preferences.set([String](), forKey: "menuBarIconAttentions")
         XCTAssertEqual(WidgetSettingsStore(preferences: preferences).menuBarIconStyle, .counts)
         XCTAssertEqual(

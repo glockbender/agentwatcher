@@ -4,7 +4,7 @@ import XCTest
 
 @testable import AgentWatchApp
 
-/// The icon with fewer than four states, the pie, and what either asks of the status item.
+/// The icon with fewer than four states, the sphere, and what either asks of the status item.
 ///
 /// Each layout below was chosen by drawing it beside the alternatives, so each is pinned by
 /// where its parts end up rather than by the arithmetic that put them there.
@@ -101,92 +101,114 @@ final class MenuBarIconStylesTests: XCTestCase {
         }
     }
 
-    // MARK: - the pie
+    // MARK: - the sphere
 
-    /// A floor, then shares in proportion: one waiting among fifteen working stays in sight,
-    /// and the larger count is still the larger sector.
-    func testEverySectorHoldingAnythingGetsAtLeastAFloor() {
-        let angles = MenuBarPieSector.angles(for: [1, 15, 0, 0], minimum: 30)
+    /// Needs you holds at least half the sphere, however many others there are; the rest get a
+    /// floor of their own and share what is left by count.
+    func testNeedsYouHoldsAtLeastHalf() {
+        let lonely = MenuBarSphereShare.layout(counts: [1, 11], needsPersonFirst: true).map(\.share)
+        XCTAssertGreaterThanOrEqual(lonely[0], 0.5, "one waiting among eleven idle is lost again")
+        XCTAssertEqual(lonely.reduce(0, +), 1, accuracy: 0.0001)
 
-        XCTAssertEqual(angles.reduce(0, +), 360, accuracy: 0.001)
-        XCTAssertEqual(angles[2], 0)
-        XCTAssertEqual(angles[3], 0)
-        XCTAssertGreaterThanOrEqual(angles[0], 30)
-        XCTAssertLessThan(angles[0], 60, "the floor swallowed the proportion")
-        XCTAssertGreaterThan(angles[1], angles[0])
-        XCTAssertEqual(MenuBarPieSector.angles(for: [1, 1, 1, 1], minimum: 30), [90, 90, 90, 90])
-        XCTAssertEqual(MenuBarPieSector.angles(for: [0, 0], minimum: 30), [0, 0])
+        // The other half: past the floor it still follows the numbers.
+        let crowded = MenuBarSphereShare.layout(counts: [10, 1], needsPersonFirst: true).map(\.share)
+        XCTAssertGreaterThan(crowded[0], 0.8, "the floor swallowed the proportion")
+
+        let mixed = MenuBarSphereShare.layout(counts: [1, 3, 1, 6], needsPersonFirst: true).map(\.share)
+        XCTAssertGreaterThanOrEqual(mixed[0], 0.5)
+        XCTAssertGreaterThan(mixed[3], mixed[1], "a larger count is not a larger share")
+        XCTAssertGreaterThan(mixed[1], mixed[2])
+        XCTAssertGreaterThanOrEqual(mixed[2], MenuBarSphereMetrics.otherFloor)
     }
 
-    /// The pie starts at twelve o'clock and runs clockwise in the order of importance, one
-    /// sector per state holding anything.
-    func testTheSectorsRunClockwiseFromTheTop() throws {
-        let drawing = try self.pie(needsPerson: 1, working: 1, done: 0, quiet: 2)
-        let pie = drawing.composited()
+    /// Without needs you nobody is given half: the floor is only for the state that wants a
+    /// person.
+    func testWithoutNeedsYouTheSharesFollowTheCounts() {
+        let shares = MenuBarSphereShare.layout(counts: [1, 15], needsPersonFirst: false).map(\.share)
 
-        XCTAssertEqual(drawing.parts.count, 3, "an empty state was given a sector")
-        XCTAssertTrue(try colour(of: pie, angle: 45).isClose(to: drawn(MenuBarIconPalette.needsPerson)))
-        XCTAssertTrue(try colour(of: pie, angle: 135).isClose(to: drawn(MenuBarIconPalette.working)))
-        XCTAssertTrue(try colour(of: pie, angle: 270).isClose(to: drawn(MenuBarIconPalette.quiet)))
+        XCTAssertGreaterThanOrEqual(shares[0], MenuBarSphereMetrics.otherFloor)
+        XCTAssertLessThan(shares[0], 0.25)
+        XCTAssertEqual(shares.reduce(0, +), 1, accuracy: 0.0001)
     }
 
-    /// Between two sectors the colours flow into each other, and the disc stays whole: no
-    /// gap, and no band the bar shows through — which is what two sectors that each faded out
-    /// across the boundary had left.
-    func testNeighbouringColoursBlendWithoutOpeningTheDisc() throws {
-        let pie = try self.pie(needsPerson: 1, working: 1, done: 1, quiet: 1).composited()
+    /// Needs you is centred on twelve o'clock and the rest follow it clockwise.
+    func testNeedsYouSitsOnTopAndTheRestFollowClockwise() {
+        let angles = MenuBarSphereShare.layout(counts: [1, 3, 1, 6], needsPersonFirst: true).map(\.angle)
 
-        for angle in stride(from: CGFloat(0), to: 360, by: 3) {
-            XCTAssertGreaterThan(try colour(of: pie, angle: angle).alphaComponent, 0.98, "a gap at \(angle)°")
-        }
-        // The other half: the boundary really is a mix, not a hard edge — and the middle of
-        // the sector keeps its own colour.
-        let boundary = try colour(of: pie, angle: 90)
-        XCTAssertFalse(boundary.isClose(to: try drawn(MenuBarIconPalette.needsPerson)))
-        XCTAssertFalse(boundary.isClose(to: try drawn(MenuBarIconPalette.working)))
-        XCTAssertTrue(try colour(of: pie, angle: 45).isClose(to: drawn(MenuBarIconPalette.needsPerson)))
+        XCTAssertEqual(angles[0], 0, accuracy: 0.0001)
+        XCTAssertEqual(angles, angles.sorted(), "not clockwise")
+        XCTAssertLessThan(angles[3], 360)
     }
 
-    /// Each blend is at most a third of the smaller neighbour, so every sector keeps a middle
-    /// in its own colour; and the upper of two neighbours is the one that fades.
-    func testEverySectorKeepsAMiddleOfItsOwn() {
-        let sectors = MenuBarPieSector.layout(counts: [1, 20, 1], minimumAngle: 30, blendHalfWidth: 90)
+    /// On the drawing, needs you is the colour at the top and idle — in the sphere's own
+    /// violet — the colour at the bottom, and the highlight has not washed the orange out.
+    func testNeedsYouIsOrangeOnTopAndIdleVioletBelow() throws {
+        let sphere = try self.sphere(needsPerson: 1, working: 0, done: 0, quiet: 11).composited()
+        let shown = [MenuBarIconPalette.needsPerson, MenuBarSphereMetrics.quiet]
+        let anchor = MenuBarSphereMetrics.anchorDistance * MenuBarSphereMetrics.diameter / 2
 
-        for sector in sectors {
-            XCTAssertLessThanOrEqual(sector.startBlend + sector.endBlend, sector.angle * 2 / 3 + 0.001)
-        }
-        XCTAssertEqual(sectors.map(\.fadesAtStart), [false, true, true])
-        XCTAssertEqual(sectors.map(\.fadesAtEnd), [false, false, true], "round the top, the last is the upper")
+        let top = try colour(of: sphere, angle: 0, radius: anchor)
+        let bottom = try colour(of: sphere, angle: 180, radius: anchor)
+
+        XCTAssertEqual(nearest(to: top, among: shown), 0, "needs you is not on top")
+        XCTAssertEqual(nearest(to: bottom, among: shown), 1, "idle is not below")
+        XCTAssertLessThan(top.blueComponent, 0.3, "the highlight sits on needs you")
     }
 
-    /// Nothing to count is an empty circle — not a grey disc, which is what idle looks like.
-    func testAnEmptyPieIsARingNotADisc() throws {
-        let pie = try self.pie(needsPerson: 0, working: 0, done: 0, quiet: 0)
-        let image = pie.composited()
+    /// One picture for the whole sphere, whatever it shows: it breathes as one.
+    func testTheSphereIsOnePart() throws {
+        XCTAssertEqual(try sphere(needsPerson: 2, working: 3, done: 1, quiet: 6).parts.count, 1)
+        XCTAssertEqual(try sphere(needsPerson: 0, working: 3, done: 0, quiet: 1).parts.count, 1)
+    }
 
-        XCTAssertEqual(pie.parts.count, 1)
-        XCTAssertEqual(pie.parts.first?.breathDepth, 0)
+    /// The whole sphere breathes, and only while somebody needs a person. Working breathes in
+    /// the grid; on the sphere it would make the one mark move for something nobody has to
+    /// answer.
+    func testTheWholeSphereBreathesOnlyWhenSomeoneIsNeeded() {
+        let view = MenuBarIconView()
+
+        view.show(cells(needsPerson: 2, working: 3, done: 1, quiet: 6), as: .sphere)
+        XCTAssertEqual(view.breathingCells, [0])
+
+        view.show(cells(needsPerson: 0, working: 3, done: 0, quiet: 1), as: .sphere)
+        XCTAssertEqual(view.breathingCells, [], "working made the sphere breathe")
+
+        view.show(cells(needsPerson: 0, working: 0, done: 5, quiet: 4), as: .sphere)
+        XCTAssertEqual(view.breathingCells, [])
+    }
+
+    /// Nothing to count is an empty circle — not a violet sphere, which is what idle looks like.
+    func testAnEmptySphereIsARingNotADisc() throws {
+        let sphere = try self.sphere(needsPerson: 0, working: 0, done: 0, quiet: 0)
+        let image = sphere.composited()
+
+        XCTAssertEqual(sphere.parts.count, 1)
+        XCTAssertEqual(sphere.parts.first?.breathDepth, 0)
         XCTAssertLessThan(try colour(of: image, angle: 0, radius: 0).alphaComponent, 0.05, "the middle is filled")
         XCTAssertGreaterThan(try colour(of: image, angle: 0, radius: 8.25).alphaComponent, 0.3, "no ring")
     }
 
-    /// Sectors breathe as cells do: needs you and working, and only when they hold something.
-    func testThePieBreathesTheSectorsAPersonCanActOn() {
+    /// Painted a pixel at a time, the sphere is painted at the screen's scale, and the layer is
+    /// handed that picture rather than a smaller one to stretch.
+    func testTheSphereIsPaintedAtTheScreensScale() throws {
+        let drawn = try XCTUnwrap(
+            MenuBarSphereRenderer.draw(cells(needsPerson: 1, working: 1, done: 1, quiet: 1), dark: true, scale: 3)
+        )
+        let image = try XCTUnwrap(drawn.parts.first?.image)
+        let map = try XCTUnwrap(image.representations.first as? NSBitmapImageRep)
+        XCTAssertEqual(map.pixelsWide, 54)
+        XCTAssertEqual(map.size, image.size, "the bitmap claims to be larger than the picture")
+
         let view = MenuBarIconView()
-
-        view.show(cells(needsPerson: 2, working: 3, done: 1, quiet: 6), as: .pie)
-        XCTAssertEqual(view.breathingCells, [0, 1])
-
-        view.show(cells(needsPerson: 0, working: 3, done: 0, quiet: 1), as: .pie)
-        XCTAssertEqual(view.breathingCells, [0], "working is the first sector now")
-
-        view.show(cells(needsPerson: 0, working: 0, done: 5, quiet: 4), as: .pie)
-        XCTAssertEqual(view.breathingCells, [], "done and idle never breathe")
+        view.show(cells(needsPerson: 1, working: 1, done: 1, quiet: 1), as: .sphere)
+        let contents = try XCTUnwrap(view.cellContents.first ?? nil)
+        // Outside a window the view has no screen to ask and paints for two pixels a point.
+        XCTAssertEqual((contents as! CGImage).width, 36)
     }
 
     // MARK: - the status item
 
-    /// The pie takes the square item the plain glyph has, and the grid its own width and two
+    /// The sphere takes the square item the plain glyph has, and the grid its own width and two
     /// points; switching tells the owner of the item.
     func testEachStyleAsksForItsOwnLength() throws {
         let view = MenuBarIconView()
@@ -196,11 +218,11 @@ final class MenuBarIconStylesTests: XCTestCase {
 
         view.show(shown, as: .counts)
         XCTAssertEqual(view.itemLength, 49 + MenuBarIconMetrics.itemPadding)
-        view.show(shown, as: .pie)
+        view.show(shown, as: .sphere)
         XCTAssertEqual(view.itemLength, NSStatusItem.squareLength)
-        view.show(cells(needsPerson: 12, working: 1, done: 1, quiet: 1), as: .pie)
+        view.show(cells(needsPerson: 12, working: 1, done: 1, quiet: 1), as: .sphere)
 
-        XCTAssertEqual(reported, [51, NSStatusItem.squareLength], "the pie moved with its numbers")
+        XCTAssertEqual(reported, [51, NSStatusItem.squareLength], "the sphere moved with its numbers")
     }
 
     /// The same numbers in another style are a new drawing, and the bar has to be asked.
@@ -210,7 +232,7 @@ final class MenuBarIconStylesTests: XCTestCase {
         view.show(shown, as: .counts)
         let before = view.redrawRequests
 
-        XCTAssertTrue(view.show(shown, as: .pie))
+        XCTAssertTrue(view.show(shown, as: .sphere))
 
         XCTAssertEqual(view.redrawRequests, before + 1)
     }
@@ -218,7 +240,7 @@ final class MenuBarIconStylesTests: XCTestCase {
     /// The plain glyph is the item's own image, never this view's drawing.
     func testTheViewDoesNotDrawTheAppIcon() {
         XCTAssertFalse(MenuBarIconView().show(cells(needsPerson: 1, working: 0, done: 0, quiet: 0), as: .appIcon))
-        XCTAssertNil(MenuBarPieRenderer.draw([], dark: true))
+        XCTAssertNil(MenuBarSphereRenderer.draw([], dark: true))
     }
 
     // MARK: - helpers
@@ -240,16 +262,16 @@ final class MenuBarIconStylesTests: XCTestCase {
         try XCTUnwrap(MenuBarIconRenderer.draw(cells(showing: shown), dark: true), "no symbols for the grid")
     }
 
-    private func pie(needsPerson: Int, working: Int, done: Int, quiet: Int) throws -> MenuBarIconDrawing {
+    private func sphere(needsPerson: Int, working: Int, done: Int, quiet: Int) throws -> MenuBarIconDrawing {
         try XCTUnwrap(
-            MenuBarPieRenderer.draw(
+            MenuBarSphereRenderer.draw(
                 cells(needsPerson: needsPerson, working: working, done: done, quiet: quiet),
                 dark: true
             )
         )
     }
 
-    /// The colour at a point of the pie, `angle` clockwise from twelve o'clock and `radius`
+    /// The colour at a point of the sphere, `angle` clockwise from twelve o'clock and `radius`
     /// from its centre, in points.
     private func colour(of image: NSImage, angle: CGFloat, radius: CGFloat = 6) throws -> NSColor {
         let radians = angle * .pi / 180
@@ -264,20 +286,21 @@ final class MenuBarIconStylesTests: XCTestCase {
         return try XCTUnwrap(map.colorAt(x: column, y: row)?.usingColorSpace(.sRGB))
     }
 
-    /// A colour as the icon's own drawing puts it down: filled into an image made with
-    /// `lockFocus`, like every part, and read back the same way.
+    /// Which of `colours` this one is closest to, in sRGB.
     ///
-    /// Not the palette's numbers. An image made that way is kept in the screen's profile, and
-    /// the palette's grey 0.62 comes back from one as 0.68 — a plain square of it does too. The
-    /// question here is which sector sits where, not how the screen's profile treats a colour.
-    private func drawn(_ colour: NSColor) throws -> NSColor {
-        let image = NSImage(size: NSSize(width: 4, height: 4))
-        image.lockFocus()
-        colour.setFill()
-        NSRect(origin: .zero, size: image.size).fill()
-        image.unlockFocus()
-        let map = try bitmap(of: image)
-        return try XCTUnwrap(map.colorAt(x: map.pixelsWide / 2, y: map.pixelsHigh / 2)?.usingColorSpace(.sRGB))
+    /// Not a match within a tolerance: the sphere's shading moves every colour on it off the
+    /// palette's numbers, and the question is only which state a point belongs to.
+    private func nearest(to colour: NSColor, among colours: [NSColor]) -> Int? {
+        func distance(_ other: NSColor) -> CGFloat {
+            guard let mine = colour.usingColorSpace(.sRGB), let theirs = other.usingColorSpace(.sRGB) else {
+                return .infinity
+            }
+            let r = mine.redComponent - theirs.redComponent
+            let g = mine.greenComponent - theirs.greenComponent
+            let b = mine.blueComponent - theirs.blueComponent
+            return r * r + g * g + b * b
+        }
+        return colours.indices.min { distance(colours[$0]) < distance(colours[$1]) }
     }
 
     private func strongestAlpha(in image: NSImage, leftOf right: CGFloat) throws -> CGFloat {
@@ -338,18 +361,6 @@ final class MenuBarIconStylesTests: XCTestCase {
         image.draw(in: NSRect(origin: .zero, size: image.size))
         NSGraphicsContext.restoreGraphicsState()
         return map
-    }
-}
-
-extension NSColor {
-    /// Within a few units in each channel, in sRGB.
-    fileprivate func isClose(to other: NSColor, tolerance: CGFloat = 0.06) -> Bool {
-        guard let mine = usingColorSpace(.sRGB), let theirs = other.usingColorSpace(.sRGB) else {
-            return false
-        }
-        return abs(mine.redComponent - theirs.redComponent) <= tolerance
-            && abs(mine.greenComponent - theirs.greenComponent) <= tolerance
-            && abs(mine.blueComponent - theirs.blueComponent) <= tolerance
     }
 }
 

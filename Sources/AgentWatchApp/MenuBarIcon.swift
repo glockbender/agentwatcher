@@ -19,7 +19,8 @@ enum MenuBarIconPalette {
     /// light bar as well, where the system's own green goes muddy.
     static let done = NSColor(srgbRed: 0.19, green: 0.82, blue: 0.35, alpha: 1)
     /// Deliberately not a hue. This is the one cell nobody should look at, and any colour
-    /// would have made it compete with the other three.
+    /// would have made it compete with the other three. The sphere is the exception, and
+    /// ADR-0015 says why.
     static let quiet = NSColor(white: 0.62, alpha: 1)
 }
 
@@ -64,22 +65,23 @@ enum MenuBarIconStyle: String, CaseIterable {
     case appIcon
     /// A mark and a number for each state shown.
     case counts
-    /// One disc, cut into a sector for each state shown that holds anything.
-    case pie
+    /// One sphere, each state shown that holds anything a patch of its colour on it.
+    case sphere
 
     /// Its name where a person chooses it.
     var name: String {
         switch self {
         case .appIcon: "App Icon"
         case .counts: "Counts"
-        case .pie: "Pie Chart"
+        case .sphere: "Sphere"
         }
     }
 }
 
 /// One state as the icon draws it: how many sessions are in it, and how it is drawn — a cell
-/// of the grid, or a sector of the pie.
+/// of the grid, or a patch of the sphere.
 struct MenuBarIconCell: Equatable {
+    let attention: SessionAttention
     let symbol: String
     let count: Int
     let accent: NSColor
@@ -98,6 +100,7 @@ struct MenuBarIconCell: Equatable {
     ) -> [MenuBarIconCell] {
         SessionAttention.counted.filter(shown.contains).map { attention in
             MenuBarIconCell(
+                attention: attention,
                 symbol: attention.symbolName,
                 count: counts.count(of: attention),
                 accent: attention.accent,

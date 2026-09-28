@@ -1,13 +1,14 @@
 import AppKit
 import QuartzCore
 
-/// The counts, drawn inside the status item's button as a grid or as a pie.
+/// The counts, drawn inside the status item's button as a grid or as a sphere.
 ///
-/// A view with a layer per cell — or per sector — rather than a picture swapped on a timer. Both were measured
-/// on a real status item over twenty seconds: the timer at eleven frames a second costs this
-/// process 1.95 % of a core, the layers 0.02 % — which is what doing nothing costs. Neither
-/// showed above the noise in the window server, whose own load on an idle machine is around
-/// 58 % of a core and drifts by more than either variant adds.
+/// A view with a layer per cell — or one for the whole sphere — rather than a picture swapped
+/// on a timer. Both were measured on a real status item over twenty seconds: the timer at
+/// eleven frames a second costs this process 1.95 % of a core, the layers 0.02 % — which is
+/// what doing nothing costs. Neither showed above the noise in the window server, whose own
+/// load on an idle machine is around 58 % of a core and drifts by more than either variant
+/// adds.
 ///
 /// The measurement is only half the reason. A timer redraws a value that has not changed,
 /// eleven times a second, for as long as anything is working — against the rule the widget is
@@ -55,14 +56,14 @@ final class MenuBarIconView: NSView {
 
     /// How long the status item has to be to hold what is drawn.
     ///
-    /// The pie is one round mark, like the plain glyph, and takes the square item the plain
+    /// The sphere is one round mark, like the plain glyph, and takes the square item the plain
     /// glyph has — the one width that does not move as the counts do. The grid is as wide as
     /// its numbers and gets the two points `itemPadding` explains.
     var itemLength: CGFloat? {
         guard let drawing else {
             return nil
         }
-        return style == .pie ? NSStatusItem.squareLength : drawing.size.width + MenuBarIconMetrics.itemPadding
+        return style == .sphere ? NSStatusItem.squareLength : drawing.size.width + MenuBarIconMetrics.itemPadding
     }
 
     /// The button underneath owns the click that opens the menu. Without this the view takes
@@ -105,10 +106,11 @@ final class MenuBarIconView: NSView {
     @discardableResult
     private func render() -> Bool {
         let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let scale = window?.backingScaleFactor ?? 2
         let drawn: MenuBarIconDrawing? =
             switch style {
             case .counts: MenuBarIconRenderer.draw(cells, dark: isDark)
-            case .pie: MenuBarPieRenderer.draw(cells, dark: isDark)
+            case .sphere: MenuBarSphereRenderer.draw(cells, dark: isDark, scale: scale)
             case .appIcon: nil
             }
         guard let drawing = drawn else {
@@ -119,7 +121,7 @@ final class MenuBarIconView: NSView {
         cellLayers.forEach { $0.removeFromSuperlayer() }
         cellLayers = drawing.parts.map { part in
             let cell = CALayer()
-            cell.contentsScale = window?.backingScaleFactor ?? 2
+            cell.contentsScale = scale
             cell.contents = part.image.cgImage(forProposedRect: nil, context: nil, hints: nil)
             layer?.addSublayer(cell)
             if part.breathDepth > 0 {
@@ -270,6 +272,12 @@ final class MenuBarIconView: NSView {
     /// Where the cells ended up, for a test that cannot see the bar.
     var cellFrames: [NSRect] {
         cellLayers.map { $0.frame }
+    }
+
+    /// What each cell's layer was handed to show, for the test that it is as sharp as the
+    /// screen.
+    var cellContents: [Any?] {
+        cellLayers.map(\.contents)
     }
 
     /// Where each breath was anchored, for the test that a rebuilt cell carries on rather
