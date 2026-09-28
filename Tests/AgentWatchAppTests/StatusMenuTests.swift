@@ -28,7 +28,15 @@ final class StatusMenuTests: XCTestCase {
                 "  Widget Settings…",
                 "  Tooling…",
                 "  ---",
-                "  Show Counts in Menu Bar",
+                "  Menu Bar Icon",
+                "    App Icon",
+                "    Counts",
+                "    Pie Chart",
+                "    ---",
+                "    Needs You",
+                "    Working",
+                "    Done",
+                "    Idle",
                 "  Sessions in Menu",
                 "    List Sessions in Menu",
                 "    ---",
@@ -78,7 +86,8 @@ final class StatusMenuTests: XCTestCase {
 
     func testOpeningTheMenuShowsWhatIsStoredAndWhatIsGoingOn() throws {
         let (menu, host, settings) = try makeMenu()
-        settings.setShowsMenuBarCounts(false)
+        settings.setMenuBarIconStyle(.pie)
+        settings.setMenuBarIconShows(.quiet, false)
         settings.setLocksPosition(true)
         settings.setClosedSessionRetention(.manual)
         settings.setTranscriptPollInterval(nil)
@@ -90,7 +99,11 @@ final class StatusMenuTests: XCTestCase {
         menu.menuWillOpen(menu.menu)
 
         XCTAssertEqual(menu.summaryItem?.title, "1 needs you · 2 working")
-        XCTAssertEqual(menu.countsItem?.state, .off)
+        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.pie])
+        XCTAssertEqual(
+            SessionAttention.counted.filter { menu.iconAttentionRows[$0]?.isOn == true },
+            [.needsPerson, .working, .done]
+        )
         XCTAssertEqual(menu.widgetItem?.title, "Hide Widget")
         XCTAssertEqual(menu.debugItem?.title, "Hide Event Debug")
         XCTAssertEqual(menu.lockPositionItem?.state, .on)
@@ -108,8 +121,6 @@ final class StatusMenuTests: XCTestCase {
         let (menu, host, settings) = try makeMenu()
         menu.menuWillOpen(menu.menu)
 
-        try choose(XCTUnwrap(menu.countsItem))
-        XCTAssertFalse(settings.showsMenuBarCounts)
         try choose(XCTUnwrap(menu.lockPositionItem))
         XCTAssertTrue(settings.locksPosition)
         try choose(XCTUnwrap(menu.lockSizeItem))
@@ -312,6 +323,85 @@ final class StatusMenuTests: XCTestCase {
             .checkBox,
             "a line that draws itself says what it is to a screen reader"
         )
+    }
+
+    /// The styles are one choice: picking one writes it and moves the tick, and a screen
+    /// reader hears a group of radio buttons rather than three checkboxes.
+    func testTheIconStylesAreOneChoice() throws {
+        let (menu, _, settings) = try makeMenu()
+        menu.menuWillOpen(menu.menu)
+        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.counts])
+
+        try XCTUnwrap(menu.iconStyleRows[.pie]).toggle()
+
+        XCTAssertEqual(settings.menuBarIconStyle, .pie)
+        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.pie])
+        XCTAssertEqual(menu.iconStyleRows[.pie]?.accessibilityRole(), .radioButton)
+        XCTAssertEqual(menu.iconAttentionRows[.working]?.accessibilityRole(), .checkBox)
+    }
+
+    /// The plain glyph counts nothing, so its states are greyed — kept, not hidden, and back
+    /// the moment a style that counts is picked again.
+    func testTheAppIconGreysTheIconsStatesAndKeepsThem() throws {
+        let (menu, _, settings) = try makeMenu()
+        menu.menuWillOpen(menu.menu)
+        settings.setMenuBarIconShows(.quiet, false)
+
+        try XCTUnwrap(menu.iconStyleRows[.appIcon]).toggle()
+
+        XCTAssertEqual(menu.iconAttentionRows.values.map(\.isAvailable), [false, false, false, false])
+        XCTAssertEqual(menu.iconAttentionRows[.quiet]?.isOn, false, "the choice was not kept")
+        try XCTUnwrap(menu.iconAttentionRows[.done]).toggle()
+        XCTAssertTrue(settings.menuBarIconAttentions.contains(.done), "a greyed line took a click")
+
+        try XCTUnwrap(menu.iconStyleRows[.counts]).toggle()
+        XCTAssertEqual(menu.iconAttentionRows.values.map(\.isAvailable), [true, true, true, true])
+    }
+
+    /// An icon with nothing to count has nothing to draw, so the last state left is greyed
+    /// and says why on its own line — and a click on it changes nothing.
+    func testTheLastStateInTheIconCannotBeTakenAway() throws {
+        let (menu, _, settings) = try makeMenu()
+        menu.menuWillOpen(menu.menu)
+
+        for attention in [SessionAttention.working, .done, .quiet] {
+            try XCTUnwrap(menu.iconAttentionRows[attention]).toggle()
+        }
+
+        let last = try XCTUnwrap(menu.iconAttentionRows[.needsPerson])
+        XCTAssertEqual(settings.menuBarIconAttentions, [.needsPerson])
+        XCTAssertFalse(last.isAvailable)
+        XCTAssertEqual(last.note, StatusMenu.lastIconStateNote)
+        XCTAssertEqual(
+            SessionAttention.counted.filter { menu.iconAttentionRows[$0]?.note != nil },
+            [.needsPerson],
+            "a line that can still be chosen carries the reason it cannot"
+        )
+        last.toggle()
+        XCTAssertEqual(settings.menuBarIconAttentions, [.needsPerson])
+
+        try XCTUnwrap(menu.iconAttentionRows[.done]).toggle()
+        XCTAssertTrue(last.isAvailable, "a second state did not free the first")
+        XCTAssertNil(last.note)
+    }
+
+    /// The note appears while the menu is open, so its room is taken when the line is made:
+    /// whether an open menu widens for a line that grows has not been measured.
+    func testTheLastStatesNoteFitsTheLineItIsOn() throws {
+        let (menu, _, settings) = try makeMenu()
+        menu.menuWillOpen(menu.menu)
+        let row = try XCTUnwrap(menu.iconAttentionRows[.needsPerson])
+        let text = "\(row.title) — \(StatusMenu.lastIconStateNote)" as NSString
+        let needed = text.size(withAttributes: [.font: NSFont.menuFont(ofSize: 0)]).width
+        let mark = try XCTUnwrap(row.image).size.width
+
+        for attention in [SessionAttention.working, .done, .quiet] {
+            settings.setMenuBarIconShows(attention, false)
+        }
+        menu.refreshMenuBarIcon()
+
+        XCTAssertNotNil(row.note)
+        XCTAssertGreaterThanOrEqual(row.frame.width, 23 + mark + 6 + needed, "the note runs past the line")
     }
 
     /// The menu is still open when a state is chosen, and the lines at its top follow at once.

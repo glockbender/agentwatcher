@@ -1,7 +1,9 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// A checkbox line in a menu that takes a click without closing the menu. See ADR-0014.
+/// A checkbox line in a menu that takes a click without closing the menu — or one of a group
+/// of radio lines, which is the same line with a different name for a screen reader. See
+/// ADR-0014.
 ///
 /// An ordinary menu line closes the menu on every click, and no flag of its own changes that:
 /// `NSMenu.selectionMode = .selectAny` manages checkmarks only, and measured, the menu still
@@ -31,21 +33,39 @@ final class MenuToggleRowView: NSView {
             needsDisplay = true
         }
     }
+    /// Why the line is greyed, said after its title — a reason a person sees without hovering.
+    var note: String? {
+        didSet {
+            setAccessibilityHelp(note)
+            needsDisplay = true
+        }
+    }
     var onToggle: (() -> Void)?
 
     /// The height of an ordinary menu line on the machine it was measured on.
     static let height: CGFloat = 22
 
-    init(title: String, image: NSImage? = nil, isOn: Bool, isAvailable: Bool = true) {
+    /// `reservingNote` makes the line wide enough for that note from the start. The note is set
+    /// while the menu is open, and whether an open menu widens for a line that grows has not
+    /// been measured — taking the room up front makes the answer not matter.
+    init(
+        title: String,
+        image: NSImage? = nil,
+        isOn: Bool,
+        isAvailable: Bool = true,
+        role: NSAccessibility.Role = .checkBox,
+        reservingNote: String? = nil
+    ) {
         self.title = title
         self.image = image
         self.isOn = isOn
         self.isAvailable = isAvailable
-        super.init(frame: NSRect(x: 0, y: 0, width: 200, height: Self.height))
+        let width = Self.textLeft(image: image) + Self.width(of: Self.text(title, reservingNote)) + Self.rightMargin
+        super.init(frame: NSRect(x: 0, y: 0, width: max(200, ceil(width)), height: Self.height))
         // As wide as the menu makes its widest line, from this width up.
         autoresizingMask = [.width]
         setAccessibilityElement(true)
-        setAccessibilityRole(.checkBox)
+        setAccessibilityRole(role)
         setAccessibilityLabel(title)
         setAccessibilityValue(isOn)
         setAccessibilityEnabled(isAvailable)
@@ -128,17 +148,33 @@ final class MenuToggleRowView: NSView {
         if isOn {
             NSAttributedString(string: "✓", attributes: attributes).draw(at: NSPoint(x: 10, y: textY))
         }
-        var x: CGFloat = 23
         if let image {
             let size = image.size
             image.draw(
-                in: NSRect(x: x, y: (bounds.height - size.height) / 2, width: size.width, height: size.height),
+                in: NSRect(
+                    x: Self.checkmarkWidth, y: (bounds.height - size.height) / 2, width: size.width, height: size.height
+                ),
                 from: .zero,
                 operation: .sourceOver,
                 fraction: isAvailable ? 1 : 0.35
             )
-            x += size.width + 6
         }
-        NSAttributedString(string: title, attributes: attributes).draw(at: NSPoint(x: x, y: textY))
+        NSAttributedString(string: Self.text(title, note), attributes: attributes)
+            .draw(at: NSPoint(x: Self.textLeft(image: image), y: textY))
+    }
+
+    private static let checkmarkWidth: CGFloat = 23
+    private static let rightMargin: CGFloat = 20
+
+    private static func textLeft(image: NSImage?) -> CGFloat {
+        checkmarkWidth + (image.map { $0.size.width + 6 } ?? 0)
+    }
+
+    private static func text(_ title: String, _ note: String?) -> String {
+        note.map { "\(title) — \($0)" } ?? title
+    }
+
+    private static func width(of text: String) -> CGFloat {
+        (text as NSString).size(withAttributes: [.font: NSFont.menuFont(ofSize: 0)]).width
     }
 }

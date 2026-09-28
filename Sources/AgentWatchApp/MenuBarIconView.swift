@@ -1,9 +1,9 @@
 import AppKit
 import QuartzCore
 
-/// The grid of counts, drawn inside the status item's button.
+/// The counts, drawn inside the status item's button as a grid or as a pie.
 ///
-/// A view with a layer per cell rather than a picture swapped on a timer. Both were measured
+/// A view with a layer per cell — or per sector — rather than a picture swapped on a timer. Both were measured
 /// on a real status item over twenty seconds: the timer at eleven frames a second costs this
 /// process 1.95 % of a core, the layers 0.02 % — which is what doing nothing costs. Neither
 /// showed above the noise in the window server, whose own load on an idle machine is around
@@ -15,12 +15,16 @@ import QuartzCore
 /// window, where nothing is composited at all.
 @MainActor
 final class MenuBarIconView: NSView {
-    /// Told when the drawing changes width, because the status item's length belongs to
-    /// whoever owns the item, not to the view inside it.
-    var onWidthChange: ((CGFloat) -> Void)?
+    /// Told when the item has to change length to hold the drawing, because the status item's
+    /// length belongs to whoever owns the item, not to the view inside it.
+    var onLengthChange: ((CGFloat) -> Void)?
 
     private var cells: [MenuBarIconCell] = []
+    private var style = MenuBarIconStyle.counts
     private var drawing: MenuBarIconDrawing?
+    /// Kept rather than worked out from the last drawing: by the time a drawing is replaced,
+    /// the style it was drawn in may already be the new one.
+    private var reportedLength: CGFloat?
     private var cellLayers: [CALayer] = []
 
     init() {
@@ -33,18 +37,32 @@ final class MenuBarIconView: NSView {
         nil
     }
 
-    /// Draws these four cells, and says whether it could.
+    /// Draws these cells in this style, and says whether it could.
     ///
     /// `false` leaves the caller to put the plain app glyph back: the symbols are the
     /// system's, the deployment floor is older than the machine they were measured on, and an
-    /// icon that says less beats an icon that is not there.
+    /// icon that says less beats an icon that is not there. The plain glyph is not this view's
+    /// to draw, so `.appIcon` is always `false`.
     @discardableResult
-    func show(_ cells: [MenuBarIconCell]) -> Bool {
-        guard cells != self.cells else {
+    func show(_ cells: [MenuBarIconCell], as style: MenuBarIconStyle = .counts) -> Bool {
+        guard cells != self.cells || style != self.style else {
             return drawing != nil
         }
         self.cells = cells
+        self.style = style
         return render()
+    }
+
+    /// How long the status item has to be to hold what is drawn.
+    ///
+    /// The pie is one round mark, like the plain glyph, and takes the square item the plain
+    /// glyph has — the one width that does not move as the counts do. The grid is as wide as
+    /// its numbers and gets the two points `itemPadding` explains.
+    var itemLength: CGFloat? {
+        guard let drawing else {
+            return nil
+        }
+        return style == .pie ? NSStatusItem.squareLength : drawing.size.width + MenuBarIconMetrics.itemPadding
     }
 
     /// The button underneath owns the click that opens the menu. Without this the view takes
@@ -87,10 +105,15 @@ final class MenuBarIconView: NSView {
     @discardableResult
     private func render() -> Bool {
         let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        guard let drawing = MenuBarIconRenderer.draw(cells, dark: isDark) else {
+        let drawn: MenuBarIconDrawing? =
+            switch style {
+            case .counts: MenuBarIconRenderer.draw(cells, dark: isDark)
+            case .pie: MenuBarPieRenderer.draw(cells, dark: isDark)
+            case .appIcon: nil
+            }
+        guard let drawing = drawn else {
             return false
         }
-        let widthChanged = self.drawing?.size.width != drawing.size.width
         self.drawing = drawing
 
         cellLayers.forEach { $0.removeFromSuperlayer() }
@@ -113,8 +136,9 @@ final class MenuBarIconView: NSView {
         // which is always, so it has to be asked.
         needsDisplay = true
         redrawRequests += 1
-        if widthChanged {
-            onWidthChange?(drawing.size.width)
+        if let length = itemLength, length != reportedLength {
+            reportedLength = length
+            onLengthChange?(length)
         }
         return true
     }
@@ -144,9 +168,9 @@ final class MenuBarIconView: NSView {
         return convert(container.bounds, from: container)
     }
 
-    /// The grid is centred in that band rather than pinned to its left edge: the item's length
-    /// is set from the drawing's width, but the two are set at different moments and a stale
-    /// one must not shift the icon.
+    /// The drawing is centred in that band rather than pinned to its left edge: the item's
+    /// length is set from the drawing's width, but the two are set at different moments and a
+    /// stale one must not shift the icon.
     private func positionLayers() {
         guard let drawing else {
             return
@@ -219,9 +243,5 @@ final class MenuBarIconView: NSView {
     /// not merely attached.
     var presentedOpacities: [Float] {
         cellLayers.map { $0.presentation()?.opacity ?? 1 }
-    }
-
-    var drawnWidth: CGFloat? {
-        drawing?.size.width
     }
 }

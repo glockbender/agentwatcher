@@ -214,9 +214,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyMenuBarIcon()
     }
 
-    /// Puts the status item into whichever of its two states the setting asks for.
+    /// Puts the status item into whichever of its styles the setting asks for.
     ///
-    /// The plain state is exactly what shipped before the counts existed: a template glyph on
+    /// The plain style is exactly what shipped before the counts existed: a template glyph on
     /// a `squareLength` item, 22 pt. That length matters — the same glyph on a
     /// `variableLength` item measures 32 pt, so an item left variable would be 10 pt wider
     /// than before while showing strictly less.
@@ -224,13 +224,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let item = statusItem, let button = item.button else {
             return
         }
-        guard settings.showsMenuBarCounts else {
+        let style = settings.menuBarIconStyle
+        guard style != .appIcon else {
             showPlainStatusGlyph(on: item)
             return
         }
 
         let view = menuBarIconView ?? makeMenuBarIconView()
-        guard view.show(MenuBarIconCell.grid(for: menuBarCounts)) else {
+        guard view.show(menuBarCells, as: style) else {
             // A symbol the running system does not have. Fail-open, like every other reading
             // of something this app does not own.
             showPlainStatusGlyph(on: item)
@@ -241,19 +242,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if view.superview !== button {
             button.addSubview(view)
         }
-        if let width = view.drawnWidth {
-            item.length = width + MenuBarIconMetrics.itemPadding
+        if let length = view.itemLength {
+            item.length = length
         }
         view.fill(button)
         updateStatusItemWording()
+    }
+
+    /// The states the icon is set to show, with their counts.
+    private var menuBarCells: [MenuBarIconCell] {
+        MenuBarIconCell.cells(for: menuBarCounts, showing: settings.menuBarIconAttentions)
     }
 
     private func makeMenuBarIconView() -> MenuBarIconView {
         let view = MenuBarIconView()
         // The view draws itself and therefore knows its width first; the item's length is not
         // its to set.
-        view.onWidthChange = { [weak self] width in
-            self?.statusItem?.length = width + MenuBarIconMetrics.itemPadding
+        view.onLengthChange = { [weak self] length in
+            self?.statusItem?.length = length
         }
         return view
     }
@@ -280,13 +286,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Redraws the icon, and only when one of its four numbers has moved.
+    ///
+    /// All four, not only the states shown: the tooltip below says every one of them. The
+    /// view skips a drawing whose cells have not changed, so a number the icon does not show
+    /// moves nothing on the bar.
     private func updateMenuBarIcon(sessions: [SessionSnapshot]) {
         let counts = SessionAttentionCounts(sessions: sessions)
         guard counts != menuBarCounts else {
             return
         }
         menuBarCounts = counts
-        menuBarIconView?.show(MenuBarIconCell.grid(for: counts))
+        menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
         updateStatusItemWording()
     }
 
@@ -368,8 +378,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hudController.setScale(settings.scale)
         case .toggleShortcut:
             applyShortcut()
-        case .menuBarCounts:
+        case .menuBarIcon:
             applyMenuBarIcon()
+            // As for the list below: the menu refreshes itself after its own choice.
+            statusMenu?.refreshMenuBarIcon()
         case .sessionOrder:
             // A new order is a new set of rows, and the menu's lines follow it as well.
             hudController.refreshSettings()

@@ -58,7 +58,27 @@ enum MenuBarIconMetrics {
     static let itemPadding: CGFloat = 2
 }
 
-/// One cell of the grid: a state, how many sessions are in it, and how it is drawn.
+/// What the status item draws.
+enum MenuBarIconStyle: String, CaseIterable {
+    /// The app's own glyph and nothing else — what shipped before the counts.
+    case appIcon
+    /// A mark and a number for each state shown.
+    case counts
+    /// One disc, cut into a sector for each state shown that holds anything.
+    case pie
+
+    /// Its name where a person chooses it.
+    var name: String {
+        switch self {
+        case .appIcon: "App Icon"
+        case .counts: "Counts"
+        case .pie: "Pie Chart"
+        }
+    }
+}
+
+/// One state as the icon draws it: how many sessions are in it, and how it is drawn — a cell
+/// of the grid, or a sector of the pie.
 struct MenuBarIconCell: Equatable {
     let symbol: String
     let count: Int
@@ -66,13 +86,17 @@ struct MenuBarIconCell: Equatable {
     /// How far the cell fades at the bottom of its breath. Zero means it does not breathe.
     let breathDepth: CGFloat
 
-    /// The four cells, in reading order: top row first, then bottom.
+    /// One cell per state shown, in the order of `SessionAttention.counted` — which is also
+    /// their order of importance, and what `MenuBarIconGrid` places them by.
     ///
     /// Only the two a person can do something about breathe, and only when they hold
     /// something. Movement has to mean "there is something here"; a breathing zero would say
     /// the opposite with the same gesture.
-    static func grid(for counts: SessionAttentionCounts) -> [MenuBarIconCell] {
-        SessionAttention.counted.map { attention in
+    static func cells(
+        for counts: SessionAttentionCounts,
+        showing shown: Set<SessionAttention> = Set(SessionAttention.counted)
+    ) -> [MenuBarIconCell] {
+        SessionAttention.counted.filter(shown.contains).map { attention in
             MenuBarIconCell(
                 symbol: attention.symbolName,
                 count: counts.count(of: attention),
@@ -144,7 +168,26 @@ struct MenuBarIconDrawing {
     }
 }
 
-/// Draws the 2 × 2 grid of counts that stands in for the app's glyph in the menu bar.
+/// Where each cell of the grid goes, as columns of indices into the cells, top first.
+///
+/// Four keep the grid as it shipped. Fewer are stacked two to a column, so two sit one above
+/// the other and one sits alone on the bar's middle. Three put the most important — the first
+/// — alone on the right and stack the other two beside it. That was chosen by looking at it
+/// drawn next to the alternatives: three in the four-cell grid leave a hole that reads as a
+/// cell gone missing.
+enum MenuBarIconGrid {
+    static func columns(count: Int) -> [[Int]] {
+        switch count {
+        case 1: [[0]]
+        case 2: [[0, 1]]
+        case 3: [[1, 2], [0]]
+        case 4: [[0, 2], [1, 3]]
+        default: []
+        }
+    }
+}
+
+/// Draws the grid of counts that stands in for the app's glyph in the menu bar.
 @MainActor
 enum MenuBarIconRenderer {
     /// `nil` when a symbol is missing, which leaves the caller with the plain app glyph.
@@ -153,11 +196,10 @@ enum MenuBarIconRenderer {
     /// deployment floor is older than the machine these symbols were measured on, and an icon
     /// that says less is better than an icon that is not there.
     static func draw(_ cells: [MenuBarIconCell], dark: Bool) -> MenuBarIconDrawing? {
-        // Four, because everything below is written in columns and rows: a cell reaches for the
-        // one two places along to find out how wide its column has to be. An empty list is not
-        // a hypothetical — a view repaints itself when the bar turns light or dark, and that
-        // can happen before it has ever been given anything to draw.
-        guard cells.count == 4 else {
+        // An empty list is not a hypothetical — a view repaints itself when the bar turns light
+        // or dark, and that can happen before it has ever been given anything to draw.
+        let columns = MenuBarIconGrid.columns(count: cells.count)
+        guard !columns.isEmpty else {
             return nil
         }
         let configuration = NSImage.SymbolConfiguration(
@@ -179,81 +221,86 @@ enum MenuBarIconRenderer {
         func digitWidth(_ index: Int) -> CGFloat {
             ("\(cells[index].count)" as NSString).size(withAttributes: [.font: font]).width
         }
-        // One glyph slot per column, as wide as the widest glyph in it, with every glyph
-        // centred inside it. Drawing each glyph from its own left edge lines up their left
-        // sides instead of their centres, and a narrow symbol then sits visibly left of a
-        // round one and drags its digit along with it.
-        let glyphSlot = (0..<2).map { max(glyphs[$0].size.width, glyphs[$0 + 2].size.width) }
-        // A column is as wide as the widest number in it, which is the pair above and below —
-        // measuring one of them is what clipped a "10" to "1(".
-        //
-        // Rounded up to a whole point, so the second column starts on a pixel boundary. A
-        // fraction of a point here is invisible in the layout and costs the right-hand cells
-        // their edges: every one of them is a bitmap, and a bitmap drawn at half a pixel is
-        // resampled into a blur.
-        let columnWidth = (0..<2).map { column in
-            ceil(
-                glyphSlot[column] + MenuBarIconMetrics.gapToDigit - MenuBarIconMetrics.overlap
-                    + max(digitWidth(column), digitWidth(column + 2))
-            )
-        }
         let rowHeight = MenuBarIconMetrics.barHeight / 2
 
-        var parts: [MenuBarIconPart] = []
-        for (index, cell) in cells.enumerated() {
-            let column = index % 2
-            let row = index / 2
-            let glyph = glyphs[index]
-            let holdsSomething = cell.count > 0
-            let slot = glyphSlot[column]
-            let text = "\(cell.count)" as NSString
-            let textWidth = text.size(withAttributes: [.font: font]).width
-            let cellWidth = max(
-                1,
-                ceil(slot + MenuBarIconMetrics.gapToDigit - MenuBarIconMetrics.overlap + textWidth)
+        // In the order of `cells`, not of the columns: the view breathes part n for cell n.
+        var parts = [MenuBarIconPart?](repeating: nil, count: cells.count)
+        var left: CGFloat = 0
+        for column in columns {
+            // One glyph slot per column, as wide as the widest glyph in it, with every glyph
+            // centred inside it. Drawing each glyph from its own left edge lines up their left
+            // sides instead of their centres, and a narrow symbol then sits visibly left of a
+            // round one and drags its digit along with it.
+            let slot = column.map { glyphs[$0].size.width }.max() ?? 0
+            // A column is as wide as the widest number in it, which is the pair above and
+            // below — measuring one of them is what clipped a "10" to "1(".
+            //
+            // Rounded up to a whole point, so the next column starts on a pixel boundary. A
+            // fraction of a point here is invisible in the layout and costs the cells to the
+            // right their edges: every one of them is a bitmap, and a bitmap drawn at half a
+            // pixel is resampled into a blur.
+            let columnWidth = ceil(
+                slot + MenuBarIconMetrics.gapToDigit - MenuBarIconMetrics.overlap
+                    + (column.map(digitWidth).max() ?? 0)
             )
+            // A cell alone in its column is drawn the bar's height, so that it sits on the
+            // bar's middle rather than in the top or bottom half with nothing in the other.
+            let height = column.count == 1 ? MenuBarIconMetrics.barHeight : rowHeight
+            for (row, index) in column.enumerated() {
+                let cell = cells[index]
+                let holdsSomething = cell.count > 0
+                let text = "\(cell.count)" as NSString
+                let textWidth = text.size(withAttributes: [.font: font]).width
+                let cellWidth = max(
+                    1,
+                    ceil(slot + MenuBarIconMetrics.gapToDigit - MenuBarIconMetrics.overlap + textWidth)
+                )
 
-            let cellImage = NSImage(size: NSSize(width: cellWidth, height: rowHeight))
-            cellImage.lockFocus()
-            drawGlyph(glyph, tint: holdsSomething ? cell.accent : dim, slot: slot, rowHeight: rowHeight)
-            drawDigit(
-                text,
-                font: font,
-                colour: holdsSomething ? ink : dim,
-                x: slot + MenuBarIconMetrics.gapToDigit - MenuBarIconMetrics.overlap,
-                rowHeight: rowHeight
-            )
-            cellImage.unlockFocus()
+                let cellImage = NSImage(size: NSSize(width: cellWidth, height: height))
+                cellImage.lockFocus()
+                drawGlyph(glyphs[index], tint: holdsSomething ? cell.accent : dim, slot: slot, rowHeight: height)
+                drawDigit(
+                    text,
+                    font: font,
+                    colour: holdsSomething ? ink : dim,
+                    x: slot + MenuBarIconMetrics.gapToDigit - MenuBarIconMetrics.overlap,
+                    rowHeight: height
+                )
+                cellImage.unlockFocus()
 
-            parts.append(
-                MenuBarIconPart(
+                parts[index] = MenuBarIconPart(
                     image: cellImage,
                     frame: NSRect(
-                        x: column == 0 ? 0 : columnWidth[0] + MenuBarIconMetrics.gapBetweenColumns,
-                        y: row == 0 ? rowHeight : 0,
+                        x: left,
+                        y: column.count == 1 ? 0 : (row == 0 ? rowHeight : 0),
                         width: cellWidth,
-                        height: rowHeight
+                        height: height
                     ),
                     breathDepth: holdsSomething ? cell.breathDepth : 0
                 )
-            )
+            }
+            left += columnWidth + MenuBarIconMetrics.gapBetweenColumns
         }
 
-        let width = columnWidth[0] + MenuBarIconMetrics.gapBetweenColumns + columnWidth[1]
+        let width = left - MenuBarIconMetrics.gapBetweenColumns
         return MenuBarIconDrawing(
             size: NSSize(width: width, height: MenuBarIconMetrics.barHeight),
-            parts: parts
+            parts: parts.compactMap { $0 }
         )
     }
 
     /// An SF Symbol is not a shape that can be filled, so it is drawn and then painted
     /// through.
+    ///
+    /// Painted in, not over: `sourceAtop` keeps the glyph's own coverage and mixes the paint
+    /// into its black, so the translucent ink of an empty cell came out as an opaque disc —
+    /// grey on a dark bar by luck, solid black on a light one.
     private static func drawGlyph(_ glyph: NSImage, tint: NSColor, slot: CGFloat, rowHeight: CGFloat) {
         let tinted = NSImage(size: glyph.size)
         tinted.lockFocus()
         glyph.draw(at: .zero, from: .zero, operation: .sourceOver, fraction: 1)
         tint.set()
-        NSRect(origin: .zero, size: glyph.size).fill(using: .sourceAtop)
+        NSRect(origin: .zero, size: glyph.size).fill(using: .sourceIn)
         tinted.unlockFocus()
         tinted.draw(
             in: NSRect(

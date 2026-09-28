@@ -263,6 +263,73 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(announced, 2)
     }
 
+    /// The counts, as the icon shipped, until a person picks another style.
+    func testTheIconShowsTheCountsOfEveryStateUntilAskedOtherwise() throws {
+        let store = try makeStore()
+
+        XCTAssertEqual(store.menuBarIconStyle, .counts)
+        XCTAssertEqual(store.menuBarIconAttentions, Set(SessionAttention.counted))
+    }
+
+    func testTheIconsStyleAndStatesAreKept() throws {
+        let preferences = try isolatedPreferences()
+        let store = WidgetSettingsStore(preferences: preferences)
+
+        store.setMenuBarIconStyle(.pie)
+        store.setMenuBarIconShows(.quiet, false)
+        store.setMenuBarIconShows(.done, false)
+
+        let reopened = WidgetSettingsStore(preferences: preferences)
+        XCTAssertEqual(reopened.menuBarIconStyle, .pie)
+        XCTAssertEqual(reopened.menuBarIconAttentions, [.needsPerson, .working])
+        XCTAssertEqual(preferences.strings(forKey: "menuBarIconAttentions"), ["needsPerson", "working"])
+    }
+
+    /// Separate from the states the menu lists: choosing what the icon counts must not
+    /// change what the menu lists, or the other way round.
+    func testTheIconsStatesAreNotTheMenusStates() throws {
+        let store = try makeStore()
+
+        store.setMenuBarIconShows(.needsPerson, false)
+        store.setMenuLists(.quiet, true)
+
+        XCTAssertEqual(store.menuSessionAttentions, [.needsPerson, .done, .quiet])
+        XCTAssertEqual(store.menuBarIconAttentions, [.working, .done, .quiet])
+    }
+
+    /// The menu greys the last state, but the menu is not the only writer: the store refuses
+    /// the write too, and says nothing changed.
+    func testTheLastStateCannotBeTakenOutOfTheIcon() throws {
+        let store = try makeStore()
+        var announced = 0
+        store.onChange = { setting in
+            if case .menuBarIcon = setting {
+                announced += 1
+            }
+        }
+
+        for attention in [SessionAttention.working, .done, .quiet, .needsPerson] {
+            store.setMenuBarIconShows(attention, false)
+        }
+
+        XCTAssertEqual(store.menuBarIconAttentions, [.needsPerson])
+        XCTAssertEqual(announced, 3, "a refused write was announced")
+    }
+
+    /// An edited file is the only way to an empty list or a name this version does not know,
+    /// and neither may leave the icon blank.
+    func testAnIconFileThisVersionCannotReadStillDrawsSomething() throws {
+        let preferences = try isolatedPreferences()
+        preferences.set("sphere", forKey: "menuBarIconStyle")
+        preferences.set([String](), forKey: "menuBarIconAttentions")
+        XCTAssertEqual(WidgetSettingsStore(preferences: preferences).menuBarIconStyle, .counts)
+        XCTAssertEqual(
+            WidgetSettingsStore(preferences: preferences).menuBarIconAttentions, Set(SessionAttention.counted))
+
+        preferences.set(["done", "sleeping", "closed"], forKey: "menuBarIconAttentions")
+        XCTAssertEqual(WidgetSettingsStore(preferences: preferences).menuBarIconAttentions, [.done])
+    }
+
     private func makeStore() throws -> WidgetSettingsStore {
         WidgetSettingsStore(preferences: try isolatedPreferences())
     }

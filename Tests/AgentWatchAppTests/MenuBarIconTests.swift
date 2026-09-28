@@ -140,7 +140,7 @@ final class MenuBarIconTests: XCTestCase {
         slot.addSubview(button)
         let view = MenuBarIconView()
         button.addSubview(view)
-        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 1, quiet: 1)))
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 1, quiet: 1)))
 
         view.fill(button)
 
@@ -162,7 +162,7 @@ final class MenuBarIconTests: XCTestCase {
         slot.addSubview(button)
         let view = MenuBarIconView()
         button.addSubview(view)
-        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 1, quiet: 1)))
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 1, quiet: 1)))
 
         view.fill(button)
 
@@ -175,10 +175,10 @@ final class MenuBarIconTests: XCTestCase {
     /// was given, until the menu was opened and the button redrew itself.
     func testAChangedCountAsksForARedraw() {
         let view = MenuBarIconView()
-        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 0, working: 1, done: 0, quiet: 0)))
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 0, working: 1, done: 0, quiet: 0)))
         let before = view.redrawRequests
 
-        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 2, working: 1, done: 0, quiet: 0)))
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 2, working: 1, done: 0, quiet: 0)))
 
         XCTAssertEqual(
             view.redrawRequests,
@@ -191,7 +191,7 @@ final class MenuBarIconTests: XCTestCase {
     /// what keeps the bar still while sessions churn.
     func testCountsThatHaveNotMovedAskForNothing() {
         let view = MenuBarIconView()
-        let cells = MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 0, quiet: 3))
+        let cells = MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 0, quiet: 3))
         view.show(cells)
         let before = view.redrawRequests
 
@@ -225,7 +225,7 @@ final class MenuBarIconTests: XCTestCase {
     /// What each cell is, pinned as it shipped: the grid is built from the shared list of
     /// states now, and that must not have moved a symbol, a colour or a breath.
     func testTheGridIsTheCountedStatesInOrder() {
-        let cells = MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 1, working: 2, done: 3, quiet: 4))
+        let cells = MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 1, working: 2, done: 3, quiet: 4))
 
         XCTAssertEqual(
             cells.map(\.symbol),
@@ -247,13 +247,13 @@ final class MenuBarIconTests: XCTestCase {
     func testOnlyTheTwoCellsAPersonCanActOnBreatheAndOnlyWhenTheyHoldSomething() {
         let view = MenuBarIconView()
 
-        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 2, working: 3, done: 1, quiet: 1)))
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 2, working: 3, done: 1, quiet: 1)))
         XCTAssertEqual(view.breathingCells, [0, 1])
 
-        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 0, working: 3, done: 0, quiet: 0)))
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 0, working: 3, done: 0, quiet: 0)))
         XCTAssertEqual(view.breathingCells, [1], "an empty cell is still breathing")
 
-        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 0, working: 0, done: 5, quiet: 4)))
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 0, working: 0, done: 5, quiet: 4)))
         XCTAssertEqual(view.breathingCells, [], "done and idle never breathe")
     }
 
@@ -262,10 +262,10 @@ final class MenuBarIconTests: XCTestCase {
     /// event, which is most of the day.
     func testACountThatChangesDoesNotRestartTheBreath() throws {
         let view = MenuBarIconView()
-        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 2, working: 3, done: 0, quiet: 0)))
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 2, working: 3, done: 0, quiet: 0)))
         let before = try XCTUnwrap(view.breathBeginTimes.first)
 
-        view.show(MenuBarIconCell.grid(for: SessionAttentionCounts(needsPerson: 4, working: 3, done: 0, quiet: 0)))
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 4, working: 3, done: 0, quiet: 0)))
         let after = try XCTUnwrap(view.breathBeginTimes.first)
 
         XCTAssertEqual(before, after, accuracy: 0.001, "the breath started over")
@@ -290,7 +290,7 @@ final class MenuBarIconTests: XCTestCase {
 
     private func drawing(needsPerson: Int = 0, working: Int = 0, done: Int = 0, quiet: Int = 0) -> MenuBarIconDrawing {
         let counts = SessionAttentionCounts(needsPerson: needsPerson, working: working, done: done, quiet: quiet)
-        guard let drawn = MenuBarIconRenderer.draw(MenuBarIconCell.grid(for: counts), dark: true) else {
+        guard let drawn = MenuBarIconRenderer.draw(MenuBarIconCell.cells(for: counts), dark: true) else {
             XCTFail("the system has no symbols for the grid")
             return MenuBarIconDrawing(size: .zero, parts: [])
         }

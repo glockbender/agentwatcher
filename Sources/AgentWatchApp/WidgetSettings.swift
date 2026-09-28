@@ -33,7 +33,7 @@ enum WidgetSetting {
     case scale
     case toggleShortcut
     case rowLayout
-    case menuBarCounts
+    case menuBarIcon
     case menuSessions
     case sessionOrder
 }
@@ -116,7 +116,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let transcriptPollInterval = "transcriptPollIntervalSeconds"
         static let scale = "widgetScale"
         static let toggleShortcut = "toggleWidgetShortcut"
-        static let showsMenuBarCounts = "showsMenuBarCounts"
+        static let menuBarIconStyle = "menuBarIconStyle"
+        static let menuBarIconAttentions = "menuBarIconAttentions"
         static let listsSessionsInMenu = "listsSessionsInMenu"
         static let menuSessionAttentions = "menuSessionAttentions"
         static let sessionOrder = "sessionOrder"
@@ -137,7 +138,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
             Key.scale: .number(Double(Self.defaultScale)),
             Key.toggleShortcut: .string(Self.defaultToggleShortcut),
-            Key.showsMenuBarCounts: .bool(true),
+            Key.menuBarIconStyle: .string(MenuBarIconStyle.counts.rawValue),
+            Key.menuBarIconAttentions: .array(Self.stored(Set(SessionAttention.counted)).map(JSONValue.string)),
             Key.listsSessionsInMenu: .bool(true),
             Key.menuSessionAttentions: .array(Self.stored(Self.defaultMenuSessionAttentions).map(JSONValue.string)),
             Key.sessionOrder: .string(SessionOrder.arrival.rawValue),
@@ -233,19 +235,49 @@ final class WidgetSettingsStore: PreferenceDefaults {
         )
     }
 
-    /// Whether the status item shows the four counts rather than the plain app glyph.
+    /// What the status item draws: the counts unless a person picks otherwise.
     ///
-    /// On unless it has been turned off, and that includes a copy updating into this version:
-    /// the key is missing there too. So the item grows from 22 pt to around 51 pt without
-    /// anybody asking for it — deliberate, because a feature that exists to be seen is not
-    /// served by a switch almost nobody would find, and one menu item turns it off.
-    var showsMenuBarCounts: Bool {
-        preferences.flag(forKey: Key.showsMenuBarCounts) ?? true
+    /// The counts and not the plain app glyph, and that includes a copy updating into this
+    /// version: the key is missing there too. So the item grows from 22 pt to around 51 pt
+    /// without anybody asking for it — deliberate, because a feature that exists to be seen is
+    /// not served by a switch almost nobody would find. A name this version does not know
+    /// reads as the counts, for the same reason.
+    var menuBarIconStyle: MenuBarIconStyle {
+        preferences.string(forKey: Key.menuBarIconStyle).flatMap(MenuBarIconStyle.init(rawValue:)) ?? .counts
     }
 
-    func setShowsMenuBarCounts(_ isShown: Bool) {
-        preferences.set(isShown, forKey: Key.showsMenuBarCounts)
-        onChange?(.menuBarCounts)
+    func setMenuBarIconStyle(_ style: MenuBarIconStyle) {
+        preferences.set(style.rawValue, forKey: Key.menuBarIconStyle)
+        onChange?(.menuBarIcon)
+    }
+
+    /// The states the icon counts, in either of its drawn styles. All four until a person
+    /// takes some away, and never none: an icon with nothing to count has nothing to draw.
+    ///
+    /// An empty list read from the file is taken as all four rather than as none — the only
+    /// way one gets there is an edited file, and a blank icon is the worse of the two readings.
+    var menuBarIconAttentions: Set<SessionAttention> {
+        guard let stored = preferences.strings(forKey: Key.menuBarIconAttentions) else {
+            return Set(SessionAttention.counted)
+        }
+        let named = Set(stored.compactMap(SessionAttention.init(rawValue:))).intersection(SessionAttention.counted)
+        return named.isEmpty ? Set(SessionAttention.counted) : named
+    }
+
+    /// Taking away the last state is refused here as well as in the menu, which greys it:
+    /// the menu is not the only writer.
+    func setMenuBarIconShows(_ attention: SessionAttention, _ isShown: Bool) {
+        var shown = menuBarIconAttentions
+        if isShown {
+            shown.insert(attention)
+        } else {
+            shown.remove(attention)
+        }
+        guard !shown.isEmpty else {
+            return
+        }
+        preferences.set(Self.stored(shown), forKey: Key.menuBarIconAttentions)
+        onChange?(.menuBarIcon)
     }
 
     /// Whether the menu opens with a line for each session it is set to list.

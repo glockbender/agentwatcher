@@ -62,7 +62,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// The switch for the list and one line per state it can hold, in the icon's order.
     private(set) var listSessionsRow: MenuToggleRowView?
     private(set) var attentionRows: [SessionAttention: MenuToggleRowView] = [:]
-    private(set) var countsItem: NSMenuItem?
+    /// The icon's styles, one line each, and the states it can show.
+    private(set) var iconStyleRows: [MenuBarIconStyle: MenuToggleRowView] = [:]
+    private(set) var iconAttentionRows: [SessionAttention: MenuToggleRowView] = [:]
     private(set) var widgetItem: NSMenuItem?
     private(set) var debugItem: NSMenuItem?
     private(set) var lockPositionItem: NSMenuItem?
@@ -136,9 +138,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         // it had to carry the sender's path and the step Codex still needs from a person.
         submenu.addItem(line("Tooling…", #selector(showTooling)))
         submenu.addItem(.separator())
-        let counts = line("Show Counts in Menu Bar", #selector(toggleMenuBarCounts))
-        submenu.addItem(counts)
-        countsItem = counts
+        submenu.addItem(makeMenuBarIconItem())
         submenu.addItem(makeSessionsInMenuItem())
         submenu.addItem(makeBehaviorMenuItem())
         // One level up from where it used to be, inside `Widget Behavior`: under `Settings` that
@@ -203,6 +203,54 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         item.submenu = submenu
         return item
     }
+
+    /// The icon's style and the states it shows, in one submenu whose lines all leave the menu
+    /// open (ADR-0014): a person can switch the style and watch the bar change, or pick three
+    /// states in one visit.
+    ///
+    /// The states are `SessionAttention.counted`, walked rather than written out, as they are
+    /// for the menu's own list.
+    private func makeMenuBarIconItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Menu Bar Icon", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Menu Bar Icon")
+        for style in MenuBarIconStyle.allCases {
+            let row = MenuToggleRowView(title: style.name, isOn: false, role: .radioButton)
+            row.onToggle = { [weak self] in
+                guard let self else {
+                    return
+                }
+                settings.setMenuBarIconStyle(style)
+                refreshMenuBarIcon()
+            }
+            submenu.addItem(toggleItem(row))
+            iconStyleRows[style] = row
+        }
+        submenu.addItem(.separator())
+        for attention in SessionAttention.counted {
+            let row = MenuToggleRowView(
+                title: attention.name,
+                image: Self.mark(for: attention),
+                isOn: false,
+                reservingNote: Self.lastIconStateNote
+            )
+            row.onToggle = { [weak self] in
+                guard let self else {
+                    return
+                }
+                settings.setMenuBarIconShows(attention, !settings.menuBarIconAttentions.contains(attention))
+                refreshMenuBarIcon()
+            }
+            submenu.addItem(toggleItem(row))
+            iconAttentionRows[attention] = row
+        }
+        item.submenu = submenu
+        refreshMenuBarIcon()
+        return item
+    }
+
+    /// Said on the one state left, which is greyed: an icon with nothing to count has nothing
+    /// to draw, and the store refuses to take the last one away.
+    static let lastIconStateNote = "at least one stays"
 
     /// A menu item that carries a toggle row, titled for type-select and for a reader of the
     /// menu. No action: the menu does not call one for a line with a view, and the row takes
@@ -340,7 +388,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
         summaryItem?.title = MenuBarSummaryText.line(for: host.attentionCounts)
         refreshSessions()
-        countsItem?.state = settings.showsMenuBarCounts ? .on : .off
+        refreshMenuBarIcon()
         widgetItem?.title = host.isWidgetVisible ? "Hide Widget" : "Show Widget"
         if let widgetItem {
             host.showShortcut(on: widgetItem)
@@ -380,6 +428,26 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
         if let host {
             showSessionLines(host: host)
+        }
+    }
+
+    /// The icon's lines, read again from the settings — straight after a choice as well, while
+    /// the submenu is still open.
+    ///
+    /// The plain glyph counts nothing, so it greys every state; that line, ticked right above
+    /// them, is the reason. Otherwise only the last state left is greyed, and says why.
+    func refreshMenuBarIcon() {
+        let style = settings.menuBarIconStyle
+        for (candidate, row) in iconStyleRows {
+            row.isOn = candidate == style
+        }
+        let shown = settings.menuBarIconAttentions
+        for (attention, row) in iconAttentionRows {
+            let isOn = shown.contains(attention)
+            let isLast = isOn && shown.count == 1
+            row.isOn = isOn
+            row.isAvailable = style != .appIcon && !isLast
+            row.note = style != .appIcon && isLast ? Self.lastIconStateNote : nil
         }
     }
 
@@ -462,10 +530,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             return
         }
         host?.focusSession(id: id)
-    }
-
-    @objc private func toggleMenuBarCounts() {
-        settings.setShowsMenuBarCounts(!settings.showsMenuBarCounts)
     }
 
     @objc private func toggleWidget() {
