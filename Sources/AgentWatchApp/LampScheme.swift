@@ -23,41 +23,67 @@ extension SessionPhase {
     /// a surface the dot never touches, while making the shipped default depend on the state
     /// of the machine that first wrote the settings file.
     ///
-    /// These are the values in use, chosen by the person this widget was built for. Five
-    /// colours and three motions are theirs; the rest are the system colours as they resolved
-    /// on a dark machine, which is what those phases already looked like.
+    /// These are the values in use, copied on 2026-09-26 from the settings of the person this
+    /// widget was built for, and chosen together with the blue default background. Stored
+    /// preferences still win; new installations and Reset use this table.
+    ///
+    /// Six phases fall below 3:1 against that blue: its brightness is close to theirs. That
+    /// was accepted, not missed — colour is never the only carrier of a phase (ADR-0003),
+    /// and this is the palette its owner reads every day. `LampSchemeTests` names the six,
+    /// so adding a seventh has to be a decision too.
     var defaultLampStyle: LampStyle {
         switch self {
         case .idle:
-            LampStyle(color: NSColor(sRGB: "#98989D"), motion: .steady)
+            LampStyle(
+                color: NSColor(sRGB: "#98989D"), motion: .steady,
+                gradientColor: NSColor(sRGB: "#FFFFFF"), animationCycle: 2.8)
         case .planning:
-            LampStyle(color: NSColor(sRGB: "#00EEEC"), motion: .dim)
+            LampStyle(
+                color: NSColor(sRGB: "#00EEEC"), motion: .dim,
+                gradientColor: NSColor(sRGB: "#FFFFFF"), animationCycle: 1.5)
         case .executing:
-            LampStyle(color: NSColor(sRGB: "#00FF5C"), motion: .dim)
+            LampStyle(
+                color: NSColor(sRGB: "#00FF5C"), motion: .dim,
+                gradientColor: NSColor(sRGB: "#00A900"), animationCycle: 2.5)
         case .waitingForChildren:
-            LampStyle(color: NSColor(sRGB: "#6AC4DC"), motion: .dim)
+            LampStyle(
+                color: NSColor(sRGB: "#6AC4DC"), motion: .dim,
+                gradientColor: NSColor(sRGB: "#FFFFFF"), animationCycle: 3)
         case .waitingForUser:
-            LampStyle(color: NSColor(sRGB: "#FF9F0A"), motion: .dim, animationCycle: 1.1)
+            LampStyle(
+                color: NSColor(sRGB: "#FF9F0A"), motion: .gradient,
+                gradientColor: NSColor(sRGB: "#FFFB00"), animationCycle: 0.5)
         case .completed:
-            LampStyle(color: NSColor(sRGB: "#CED4D0"), motion: .steady)
+            LampStyle(
+                color: NSColor(sRGB: "#CED4D0"), motion: .steady,
+                gradientColor: NSColor(sRGB: "#FFFFFF"), animationCycle: 2.8)
         case .rateLimited:
-            LampStyle(color: NSColor(sRGB: "#BF9BFA"), motion: .steady)
+            LampStyle(
+                color: NSColor(sRGB: "#BF9BFA"), motion: .dim,
+                gradientColor: NSColor(sRGB: "#FFFFFF"), animationCycle: 2)
         case .failed:
-            LampStyle(color: NSColor(sRGB: "#FF453A"), motion: .dim, animationCycle: 1.1)
+            LampStyle(
+                color: NSColor(sRGB: "#FF453A"), motion: .dim,
+                gradientColor: NSColor(sRGB: "#FFFFFF"), animationCycle: 1)
         case .terminalClosed:
             // The failure's red, still. It is a failure a person has to deal with, but nothing
             // is lost by waiting, and a row like this can stand for days — blinking all that
             // time would be a nag, not news.
-            LampStyle(color: NSColor(sRGB: "#FF453A"), motion: .steady)
+            LampStyle(
+                color: NSColor(sRGB: "#FF453A"), motion: .steady,
+                gradientColor: NSColor(sRGB: "#FFFFFF"), animationCycle: 2.8)
         case .disconnected:
-            LampStyle(color: NSColor(sRGB: "#BB7F7C"), motion: .dim)
+            LampStyle(
+                color: NSColor(sRGB: "#BB7F7C"), motion: .dim,
+                gradientColor: NSColor(sRGB: "#FFFFFF"), animationCycle: 2.8)
         case .sessionClosed:
-            // `systemGray` as it resolves on a dark machine, like the rest of this table.
-            // It was `#000000`, which is a black ring on a near-black widget: 1.6:1 against
-            // the default background where every other phase reaches 4.6:1 or better. Being
-            // the dimmest lamp is right for a session that has ended; being the one nobody
-            // can see is not, and the shape already says it is over.
-            LampStyle(color: NSColor(sRGB: "#8E8E93"), motion: .steady)
+            // Black, and it works only because the default background is blue: 3.46:1 there,
+            // where the grey `#8E8E93` it replaced reaches 1.86:1. On Graphite black falls to
+            // 1.35:1 and the ring cannot be seen. No grey serves both, so the default
+            // background decides; the ring shape still says that the session is over.
+            LampStyle(
+                color: NSColor(sRGB: "#000000"), motion: .steady,
+                gradientColor: NSColor(sRGB: "#FFFFFF"), animationCycle: 2.8)
         }
     }
 }

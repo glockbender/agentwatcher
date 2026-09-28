@@ -36,6 +36,8 @@ struct WidgetBackground: Hashable {
     }
 
     static let customName = "custom"
+    static let defaultBackground = WidgetBackground(
+        storedName: customName, title: "Custom", color: NSColor(sRGB: "#006996"))
 
     var isCustom: Bool {
         storedName == Self.customName
@@ -137,18 +139,11 @@ struct WidgetBackground: Hashable {
 }
 
 final class WidgetBackgroundStore: PreferenceDefaults {
-    static let defaultOpacity: CGFloat = 0.96
+    static let defaultOpacity: CGFloat = 0.82
     /// Not zero: an invisible widget cannot be found again by the person who made it
     /// invisible. At five percent it is already glass, and `Highlight Widget` can still
     /// point at it.
     static let minimumOpacity: CGFloat = 0.05
-
-    /// What the file holds before anybody has picked a colour of their own.
-    ///
-    /// Written out rather than left missing, like every other setting, so the key is there to
-    /// be found by a person reading the file — the same empty string the shortcut uses for
-    /// "none".
-    static let noCustomColor = ""
 
     private enum Key {
         static let selectedBackground = "widgetBackground"
@@ -162,8 +157,8 @@ final class WidgetBackgroundStore: PreferenceDefaults {
 
     var defaultValues: [String: JSONValue] {
         [
-            Key.selectedBackground: .string(WidgetBackground.graphite.storedName),
-            Key.customColor: .string(Self.noCustomColor),
+            Key.selectedBackground: .string(WidgetBackground.defaultBackground.storedName),
+            Key.customColor: .string(WidgetBackground.defaultBackground.color.srgbHex ?? "#006996"),
             Key.opacity: .number(Double(Self.defaultOpacity)),
         ]
     }
@@ -177,18 +172,18 @@ final class WidgetBackgroundStore: PreferenceDefaults {
         self.preferences = preferences
     }
 
-    /// Graphite for anything that cannot be read — a mistyped name, or `custom` with no colour
+    /// The default blue for anything that cannot be read — a mistyped name, or `custom` with no colour
     /// behind it — for the reason the lamp store gives: the file is meant to be corrected by
     /// hand, and the app's own is the honest answer to "this is not a background".
     var selected: WidgetBackground {
         let name = preferences.string(forKey: Key.selectedBackground) ?? ""
         if name == WidgetBackground.customName {
-            return customColor.flatMap(WidgetBackground.init(custom:)) ?? .graphite
+            return customColor.flatMap(WidgetBackground.init(custom:)) ?? .defaultBackground
         }
-        return WidgetBackground.preset(named: name) ?? .graphite
+        return WidgetBackground.preset(named: name) ?? .defaultBackground
     }
 
-    /// The person's own colour, whether or not it is the one in use — `nil` until one is picked.
+    /// The saved custom colour, seeded with default blue for new installations; nil if absent or invalid.
     var customColor: NSColor? {
         preferences.string(forKey: Key.customColor).flatMap(NSColor.init(hex:))
     }

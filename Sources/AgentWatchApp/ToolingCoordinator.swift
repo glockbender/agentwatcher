@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchLookup
 import AppKit
 
 /// Everything about attaching Agent Watch to the agents it watches: an agent's records, the
@@ -13,6 +14,7 @@ import AppKit
 /// then disagree.
 @MainActor
 final class ToolingCoordinator {
+    private(set) var lastError: String?
     private let installer: ToolingInstaller
     private let heard: AgentHeardStore
     private let sender: SenderLink
@@ -48,8 +50,9 @@ final class ToolingCoordinator {
     var facts: ToolingWindowFacts {
         let sender = senderLink()
         let staged = IDEPluginFiles.staged()
+        let hookStates = Dictionary(uniqueKeysWithValues: AgentSource.allCases.map { ($0, hookState(for: $0)) })
         return ToolingWindowFacts(
-            hookState: hookState(for:),
+            hookState: { hookStates[$0] ?? .unreadable },
             statusLineState: installer.statusLineState(),
             hooksPath: { [installer] in installer.hooksPath(for: $0).path },
             statusLinePath: installer.statusLinePath.path,
@@ -57,8 +60,17 @@ final class ToolingCoordinator {
             senderIsTiedToThisBuild: { if case .tiedToThisBuild = sender { true } else { false } }(),
             idePlugins: idePluginReadings(),
             stagedPlugin: staged?.plugin,
-            idePluginDirectoryPath: IDEPluginFiles.pluginDirectory()?.path ?? ""
+            idePluginDirectoryPath: IDEPluginFiles.pluginDirectory()?.path ?? "",
+            agentPaths: AgentSource.allCases.reduce(into: [:]) { paths, source in
+                paths[source] = AgentInstallationLookup.executable(for: source)
+            },
+            receivedSources: receivedSources,
+            lastError: lastError
         )
+    }
+
+    var receivedSources: Set<AgentSource> {
+        Set(AgentSource.allCases.filter { heard.delivery(for: $0) == .arrived })
     }
 
     /// What the widget says instead of "No active sessions" when nothing can report to it,
@@ -76,6 +88,11 @@ final class ToolingCoordinator {
     func press(_ press: ToolingPress) {
         switch press {
         case .integration(let integration): toggleIntegration(integration)
+        case .install(let integration):
+            switch integration.kind {
+            case .hooks: toggleHooks(for: integration.source, allowRemoval: false)
+            case .statusLine: toggleStatusLine(allowRemoval: false)
+            }
         case .idePluginsPage(let dataDirectoryName): openIDEPluginsPage(dataDirectoryName: dataDirectoryName)
         case .idePluginCheck(let dataDirectoryName): checkIDEPlugin(dataDirectoryName: dataDirectoryName)
         }
@@ -185,7 +202,7 @@ final class ToolingCoordinator {
         }
     }
 
-    private func toggleHooks(for source: AgentSource) {
+    private func toggleHooks(for source: AgentSource, allowRemoval: Bool = true) {
         perform {
             let state = hookState(for: source)
             guard state != .unreadable else {
@@ -202,7 +219,7 @@ final class ToolingCoordinator {
                 // silence it is entitled to report.
                 heard.recordInstall(source)
                 onLog(hooksInstalledMessage(for: source))
-            } else {
+            } else if allowRemoval {
                 try installer.removeHooks(for: source)
                 heard.forgetInstall(source)
                 onLog("\(AgentIcon.name(for: source)) hooks removed")
@@ -210,9 +227,10 @@ final class ToolingCoordinator {
         }
     }
 
-    private func toggleStatusLine() {
+    private func toggleStatusLine(allowRemoval: Bool = true) {
         perform {
             if case .connected = installer.statusLineState() {
+                guard allowRemoval else { return }
                 try installer.disconnectStatusLine()
                 onLog("Status line disconnected — your own command is back")
             } else {
@@ -239,9 +257,11 @@ final class ToolingCoordinator {
     /// files, and a change that silently did nothing is the one outcome a person cannot
     /// diagnose.
     private func perform(_ change: () throws -> Void) {
+        lastError = nil
         do {
             try change()
         } catch {
+            lastError = "Could not change the integration: \(error)"
             onLog("Tooling change failed: \(error)")
         }
         // After both outcomes. A change that failed still changes what the widget should say —

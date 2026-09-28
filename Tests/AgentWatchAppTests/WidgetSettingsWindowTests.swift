@@ -29,9 +29,9 @@ final class WidgetSettingsWindowTests: XCTestCase {
         let second = try XCTUnwrap(controller.gradientColorWells[.rateLimited])
         let cycle = try XCTUnwrap(controller.animationCycleSliders[.rateLimited])
         XCTAssertFalse(second.isEnabled)
-        XCTAssertFalse(cycle.isEnabled)
+        XCTAssertTrue(cycle.isEnabled)
         XCTAssertTrue(second.isHidden)
-        XCTAssertEqual(cycle.superview?.isHidden, true)
+        XCTAssertEqual(cycle.superview?.isHidden, false)
         motion.selectItem(withTitle: "Two-color fade")
         motion.sendAction(motion.action, to: motion.target)
         XCTAssertTrue(second.isEnabled)
@@ -67,9 +67,9 @@ final class WidgetSettingsWindowTests: XCTestCase {
         controller.resetLamp()
         XCTAssertFalse(second.isEnabled)
         XCTAssertEqual(second.color.srgbHex, "#FFFFFF")
-        XCTAssertEqual(cycle.doubleValue, 2.8)
+        XCTAssertEqual(cycle.doubleValue, 2)
         let reset = try XCTUnwrap(controller.lampPreviewHolders[.rateLimited]?.subviews.first as? SessionLampView)
-        XCTAssertFalse(reset.isBlinking)
+        XCTAssertTrue(reset.isBlinking)
     }
 
     func testDimShowsOnlyCycleAndSharesItWithColorFade() throws {
@@ -82,7 +82,7 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertFalse(second.isEnabled)
         XCTAssertEqual(cycle.superview?.isHidden, false)
         XCTAssertTrue(cycle.isEnabled)
-        XCTAssertEqual(cycle.doubleValue, 1.1)
+        XCTAssertEqual(cycle.doubleValue, 1)
         cycle.doubleValue = 5.4
         cycle.sendAction(cycle.action, to: cycle.target)
         XCTAssertEqual(store.scheme.style(for: .failed).animationCycle, 5.4)
@@ -209,7 +209,7 @@ final class WidgetSettingsWindowTests: XCTestCase {
         XCTAssertTrue(backgroundStore.selected.isCustom)
         XCTAssertEqual(
             backgroundStore.selected.color.srgbHex,
-            WidgetBackground.graphite.color.srgbHex,
+            WidgetBackground.defaultBackground.color.srgbHex,
             "before the wheel is touched the widget keeps the colour it had"
         )
     }
@@ -738,6 +738,36 @@ final class WidgetSettingsWindowTests: XCTestCase {
         try show(tab: "Order", of: controller)
 
         XCTAssertEqual(controller.orderTab.preview.layer?.backgroundColor, chosen.color.cgColor)
+    }
+
+    func testReturningToOrderRebuildsTheLampsEvenWhenTheDemoSnapshotsAreUnchanged() throws {
+        func lampViews(in view: NSView) -> [SessionLampView] {
+            if let lamp = view as? SessionLampView { return [lamp] }
+            return view.subviews.flatMap { lampViews(in: $0) }
+        }
+        let (controller, lamps, _, settings) = try makeWindow()
+        controller.showWindow(nil)
+        defer { controller.close() }
+        for mode: SessionOrder in [.arrival, .attention, .recentActivity] {
+            settings.setSessionOrder(mode)
+            try show(tab: "Order", of: controller)
+            let initial = try XCTUnwrap(lampViews(in: controller.orderTab.preview).first)
+            let chosen = initial.paintedColor?.srgbHex == "#123456" ? "#654321" : "#123456"
+
+            try show(tab: "Lamp", of: controller)
+            for phase in SessionPhase.allCases {
+                lamps.setColor(NSColor(sRGB: chosen), for: phase)
+                lamps.setMotion(.steady, for: phase)
+            }
+            try show(tab: "Order", of: controller)
+
+            let shown = lampViews(in: controller.orderTab.preview)
+            XCTAssertEqual(shown.count, SessionOrderDemo().sessions.count)
+            for lamp in shown {
+                XCTAssertEqual(lamp.paintedColor?.srgbHex, chosen, "\(mode)")
+                XCTAssertFalse(lamp.isBlinking, "\(mode)")
+            }
+        }
     }
 
     /// For the tests that are about the shortcut itself rather than about the window: the window

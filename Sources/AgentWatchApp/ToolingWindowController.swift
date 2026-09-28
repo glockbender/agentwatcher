@@ -19,6 +19,8 @@ final class ToolingWindowController: NSWindowController {
     /// looked rather than what is there now.
     private let facts: () -> ToolingWindowFacts
     private let act: (ToolingPress) -> Void
+    private(set) var journey: SetupJourney?
+    private var lastReceived: Set<AgentSource> = []
 
     /// Flipped, because it is a scroll view's document: an unflipped one shorter than the
     /// window sinks to the bottom and leaves the slack above it.
@@ -87,7 +89,12 @@ final class ToolingWindowController: NSWindowController {
     /// that sometimes closes it instead of showing it would need the person to know which of
     /// the two it is about to do.
     func present() {
+        let reading = facts()
+        if journey == nil && AgentSource.allCases.allSatisfy({ reading.hookState($0) == .absent }) {
+            journey = SetupJourney()
+        }
         rebuild()
+        window?.center()
         showWindow(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
@@ -103,6 +110,14 @@ final class ToolingWindowController: NSWindowController {
         actionButtons.removeAll()
 
         let reading = facts()
+        lastReceived = reading.receivedSources
+        if journey != nil {
+            showSetup(reading)
+            return
+        }
+        let restart = NSButton(title: "Set Up Again…", target: self, action: #selector(startSetup))
+        restart.bezelStyle = .rounded
+        content.addView(restart, in: .top)
         let sections = ToolingReport.sections(
             hookState: reading.hookState,
             statusLineState: { reading.statusLineState },
@@ -124,6 +139,11 @@ final class ToolingWindowController: NSWindowController {
                 content.addView(Self.makeRule(width: bodyWidth), in: .top)
             }
             content.addView(Self.makeSectionTitle(section.title), in: .top)
+            if AgentSource.allCases.indices.contains(index) {
+                let source = AgentSource.allCases[index]
+                content.addView(
+                    Self.makeNextStep(agentInstallationText(reading.agentPaths[source]), width: bodyWidth), in: .top)
+            }
             for row in section.rows {
                 content.addView(makeRow(row, width: bodyWidth), in: .top)
             }
@@ -131,6 +151,9 @@ final class ToolingWindowController: NSWindowController {
 
         content.addView(Self.makeRule(width: bodyWidth), in: .top)
         content.addView(makeSenderNote(reading, width: bodyWidth), in: .top)
+        if let error = reading.lastError {
+            content.addView(Self.makeNextStep(error, width: bodyWidth), in: .top)
+        }
 
         // The trailing inset added by hand, and measured rather than assumed: a vertical
         // stack aligned to its leading edge pins nothing to the other one, so its fitting
@@ -144,6 +167,45 @@ final class ToolingWindowController: NSWindowController {
         // against the one that ties the stack to the window — and the loser is the layout.
         window?.contentMinSize = NSSize(width: width, height: 200)
         window?.setContentSize(NSSize(width: width, height: min(fitting.height, Self.tallestUsefulWindow)))
+    }
+
+    @objc func startSetup() {
+        journey = SetupJourney()
+        rebuild()
+    }
+
+    /// Called on delivery, never by an idle timer. Only the first event changes this UI.
+    func receivedEvents(_ sources: Set<AgentSource>) {
+        guard isShowing, sources != lastReceived else { return }
+        rebuild()
+    }
+
+    private func showSetup(_ reading: ToolingWindowFacts) {
+        guard var journey else { return }
+        if let source = journey.source {
+            journey.observe(hooks: reading.hookState(source), receivedEvent: reading.receivedSources.contains(source))
+        }
+        self.journey = journey
+        let setup = ToolingSetupView(journey: journey, facts: reading) { [weak self] action in
+            guard let self else { return }
+            switch action {
+            case .choose(let source): self.journey?.choose(source)
+            case .back: self.journey?.back()
+            case .next:
+                if let source = self.journey?.source {
+                    self.journey?.continueToVerification(hooks: self.facts().hookState(source))
+                }
+            case .overview: self.journey = nil
+            case .press(let press):
+                self.act(press)
+                return
+            }
+            self.rebuild()
+        }
+        content.addView(setup, in: .top)
+        window?.contentMinSize = NSSize(width: 580, height: 420)
+        window?.setContentSize(NSSize(width: 580, height: min(content.fittingSize.height, Self.tallestUsefulWindow)))
+        (window?.contentView as? NSScrollView)?.contentView.scroll(to: .zero)
     }
 
     /// As tall as the screen leaves room for, and no taller. Beyond this the rows are reached
@@ -347,6 +409,9 @@ struct ToolingWindowFacts {
     let idePlugins: [IDEPluginReading]
     let stagedPlugin: StagedIDEPlugin?
     let idePluginDirectoryPath: String
+    var agentPaths: [AgentSource: String] = [:]
+    var receivedSources: Set<AgentSource> = []
+    var lastError: String?
 
     /// What the window shows when the application that answers these questions has gone —
     /// which happens only while it is shutting down. Nothing is claimed and nothing is

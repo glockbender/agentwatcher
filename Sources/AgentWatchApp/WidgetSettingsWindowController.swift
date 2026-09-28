@@ -936,10 +936,10 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             let cycle = makeAnimationCycleControl(for: phase)
             let preview = NSView()
             preview.wantsLayer = true
-            preview.layer?.backgroundColor = WidgetBackground.graphite.color.cgColor
+            preview.layer?.backgroundColor = WidgetBackground.defaultBackground.color.cgColor
             preview.layer?.cornerRadius = 5
             preview.pinSize(to: NSSize(width: 46, height: 28))
-            preview.toolTip = "Live preview on Graphite"
+            preview.toolTip = "Live preview on the default blue background"
             lampPreviewHolders[phase] = preview
 
             let name = NSTextField(labelWithString: phase.settingsName)

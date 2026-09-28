@@ -2,4 +2,15 @@
 
 set -euo pipefail
 
+# `task verify` checks the working tree, but a commit records the index. Where the two differ,
+# a green run says nothing about the commit: a new file left unstaged still builds here and is
+# missing from the commit. So a difference is refused rather than verified.
+if ! git diff --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+    echo "pre-commit: the working tree holds changes that are not in this commit." >&2
+    echo "  task verify checks the working tree, so it would not be checking this commit." >&2
+    echo "  Commit everything, or set the rest aside first:" >&2
+    echo "    git stash push --keep-index --include-untracked" >&2
+    exit 1
+fi
+
 task verify

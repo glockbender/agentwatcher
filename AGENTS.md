@@ -25,6 +25,11 @@ Two gates, both installed by `task setup`:
   and answers them. The hook runs the gate only when a branch is pushed; a tag or a deletion goes
   through without it.
 
+Both gates check the working tree, so both refuse to run when it is not exactly what goes out:
+a commit with unstaged or untracked files beside it, a push with uncommitted changes, or a push
+of a branch that is not checked out. To commit part of the tree, set the rest aside with
+`git stash push --keep-index --include-untracked`.
+
 The IDE plugin needs nothing installed for itself: its Gradle wrapper fetches Gradle and its own
 JDK. It compiles against a JetBrains IDE, taken from this machine when one is here (GoLand or
 IntelliJ IDEA, 2026.1 or newer — an older one is refused with the reason) and downloaded when none

@@ -158,7 +158,7 @@ class HUDSessionListView: NSView {
             rowStack.widthAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.widthAnchor),
         ]
 
-        // Each row is as wide as the visible area, so its trailing group — counters, context
+        // Each row fills the visible area except the scroller lane, so its trailing group — counters, context
         // size, the dismiss button — sits against the right edge and forms a column across
         // rows instead of ending wherever each name happens to end. A row whose contents
         // cannot fit keeps its own width, and scrolling reaches the rest of it.
@@ -307,11 +307,14 @@ class HUDSessionListView: NSView {
         return true
     }
 
-    /// Each row is as wide as the visible area — see the note in `buildContent` for what a
+    /// Leave a fixed lane for the overlay scroller, including while it is hidden.
+    /// This keeps buttons out of its hit area without moving rows when it appears.
+    /// See the note in `buildContent` for what a
     /// constraint against the clip view did instead.
     private func widthConstraint(for row: HUDSessionRowView) -> NSLayoutConstraint {
         row.widthAnchor.constraint(
-            equalToConstant: max(availableWidth - 2 * horizontalInset, row.fittingSize.width)
+            equalToConstant: max(
+                availableWidth - 2 * horizontalInset - WidgetScroller.rowClearance, row.fittingSize.width)
         )
     }
 
@@ -474,7 +477,7 @@ class HUDSessionListView: NSView {
             return .hidden
         }
 
-        let contentWidth = availableWidth - 2 * horizontalInset
+        let contentWidth = availableWidth - 2 * horizontalInset - WidgetScroller.rowClearance
 
         return chooseTitleDisplay(
             availableWidth: contentWidth - row.furnitureWidth,
@@ -484,11 +487,13 @@ class HUDSessionListView: NSView {
     }
 
     private func makeScrollView(documentView: NSView) -> NSScrollView {
-        let scrollView = NSScrollView()
+        let scrollView = WidgetScrollView()
         scrollView.documentView = documentView
+        scrollView.verticalScroller = WidgetScroller(frame: NSRect(x: 0, y: 0, width: 6, height: 100))
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
+        // A six-point overlay, with a separate eight-point lane in the row budget.
         // Overlay even when the system is set to show scroll bars always. Measured: a legacy
         // scroller takes 15 points out of a 300-point widget and gives them to a bar, and the
         // width budget for the session name is computed against the full width — names would

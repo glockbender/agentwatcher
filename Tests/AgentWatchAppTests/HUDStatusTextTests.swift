@@ -160,7 +160,7 @@ final class HUDStatusTextTests: XCTestCase {
         XCTAssertEqual(
             SessionLamp.builtInAppearance(for: snapshot(phase: .waitingForUser, userInputRequestKind: .approval))
                 .motion,
-            .dim
+            .gradient
         )
         XCTAssertEqual(SessionLamp.builtInAppearance(for: snapshot(phase: .failed)).motion, .dim)
     }

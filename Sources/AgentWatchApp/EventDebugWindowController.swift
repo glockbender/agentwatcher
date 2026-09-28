@@ -4,6 +4,8 @@ import AppKit
 final class EventDebugWindowController: NSWindowController {
     private let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 480, height: 300))
 
+    private var entryLengths: [Int] = []
+
     init(initialEntries: [String] = []) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
@@ -38,10 +40,9 @@ final class EventDebugWindowController: NSWindowController {
             height: CGFloat.greatestFiniteMagnitude
         )
         textView.textContainer?.widthTracksTextView = true
-        textView.string = initialEntries.joined(separator: "\n")
-        if !initialEntries.isEmpty {
-            textView.string.append("\n")
-        }
+        let entries = initialEntries.suffix(EventDebugLog.maximumEntryCount).map(EventDebugLog.boundedEntry)
+        entryLengths = entries.map { ($0 as NSString).length + 1 }
+        textView.string = entries.map { $0 + "\n" }.joined()
 
         super.init(window: window)
     }
@@ -52,8 +53,14 @@ final class EventDebugWindowController: NSWindowController {
     }
 
     func append(_ entry: String) {
-        textView.textStorage?.append(NSAttributedString(string: "\(entry)\n"))
-        textView.scrollToEndOfDocument(nil)
+        let line = EventDebugLog.boundedEntry(entry) + "\n"
+        entryLengths.append((line as NSString).length)
+        textView.textStorage?.append(NSAttributedString(string: line))
+        if entryLengths.count > EventDebugLog.maximumEntryCount {
+            let removedLength = entryLengths.removeFirst()
+            textView.textStorage?.deleteCharacters(in: NSRange(location: 0, length: removedLength))
+        }
+        if isVisible { textView.scrollToEndOfDocument(nil) }
     }
 
     var isVisible: Bool {

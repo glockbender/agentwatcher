@@ -615,14 +615,118 @@ final class HUDOverflowTests: XCTestCase {
     /// A legacy scroller takes 15 measured points out of the clip view, and the name budget
     /// is computed against the full width — so a widget on a system set to "show scroll bars
     /// always" would size names for room they do not have.
-    func testTheListKeepsItsFullWidthWhateverTheSystemScrollerStyleIs() throws {
+    func testTheListReservesOnlyTheSlimLaneWhateverTheSystemScrollerStyleIs() throws {
         let list = listView(sessionCount: 6)
         place(list, width: 300, height: 80)
 
         let scrollView = try XCTUnwrap(allSubviews(of: list).compactMap { $0 as? NSScrollView }.first)
 
         XCTAssertEqual(scrollView.scrollerStyle, .overlay)
-        XCTAssertEqual(scrollView.contentView.frame.width, scrollView.frame.width, accuracy: 0.5)
+        XCTAssertEqual(scrollView.contentView.frame.width, scrollView.frame.width - 8, accuracy: 0.5)
+    }
+
+    func testVisibleScrollbarIsNarrowAndDoesNotCoverDismissButtons() throws {
+        for scale in [CGFloat(0.5), 1, 2] {
+            let style = WidgetStyle(scale: scale)
+            let list = listView(sessionCount: 12, phase: .completed, style: style)
+            place(list, width: 400, height: 120)
+            let scroll = try XCTUnwrap(firstScrollView(in: list))
+            scroll.flashScrollers()
+            list.layoutSubtreeIfNeeded()
+            let scroller = try XCTUnwrap(scroll.verticalScroller)
+            XCTAssertLessThanOrEqual(scroller.frame.width, 6)
+            let track = scroller.convert(scroller.bounds, to: list)
+            for row in try wholeRowsInView(of: list) {
+                let button = try XCTUnwrap(allSubviews(of: row).compactMap { $0 as? RowDismissButton }.first)
+                let frame = button.convert(button.bounds, to: list)
+                XCTAssertFalse(
+                    frame.intersects(track), "The scroller must not cover the dismiss button at scale \(scale)")
+            }
+        }
+    }
+
+    func testNarrowViewportKeepsVisibleDismissButtonsOutsideScrollbarAtEveryHorizontalOffset() throws {
+        let list = listView(sessionCount: 12, phase: .completed, style: WidgetStyle(scale: 2))
+        place(list, width: 180, height: 120)
+        let scroll = try XCTUnwrap(firstScrollView(in: list))
+        let document = try XCTUnwrap(scroll.documentView)
+        let overflow = document.frame.width - scroll.contentView.bounds.width
+        XCTAssertGreaterThan(overflow, 0, "The regression needs horizontal overflow")
+        var visibleButtons = 0
+        for step in 0...20 {
+            scroll.contentView.scroll(to: NSPoint(x: overflow * CGFloat(step) / 20, y: 0))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            scroll.flashScrollers()
+            list.layoutSubtreeIfNeeded()
+            let scroller = try XCTUnwrap(scroll.verticalScroller)
+            let track = scroller.convert(scroller.bounds, to: list)
+            let viewport = scroll.contentView.convert(scroll.contentView.bounds, to: list)
+            XCTAssertFalse(viewport.intersects(track))
+            for row in rows(in: list) {
+                let button = try XCTUnwrap(allSubviews(of: row).compactMap { $0 as? RowDismissButton }.first)
+                let visible = button.convert(button.bounds, to: list).intersection(viewport)
+                if visible.isEmpty { continue }
+                visibleButtons += 1
+                XCTAssertFalse(visible.intersects(track), "Offset \(step): visible button covered")
+            }
+        }
+        XCTAssertGreaterThan(visibleButtons, 0)
+    }
+
+    func testRealMouseDismissesBesideVisibleScrollbarWithoutDraggingWidget() throws {
+        guard ProcessInfo.processInfo.environment["SCROLLER_CLICK_PROBE"] == "1" else {
+            throw XCTSkip("Set SCROLLER_CLICK_PROBE=1 for a real mouse check")
+        }
+        XCTAssertTrue(AXIsProcessTrusted(), "Accessibility permission is required")
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.shared.finishLaunching()
+        var removed: [SessionSnapshot] = []
+        let list = HUDSessionListView(
+            models: rowModels((0..<12).map { session(index: $0, phase: .disconnected) }, now: now),
+            usageLimits: [], now: now, availableWidth: 339, focus: { _ in },
+            remove: { removed.append($0) }, background: .defaultBackground, lampScheme: LampScheme(),
+            backgroundOpacity: 1, restoredScrollOffset: nil, onScroll: { _ in })
+        let panel = HUDPanel(
+            contentRect: NSRect(x: 180, y: 180, width: 339, height: 120),
+            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        panel.isMovableByWindowBackground = true
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.contentView = list
+        panel.level = .floating
+        panel.hideStandardButtons()
+        panel.orderFrontRegardless()
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        defer { panel.close() }
+        settle(list)
+        let scroll = try XCTUnwrap(firstScrollView(in: list))
+        scroll.flashScrollers()
+        let row = try XCTUnwrap(wholeRowsInView(of: list).first)
+        let button = try XCTUnwrap(allSubviews(of: row).compactMap { $0 as? RowDismissButton }.first)
+        XCTAssertTrue(button.isEnabled)
+        let before = panel.frame
+        let screenPoint = panel.convertPoint(
+            toScreen: button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil))
+        let top = try XCTUnwrap(NSScreen.screens.first).frame.maxY
+        let point = CGPoint(x: screenPoint.x, y: top - screenPoint.y)
+        for type in [CGEventType.leftMouseDown, .leftMouseUp] {
+            try XCTUnwrap(
+                CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left)
+            )
+            .post(tap: .cghidEventTap)
+        }
+        let deadline = Date().addingTimeInterval(3)
+        while removed.isEmpty && Date() < deadline {
+            if let event = NSApplication.shared.nextEvent(
+                matching: .any, until: Date().addingTimeInterval(0.05), inMode: .default, dequeue: true)
+            {
+                NSApplication.shared.sendEvent(event)
+            }
+        }
+        XCTAssertEqual(removed.count, 1, "The real click must reach the dismiss action exactly once")
+        XCTAssertEqual(panel.frame, before, "Dismissing must not move the widget")
     }
 
     /// The window height and the content it frames come from one place now. This checks that

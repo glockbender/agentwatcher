@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 
@@ -81,4 +82,69 @@ final class EventDebugLogTests: XCTestCase {
         XCTAssertEqual(reopened.recentEntries().count, cap)
         XCTAssertEqual(reopened.recentEntries().last, "entry \(written - 1)")
     }
+    func testLongUnicodeAndMultilineEntriesStaySmallAndSingleLine() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let log = EventDebugLog(directoryURL: directory)
+        log.append(String(repeating: "🙂\n", count: 10_000))
+        let entry = try XCTUnwrap(log.recentEntries().last)
+        XCTAssertLessThanOrEqual(entry.utf8.count, 1024)
+        XCTAssertFalse(entry.contains("\n"))
+        XCTAssertFalse(entry.contains("�"))
+        XCTAssertTrue(entry.hasSuffix("…"))
+    }
+
+    func testOversizedExistingFileIsCompactedOnOpenAndExternalGrowthCannotBypassTheLimit() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("event-debug.log")
+        let oversized = Data((String(repeating: "old entry\n", count: 150_000) + "newest\n").utf8)
+        try oversized.write(to: file)
+        let log = EventDebugLog(directoryURL: directory)
+        XCTAssertEqual(log.recentEntries().last, "newest")
+        XCTAssertLessThanOrEqual(try Data(contentsOf: file).count, 1_048_576)
+        try oversized.write(to: file)
+        log.append("after external growth")
+        XCTAssertLessThanOrEqual(try Data(contentsOf: file).count, 1_048_576)
+        XCTAssertEqual(log.recentEntries().last, "after external growth")
+    }
+
+    func testRepeatedHugeEntriesNeverExceedTheDiskBudget() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let log = EventDebugLog(directoryURL: directory)
+        for _ in 0..<1100 { log.append(String(repeating: "x", count: 4096)) }
+        XCTAssertLessThanOrEqual(
+            try Data(contentsOf: directory.appendingPathComponent("event-debug.log")).count, 1_048_576)
+    }
+
+    func testHiddenDebugWindowKeepsOnlyRecentBoundedEntries() throws {
+        let controller = EventDebugWindowController(initialEntries: [])
+        for index in 0..<1500 {
+            controller.append("entry \(index) " + String(repeating: "x", count: 2048))
+        }
+        let scroll = try XCTUnwrap(controller.window?.contentView as? NSScrollView)
+        let text = try XCTUnwrap(scroll.documentView as? NSTextView).string
+        XCTAssertEqual(text.split(separator: "\n").count, 500)
+        XCTAssertTrue(text.hasPrefix("entry 1000 "))
+        XCTAssertLessThanOrEqual(text.utf8.count, 500 * 1025)
+    }
+
+    func testFailedCompactionDoesNotAllowTheFileToKeepGrowing() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file = directory.appendingPathComponent("event-debug.log")
+        let log = EventDebugLog(directoryURL: directory)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        for _ in 0..<1000 { log.append("entry") }
+        let before = try Data(contentsOf: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+        XCTAssertThrowsError(try Data().write(to: directory.appendingPathComponent("blocked")))
+        for _ in 0..<600 { log.append("must not bypass failed compaction") }
+        XCTAssertEqual(try Data(contentsOf: file), before)
+    }
+
 }
