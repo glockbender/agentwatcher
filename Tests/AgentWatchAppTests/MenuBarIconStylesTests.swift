@@ -352,3 +352,40 @@ extension NSColor {
             && abs(mine.blueComponent - theirs.blueComponent) <= tolerance
     }
 }
+
+/// The image the button is given under the drawing, which decides how the other screens
+/// blend their copy of the item.
+@MainActor
+final class MenuBarIconPlaceholderTests: XCTestCase {
+    /// Not a template, and nothing in it: the drawing on top is the only thing to see.
+    func testTheButtonGetsAClearImageThatIsNotATemplate() throws {
+        let button = NSButton(frame: NSRect(x: 0, y: 0, width: 60, height: 22))
+        let view = MenuBarIconView()
+        button.addSubview(view)
+
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 1, quiet: 1)))
+        view.fill(button)
+
+        let image = try XCTUnwrap(button.image, "the button was left without an image, and gets blended as a template")
+        XCTAssertFalse(image.isTemplate)
+        let map = try XCTUnwrap(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)))
+        let alphas = (0..<map.pixelsHigh).flatMap { row in
+            (0..<map.pixelsWide).map { map.colorAt(x: $0, y: row)?.alphaComponent ?? 1 }
+        }
+        XCTAssertEqual(alphas.max(), 0, "the placeholder shows through")
+    }
+
+    /// As wide as the drawing, and it follows the drawing when a column reaches two digits.
+    func testThePlaceholderFollowsTheDrawingsWidth() throws {
+        let button = NSButton(frame: NSRect(x: 0, y: 0, width: 60, height: 22))
+        let view = MenuBarIconView()
+        button.addSubview(view)
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 1, working: 1, done: 1, quiet: 1)))
+        view.fill(button)
+        XCTAssertEqual(button.image?.size.width, 49)
+
+        view.show(MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 12, working: 1, done: 1, quiet: 1)))
+
+        XCTAssertEqual(button.image?.size.width, 57, "the other screens would cut the wider grid")
+    }
+}

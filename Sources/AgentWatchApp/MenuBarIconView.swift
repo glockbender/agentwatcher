@@ -136,6 +136,7 @@ final class MenuBarIconView: NSView {
         // which is always, so it has to be asked.
         needsDisplay = true
         redrawRequests += 1
+        standInForTheButtonsImage()
         if let length = itemLength, length != reportedLength {
             reportedLength = length
             onLengthChange?(length)
@@ -152,6 +153,44 @@ final class MenuBarIconView: NSView {
         frame = button.bounds
         autoresizingMask = [.width, .height]
         positionLayers()
+        standInForTheButtonsImage()
+    }
+
+    /// Gives the button an image of its own: transparent, not a template, as large as the
+    /// drawing.
+    ///
+    /// On every screen but the active one the bar does not show this view: it shows a copy of
+    /// the item that AppKit draws itself (`NSStatusItemReplicantView`), and it decides how to
+    /// blend that copy by the button's image. With no image it takes the content for a
+    /// template and adds it to the bar (`plusL`) — right for a white glyph, and it turned the
+    /// icon's colours into pastels brighter than anything else on the bar: grey 0.68 came out
+    /// 0.84 over a bar of 0.29. With a non-template image the copy is laid over the bar as it
+    /// is, dimmed the way the system dims every other item on an inactive bar. Measured on
+    /// macOS 15.3.1; the choice is AppKit's and undocumented, so a later release may make it
+    /// differently.
+    ///
+    /// As large as the drawing because the copy may be cut to the image's size, and a grid
+    /// wider than its placeholder would lose its right-hand column on the other screen.
+    private func standInForTheButtonsImage() {
+        guard let button = superview as? NSButton, let size = drawing?.size else {
+            return
+        }
+        guard button.image?.size != size || button.image?.isTemplate != false else {
+            return
+        }
+        button.image = Self.placeholder(size: size)
+    }
+
+    /// Made the way the measurement made it — a bitmap filled with clear — rather than as an
+    /// image with no pixels behind it, which was never tried.
+    static func placeholder(size: NSSize) -> NSImage {
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSColor.clear.set()
+        NSRect(origin: .zero, size: size).fill()
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
     }
 
     /// The band the status bar actually gave this item.
