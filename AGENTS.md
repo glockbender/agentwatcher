@@ -92,4 +92,5 @@ Keep these current as part of the change, not after it.
   Codex or macOS. Its question is "what has to be re-checked now that the agent updated", so a new
   measurement gets a row with the version it was taken on, and the reasoning stays where it is.
 - `README.md` — for somebody installing the app: keep it short, and put developer-only notes in
-  this file instead.
+  this file instead. It describes the latest commit, never a particular release: no version
+  numbers, no "coming in the next release", no comparison with an older build.
