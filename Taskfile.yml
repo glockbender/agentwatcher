@@ -12,6 +12,7 @@ tasks:
       # The sender is an executable the tests look for on disk, so it is built first — and
       # by the task that owns that command, rather than by a second copy of it here.
       - task: build-sender
+      - python3 scripts/test-e2e-sandbox-cleanup.py
       - swift test --parallel -Xswiftc -warnings-as-errors
 
   lint:

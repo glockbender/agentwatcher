@@ -24,7 +24,9 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Darwin socket names have 104 bytes including their terminator. The per-user TMPDIR plus
 # support/AgentWatch/agent-watch.sock can exceed that even though each path component is valid.
+python3 "$project_root/scripts/e2e-sandbox-cleanup.py"
 sandbox="$(mktemp -d "/private/tmp/agent-watch-e2e.XXXXXX")"
+printf '%s\n' "$$" > "$sandbox/.agentwatch-e2e-owner"
 sandbox_name="$(basename "$sandbox")"
 support="$sandbox/support"
 app="$sandbox/AgentWatch.app"
@@ -170,6 +172,17 @@ for executable in AgentWatch AgentWatchSend; do
 done
 printf '   signature intact, both executables in place\n'
 pkill -f "$sandbox_name" 2>/dev/null || true
+# The relaunched release may still be shutting down after SIGTERM. Only exit status 1
+# from pgrep proves absence; keep the files if a process remains or the probe fails.
+probe_status=0
+for _ in $(seq 1 20); do
+    probe_status=0
+    pgrep -f "$sandbox_name" >/dev/null 2>&1 || probe_status=$?
+    [[ "$probe_status" -eq 1 ]] && break
+    sleep 1
+done
+[[ "$probe_status" -eq 1 ]] || fail "a test process remains or its absence could not be checked"
 
 say "PASSED: $old_version → $installed"
-printf 'the sandbox is left behind, remove it when done: %s\n' "$sandbox"
+/usr/bin/trash "$sandbox"
+printf 'the successful test directory was moved to Trash; empty Trash to reclaim space\n'

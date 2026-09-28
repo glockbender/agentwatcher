@@ -6,6 +6,8 @@ final class EventDebugLog {
     /// How many entries the window keeps. Not private so the tests can state the rule in
     /// terms of the cap rather than repeat its value, which is a tuning choice.
     static let maximumEntryCount = 500
+    static let maximumEntryByteCount = 1024
+    static let maximumFileByteCount = 1024 * 1024
     /// How far the file is allowed to run past the cap before it is rewritten. Trimming on
     /// every entry meant reading, joining and atomically rewriting the whole log for each
     /// event; letting it grow to twice the cap turns that into one rewrite per `maximumEntryCount`
@@ -41,8 +43,9 @@ final class EventDebugLog {
         self.fileURL = fileURL
 
         let stored = Self.storedEntries(at: fileURL)
-        linesOnDisk = stored.count
-        entries = Array(stored.suffix(Self.maximumEntryCount))
+        linesOnDisk = stored.entries.count
+        entries = Array(stored.entries.suffix(Self.maximumEntryCount))
+        if stored.needsRewrite, let fileURL { rewrite(to: fileURL) }
     }
 
     private static func defaultDirectoryURL(fileManager: FileManager) -> URL? {
@@ -59,7 +62,7 @@ final class EventDebugLog {
     }
 
     func makeEntry(for message: String) -> String {
-        "\(formatter.string(from: .now))  \(message)"
+        Self.boundedEntry("\(formatter.string(from: .now))  \(Self.boundedEntry(message))")
     }
 
     func append(_ entry: String) {
@@ -67,6 +70,7 @@ final class EventDebugLog {
             return
         }
 
+        let entry = Self.boundedEntry(entry)
         entries.append(entry)
         if entries.count > Self.maximumEntryCount {
             entries.removeFirst(entries.count - Self.maximumEntryCount)
@@ -90,9 +94,11 @@ final class EventDebugLog {
             return false
         }
         defer { try? handle.close() }
+        let data = Data("\(entry)\n".utf8)
         guard
-            (try? handle.seekToEnd()) != nil,
-            (try? handle.write(contentsOf: Data("\(entry)\n".utf8))) != nil
+            let size = try? handle.seekToEnd(),
+            size <= UInt64(Self.maximumFileByteCount - data.count),
+            (try? handle.write(contentsOf: data)) != nil
         else {
             return false
         }
@@ -101,18 +107,48 @@ final class EventDebugLog {
 
     private func rewrite(to fileURL: URL) {
         let contents = entries.joined(separator: "\n") + "\n"
-        try? contents.write(to: fileURL, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
-        linesOnDisk = entries.count
+        do {
+            try contents.write(to: fileURL, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            linesOnDisk = entries.count
+        } catch {
+            // Keep the old count so a failed compaction cannot reopen an append allowance.
+        }
     }
 
-    private static func storedEntries(at fileURL: URL?) -> [String] {
-        guard
-            let fileURL,
-            let contents = try? String(contentsOf: fileURL, encoding: .utf8)
-        else {
-            return []
+    /// Limit bytes before decoding, so one large event cannot grow either the file or hidden UI.
+    static func boundedEntry(_ entry: String) -> String {
+        var bytes = Array(entry.utf8.prefix(maximumEntryByteCount + 1))
+        let shortened = bytes.count > maximumEntryByteCount
+        if shortened {
+            bytes = Array(bytes.prefix(maximumEntryByteCount - "…".utf8.count))
+            while String(bytes: bytes, encoding: .utf8) == nil { bytes.removeLast() }
         }
-        return contents.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        let text = String(decoding: bytes, as: UTF8.self)
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+        return text + (shortened ? "…" : "")
+    }
+
+    private static func storedEntries(at fileURL: URL?) -> (entries: [String], needsRewrite: Bool) {
+        guard let fileURL, let handle = try? FileHandle(forReadingFrom: fileURL) else {
+            return ([], false)
+        }
+        defer { try? handle.close() }
+        do {
+            let size = try handle.seekToEnd()
+            let offset = size > maximumFileByteCount ? size - UInt64(maximumFileByteCount) : 0
+            try handle.seek(toOffset: offset)
+            var data = try handle.read(upToCount: maximumFileByteCount) ?? Data()
+            if offset > 0 {
+                // The tail may start midway through a record or UTF-8 character.
+                data = data.firstIndex(of: 10).map { Data(data.suffix(from: data.index(after: $0))) } ?? Data()
+            }
+            let raw = String(decoding: data, as: UTF8.self).split(separator: "\n").map(String.init)
+            let entries = raw.map(boundedEntry)
+            return (entries, offset > 0 || raw.count > maximumLinesOnDisk || raw != entries)
+        } catch {
+            return ([], false)
+        }
     }
 }
