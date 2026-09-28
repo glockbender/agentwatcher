@@ -434,8 +434,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// The icon's lines, read again from the settings — straight after a choice as well, while
     /// the submenu is still open.
     ///
-    /// The plain glyph counts nothing, so it greys every state; that line, ticked right above
-    /// them, is the reason. Otherwise only the last state left is greyed, and says why.
+    /// Only the last state left is greyed, and says why.
     func refreshMenuBarIcon() {
         let style = settings.menuBarIconStyle
         for (candidate, row) in iconStyleRows {
@@ -446,8 +445,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             let isOn = shown.contains(attention)
             let isLast = isOn && shown.count == 1
             row.isOn = isOn
-            row.isAvailable = style != .appIcon && !isLast
-            row.note = style != .appIcon && isLast ? Self.lastIconStateNote : nil
+            row.isAvailable = !isLast
+            row.note = isLast ? Self.lastIconStateNote : nil
         }
     }
 

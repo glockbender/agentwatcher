@@ -138,7 +138,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
             Key.scale: .number(Double(Self.defaultScale)),
             Key.toggleShortcut: .string(Self.defaultToggleShortcut),
-            Key.menuBarIconStyle: .string(MenuBarIconStyle.counts.rawValue),
+            Key.menuBarIconStyle: .string(MenuBarIconStyle.sphere.rawValue),
             Key.menuBarIconAttentions: .array(Self.stored(Set(SessionAttention.counted)).map(JSONValue.string)),
             Key.listsSessionsInMenu: .bool(true),
             Key.menuSessionAttentions: .array(Self.stored(Self.defaultMenuSessionAttentions).map(JSONValue.string)),
@@ -237,13 +237,12 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     /// What the status item draws: the counts unless a person picks otherwise.
     ///
-    /// The counts and not the plain app glyph, and that includes a copy updating into this
-    /// version: the key is missing there too. So the item grows from 22 pt to around 51 pt
-    /// without anybody asking for it — deliberate, because a feature that exists to be seen is
-    /// not served by a switch almost nobody would find. A name this version does not know
-    /// reads as the counts, for the same reason.
+    /// The sphere until a person picks the grid — and that includes a copy updating into this
+    /// version, where the key is missing, and one that stored a style this version no longer
+    /// has: the plain glyph or the pie. A feature that exists to be seen is not served by a
+    /// switch almost nobody would find.
     var menuBarIconStyle: MenuBarIconStyle {
-        preferences.string(forKey: Key.menuBarIconStyle).flatMap(MenuBarIconStyle.init(rawValue:)) ?? .counts
+        preferences.string(forKey: Key.menuBarIconStyle).flatMap(MenuBarIconStyle.init(rawValue:)) ?? .sphere
     }
 
     func setMenuBarIconStyle(_ style: MenuBarIconStyle) {

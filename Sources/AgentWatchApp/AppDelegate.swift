@@ -226,23 +226,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Puts the status item into whichever of its styles the setting asks for.
-    ///
-    /// The plain style is exactly what shipped before the counts existed: a template glyph on
-    /// a `squareLength` item, 22 pt. That length matters — the same glyph on a
-    /// `variableLength` item measures 32 pt, so an item left variable would be 10 pt wider
-    /// than before while showing strictly less.
     private func applyMenuBarIcon() {
         guard let item = statusItem, let button = item.button else {
             return
         }
-        let style = settings.menuBarIconStyle
-        guard style != .appIcon else {
-            showPlainStatusGlyph(on: item)
-            return
-        }
-
         let view = menuBarIconView ?? makeMenuBarIconView()
-        guard view.show(menuBarCells, as: style) else {
+        guard view.show(menuBarCells, as: settings.menuBarIconStyle) else {
             // A symbol the running system does not have. Fail-open, like every other reading
             // of something this app does not own.
             showPlainStatusGlyph(on: item)
@@ -275,6 +264,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return view
     }
 
+    /// What shipped before the counts existed, kept only for the grid's missing symbols: a
+    /// template glyph on a `squareLength` item, 22 pt. That length matters — the same glyph on
+    /// a `variableLength` item measures 32 pt, 10 pt wider for an icon that shows less.
     private func showPlainStatusGlyph(on item: NSStatusItem) {
         menuBarIconView?.removeFromSuperview()
         menuBarIconView = nil

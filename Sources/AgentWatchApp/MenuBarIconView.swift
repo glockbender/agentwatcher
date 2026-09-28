@@ -42,8 +42,7 @@ final class MenuBarIconView: NSView {
     ///
     /// `false` leaves the caller to put the plain app glyph back: the symbols are the
     /// system's, the deployment floor is older than the machine they were measured on, and an
-    /// icon that says less beats an icon that is not there. The plain glyph is not this view's
-    /// to draw, so `.appIcon` is always `false`.
+    /// icon that says less beats an icon that is not there.
     @discardableResult
     func show(_ cells: [MenuBarIconCell], as style: MenuBarIconStyle = .counts) -> Bool {
         guard cells != self.cells || style != self.style else {
@@ -111,7 +110,6 @@ final class MenuBarIconView: NSView {
             switch style {
             case .counts: MenuBarIconRenderer.draw(cells, dark: isDark)
             case .sphere: MenuBarSphereRenderer.draw(cells, dark: isDark, scale: scale)
-            case .appIcon: nil
             }
         guard let drawing = drawn else {
             return false

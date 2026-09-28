@@ -263,11 +263,11 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(announced, 2)
     }
 
-    /// The counts, as the icon shipped, until a person picks another style.
-    func testTheIconShowsTheCountsOfEveryStateUntilAskedOtherwise() throws {
+    /// The sphere, counting every state, until a person picks otherwise.
+    func testTheIconIsASphereOfEveryStateUntilAskedOtherwise() throws {
         let store = try makeStore()
 
-        XCTAssertEqual(store.menuBarIconStyle, .counts)
+        XCTAssertEqual(store.menuBarIconStyle, .sphere)
         XCTAssertEqual(store.menuBarIconAttentions, Set(SessionAttention.counted))
     }
 
@@ -275,12 +275,12 @@ final class WidgetSettingsStoreTests: XCTestCase {
         let preferences = try isolatedPreferences()
         let store = WidgetSettingsStore(preferences: preferences)
 
-        store.setMenuBarIconStyle(.sphere)
+        store.setMenuBarIconStyle(.counts)
         store.setMenuBarIconShows(.quiet, false)
         store.setMenuBarIconShows(.done, false)
 
         let reopened = WidgetSettingsStore(preferences: preferences)
-        XCTAssertEqual(reopened.menuBarIconStyle, .sphere)
+        XCTAssertEqual(reopened.menuBarIconStyle, .counts)
         XCTAssertEqual(reopened.menuBarIconAttentions, [.needsPerson, .working])
         XCTAssertEqual(preferences.strings(forKey: "menuBarIconAttentions"), ["needsPerson", "working"])
     }
@@ -316,14 +316,16 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(announced, 3, "a refused write was announced")
     }
 
-    /// An edited file is the only way to an empty list or a name this version does not know,
-    /// and neither may leave the icon blank. The name is the pie's, which the sphere replaced
-    /// before any release: a build from between the two left it behind.
+    /// An empty list or a name this version does not know may not leave the icon blank. The
+    /// names are the two styles taken out before any release, the pie and the plain glyph: a
+    /// build from between left them behind.
     func testAnIconFileThisVersionCannotReadStillDrawsSomething() throws {
         let preferences = try isolatedPreferences()
-        preferences.set("pie", forKey: "menuBarIconStyle")
+        for retired in ["pie", "appIcon"] {
+            preferences.set(retired, forKey: "menuBarIconStyle")
+            XCTAssertEqual(WidgetSettingsStore(preferences: preferences).menuBarIconStyle, .sphere, retired)
+        }
         preferences.set([String](), forKey: "menuBarIconAttentions")
-        XCTAssertEqual(WidgetSettingsStore(preferences: preferences).menuBarIconStyle, .counts)
         XCTAssertEqual(
             WidgetSettingsStore(preferences: preferences).menuBarIconAttentions, Set(SessionAttention.counted))
 

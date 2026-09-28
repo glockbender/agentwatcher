@@ -237,9 +237,9 @@ final class MenuBarIconStylesTests: XCTestCase {
         XCTAssertEqual(view.redrawRequests, before + 1)
     }
 
-    /// The plain glyph is the item's own image, never this view's drawing.
-    func testTheViewDoesNotDrawTheAppIcon() {
-        XCTAssertFalse(MenuBarIconView().show(cells(needsPerson: 1, working: 0, done: 0, quiet: 0), as: .appIcon))
+    /// No states at all is no drawing: the view can be asked to repaint — the bar turned dark —
+    /// before it was ever given anything to draw.
+    func testNoStatesIsNoSphere() {
         XCTAssertNil(MenuBarSphereRenderer.draw([], dark: true))
     }
 

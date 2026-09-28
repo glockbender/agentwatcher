@@ -29,9 +29,8 @@ final class StatusMenuTests: XCTestCase {
                 "  Tooling…",
                 "  ---",
                 "  Menu Bar Icon",
-                "    App Icon",
-                "    Counts",
                 "    Sphere",
+                "    Counts",
                 "    ---",
                 "    Needs You",
                 "    Working",
@@ -86,7 +85,7 @@ final class StatusMenuTests: XCTestCase {
 
     func testOpeningTheMenuShowsWhatIsStoredAndWhatIsGoingOn() throws {
         let (menu, host, settings) = try makeMenu()
-        settings.setMenuBarIconStyle(.sphere)
+        settings.setMenuBarIconStyle(.counts)
         settings.setMenuBarIconShows(.quiet, false)
         settings.setLocksPosition(true)
         settings.setClosedSessionRetention(.manual)
@@ -99,7 +98,7 @@ final class StatusMenuTests: XCTestCase {
         menu.menuWillOpen(menu.menu)
 
         XCTAssertEqual(menu.summaryItem?.title, "1 needs you · 2 working")
-        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.sphere])
+        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.counts])
         XCTAssertEqual(
             SessionAttention.counted.filter { menu.iconAttentionRows[$0]?.isOn == true },
             [.needsPerson, .working, .done]
@@ -345,36 +344,18 @@ final class StatusMenuTests: XCTestCase {
     }
 
     /// The styles are one choice: picking one writes it and moves the tick, and a screen
-    /// reader hears a group of radio buttons rather than three checkboxes.
+    /// reader hears a group of radio buttons rather than two checkboxes.
     func testTheIconStylesAreOneChoice() throws {
         let (menu, _, settings) = try makeMenu()
         menu.menuWillOpen(menu.menu)
-        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.counts])
-
-        try XCTUnwrap(menu.iconStyleRows[.sphere]).toggle()
-
-        XCTAssertEqual(settings.menuBarIconStyle, .sphere)
         XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.sphere])
-        XCTAssertEqual(menu.iconStyleRows[.sphere]?.accessibilityRole(), .radioButton)
-        XCTAssertEqual(menu.iconAttentionRows[.working]?.accessibilityRole(), .checkBox)
-    }
-
-    /// The plain glyph counts nothing, so its states are greyed — kept, not hidden, and back
-    /// the moment a style that counts is picked again.
-    func testTheAppIconGreysTheIconsStatesAndKeepsThem() throws {
-        let (menu, _, settings) = try makeMenu()
-        menu.menuWillOpen(menu.menu)
-        settings.setMenuBarIconShows(.quiet, false)
-
-        try XCTUnwrap(menu.iconStyleRows[.appIcon]).toggle()
-
-        XCTAssertEqual(menu.iconAttentionRows.values.map(\.isAvailable), [false, false, false, false])
-        XCTAssertEqual(menu.iconAttentionRows[.quiet]?.isOn, false, "the choice was not kept")
-        try XCTUnwrap(menu.iconAttentionRows[.done]).toggle()
-        XCTAssertTrue(settings.menuBarIconAttentions.contains(.done), "a greyed line took a click")
 
         try XCTUnwrap(menu.iconStyleRows[.counts]).toggle()
-        XCTAssertEqual(menu.iconAttentionRows.values.map(\.isAvailable), [true, true, true, true])
+
+        XCTAssertEqual(settings.menuBarIconStyle, .counts)
+        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.counts])
+        XCTAssertEqual(menu.iconStyleRows[.counts]?.accessibilityRole(), .radioButton)
+        XCTAssertEqual(menu.iconAttentionRows[.working]?.accessibilityRole(), .checkBox)
     }
 
     /// An icon with nothing to count has nothing to draw, so the last state left is greyed

@@ -59,21 +59,21 @@ enum MenuBarIconMetrics {
     static let itemPadding: CGFloat = 2
 }
 
-/// What the status item draws.
+/// What the status item draws, in the order the menu offers them.
+///
+/// There is no style for the app's plain glyph, which counts nothing; the owner took it out.
+/// The glyph is still what the item falls back to when the grid's symbols are missing.
 enum MenuBarIconStyle: String, CaseIterable {
-    /// The app's own glyph and nothing else — what shipped before the counts.
-    case appIcon
-    /// A mark and a number for each state shown.
-    case counts
     /// One sphere, each state shown that holds anything a patch of its colour on it.
     case sphere
+    /// A mark and a number for each state shown.
+    case counts
 
     /// Its name where a person chooses it.
     var name: String {
         switch self {
-        case .appIcon: "App Icon"
-        case .counts: "Counts"
         case .sphere: "Sphere"
+        case .counts: "Counts"
         }
     }
 }
