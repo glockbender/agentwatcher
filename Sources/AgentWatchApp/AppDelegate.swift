@@ -95,6 +95,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings: settings,
             rowLayouts: rowLayouts
         )
+        controller.openSetup = { [weak self] in
+            self?.toolingController.startSetup()
+            self?.toolingController.present()
+        }
         // The order the menu shows too — see `SessionOrderBook`.
         controller.order = { [orderBook] sessions, now in
             orderBook.order(sessions, now: now)
@@ -112,7 +116,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var debugController = EventDebugWindowController(initialEntries: debugLog.recentEntries())
     private lazy var ingress = HookIngressController(
         socketURL: { [singleInstanceCoordinator] in singleInstanceCoordinator.socketURL() },
-        ingest: { [weak self] request in self?.supervisor.ingest(request) },
+        ingest: { [weak self] request in
+            guard let self else { return nil }
+            let event = self.supervisor.ingest(request)
+            if self.toolingController.isShowing {
+                self.toolingController.receivedEvents(self.tooling.receivedSources)
+            }
+            return event
+        },
         reveal: { [weak self] in self?.revealExistingInstance() },
         log: { [weak self] message in self?.recordDebug(message) }
     )

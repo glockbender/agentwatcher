@@ -25,6 +25,24 @@ final class ToolingCoordinatorTests: XCTestCase {
         XCTAssertEqual(logged, [hooksInstalledMessage(for: .claude)])
     }
 
+    func testAnOldGuideInstallPressCannotRemoveAnExistingConnection() throws {
+        let (coordinator, home) = try makeCoordinator()
+        let installer = ToolingInstaller(home: home)
+        for source in AgentSource.allCases {
+            let integration = ToolingIntegration(source: source, kind: .hooks)
+            coordinator.press(.integration(integration))
+            let installed = try Data(contentsOf: installer.hooksPath(for: source))
+            coordinator.press(.install(integration))
+            XCTAssertEqual(try Data(contentsOf: installer.hooksPath(for: source)), installed)
+            XCTAssertEqual(coordinator.hookState(for: source), .unheard)
+        }
+        let statusLine = ToolingIntegration(source: .claude, kind: .statusLine)
+        coordinator.press(.integration(statusLine))
+        let connected = try Data(contentsOf: installer.statusLinePath)
+        coordinator.press(.install(statusLine))
+        XCTAssertEqual(try Data(contentsOf: installer.statusLinePath), connected)
+    }
+
     func testPressingTheSameIntegrationAgainTakesTheRecordsBackOut() throws {
         let (coordinator, _) = try makeCoordinator()
         coordinator.press(.integration(ToolingIntegration(source: .claude, kind: .hooks)))
@@ -70,6 +88,7 @@ final class ToolingCoordinatorTests: XCTestCase {
         coordinator.press(.integration(ToolingIntegration(source: .claude, kind: .hooks)))
 
         XCTAssertEqual(changes, 1)
+        XCTAssertNotNil(coordinator.lastError)
         XCTAssertTrue(
             logged.contains { $0.hasPrefix("Tooling change failed") },
             "a change that silently did nothing is the one outcome nobody can diagnose: \(logged)"

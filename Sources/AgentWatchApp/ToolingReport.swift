@@ -57,6 +57,8 @@ struct ToolingReportAction: Equatable {
 /// agent rows learning anything about IDEs.
 enum ToolingPress: Hashable {
     case integration(ToolingIntegration)
+    /// Installation-only action: a stale guide button must never remove a connection.
+    case install(ToolingIntegration)
     /// Copy the plugin file's path and open this IDE's Plugins page.
     case idePluginsPage(dataDirectoryName: String)
     /// Ask this IDE whether the plugin is loaded in it, now.

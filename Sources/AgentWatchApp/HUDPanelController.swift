@@ -5,6 +5,7 @@ import AppKit
 final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// Everything the widget is currently showing. Replaced whole, by `render`, and by
     /// nothing else — see `WidgetState`.
+    var openSetup: () -> Void = {}
     private var state = WidgetState()
     private var freshnessTimer: Timer?
     private var dismissalTimer: Timer?
@@ -110,7 +111,8 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 background: background,
                 backgroundOpacity: backgroundOpacity,
                 style: style,
-                complaint: state.complaint
+                complaint: state.complaint,
+                openSetup: { [weak self] in self?.openSetup() }
             )
         )
         hoverCard.style = style
@@ -281,7 +283,8 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                     background: background,
                     backgroundOpacity: backgroundOpacity,
                     style: style,
-                    complaint: state.complaint
+                    complaint: state.complaint,
+                    openSetup: { [weak self] in self?.openSetup() }
                 )
             )
         } else {

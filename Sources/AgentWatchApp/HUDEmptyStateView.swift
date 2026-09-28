@@ -6,6 +6,8 @@ import AppKit
 /// be. The two are swapped into the same container and are read as a pair.
 @MainActor
 final class HUDEmptyStateView: NSView {
+    private let openSetup: () -> Void
+
     /// - Parameter complaint: the one thing the widget is allowed to ask for — that some
     ///   agent is able to report to it at all. `nil` when one already can, and then the
     ///   widget says nothing about the rest: running only Claude on a machine that also has
@@ -14,8 +16,10 @@ final class HUDEmptyStateView: NSView {
         background: WidgetBackground,
         backgroundOpacity: CGFloat,
         style: WidgetStyle = .standard,
-        complaint: String? = nil
+        complaint: String? = nil,
+        openSetup: @escaping () -> Void = {}
     ) {
+        self.openSetup = openSetup
         super.init(frame: .zero)
         let effectView = makeBackgroundView(for: background, opacity: backgroundOpacity)
 
@@ -49,7 +53,17 @@ final class HUDEmptyStateView: NSView {
         subtitle.lineBreakMode = .byWordWrapping
         subtitle.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let textStack = NSStackView(views: [title, subtitle])
+        let titleView: NSView
+        if complaint != nil {
+            let connect = SetupButton(title: "Connect Agent →", target: self, action: #selector(connectPressed))
+            connect.bezelStyle = .rounded
+            connect.font = style.emptyTitleFont
+            connect.setAccessibilityLabel("Connect an agent. Open guided setup")
+            titleView = connect
+        } else {
+            titleView = title
+        }
+        let textStack = NSStackView(views: [titleView, subtitle])
         textStack.orientation = .vertical
         textStack.alignment = .leading
         textStack.spacing = style.emptyStateLineGap
@@ -73,8 +87,17 @@ final class HUDEmptyStateView: NSView {
         effectView.pinToEdges(of: self)
     }
 
+    @objc private func connectPressed() { openSetup() }
+
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         nil
     }
+}
+
+/// A real control consumes its press instead of starting the panel's background drag.
+@MainActor
+private final class SetupButton: NSButton {
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
