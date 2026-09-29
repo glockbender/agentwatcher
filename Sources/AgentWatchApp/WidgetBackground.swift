@@ -54,14 +54,8 @@ struct WidgetBackground: Hashable {
     static let mint = preset("mint", NSColor(calibratedRed: 0.88, green: 0.96, blue: 0.92, alpha: 1))
     static let sky = preset("sky", NSColor(calibratedRed: 0.88, green: 0.94, blue: 0.99, alpha: 1))
 
-    /// The palette's two rows. Only an order for the window now: whether a background takes
-    /// dark text is the colour's to say, and a test holds the two to agreeing.
-    static let dark: [WidgetBackground] = [.graphite, .midnight, .forest, .plum, .cocoa, .slate]
-    static let light: [WidgetBackground] = [.pearl, .sand, .mint, .sky]
-    static let presets = dark + light
-
     static func preset(named name: String) -> WidgetBackground? {
-        presets.first { $0.storedName == name }
+        [graphite, midnight, forest, plum, cocoa, slate, pearl, sand, mint, sky].first { $0.storedName == name }
     }
 
     /// A preset's title is its stored name, capitalised — written once so the two cannot drift.
@@ -138,6 +132,44 @@ struct WidgetBackground: Hashable {
     }
 }
 
+/// What the widget's panel is made of.
+enum WidgetMaterial: String, CaseIterable {
+    /// Liquid Glass carrying the chosen colour. The default where the system has it.
+    case glass
+    /// Liquid Glass that lets more of the desktop through, for a quiet wallpaper.
+    case clearGlass
+    /// The frosted material every macOS before 26 has.
+    case frosted
+    /// The chosen colour and nothing behind it, for a busy wallpaper.
+    case solid
+
+    var name: String {
+        switch self {
+        case .glass: "Glass"
+        case .clearGlass: "Clear glass"
+        case .frosted: "Frosted"
+        case .solid: "Solid"
+        }
+    }
+
+    var needsLiquidGlass: Bool {
+        self == .glass || self == .clearGlass
+    }
+
+    static var systemHasLiquidGlass: Bool {
+        if #available(macOS 26.0, *) { true } else { false }
+    }
+
+    /// What is drawn: glass asked for on a system without it is frosted.
+    var drawn: WidgetMaterial {
+        needsLiquidGlass && !Self.systemHasLiquidGlass ? .frosted : self
+    }
+
+    /// Kept here rather than handed down through every view that draws a backdrop; the store
+    /// sets it, and the widget is rebuilt on every change.
+    @MainActor static var current: WidgetMaterial = .glass
+}
+
 final class WidgetBackgroundStore: PreferenceDefaults {
     static let defaultOpacity: CGFloat = 0.82
     /// Not zero: an invisible widget cannot be found again by the person who made it
@@ -151,15 +183,15 @@ final class WidgetBackgroundStore: PreferenceDefaults {
         /// above, so it outlives a detour through a preset: the palette keeps offering it back.
         static let customColor = "widgetBackgroundCustomColor"
         static let opacity = "widgetBackgroundOpacity"
+        static let material = "widgetBackgroundMaterial"
     }
 
     private let preferences: PreferenceFile
 
     var defaultValues: [String: JSONValue] {
         [
-            Key.selectedBackground: .string(WidgetBackground.defaultBackground.storedName),
-            Key.customColor: .string(WidgetBackground.defaultBackground.color.srgbHex ?? "#006996"),
             Key.opacity: .number(Double(Self.defaultOpacity)),
+            Key.material: .string(WidgetMaterial.glass.rawValue),
         ]
     }
 
@@ -195,26 +227,12 @@ final class WidgetBackgroundStore: PreferenceDefaults {
         return normalizedOpacity(CGFloat(stored))
     }
 
-    func select(_ background: WidgetBackground) {
-        guard background.isCustom else {
-            preferences.set(background.storedName, forKey: Key.selectedBackground)
-            onChange?(.background)
-            return
-        }
-        guard let hex = background.color.srgbHex else {
-            return
-        }
-        // Nothing written when nothing moved, for the reason `setScale` gives: the wheel reports
-        // every shade the pointer passes, two neighbouring shades are often the same colour at
-        // the file's precision, and each write rebuilds every row in the widget.
-        guard !selected.isCustom || hex != preferences.string(forKey: Key.customColor) else {
-            return
-        }
-        // One write for both keys, so the file never names `custom` with the previous colour.
-        preferences.replace([
-            Key.selectedBackground: .string(background.storedName),
-            Key.customColor: .string(hex),
-        ])
+    var material: WidgetMaterial {
+        preferences.string(forKey: Key.material).flatMap(WidgetMaterial.init(rawValue:)) ?? .glass
+    }
+
+    func selectMaterial(_ material: WidgetMaterial) {
+        preferences.set(material.rawValue, forKey: Key.material)
         onChange?(.background)
     }
 

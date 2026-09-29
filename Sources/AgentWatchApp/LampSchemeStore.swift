@@ -1,16 +1,14 @@
 import AgentWatchCore
 import AppKit
 
-/// The lamp scheme as it is kept between launches.
+/// The lamp colours as older versions kept them, one key per phase and field — read once, to
+/// carry them into a theme of their own (`ThemeStore.adoptIfNeeded`).
 ///
 /// One key per phase and per field, spelled out rather than nested, because the file is meant
 /// to be read and corrected by hand: `lampColor.executing` says what it is without a legend.
 /// Missing fields use the phase's defaults, so an older file keeps its existing appearance.
-final class LampSchemeStore: PreferenceDefaults {
+final class LampSchemeStore {
     private let preferences: PreferenceFile
-
-    /// Told after every write, like the other preference stores.
-    var onChange: ((WidgetSetting) -> Void)?
 
     init(preferences: PreferenceFile) {
         self.preferences = preferences
@@ -59,61 +57,8 @@ final class LampSchemeStore: PreferenceDefaults {
         return LampScheme(styles: styles)
     }
 
-    /// Every key this store owns, at its default value, for the first launch and for a reset.
-    var defaultValues: [String: JSONValue] {
-        var values: [String: JSONValue] = [:]
-        for phase in SessionPhase.allCases {
-            let style = phase.defaultLampStyle
-            // A default colour is written from the same `#RRGGBB` the source file spells, so
-            // the file a fresh install gets does not depend on the machine that wrote it.
-            if let hex = style.color.srgbHex {
-                values[Self.colorKey(phase)] = .string(hex)
-            }
-            values[Self.motionKey(phase)] = .string(style.motion.rawValue)
-            values[Self.gradientColorKey(phase)] = .string(style.gradientColor.srgbHex ?? "#FFFFFF")
-            values[Self.animationCycleKey(phase)] = .number(style.animationCycle)
-        }
-        return values
-    }
-
-    func setColor(_ color: NSColor, for phase: SessionPhase) {
-        guard let hex = color.srgbHex else {
-            return
-        }
-        preferences.set(hex, forKey: Self.colorKey(phase))
-        onChange?(.lampScheme)
-    }
-
-    func setMotion(_ motion: SessionLampAppearance.Motion, for phase: SessionPhase) {
-        preferences.set(motion.rawValue, forKey: Self.motionKey(phase))
-        onChange?(.lampScheme)
-    }
-
-    func setGradientColor(_ color: NSColor, for phase: SessionPhase) {
-        guard let hex = color.srgbHex else { return }
-        preferences.set(hex, forKey: Self.gradientColorKey(phase))
-        onChange?(.lampScheme)
-    }
-
-    func setAnimationCycle(_ seconds: TimeInterval, for phase: SessionPhase) {
-        guard seconds.isFinite else { return }
-        preferences.set(Self.clampedCycle(seconds), forKey: Self.animationCycleKey(phase))
-        onChange?(.lampScheme)
-    }
-
     private static func clampedCycle(_ seconds: TimeInterval) -> TimeInterval {
         min(max(seconds, LampStyle.animationCycleRange.lowerBound), LampStyle.animationCycleRange.upperBound)
-    }
-
-    /// Back to the app's own lamp, every phase at once.
-    ///
-    /// Writes the defaults rather than removing the keys, because the file is meant to hold
-    /// the whole scheme at all times: after a reset it says what the lamp is, in the same
-    /// shape as before, and a person reading it never has to know which fields are missing
-    /// and what the app would have done about them.
-    func reset() {
-        preferences.replace(defaultValues)
-        onChange?(.lampScheme)
     }
 
     private static func colorKey(_ phase: SessionPhase) -> String {

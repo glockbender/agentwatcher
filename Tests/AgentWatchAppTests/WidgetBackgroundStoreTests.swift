@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import XCTest
 
 @testable import AgentWatchApp
@@ -10,11 +10,11 @@ final class WidgetBackgroundStoreTests: XCTestCase {
         XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).selected, .defaultBackground)
     }
 
-    func testPersistsTheSelectedBackground() throws {
+    /// Read only now — the theme chooses the colour — but an older file still names a preset,
+    /// and `ThemeStore.adoptIfNeeded` needs it read to carry it over.
+    func testReadsAPresetAnOlderFileNamed() throws {
         let preferences = try isolatedPreferences()
-        let store = WidgetBackgroundStore(preferences: preferences)
-
-        store.select(.mint)
+        preferences.set("mint", forKey: "widgetBackground")
 
         XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).selected, .mint)
     }
@@ -53,7 +53,7 @@ final class WidgetBackgroundStoreTests: XCTestCase {
         let expectedForeground = NSColor(calibratedRed: 0.10, green: 0.12, blue: 0.15, alpha: 1)
         let expectedSecondary = NSColor(calibratedRed: 0.29, green: 0.33, blue: 0.38, alpha: 1)
 
-        for background in WidgetBackground.light {
+        for background in [WidgetBackground.pearl, .sand, .mint, .sky] {
             XCTAssertEqual(background.foregroundColor, expectedForeground)
             XCTAssertEqual(background.secondaryForegroundColor, expectedSecondary)
         }
@@ -63,7 +63,7 @@ final class WidgetBackgroundStoreTests: XCTestCase {
     /// decides its text now, and the palette's hand-sorted rows are what that rule has to agree
     /// with — or a preset would change its text the day the rule replaced the list.
     func testDarkBackgroundsUseWhiteText() {
-        for background in WidgetBackground.dark {
+        for background in [WidgetBackground.graphite, .midnight, .forest, .plum, .cocoa, .slate] {
             XCTAssertEqual(background.foregroundColor, NSColor(calibratedWhite: 1, alpha: 1), background.title)
         }
     }
@@ -75,26 +75,14 @@ final class WidgetBackgroundStoreTests: XCTestCase {
         XCTAssertEqual(store.selected.color.srgbHex, "#006996")
     }
 
-    func testPersistsAColourOfThePersonsOwn() throws {
+    func testReadsAColourOfThePersonsOwnAnOlderFileKept() throws {
         let preferences = try isolatedPreferences()
-
-        WidgetBackgroundStore(preferences: preferences).select(try custom("#336699"))
+        preferences.set("custom", forKey: "widgetBackground")
+        preferences.set("#336699", forKey: "widgetBackgroundCustomColor")
 
         let reopened = WidgetBackgroundStore(preferences: preferences)
         XCTAssertTrue(reopened.selected.isCustom)
         XCTAssertEqual(reopened.selected.color.srgbHex, "#336699")
-    }
-
-    /// Kept under its own key for this: a person who tries a preset and comes back finds their
-    /// colour still offered, instead of having to find it on the wheel again.
-    func testTheOwnColourOutlivesADetourThroughAPreset() throws {
-        let store = WidgetBackgroundStore(preferences: try isolatedPreferences())
-
-        store.select(try custom("#336699"))
-        store.select(.mint)
-
-        XCTAssertEqual(store.selected, .mint)
-        XCTAssertEqual(store.customColor?.srgbHex, "#336699")
     }
 
     /// The file is meant to be corrected by hand, so `custom` with nothing readable behind it is
@@ -109,30 +97,6 @@ final class WidgetBackgroundStoreTests: XCTestCase {
             preferences.set(unreadable, forKey: "widgetBackgroundCustomColor")
             XCTAssertEqual(store.selected, .defaultBackground, unreadable)
         }
-    }
-
-    /// The wheel reports every shade the pointer passes, and each report rebuilds every row in
-    /// the widget: a shade that is the same colour at the file's precision is not a change.
-    func testAnOwnColourThatHasNotMovedIsNotWrittenAgain() throws {
-        let store = WidgetBackgroundStore(preferences: try isolatedPreferences())
-        var changes = 0
-        store.onChange = { _ in changes += 1 }
-
-        store.select(try custom("#336699"))
-        store.select(try custom("#336699"))
-        let sameAtTheFilesPrecision = try XCTUnwrap(
-            WidgetBackground(custom: NSColor(srgbRed: 0.2001, green: 0.4001, blue: 0.6001, alpha: 1)))
-        store.select(sameAtTheFilesPrecision)
-        XCTAssertEqual(changes, 1)
-
-        store.select(try custom("#336698"))
-        XCTAssertEqual(changes, 2)
-
-        // And coming back to the same colour from a preset is a change: the widget moves.
-        store.select(.mint)
-        store.select(try custom("#336698"))
-        XCTAssertEqual(changes, 4)
-        XCTAssertTrue(store.selected.isCustom)
     }
 
     /// Either side of where the rule turns over, so a change to the text colours or to the
@@ -159,12 +123,21 @@ final class WidgetBackgroundStoreTests: XCTestCase {
         try XCTUnwrap(NSColor(hex: hex).flatMap(WidgetBackground.init(custom:)))
     }
 
+    func testPersistsTheChosenMaterial() throws {
+        let preferences = try isolatedPreferences()
+        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).material, .glass)
+
+        WidgetBackgroundStore(preferences: preferences).selectMaterial(.solid)
+
+        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).material, .solid)
+    }
+
     func testTellsItsOneListenerWhichSettingChanged() throws {
         let store = WidgetBackgroundStore(preferences: try isolatedPreferences())
         var changed: [WidgetSetting] = []
         store.onChange = { changed.append($0) }
 
-        store.select(.mint)
+        store.selectMaterial(.frosted)
         store.selectOpacity(0.5)
 
         XCTAssertEqual(changed, [.background, .backgroundOpacity])

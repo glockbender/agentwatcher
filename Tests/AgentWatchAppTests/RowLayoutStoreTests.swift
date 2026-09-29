@@ -5,7 +5,7 @@ import XCTest
 
 /// The template as it is kept between launches.
 ///
-/// Flat keys, the way `LampSchemeStore` writes nine phases: `PreferenceFile` takes a string, a
+/// Flat keys, the way the lamp colours were kept one per phase: `PreferenceFile` takes a string, a
 /// number or a flag and nothing else, and the order reads as a line a person can correct by
 /// hand. The tests here are about what a hand-corrected — or older, or newer — file does.
 final class RowLayoutStoreTests: XCTestCase {

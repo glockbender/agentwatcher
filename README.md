@@ -105,7 +105,7 @@ See [agent integration](docs/agent-integration.md) for the files it writes and
 
 ## Build from source
 
-Requires Swift 6, Xcode 16 and [Task](https://taskfile.dev/).
+Requires Swift 6, the macOS 26 SDK (Xcode 26 or its Command Line Tools) and [Task](https://taskfile.dev/).
 
 ```sh
 task verify   # formatting, tests, debug/release builds and app bundle

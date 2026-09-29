@@ -5,7 +5,7 @@ import XCTest
 
 @testable import AgentWatchApp
 
-/// The two `+N` counters, measured on a list view that is really laid out and really
+/// What lies past the list's edges, measured on a list view that is really laid out and really
 /// resized. Feeding synthetic rectangles to the counting function cannot catch a count
 /// taken against a scroll view that has not finished moving.
 @MainActor
@@ -29,36 +29,26 @@ final class HUDOverflowTests: XCTestCase {
         XCTAssertEqual(list.hiddenSessions.above, 0, "nothing has been scrolled past yet")
     }
 
-    /// Each counter says how many rows lie that way, in as few characters as the fact needs.
-    /// The arrow it used to carry said the same thing as the corner it sits in.
-    func testEachCounterReadsAsAPlainCount() throws {
-        let list = listView(sessionCount: 8)
-        place(list, height: 80)
-        let below = list.hiddenSessions.below
-        XCTAssertGreaterThan(below, 0, "this size really does cut rows off")
-        XCTAssertEqual(list.overflowBadgeBelow.label.stringValue, "+\(below)")
+    /// Rows cut off by an edge fade into it; a badge appears only for hidden sessions that
+    /// need a person, and says so in words.
+    func testOnlyHiddenSessionsThatNeedYouGetABadge() throws {
+        let working = listView(sessionCount: 8)
+        place(working, height: 80)
+        XCTAssertGreaterThan(working.hiddenSessions.below, 0, "this size really does cut rows off")
+        XCTAssertTrue(working.overflowBadgeBelow.isHidden, "working sessions below earned a badge")
 
-        try scrollToBottom(list)
+        let waiting = listView(sessionCount: 8, phase: .waitingForUser)
+        place(waiting, height: 80)
+        let below = waiting.hiddenNeedingYou.below
+        XCTAssertGreaterThan(below, 0)
+        XCTAssertFalse(waiting.overflowBadgeBelow.isHidden)
+        XCTAssertEqual(
+            waiting.overflowBadgeBelow.label.stringValue, SessionAttention.needsPerson.summaryPhrase(count: below))
 
-        XCTAssertEqual(list.overflowBadgeAbove.label.stringValue, "+\(list.hiddenSessions.above)")
-    }
+        try scrollToBottom(waiting)
 
-    /// The complaint the two counters answer: one number counting both ways stood at the
-    /// bottom of the list announcing sessions that had already been read. Each corner now
-    /// reports only what lies that way, so the bottom one goes quiet exactly when there is
-    /// nothing below — and the top one takes over.
-    func testAtTheBottomOfTheListOnlyTheCounterAboveIsLeft() throws {
-        let list = listView(sessionCount: 8)
-        place(list, height: 80)
-        XCTAssertGreaterThan(list.hiddenSessions.below, 0, "this size really does cut rows off")
-        XCTAssertTrue(list.overflowBadgeAbove.isHidden, "nothing is above the view at the top")
-
-        try scrollToBottom(list)
-
-        XCTAssertEqual(list.hiddenSessions.below, 0, "nothing is below the view any more")
-        XCTAssertTrue(list.overflowBadgeBelow.isHidden)
-        XCTAssertGreaterThan(list.hiddenSessions.above, 0, "but the rows scrolled past are")
-        XCTAssertFalse(list.overflowBadgeAbove.isHidden)
+        XCTAssertTrue(waiting.overflowBadgeBelow.isHidden, "nothing is below the view any more")
+        XCTAssertFalse(waiting.overflowBadgeAbove.isHidden, "but the rows scrolled past need you")
     }
 
     /// One row down is one row fewer still to come, and one more behind. The count used to
@@ -83,12 +73,12 @@ final class HUDOverflowTests: XCTestCase {
     func testAWidgetShortByAFewPointsDoesNotAnnounceTheRowItClips() {
         let fits = HUDSessionListView.selfSizedHeight(sessionCount: 4, usageLimits: [], background: .graphite)
 
-        let barely = listView(sessionCount: 4)
+        let barely = listView(sessionCount: 4, phase: .waitingForUser)
         place(barely, height: fits - 3)
         XCTAssertEqual(barely.hiddenSessions, .none, "the last row is clipped by 3 points of 19 and still readable")
         XCTAssertTrue(barely.overflowBadgeBelow.isHidden)
 
-        let properly = listView(sessionCount: 4)
+        let properly = listView(sessionCount: 4, phase: .waitingForUser)
         place(properly, height: fits - 8)
         XCTAssertEqual(properly.hiddenSessions.below, 1, "8 points of 19 is past the third and worth saying")
         XCTAssertFalse(properly.overflowBadgeBelow.isHidden)
@@ -130,7 +120,7 @@ final class HUDOverflowTests: XCTestCase {
             let fits = HUDSessionListView.selfSizedHeight(
                 sessionCount: 8, usageLimits: [], background: .graphite, style: style
             )
-            let list = listView(sessionCount: 8, style: style)
+            let list = listView(sessionCount: 8, phase: .waitingForUser, style: style)
             place(list, height: fits * 0.6)
             try scroll(list, by: style.rowHeight + style.rowSpacing)
             let percent = Int(scale * 100)
@@ -234,7 +224,8 @@ final class HUDOverflowTests: XCTestCase {
         let fromTheTop = listView(sessionCount: 8)
         place(fromTheTop, height: 80)
 
-        let list = listView(sessionCount: 8, restoredScrollOffset: NSPoint(x: 0, y: 2 * oneRow))
+        let list = listView(
+            sessionCount: 8, phase: .waitingForUser, restoredScrollOffset: NSPoint(x: 0, y: 2 * oneRow))
         place(list, height: 80)
 
         XCTAssertEqual(list.hiddenSessions.above, 2, "two rows were scrolled past before the rebuild")
@@ -279,7 +270,7 @@ final class HUDOverflowTests: XCTestCase {
     /// partly the cause of what it reported: while it was there the widget showed one row
     /// fewer. As a badge over the list it costs the rows nothing.
     func testTheCounterTakesNoHeightFromTheList() throws {
-        let list = listView(sessionCount: 8)
+        let list = listView(sessionCount: 8, phase: .waitingForUser)
         place(list, height: 60)
         XCTAssertGreaterThan(list.hiddenSessions.below, 0, "this size really does cut rows off")
 
@@ -317,7 +308,7 @@ final class HUDOverflowTests: XCTestCase {
     /// The same margin at the other end. The list view is not flipped, so "above the rows"
     /// is the larger `y` here.
     func testTheCounterAboveSitsInTheSameMargin() throws {
-        let list = listView(sessionCount: 8)
+        let list = listView(sessionCount: 8, phase: .waitingForUser)
         place(list, height: 80)
         try scrollToBottom(list)
         let scrollView = try XCTUnwrap(firstScrollView(in: list))
@@ -334,7 +325,7 @@ final class HUDOverflowTests: XCTestCase {
     /// Both counters can stand at once — a list scrolled to the middle has rows either way —
     /// and neither may land on the other.
     func testBothCountersCanStandAtOnceWithoutMeeting() throws {
-        let list = listView(sessionCount: 20)
+        let list = listView(sessionCount: 20, phase: .waitingForUser)
         place(list, height: 120)
         try scroll(list, by: 3 * (WidgetStyle.standard.rowHeight + WidgetStyle.standard.rowSpacing))
 
@@ -373,7 +364,16 @@ final class HUDOverflowTests: XCTestCase {
             let fits = HUDSessionListView.selfSizedHeight(
                 sessionCount: 8, usageLimits: [], background: .graphite, style: style
             )
-            let list = listView(sessionCount: 8, phase: .sessionClosed, style: style)
+            // A badge counts only the rows past an edge that wait for a person, and only a
+            // closed row carries the mark: so the rows in view are closed and the rest wait.
+            let probe = listView(sessionCount: 8, phase: .sessionClosed, style: style)
+            place(probe, height: fits * 0.6)
+            try scroll(probe, by: style.rowHeight + style.rowSpacing)
+            let inView = Set(try wholeRowsInView(of: probe).map(\.snapshot.id))
+            let phases = (0..<8).map { index in
+                inView.contains(session(index: index).id) ? SessionPhase.sessionClosed : .waitingForUser
+            }
+            let list = listView(sessionCount: 8, phases: phases, style: style)
             place(list, height: fits * 0.6)
             try scroll(list, by: style.rowHeight + style.rowSpacing)
             let percent = Int(scale * 100)
@@ -411,6 +411,7 @@ final class HUDOverflowTests: XCTestCase {
     func testTheCounterStaysClearOfTheUsageBlock() throws {
         let list = listView(
             sessionCount: 8,
+            phase: .waitingForUser,
             usageLimits: [AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 17), observedAt: now)]
         )
         place(list, height: 120)
@@ -906,15 +907,20 @@ final class HUDOverflowTests: XCTestCase {
         sessionCount: Int,
         title: String? = nil,
         phase: SessionPhase = .executing,
+        phases: [SessionPhase]? = nil,
         usageLimits: [AgentUsageLimits] = [],
         style: WidgetStyle = .standard,
         restoredScrollOffset: NSPoint? = nil
     ) -> HUDSessionListView {
-        HUDSessionListView(
-            models: rowModels(
-                (0..<sessionCount).map { session(index: $0, title: title, phase: phase) },
-                now: now
-            ),
+        let sessions = (0..<sessionCount).map { session(index: $0, title: title, phase: phases?[$0] ?? phase) }
+        // Rows of mixed phases keep the order given, which the list shows as it is handed:
+        // sorted into blocks, every row that waits would go to the top.
+        let models =
+            phases == nil
+            ? rowModels(sessions, now: now)
+            : sessions.map { HUDRowModel(snapshot: $0, now: now, layout: .standard) }
+        return HUDSessionListView(
+            models: models,
             usageLimits: usageLimits,
             now: now,
             availableWidth: 400,

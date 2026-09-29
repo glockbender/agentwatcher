@@ -140,11 +140,11 @@ final class MenuBarIconStylesTests: XCTestCase {
         XCTAssertLessThan(angles[3], 360)
     }
 
-    /// On the drawing, needs you is the colour at the top and idle — in the sphere's own
-    /// violet — the colour at the bottom, and the highlight has not washed the orange out.
-    func testNeedsYouIsOrangeOnTopAndIdleVioletBelow() throws {
+    /// On the drawing, needs you is the colour at the top and idle the colour at the bottom —
+    /// each in the theme's colour for it — and the highlight has not washed the orange out.
+    func testNeedsYouIsOrangeOnTopAndIdleBelow() throws {
         let sphere = try self.sphere(needsPerson: 1, working: 0, done: 0, quiet: 11).composited()
-        let shown = [MenuBarIconPalette.needsPerson, MenuBarSphereMetrics.quiet]
+        let shown = [SessionAttention.needsPerson.accent, SessionAttention.quiet.accent]
         let anchor = MenuBarSphereMetrics.anchorDistance * MenuBarSphereMetrics.diameter / 2
 
         let top = try colour(of: sphere, angle: 0, radius: anchor)
@@ -155,10 +155,52 @@ final class MenuBarIconStylesTests: XCTestCase {
         XCTAssertLessThan(top.blueComponent, 0.3, "the highlight sits on needs you")
     }
 
-    /// One picture for the whole sphere, whatever it shows: it breathes as one.
-    func testTheSphereIsOnePart() throws {
-        XCTAssertEqual(try sphere(needsPerson: 2, working: 3, done: 1, quiet: 6).parts.count, 1)
-        XCTAssertEqual(try sphere(needsPerson: 0, working: 3, done: 0, quiet: 1).parts.count, 1)
+    /// The colours and the light over them, whatever the sphere shows, so that the colours
+    /// can move under a light that stays put.
+    func testTheSphereIsColoursUnderLight() throws {
+        let drawn = try sphere(needsPerson: 2, working: 3, done: 1, quiet: 6)
+        XCTAssertEqual(drawn.parts.count, 2)
+        XCTAssertNotNil(drawn.parts[0].glow, "the colours have no halo")
+        XCTAssertNil(drawn.parts[1].glow, "the light has a halo of its own")
+        XCTAssertFalse(drawn.parts[1].sways, "the light moves with the colours")
+    }
+
+    /// The colours are the theme's, not fixed ones: a theme that recolours a state recolours
+    /// the sphere and its glow.
+    func testTheSphereTakesTheThemesColours() throws {
+        let original = WidgetTheme.active
+        addTeardownBlock { WidgetTheme.active = original }
+        var look = original
+        look.attention[SessionAttention.needsPerson.rawValue] = "#00FF00"
+        WidgetTheme.active = look
+
+        let drawn = try XCTUnwrap(
+            MenuBarSphereRenderer.draw(
+                MenuBarIconCell.cells(for: SessionAttentionCounts(needsPerson: 1, working: 0, done: 0, quiet: 0)),
+                dark: true
+            )
+        )
+        let top = try colour(of: drawn.parts[0].image, angle: 0, radius: 6)
+        XCTAssertGreaterThan(top.greenComponent, 0.8)
+        XCTAssertLessThan(top.redComponent, 0.2)
+        XCTAssertEqual(drawn.parts[0].glow?.srgbHex, "#00FF00")
+    }
+
+    /// The colours sway while anything is alive, and stand still when all is done or idle.
+    func testTheColoursSwayOnlyWhileSomethingIsAlive() throws {
+        XCTAssertTrue(try sphere(needsPerson: 0, working: 1, done: 0, quiet: 1).parts[0].sways)
+        XCTAssertTrue(try sphere(needsPerson: 1, working: 0, done: 0, quiet: 0).parts[0].sways)
+        XCTAssertFalse(try sphere(needsPerson: 0, working: 0, done: 2, quiet: 3).parts[0].sways)
+    }
+
+    /// A count that moves swells the sphere once; a repaint with the same counts does not.
+    func testACountThatMovesSwellsTheSphereOnce() {
+        let view = MenuBarIconView()
+        view.show(cells(needsPerson: 0, working: 1, done: 0, quiet: 1), as: .sphere)
+        XCTAssertEqual(view.swellingCells, [], "the first drawing swelled")
+
+        view.show(cells(needsPerson: 1, working: 1, done: 0, quiet: 1), as: .sphere)
+        XCTAssertEqual(view.swellingCells, [0, 1])
     }
 
     /// The whole sphere breathes, and only while somebody needs a person. Working breathes in

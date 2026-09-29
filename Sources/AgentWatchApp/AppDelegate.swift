@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings: WidgetSettingsStore
     private let frameStore: HUDFrameStore
     private let lampSchemes: LampSchemeStore
+    private let themes: ThemeStore
     private let rowLayouts: RowLayoutStore
     private let preferences: PreferenceFile
     private let updater: AppUpdater
@@ -94,8 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             remove: { [weak self] snapshot in
                 self?.supervisor.remove(snapshot)
             },
-            background: backgroundStore.selected,
-            lampScheme: lampSchemes.scheme,
+            background: themes.look.widgetBackground,
+            lampScheme: themes.look.lampScheme,
             backgroundOpacity: backgroundStore.opacity,
             style: WidgetStyle(scale: settings.scale),
             frameStore: frameStore,
@@ -114,11 +115,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
     private lazy var settingsWindow: WidgetSettingsWindowController = WidgetSettingsWindowController(
         backgroundStore: backgroundStore,
-        lampSchemes: lampSchemes,
+        themes: themes,
         settings: settings,
         rowLayouts: rowLayouts,
-        shortcuts: shortcuts
+        shortcuts: shortcuts,
+        host: self,
+        version: updater.ownVersion
     )
+    private var appearanceObservation: NSKeyValueObservation?
     private let debugLog = EventDebugLog()
     private lazy var debugController = EventDebugWindowController(initialEntries: debugLog.recentEntries())
     private lazy var ingress = HookIngressController(
@@ -148,6 +152,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings = WidgetSettingsStore(preferences: preferences)
         frameStore = HUDFrameStore(preferences: preferences)
         lampSchemes = LampSchemeStore(preferences: preferences)
+        themes = ThemeStore(
+            preferences: preferences,
+            folder: AgentWatchPaths.supportDirectory()?.appendingPathComponent("Themes", isDirectory: true)
+        )
         rowLayouts = RowLayoutStore(preferences: preferences)
     }
 
@@ -160,22 +168,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         backgroundStore.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
-        lampSchemes.onChange = { [weak self] setting in
+        themes.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
+        appearanceObservation = NSApplication.shared.observe(\.effectiveAppearance) { [weak self] _, _ in
+            MainActor.assumeIsolated {
+                if self?.themes.mode == .auto {
+                    self?.settingChanged(.theme)
+                }
+            }
+        }
+        themes.adoptIfNeeded(lampScheme: lampSchemes.scheme, background: backgroundStore.selected)
         rowLayouts.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
         // Before anything reads a setting: a fresh install gets the whole configuration
         // written out, and a version that adds one fills in that key alone.
         let owners: [PreferenceDefaults] = [
-            backgroundStore, settings, frameStore, lampSchemes, rowLayouts, updater,
+            backgroundStore, settings, frameStore, themes, rowLayouts, updater,
         ]
         var everyDefault: [String: JSONValue] = [:]
         for owner in owners {
             everyDefault.merge(owner.defaultValues) { existing, _ in existing }
         }
         preferences.seed(everyDefault)
+        WidgetMaterial.current = backgroundStore.material
+        WidgetTheme.active = themes.look
         // Said out loud, because the alternative is a person's settings apparently reset for
         // no reason. The seeding above is the write that moves the old file aside.
         if let kept = preferences.unreadableFileKeptAt {
@@ -198,6 +216,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // After the widget is on screen: the shortcut's whole job is to take it away again.
         applyShortcut()
         updater.checkAfterLaunch()
+        #if DEBUG
+            if let directory = ProcessInfo.processInfo.environment["AGENT_WATCH_SETTINGS_SNAPSHOT"] {
+                settingsWindow.snapshot(into: URL(fileURLWithPath: directory)) {
+                    NSApplication.shared.terminate(nil)
+                }
+            }
+            if let directory = ProcessInfo.processInfo.environment["AGENT_WATCH_WIDGET_SNAPSHOT"] {
+                snapshotWidget(into: URL(fileURLWithPath: directory))
+            }
+        #endif
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -225,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        let menu = StatusMenu(settings: settings, version: updater.ownVersion, host: self)
+        let menu = StatusMenu(settings: settings, host: self)
         item.menu = menu.menu
         statusMenu = menu
         statusItem = item
@@ -373,9 +401,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             supervisor.transcriptSettingsChanged()
             statusMenu?.refresh()
         case .background:
-            hudController.setBackground(backgroundStore.selected)
-        case .lampScheme:
-            hudController.setLampScheme(lampSchemes.scheme)
+            WidgetMaterial.current = backgroundStore.material
+            hudController.setBackground(themes.look.widgetBackground)
+        case .theme:
+            WidgetTheme.active = themes.look
+            hudController.setLampScheme(themes.look.lampScheme)
+            hudController.setBackground(themes.look.widgetBackground)
+            menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
+            settingsWindow.refresh()
         case .backgroundOpacity:
             // Read back rather than carrying the value in the notification: the store clamps
             // to a non-zero floor, and a control that passed its own raw value would let the
@@ -390,9 +423,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .toggleShortcut:
             applyShortcut()
         case .menuBarIcon:
-            // The icon only. The menu is the only writer of this setting and of the list below,
-            // and refreshes its own lines after each choice; refreshed here as well, every click
-            // rebuilt them twice. A second writer would add the menu's refresh here.
             applyMenuBarIcon()
         case .sessionOrder:
             // A new order is a new set of rows, and the menu's lines follow it as well. Written
@@ -400,8 +430,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hudController.refreshSettings()
             statusMenu?.refreshSessions()
         case .menuSessions:
-            // Nothing: the menu wrote it and has already refreshed its lines, as for the icon.
-            break
+            statusMenu?.refreshSessions()
         }
     }
 
@@ -414,6 +443,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shortcuts.apply()
         recordDebug("Shortcut · \(shortcutStatusLine(shortcuts.status))")
     }
+
+    #if DEBUG
+        /// The widget over the real desktop, on a dark, a light and a saturated background, each
+        /// at full and at half opacity — the cases where glass is hardest to read.
+        private func snapshotWidget(into directory: URL) {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let cases: [(ThemeMode, CGFloat, WidgetMaterial)] = WidgetMaterial.allCases.flatMap { material in
+                [(ThemeMode.dark, 0.82, material), (ThemeMode.light, 0.82, material)]
+            }
+            func run(_ index: Int) {
+                guard index < cases.count else {
+                    NSApplication.shared.terminate(nil)
+                    return
+                }
+                let (mode, opacity, material) = cases[index]
+                backgroundStore.selectMaterial(material)
+                themes.select(mode)
+                backgroundStore.selectOpacity(opacity)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
+                    if let window = hudController.window, let screen = NSScreen.screens.first {
+                        let frame = window.frame.insetBy(dx: -24, dy: -24)
+                        let rect = CGRect(
+                            x: frame.minX, y: screen.frame.height - frame.maxY, width: frame.width, height: frame.height
+                        )
+                        guard let png = captureWindow(window.windowNumber, withDesktop: true, in: rect) else {
+                            run(index + 1)
+                            return
+                        }
+                        let name = "\(index)-\(material.rawValue)-\(mode.rawValue).png"
+                        try? png.write(to: directory.appendingPathComponent(name))
+                    }
+                    run(index + 1)
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { run(0) }
+        }
+    #endif
 
     private func recordDebug(_ message: String) {
         let entry = debugLog.makeEntry(for: message)
@@ -476,12 +542,12 @@ extension AppDelegate: StatusMenuHost {
         shortcuts.showShortcut(on: item)
     }
 
+    /// Showing the widget also flashes it, so it is found wherever it sits.
     func toggleWidget() {
         hudController.toggle()
-    }
-
-    func highlightWidget() {
-        hudController.highlight()
+        if isWidgetVisible {
+            hudController.highlight()
+        }
     }
 
     func showWidgetSettings() {

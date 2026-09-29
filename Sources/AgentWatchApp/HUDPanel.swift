@@ -32,7 +32,7 @@ final class HUDPanel: NSPanel {
 
     func highlight() {
         let outline = CAShapeLayer()
-        outline.strokeColor = NSColor.systemOrange.cgColor
+        outline.strokeColor = WidgetTheme.active.color(.highlight).cgColor
         outline.fillColor = NSColor.clear.cgColor
         outline.lineWidth = 3
         outline.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]

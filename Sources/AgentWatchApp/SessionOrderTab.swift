@@ -43,130 +43,56 @@ extension SessionBlock {
     }
 }
 
-/// The settings window's `Order` tab: which order, and what it looks like.
-///
-/// The answer to "what will my list do" is a list, as the row tab's answer is a row: real rows,
-/// built the way the widget builds them. For the two orders where rows move by themselves the
-/// list plays a made-up day (`SessionOrderDemo`) at an even pace, one change every two seconds,
-/// and the rows slide to their new places. For the blocks the list is their builder: the blocks
-/// in their order, each with the rows it would hold and arrows to move it.
+/// The settings window's order preview: a made-up day (`SessionOrderDemo`) played at an even
+/// pace, one change every two seconds, with the rows sliding to their new places. Real rows,
+/// built the way the widget builds them.
 @MainActor
 final class SessionOrderTab: NSObject {
-    let view = NSStackView()
     private let settings: WidgetSettingsStore
-    private let backgroundStore: WidgetBackgroundStore
-    private let lampSchemes: LampSchemeStore
+    private let look: () -> WidgetTheme.Look
+    private let opacity: () -> CGFloat
     private let rowLayouts: RowLayoutStore
-
-    /// Visible to the tests, which operate the tab the way a person does.
-    private(set) var modeButtons: [SessionOrder: NSButton] = [:]
-    private(set) var moveUpButtons: [SessionBlock: NSButton] = [:]
-    private(set) var moveDownButtons: [SessionBlock: NSButton] = [:]
-    /// The rows the builder shows under each block, by session.
-    private(set) var builderRows: [SessionBlock: [String]] = [:]
     let preview = SessionOrderPreviewView()
-    private let builder = NSStackView()
-    private let caption = NSTextField(wrappingLabelWithString: "")
 
     private var demo = SessionOrderDemo()
     private var demoOrdering = SessionOrdering()
+    private var shownOrder: SessionOrder?
+    private var shownBlocks: [SessionBlock] = []
     private var timer: Timer?
     private var isShown = false
-    /// Whether the demo is playing now — for the tests, and for nothing else.
     var isPlaying: Bool {
         timer != nil
     }
 
     init(
         settings: WidgetSettingsStore,
-        backgroundStore: WidgetBackgroundStore,
-        lampSchemes: LampSchemeStore,
+        look: @escaping () -> WidgetTheme.Look,
+        opacity: @escaping () -> CGFloat,
         rowLayouts: RowLayoutStore
     ) {
         self.settings = settings
-        self.backgroundStore = backgroundStore
-        self.lampSchemes = lampSchemes
+        self.look = look
+        self.opacity = opacity
         self.rowLayouts = rowLayouts
         super.init()
-
-        view.orientation = .vertical
-        view.alignment = .leading
-        view.spacing = 10
-        view.addView(makeModeGrid(), in: .top)
-        builder.orientation = .vertical
-        builder.alignment = .leading
-        builder.spacing = 6
-        view.addView(preview, in: .top)
-        view.addView(builder, in: .top)
-        caption.font = WidgetStyle.standard.secondaryFont
-        caption.textColor = .secondaryLabelColor
-        caption.preferredMaxLayoutWidth = SessionOrderPreviewView.width
-        view.addView(caption, in: .top)
-        let reset = NSButton(title: "Use the app's own order", target: self, action: #selector(resetOrder))
-        reset.bezelStyle = .rounded
-        reset.toolTip = "Puts back the arrival order, and the blocks in their first order."
-        view.addView(reset, in: .top)
         showCurrentValues()
     }
 
-    /// One radio button per order, each with what it does beside it.
-    private func makeModeGrid() -> NSView {
-        let grid = NSGridView(numberOfColumns: 2, rows: 0)
-        grid.rowSpacing = 6
-        grid.columnSpacing = 10
-        for order in SessionOrder.allCases {
-            let button = NSButton(
-                radioButtonWithTitle: order.settingsTitle, target: self, action: #selector(modeChosen(_:)))
-            button.tag = SessionOrder.allCases.firstIndex(of: order) ?? 0
-            modeButtons[order] = button
-            let explanation = NSTextField(labelWithString: order.settingsExplanation)
-            explanation.font = WidgetStyle.standard.secondaryFont
-            explanation.textColor = .secondaryLabelColor
-            // A whole number of points. Left at its fitting width, two of the four came out
-            // 306.5 and 390.5 wide and were drawn visibly darker than the other two, in the same
-            // colour — found by drawing the tab, and gone once every width was whole.
-            explanation.widthAnchor.constraint(equalToConstant: ceil(explanation.fittingSize.width)).isActive = true
-            grid.addRow(with: [button, explanation])
-        }
-        return grid
-    }
-
-    // MARK: - Showing what is stored
-
-    /// Everything read again from the settings: the order's button, and either its list or
-    /// its builder.
+    /// Starts the list over when the order changed, and redraws it otherwise: the row, the
+    /// background and the lamp it is drawn in are changed on the other panes.
     func showCurrentValues() {
         let order = settings.sessionOrder
-        for (candidate, button) in modeButtons {
-            button.state = candidate == order ? .on : .off
+        let blocks = settings.sessionBlockOrder
+        if order != shownOrder || blocks != shownBlocks {
+            shownOrder = order
+            shownBlocks = blocks
+            demo = SessionOrderDemo()
+            demoOrdering = SessionOrdering()
         }
-        let isBuilder = order == .blocks
-        preview.isHidden = isBuilder
-        builder.isHidden = !isBuilder
-        if isBuilder {
-            showBuilder()
-        } else {
-            restartDemo()
-        }
-        caption.stringValue = Self.caption(for: order)
+        showDemo(animated: false)
         updateTimer()
     }
 
-    private static func caption(for order: SessionOrder) -> String {
-        let held = "Rows hold their places while the pointer is over the widget."
-        switch order {
-        case .arrival:
-            return "A made-up list. Nothing here moves by itself: a session keeps its place until it closes. \(held)"
-        case .recentActivity, .attention:
-            return "A made-up list, played one change every two seconds. \(held)"
-        case .blocks:
-            return
-                "Move a block with its arrows. Every block is always there, so no session can drop out of the widget. \(held)"
-        }
-    }
-
-    /// Shown, or not: the demo plays only while a person can see it, and only for an order
-    /// whose rows move by themselves.
     func setShown(_ isShown: Bool) {
         self.isShown = isShown
         updateTimer()
@@ -189,17 +115,6 @@ final class SessionOrderTab: NSObject {
         }
     }
 
-    // MARK: - The demo
-
-    /// From the start, with an ordering of its own: the list shown is the one a person would
-    /// see had they switched to this order with these sessions.
-    private func restartDemo() {
-        demo = SessionOrderDemo()
-        demoOrdering = SessionOrdering()
-        showDemo(animated: false)
-    }
-
-    /// One step of the demo, and the rows slide to wherever it puts them.
     func advanceDemo() {
         demo.advance()
         showDemo(animated: true)
@@ -212,63 +127,8 @@ final class SessionOrderTab: NSObject {
             blocks: settings.sessionBlockOrder,
             now: demo.now
         )
-        preview.setBackground(backgroundStore.selected)
+        preview.setBackground(look().widgetBackground, opacity: opacity())
         preview.show(ordered, animated: animated, now: demo.now, rowFactory: makeRow)
-    }
-
-    // MARK: - The builder
-
-    /// The blocks in their order, each with its arrows, its name, what it holds, and the rows of
-    /// the made-up list that fall into it — placed by `SessionBlock.of`, the same rule the
-    /// widget follows, so the builder cannot disagree with it.
-    private func showBuilder() {
-        for view in builder.arrangedSubviews {
-            builder.removeArrangedSubview(view)
-            view.removeFromSuperview()
-        }
-        moveUpButtons.removeAll()
-        moveDownButtons.removeAll()
-        builderRows.removeAll()
-        let blocks = settings.sessionBlockOrder
-        let start = SessionOrderDemo()
-        var ordering = SessionOrdering()
-        let ordered = ordering.order(start.sessions, mode: .blocks, blocks: blocks, now: start.now)
-        for (index, block) in blocks.enumerated() {
-            builder.addArrangedSubview(makeBlockHeader(block, at: index, of: blocks.count))
-            let sessions = ordered.filter { SessionBlock.of($0, now: start.now) == block }
-            builderRows[block] = sessions.map(\.id)
-            let rows = SessionOrderPreviewView()
-            rows.setBackground(backgroundStore.selected)
-            rows.show(sessions, animated: false, now: start.now, rowFactory: makeRow)
-            builder.addArrangedSubview(rows)
-        }
-    }
-
-    private func makeBlockHeader(_ block: SessionBlock, at index: Int, of count: Int) -> NSView {
-        let up = NSButton(title: "↑", target: self, action: #selector(moveBlockEarlier(_:)))
-        up.bezelStyle = .rounded
-        up.tag = SessionBlock.allCases.firstIndex(of: block) ?? 0
-        up.isEnabled = index > 0
-        // Greyed is half the answer; the tooltip is the other half.
-        up.toolTip = index > 0 ? "Move this block one place up" : "This block is already at the top"
-        moveUpButtons[block] = up
-
-        let down = NSButton(title: "↓", target: self, action: #selector(moveBlockLater(_:)))
-        down.bezelStyle = .rounded
-        down.tag = up.tag
-        down.isEnabled = index < count - 1
-        down.toolTip = index < count - 1 ? "Move this block one place down" : "This block is already at the bottom"
-        moveDownButtons[block] = down
-
-        let title = NSTextField(labelWithString: block.settingsTitle)
-        title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
-        let explanation = NSTextField(labelWithString: block.settingsExplanation)
-        explanation.font = WidgetStyle.standard.secondaryFont
-        explanation.textColor = .secondaryLabelColor
-        let header = NSStackView(views: [up, down, title, explanation])
-        header.orientation = .horizontal
-        header.spacing = 6
-        return header
     }
 
     private func makeRow(_ snapshot: SessionSnapshot, now: Date) -> HUDSessionRowView {
@@ -276,8 +136,8 @@ final class SessionOrderTab: NSObject {
         let row = HUDSessionRowView(
             snapshot: snapshot,
             now: now,
-            background: backgroundStore.selected,
-            lampScheme: lampSchemes.scheme,
+            background: look().widgetBackground,
+            lampScheme: look().lampScheme,
             layout: layout,
             onFocus: {},
             dismissal: SessionPresence.dismissal(of: snapshot, now: now),
@@ -288,43 +148,6 @@ final class SessionOrderTab: NSObject {
             display: .fullName
         )
         return row
-    }
-
-    // MARK: - Actions
-
-    @objc private func modeChosen(_ sender: NSButton) {
-        guard SessionOrder.allCases.indices.contains(sender.tag) else {
-            return
-        }
-        settings.setSessionOrder(SessionOrder.allCases[sender.tag])
-        showCurrentValues()
-    }
-
-    @objc private func moveBlockEarlier(_ sender: NSButton) {
-        moveBlock(ofTag: sender.tag, by: -1)
-    }
-
-    @objc private func moveBlockLater(_ sender: NSButton) {
-        moveBlock(ofTag: sender.tag, by: 1)
-    }
-
-    private func moveBlock(ofTag tag: Int, by step: Int) {
-        guard SessionBlock.allCases.indices.contains(tag) else {
-            return
-        }
-        var blocks = settings.sessionBlockOrder
-        guard let from = blocks.firstIndex(of: SessionBlock.allCases[tag]), blocks.indices.contains(from + step) else {
-            return
-        }
-        blocks.swapAt(from, from + step)
-        settings.setSessionBlockOrder(blocks)
-        showBuilder()
-    }
-
-    @objc func resetOrder() {
-        settings.setSessionOrder(.arrival)
-        settings.setSessionBlockOrder(SessionBlock.defaultOrder)
-        showCurrentValues()
     }
 }
 
@@ -373,9 +196,17 @@ final class SessionOrderPreviewView: NSView {
         rows[sessionID]?.row.frame
     }
 
-    /// The widget's own background, so the rows are seen on what they are drawn for.
-    func setBackground(_ background: WidgetBackground) {
-        layer?.backgroundColor = background.color.cgColor
+    private var backdrop: NSView?
+
+    /// The widget's own panel — its material, colour and opacity — so the rows are seen on
+    /// what they are drawn for.
+    func setBackground(_ background: WidgetBackground, opacity: CGFloat) {
+        backdrop?.removeFromSuperview()
+        let panel = makeBackgroundView(for: background, opacity: opacity)
+        panel.frame = bounds
+        panel.autoresizingMask = [.width, .height]
+        addSubview(panel, positioned: .below, relativeTo: nil)
+        backdrop = panel
     }
 
     func show(

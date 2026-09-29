@@ -1,29 +1,6 @@
 import AgentWatchCore
 import AppKit
 
-/// The four colours of the menu bar grid.
-///
-/// Fixed numbers rather than `NSColor.systemOrange` and friends, and not a setting either.
-/// Two reasons, both measured. The menu bar is not the widget's canvas: the app paints the
-/// widget's background and knows which of ten it is, while the bar belongs to the system and
-/// may be dark, light or a photograph — an accent that reads on one can vanish on another, so
-/// these four were chosen by looking at all of them. And a scheme a person can edit is how
-/// the widget ended up with three phases grey by default (ADR-0003); here there is nothing to
-/// edit, and the mark cut out of each disc carries the state when the colour does not.
-enum MenuBarIconPalette {
-    /// systemOrange as it resolves for a dark appearance.
-    static let needsPerson = NSColor(srgbRed: 1.0, green: 0.624, blue: 0.039, alpha: 1)
-    /// Within one unit of systemBlue for a dark appearance.
-    static let working = NSColor(srgbRed: 0.04, green: 0.52, blue: 1.00, alpha: 1)
-    /// Lighter than systemGreen for a dark appearance, which is the point: it reads on a
-    /// light bar as well, where the system's own green goes muddy.
-    static let done = NSColor(srgbRed: 0.19, green: 0.82, blue: 0.35, alpha: 1)
-    /// Deliberately not a hue. This is the one cell nobody should look at, and any colour
-    /// would have made it compete with the other three. The sphere is the exception, and
-    /// ADR-0015 says why.
-    static let quiet = NSColor(white: 0.62, alpha: 1)
-}
-
 /// Every number the grid is drawn from.
 ///
 /// They are here rather than inline because each was settled by looking at the result at
@@ -133,7 +110,11 @@ extension SessionAttention {
 struct MenuBarIconPart {
     let image: NSImage
     let frame: NSRect
-    let breathDepth: CGFloat
+    var breathDepth: CGFloat = 0
+    /// A halo of this colour around the part, for the sphere.
+    var glow: NSColor?
+    var glowBreathes = false
+    var sways = false
 }
 
 /// The whole grid, drawn, in pieces.

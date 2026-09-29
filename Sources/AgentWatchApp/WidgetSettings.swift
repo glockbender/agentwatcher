@@ -29,7 +29,7 @@ enum WidgetSetting {
     case transcriptPollInterval
     case background
     case backgroundOpacity
-    case lampScheme
+    case theme
     case scale
     case toggleShortcut
     case rowLayout

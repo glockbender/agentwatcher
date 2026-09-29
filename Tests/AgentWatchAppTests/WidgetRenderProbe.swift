@@ -27,9 +27,6 @@ final class WidgetRenderProbe: XCTestCase {
         try XCTSkipIf(requested == nil, "a drawing probe, not a check: set WIDGET_RENDER_DIR")
         let directory = try XCTUnwrap(requested)
 
-        if let (_, lampTab) = try settingsWindowTabs(gradient: true).first(where: { $0.0 == "lamp" }) {
-            try draw(lampTab, named: "settings-lamp-gradient", in: directory)
-        }
         try draw(listView(width: 420), named: "wide", in: directory)
         // A template nobody would get by default, and the one the arithmetic was never proved
         // against: the part that gives way sits *after* the gap, where `furnitureWidth` — whose
@@ -139,13 +136,6 @@ final class WidgetRenderProbe: XCTestCase {
             named: "empty-nothing-installed-narrow",
             in: directory
         )
-        for (name, view) in try settingsWindowTabs() {
-            try draw(view, named: "settings-\(name)", in: directory)
-        }
-        // And the palette once a colour of the person's own is in use: the ring moves off the
-        // swatches onto the well, which is the one mark on this tab drawn by a layer, not an image.
-        let chosen = try settingsWindowTabs(customBackground: "#2A9D8F").first { $0.0 == "other" }
-        try draw(try XCTUnwrap(chosen?.1), named: "settings-other-custom", in: directory)
         try draw(toolingWindowContent(), named: "tooling", in: directory)
         try draw(toolingWindowOnThisMachine(), named: "tooling-here", in: directory)
     }
@@ -185,52 +175,6 @@ final class WidgetRenderProbe: XCTestCase {
         view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         view.layoutSubtreeIfNeeded()
         return view
-    }
-
-    /// Each tab of the settings window as it opens, with nothing chosen yet — the row with
-    /// its sample and its parts, the nine lamp rows, and the palette with the sliders. Drawn
-    /// rather than measured because a grid of colour wells and pop-up buttons is exactly the
-    /// layout that measures right and reads wrong.
-    private func settingsWindowTabs(customBackground: String? = nil, gradient: Bool = false) throws -> [(
-        String, NSView
-    )] {
-        let preferences = try isolatedPreferences()
-        let settings = WidgetSettingsStore(preferences: preferences)
-        let backgroundStore = WidgetBackgroundStore(preferences: preferences)
-        if let customBackground {
-            backgroundStore.select(
-                try XCTUnwrap(NSColor(hex: customBackground).flatMap(WidgetBackground.init(custom:))))
-        }
-        let lamps = LampSchemeStore(preferences: preferences)
-        if gradient {
-            lamps.setMotion(.gradient, for: .executing)
-            lamps.setGradientColor(NSColor(sRGB: "#BF9BFA"), for: .executing)
-            lamps.setAnimationCycle(4, for: .executing)
-        }
-        let controller = WidgetSettingsWindowController(
-            backgroundStore: backgroundStore,
-            lampSchemes: lamps,
-            settings: settings,
-            rowLayouts: RowLayoutStore(preferences: preferences),
-            shortcuts: FakeShortcutRegistrar.controller(for: settings)
-        )
-        let tabs = try XCTUnwrap(controller.window?.contentView as? NSTabView)
-        return try tabs.tabViewItems.map { item in
-            // Shown before it is drawn: a tab view lays out the one on top and leaves the
-            // others at whatever size they were born with.
-            tabs.selectTabViewItem(item)
-            tabs.layoutSubtreeIfNeeded()
-            // The document rather than the window's own view: a tab scrolls where it does not
-            // fit, and drawing the window would draw as much of it as the screen allows.
-            let scroll = try XCTUnwrap(item.view as? NSScrollView)
-            let view = try XCTUnwrap(scroll.documentView)
-            // The window's own background, which `cacheDisplay` does not draw: without it the
-            // labels come out white on nothing and the image reads as a window with no text.
-            view.wantsLayer = true
-            view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-            view.layoutSubtreeIfNeeded()
-            return (item.label.lowercased(), view)
-        }
     }
 
     /// The same window with the IDE section reading this machine instead of a fixture.
