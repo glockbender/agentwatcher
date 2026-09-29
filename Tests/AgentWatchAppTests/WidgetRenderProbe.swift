@@ -89,6 +89,11 @@ final class WidgetRenderProbe: XCTestCase {
         try draw(
             widgetAskingToEndAnAgent(size: NSSize(width: 200, height: 200)), named: "ask-end-tall-narrow", in: directory
         )
+        // One pixel per point, the external screen the soft text was reported from — at the
+        // odd width that put the card between two pixels.
+        try draw(
+            widgetAskingToEndAnAgent(size: NSSize(width: 331, height: 173)), named: "ask-end-1x", pixelsPerPoint: 1,
+            in: directory)
         try draw(highlightedWidget(.left), named: "edge-left", in: directory)
         try draw(highlightedWidget(.bottomRight), named: "edge-corner", in: directory)
         try draw(listView(width: 190), named: "narrow", in: directory)
@@ -593,11 +598,24 @@ final class WidgetRenderProbe: XCTestCase {
 
     // MARK: - Drawing
 
-    private func draw(_ view: NSView, sized size: NSSize? = nil, named name: String, in directory: String) throws {
+    private func draw(
+        _ view: NSView, sized size: NSSize? = nil, named name: String, pixelsPerPoint: CGFloat? = nil,
+        in directory: String
+    ) throws {
         if let size {
             place(view, size: size)
         }
-        let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        let rep = try XCTUnwrap(
+            pixelsPerPoint.flatMap { scale in
+                NSBitmapImageRep(
+                    bitmapDataPlanes: nil, pixelsWide: Int(view.bounds.width * scale),
+                    pixelsHigh: Int(view.bounds.height * scale), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                    isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+                ).map { rep in
+                    rep.size = view.bounds.size
+                    return rep
+                }
+            } ?? view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: rep)
         let url = URL(fileURLWithPath: directory).appendingPathComponent("\(name).png")
         try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)

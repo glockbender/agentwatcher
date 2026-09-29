@@ -84,23 +84,28 @@ final class HUDEndAgentDialog: NSView {
     /// sentence.
     private(set) var isCompact = false
 
+    /// Every length here is a whole number of points before it is used, not rounded after:
+    /// a card centred by halves stood between two pixels, and on a screen of one pixel per
+    /// point every line of text on it came out soft. Rounding a finished frame instead would
+    /// narrow the sentence's box below the width it was measured at, and it could wrap onto a
+    /// line the box has no room for.
     override func layout() {
         super.layout()
-        let gap = style.points(6)
+        let gap = whole(style.points(6))
         let buttons = [cancelButton, endButton].map(\.intrinsicContentSize)
         let buttonHeight = buttons.map(\.height).max() ?? 0
         let buttonsWidth = buttons.map(\.width).reduce(0, +) + gap
 
         // The full layout: a card no wider than a sentence reads well at, centred.
-        let margin = style.points(10)
-        let padding = style.points(12)
-        let cardWidth = min(bounds.width - 2 * margin, style.points(300))
+        let margin = whole(style.points(10))
+        let padding = whole(style.points(12))
+        let cardWidth = min(bounds.width - 2 * margin, style.points(300)).rounded(.down)
         let textWidth = max(0, cardWidth - 2 * padding)
-        let headingHeight = heading.intrinsicContentSize.height
+        let headingHeight = heading.intrinsicContentSize.height.rounded(.up)
         let explanationHeight =
-            explanation.cell?.cellSize(
+            (explanation.cell?.cellSize(
                 forBounds: NSRect(x: 0, y: 0, width: textWidth, height: .greatestFiniteMagnitude)
-            ).height ?? 0
+            ).height ?? 0).rounded(.up)
         let contentHeight = headingHeight + gap + explanationHeight + 2 * gap + buttonHeight
         isCompact = contentHeight + 2 * padding + 2 * margin > bounds.height
         heading.isHidden = isCompact
@@ -113,7 +118,7 @@ final class HUDEndAgentDialog: NSView {
         }
         let cardHeight = contentHeight + 2 * padding
         card.frame = NSRect(
-            x: (bounds.width - cardWidth) / 2, y: (bounds.height - cardHeight) / 2, width: cardWidth,
+            x: half(bounds.width - cardWidth), y: half(bounds.height - cardHeight), width: cardWidth,
             height: cardHeight)
         card.layer?.cornerRadius = style.points(10)
         // Top to bottom; the view is not flipped, so the heading has the largest `y`.
@@ -122,30 +127,41 @@ final class HUDEndAgentDialog: NSView {
         y -= gap + explanationHeight
         explanation.frame = NSRect(x: padding, y: y, width: textWidth, height: explanationHeight)
         y -= 2 * gap + buttonHeight
-        place(buttons, from: (cardWidth - buttonsWidth) / 2, y: y, height: buttonHeight, gap: gap)
+        place(buttons, from: half(cardWidth - buttonsWidth), y: y, height: buttonHeight, gap: gap)
     }
 
     /// The card takes the whole widget, the line over the buttons, both centred.
     private func layOutCompact(gap: CGFloat, buttons: [NSSize], buttonHeight: CGFloat, buttonsWidth: CGFloat) {
-        let inset = style.points(3)
-        card.frame = bounds.insetBy(dx: inset, dy: inset)
+        let inset = whole(style.points(3))
+        card.frame = NSRect(
+            x: inset, y: inset, width: whole(bounds.width) - 2 * inset, height: whole(bounds.height) - 2 * inset)
         card.layer?.cornerRadius = max(0, WidgetStyle.windowCornerRadius - inset)
-        let lineHeight = shortQuestion.intrinsicContentSize.height
-        let blockHeight = lineHeight + gap / 2 + buttonHeight
-        let bottom = (card.bounds.height - blockHeight) / 2
-        let side = style.points(6)
+        let lineHeight = shortQuestion.intrinsicContentSize.height.rounded(.up)
+        let lineGap = whole(gap / 2)
+        let blockHeight = lineHeight + lineGap + buttonHeight
+        let bottom = half(card.bounds.height - blockHeight)
+        let side = whole(style.points(6))
         shortQuestion.frame = NSRect(
-            x: side, y: bottom + buttonHeight + gap / 2, width: max(0, card.bounds.width - 2 * side),
+            x: side, y: bottom + buttonHeight + lineGap, width: max(0, card.bounds.width - 2 * side),
             height: lineHeight)
-        place(buttons, from: (card.bounds.width - buttonsWidth) / 2, y: bottom, height: buttonHeight, gap: gap)
+        place(buttons, from: half(card.bounds.width - buttonsWidth), y: bottom, height: buttonHeight, gap: gap)
     }
 
     private func place(_ sizes: [NSSize], from left: CGFloat, y: CGFloat, height: CGFloat, gap: CGFloat) {
         var x = left
         for (button, size) in zip([cancelButton, endButton], sizes) {
-            button.frame = NSRect(x: x, y: y + (height - size.height) / 2, width: size.width, height: size.height)
+            button.frame = NSRect(x: x, y: y + half(height - size.height), width: size.width, height: size.height)
             x += size.width + gap
         }
+    }
+
+    private func whole(_ length: CGFloat) -> CGFloat {
+        length.rounded()
+    }
+
+    /// Half of a length, for centring, kept on a whole point.
+    private func half(_ length: CGFloat) -> CGFloat {
+        (length / 2).rounded(.down)
     }
 
     /// The whole widget is the dialog's while it is open: a press anywhere but a button goes
@@ -205,7 +221,10 @@ final class HUDDialogButton: NSButton {
 
     override var intrinsicContentSize: NSSize {
         let text = attributedTitle.size()
-        return NSSize(width: ceil(text.width) + 2 * style.points(12), height: ceil(text.height) + 2 * style.points(4))
+        // Whole points, for the reason `HUDEndAgentDialog.layout` gives.
+        return NSSize(
+            width: ceil(text.width) + 2 * style.points(12).rounded(),
+            height: ceil(text.height) + 2 * style.points(4).rounded())
     }
 
     override var isHighlighted: Bool {
