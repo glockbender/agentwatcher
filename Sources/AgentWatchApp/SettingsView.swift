@@ -438,7 +438,7 @@ struct SampleRowsView: NSViewRepresentable {
         guard let stack = holder.subviews.compactMap({ $0 as? NSStackView }).first else { return }
         holder.subviews.filter { $0 !== stack }.forEach { $0.removeFromSuperview() }
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let background = model.themes.look.widgetBackground
+        let background = model.themes.widgetBackground(on: model.backgroundStore.material)
         let panel = makeBackgroundView(for: background, opacity: model.backgroundStore.opacity)
         panel.translatesAutoresizingMaskIntoConstraints = false
         holder.addSubview(panel, positioned: .below, relativeTo: stack)
@@ -593,6 +593,9 @@ struct OrderPreview: NSViewRepresentable {
         SessionOrderTab(
             settings: model.settings,
             look: { [themes = model.themes] in themes.look },
+            background: { [themes = model.themes, store = model.backgroundStore] in
+                themes.widgetBackground(on: store.material)
+            },
             opacity: { [store = model.backgroundStore] in store.opacity },
             rowLayouts: model.rowLayouts
         )

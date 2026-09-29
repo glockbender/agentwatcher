@@ -73,7 +73,7 @@ final class HUDEmptyStateView: NSView {
         contentStack.alignment = .centerY
         contentStack.spacing = style.emptyStateIconGap
         contentStack.translatesAutoresizingMaskIntoConstraints = false
-        effectView.addSubview(contentStack)
+        effectView.content.addSubview(contentStack)
 
         NSLayoutConstraint.activate([
             contentStack.leadingAnchor.constraint(

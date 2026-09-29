@@ -50,6 +50,7 @@ extension SessionBlock {
 final class SessionOrderTab: NSObject {
     private let settings: WidgetSettingsStore
     private let look: () -> WidgetTheme.Look
+    private let background: () -> WidgetBackground
     private let opacity: () -> CGFloat
     private let rowLayouts: RowLayoutStore
     let preview = SessionOrderPreviewView()
@@ -67,11 +68,13 @@ final class SessionOrderTab: NSObject {
     init(
         settings: WidgetSettingsStore,
         look: @escaping () -> WidgetTheme.Look,
+        background: @escaping () -> WidgetBackground,
         opacity: @escaping () -> CGFloat,
         rowLayouts: RowLayoutStore
     ) {
         self.settings = settings
         self.look = look
+        self.background = background
         self.opacity = opacity
         self.rowLayouts = rowLayouts
         super.init()
@@ -127,7 +130,7 @@ final class SessionOrderTab: NSObject {
             blocks: settings.sessionBlockOrder,
             now: demo.now
         )
-        preview.setBackground(look().widgetBackground, opacity: opacity())
+        preview.setBackground(background(), opacity: opacity())
         preview.show(ordered, animated: animated, now: demo.now, rowFactory: makeRow)
     }
 
@@ -136,7 +139,7 @@ final class SessionOrderTab: NSObject {
         let row = HUDSessionRowView(
             snapshot: snapshot,
             now: now,
-            background: look().widgetBackground,
+            background: background(),
             lampScheme: look().lampScheme,
             layout: layout,
             onFocus: {},

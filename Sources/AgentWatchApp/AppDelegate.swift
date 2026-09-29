@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             remove: { [weak self] snapshot in
                 self?.supervisor.remove(snapshot)
             },
-            background: themes.look.widgetBackground,
+            background: themes.widgetBackground(on: backgroundStore.material),
             lampScheme: themes.look.lampScheme,
             backgroundOpacity: backgroundStore.opacity,
             style: WidgetStyle(scale: settings.scale),
@@ -402,11 +402,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusMenu?.refresh()
         case .background:
             WidgetMaterial.current = backgroundStore.material
-            hudController.setBackground(themes.look.widgetBackground)
+            hudController.setBackground(themes.widgetBackground(on: backgroundStore.material))
         case .theme:
             WidgetTheme.active = themes.look
             hudController.setLampScheme(themes.look.lampScheme)
-            hudController.setBackground(themes.look.widgetBackground)
+            hudController.setBackground(themes.widgetBackground(on: backgroundStore.material))
             menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
             settingsWindow.refresh()
         case .backgroundOpacity:
@@ -449,9 +449,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         /// at full and at half opacity — the cases where glass is hardest to read.
         private func snapshotWidget(into directory: URL) {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let cases: [(ThemeMode, CGFloat, WidgetMaterial)] = WidgetMaterial.allCases.flatMap { material in
-                [(ThemeMode.dark, 0.82, material), (ThemeMode.light, 0.82, material)]
-            }
+            let cases: [(ThemeMode, CGFloat, WidgetMaterial)] = [
+                (.dark, 0.05, .glass), (.dark, 0.5, .glass), (.dark, 1, .glass),
+                (.light, 0.05, .glass), (.light, 1, .glass), (.dark, 1, .clearGlass),
+            ]
             func run(_ index: Int) {
                 guard index < cases.count else {
                     NSApplication.shared.terminate(nil)
@@ -471,7 +472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             run(index + 1)
                             return
                         }
-                        let name = "\(index)-\(material.rawValue)-\(mode.rawValue).png"
+                        let name = "\(index)-\(material.rawValue)-\(mode.rawValue)-\(Int(opacity * 100)).png"
                         try? png.write(to: directory.appendingPathComponent(name))
                     }
                     run(index + 1)

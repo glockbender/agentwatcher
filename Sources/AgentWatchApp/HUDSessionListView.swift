@@ -115,7 +115,7 @@ class HUDSessionListView: NSView {
         scrollView.setContentHuggingPriority(.defaultLow, for: .vertical)
         scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         self.scrollView = scrollView
-        container.addSubview(scrollView)
+        container.content.addSubview(scrollView)
 
         // The rows' own frame, watched for one thing only: the moment they have a height to
         // be scrolled within. `restoreScrollOffsetIfNeeded` says why that moment and not
@@ -140,7 +140,7 @@ class HUDSessionListView: NSView {
         // are built once with their constraints and show and hide by `isHidden` alone.
         for badge in [overflowBadgeAbove, overflowBadgeBelow] {
             badge.isHidden = true
-            container.addSubview(badge)
+            container.content.addSubview(badge)
         }
 
         var constraints = [
@@ -187,8 +187,8 @@ class HUDSessionListView: NSView {
             let divider = NSBox()
             divider.boxType = .separator
             divider.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(divider)
-            container.addSubview(usageStack)
+            container.content.addSubview(divider)
+            container.content.addSubview(usageStack)
             constraints += [
                 divider.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: horizontalInset),
                 divider.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -horizontalInset),

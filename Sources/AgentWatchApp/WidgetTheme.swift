@@ -193,6 +193,15 @@ final class ThemeStore: PreferenceDefaults {
         theme.look(dark: isDark)
     }
 
+    /// What the widget is drawn for. On glass the desktop, not the theme's colour, is behind the
+    /// text, so the text follows light and dark mode as the Dock's labels do.
+    @MainActor func widgetBackground(on material: WidgetMaterial) -> WidgetBackground {
+        guard material.drawn.needsLiquidGlass else {
+            return look.widgetBackground
+        }
+        return isDark ? .graphite : .pearl
+    }
+
     func select(_ theme: WidgetTheme) {
         preferences.set(theme.name, forKey: Key.theme)
         onChange?(.theme)
