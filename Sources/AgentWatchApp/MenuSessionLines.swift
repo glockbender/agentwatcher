@@ -40,7 +40,7 @@ func menuSessionLines(
         }
         // The one click in the app that ends something. The widget's card says so before it
         // is made; a menu line has no card, so the line says it itself.
-        guard case .closedTerminal(devicePath: .some) = reach(snapshot) else {
+        guard case .closedTerminal(.some) = reach(snapshot) else {
             return MenuSessionLine(
                 sessionID: snapshot.id,
                 attention: attention,

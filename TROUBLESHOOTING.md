@@ -19,6 +19,17 @@ Agent Watch shows yours.
 **Checked on:** Claude Code 2.1.284. Tested: the 10-character rule. Read in Claude Code's code but
 not tested: slash commands and the environment variable.
 
+## A session stays after you closed its Ghostty tab
+
+**Why:** Ghostty sometimes removes a closed tab but keeps the terminal behind it, so the agent in it
+keeps running. The tab is gone from every window, so a click has nothing to bring forward.
+
+**What to do:** Click the row. It changes to "terminal closed". Click it again to end the agent.
+The conversation is kept, and `claude --resume` continues it in a new tab.
+
+**Checked on:** Ghostty 1.3.1, Claude Code 2.1.284. Seen once. Why Ghostty keeps the terminal is
+not known.
+
 ## No session appears, and Tooling says "nothing has arrived yet"
 
 **Why:** The connection is installed, but the agent has not loaded it. Claude Code loads plugins

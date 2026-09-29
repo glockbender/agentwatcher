@@ -16,9 +16,20 @@ enum SessionReach: Equatable, Sendable {
     case anApplication
     /// Nothing does — the host has quit, or the session never had a window of its own.
     case nowhere
-    /// The session's terminal was closed and its agent hangs without it, and a click ends
-    /// the agent through this device — `nil` when no descriptor of the agent's names one,
-    /// and then the click has nothing to do. The device stays out of the session model: it
-    /// is the process's, read at the moment the card or the click asks.
-    case closedTerminal(devicePath: String?)
+    /// The session's terminal was closed and its agent stayed behind, and a click ends the
+    /// agent this way — `nil` when nothing here can, and then the click has nothing to do.
+    /// The way stays out of the session model: it is the process's, read at the moment the
+    /// card or the click asks.
+    case closedTerminal(ClosedTerminalEnding?)
+}
+
+/// How a click ends an agent its closed terminal left behind (ADR-0013). Two ways, because a
+/// terminal is closed two ways.
+enum ClosedTerminalEnding: Equatable, Sendable {
+    /// The kernel took the terminal away and the agent hangs waiting for it to take its last
+    /// output. Discarding that output through this device lets it exit.
+    case discardOutput(devicePath: String)
+    /// Ghostty closed the tab and kept the terminal, and the agent runs on in it. The hang-up
+    /// the closed tab never sent ends it.
+    case hangUp(processID: Int32)
 }

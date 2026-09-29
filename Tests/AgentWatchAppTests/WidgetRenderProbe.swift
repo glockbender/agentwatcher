@@ -109,8 +109,15 @@ final class WidgetRenderProbe: XCTestCase {
         // Through the reducer, as the app marks it: what was running goes with the terminal.
         let abandoned = SessionReducer.reduce(sessions()[0], event: .terminalClosed)
         try draw(
-            hoverCard(for: abandoned, reach: .closedTerminal(devicePath: "/dev/ttys012")),
+            hoverCard(for: abandoned, reach: .closedTerminal(.discardOutput(devicePath: "/dev/ttys012"))),
             named: "card-terminal-closed",
+            in: directory
+        )
+        // The same row when Ghostty closed the tab and kept the terminal: a shorter command,
+        // and the one sentence that says which way the terminal went.
+        try draw(
+            hoverCard(for: abandoned, reach: .closedTerminal(.hangUp(processID: 52671))),
+            named: "card-tab-kept",
             in: directory
         )
         // The card for a running session with no name: the line that says why stands where the

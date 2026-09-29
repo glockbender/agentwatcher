@@ -459,8 +459,8 @@ func dismissHint(_ dismissal: RowDismissal, now: Date) -> String? {
 /// raise, there is no window at all and the click opens a terminal tab instead, or the
 /// terminal was closed and the click ends the agent it left behind.
 func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
-    if case let .closedTerminal(devicePath) = reach {
-        return closedTerminalHint(devicePath: devicePath)
+    if case let .closedTerminal(ending) = reach {
+        return closedTerminalHint(ending)
     }
     // Nobody asked where the session is, or an application holds it — and an application that
     // can be brought forward is the ordinary case, which says nothing.
@@ -481,16 +481,24 @@ func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
 ///
 /// The command is on the card because the card cannot be selected: it takes no mouse events,
 /// so a command a person wants to run somewhere else has to be readable, not copyable.
-func closedTerminalHint(devicePath: String?) -> String {
-    guard let devicePath else {
+func closedTerminalHint(_ ending: ClosedTerminalEnding?) -> String {
+    switch ending {
+    case nil:
         return "Nothing here can end it: none of the agent's descriptors names its terminal"
+    case let .discardOutput(devicePath):
+        return """
+            Click ends it: the agent is waiting for its closed terminal to take its last output, \
+            and discarding that output lets it exit.
+            By hand:
+            \(ClosedTerminal.releaseCommand(devicePath: devicePath))
+            """
+    case let .hangUp(processID):
+        return """
+            Click ends it: Ghostty closed its tab but kept the terminal, and the agent runs on there.
+            By hand:
+            \(ClosedTerminal.hangUpCommand(processID: processID))
+            """
     }
-    return """
-        Click ends it: the agent is waiting for its closed terminal to take its last output, \
-        and discarding that output lets it exit.
-        By hand:
-        \(ClosedTerminal.releaseCommand(devicePath: devicePath))
-        """
 }
 
 /// Whose thread a row is, when it is not a person's.
@@ -605,10 +613,7 @@ extension SessionPhase {
         case .failed:
             "A tool or the agent itself ended with an error."
         case .terminalClosed:
-            """
-            The terminal the session ran in was closed, and the agent did not exit: it hangs \
-            waiting for the terminal to take its last output. A click on the row ends it.
-            """
+            "The terminal the session ran in was closed, and the agent did not exit. A click on the row ends it."
         case .disconnected:
             """
             Nothing has arrived for a long time and nothing can confirm what the session is \

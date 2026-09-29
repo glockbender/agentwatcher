@@ -79,7 +79,8 @@ final class ClosedTerminalRowTests: XCTestCase {
     func testTheCardSaysAClickEndsItAndHowToDoItByHand() {
         let row = testSession(phase: .terminalClosed, clientKind: .cli, lastObservedAt: now)
 
-        let card = hoverCardText(for: row, now: now, layout: .standard, reach: .closedTerminal(devicePath: device))
+        let card = hoverCardText(
+            for: row, now: now, layout: .standard, reach: .closedTerminal(.discardOutput(devicePath: device)))
 
         XCTAssertTrue(card.contains("terminal closed"), card)
         XCTAssertTrue(card.contains("Click ends it"), card)
@@ -91,7 +92,7 @@ final class ClosedTerminalRowTests: XCTestCase {
     func testWithNoDeviceTheCardPromisesNothing() {
         let row = testSession(phase: .terminalClosed, clientKind: .cli, lastObservedAt: now)
 
-        let card = hoverCardText(for: row, now: now, layout: .standard, reach: .closedTerminal(devicePath: nil))
+        let card = hoverCardText(for: row, now: now, layout: .standard, reach: .closedTerminal(nil))
 
         XCTAssertFalse(card.contains("Click ends it"), card)
         XCTAssertFalse(card.contains("perl"), card)
@@ -143,7 +144,7 @@ final class ClosedTerminalRowTests: XCTestCase {
         supervisor.discoverAgentProcesses()
         let row = try XCTUnwrap(supervisor.sessions.first)
         XCTAssertEqual(row.phase, .terminalClosed)
-        XCTAssertEqual(supervisor.reach(for: row), .closedTerminal(devicePath: device))
+        XCTAssertEqual(supervisor.reach(for: row), .closedTerminal(.discardOutput(devicePath: device)))
 
         XCTAssertFalse(supervisor.focus(row), "there is no window to raise")
 
@@ -225,13 +226,133 @@ final class ClosedTerminalRowTests: XCTestCase {
         XCTAssertEqual(released, [device])
     }
 
+    // MARK: - A tab Ghostty closed and kept
+
+    /// Reported on 2026-09-29: a person closed a Ghostty tab, Ghostty kept the terminal
+    /// behind it with the agent running, and a click on the row brought forward whichever
+    /// Ghostty window was in front — an empty shell.
+    private let tabGone = SessionHostRegistry.FocusOutcome(
+        raised: false, tab: .gone("Ghostty holds 5 terminals and shows 4, none named after this session"))
+
+    func testAClickThatFindsItsTabGoneMarksTheRowAndRaisesNothing() throws {
+        var hungUp: [Int32] = []
+        var notes: [String] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached },
+            notes: { notes.append($0) },
+            hungUp: { hungUp.append($0) },
+            focusHost: { [tabGone] _, _ in tabGone }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+
+        XCTAssertFalse(supervisor.focus(try XCTUnwrap(supervisor.sessions.first)), "no window comes forward")
+
+        XCTAssertEqual(try XCTUnwrap(supervisor.sessions.first).phase, .terminalClosed)
+        XCTAssertEqual(hungUp, [], "the first click only marks: its card had not announced an ending")
+        XCTAssertTrue(notes.contains { $0.contains("Ghostty holds 5 terminals and shows 4") }, "\(notes)")
+    }
+
+    /// The card is drawn on hover, and a hover sends Ghostty nothing: which ending applies is
+    /// read from the kernel, where the agent still has its terminal.
+    func testTheCardOfARowWhoseTabIsGoneOffersAHangUp() throws {
+        let supervisor = makeSupervisor(terminalState: { _ in .attached }, focusHost: { [tabGone] _, _ in tabGone })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+        let row = try XCTUnwrap(supervisor.sessions.first)
+
+        let reach = supervisor.reach(for: row)
+        let card = hoverCardText(for: row, now: now, layout: .standard, reach: reach)
+
+        XCTAssertEqual(reach, .closedTerminal(.hangUp(processID: agent)))
+        XCTAssertTrue(card.contains("Click ends it"), card)
+        XCTAssertTrue(card.contains("kill -HUP \(agent)"), card)
+    }
+
+    func testTheNextClickHangsUpTheAgentWhileItsTabIsStillGone() throws {
+        var hungUp: [Int32] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached },
+            agentProcessStartedAt: { [now] _ in now.addingTimeInterval(-60) },
+            hungUp: { hungUp.append($0) },
+            focusHost: { [tabGone] _, _ in tabGone },
+            tabIsGone: { _, _ in true }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+
+        XCTAssertEqual(hungUp, [agent])
+    }
+
+    /// Asked again at the click, like the flush: the tab may be back, or Ghostty may have let
+    /// the terminal go and the count with it.
+    func testTheNextClickSendsNothingOnceTheTabIsNoLongerMissing() throws {
+        var hungUp: [Int32] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached },
+            agentProcessStartedAt: { [now] _ in now.addingTimeInterval(-60) },
+            hungUp: { hungUp.append($0) },
+            focusHost: { [tabGone] _, _ in tabGone },
+            tabIsGone: { _, _ in false }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+
+        XCTAssertEqual(hungUp, [])
+    }
+
+    /// A process that started after the row last heard from its agent is somebody else under
+    /// a number handed out again, and a hang-up would end a stranger.
+    func testTheNextClickSendsNothingToAProcessNewerThanTheRow() throws {
+        var hungUp: [Int32] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached },
+            agentProcessStartedAt: { [now] _ in now.addingTimeInterval(60) },
+            hungUp: { hungUp.append($0) },
+            focusHost: { [tabGone] _, _ in tabGone },
+            tabIsGone: { _, _ in true }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+
+        XCTAssertEqual(hungUp, [])
+    }
+
     // MARK: - Scaffolding
 
+    /// Nothing here reaches a real host: the process running the tests may be in a Ghostty
+    /// tab, and the registry would ask that Ghostty.
     private func makeSupervisor(
         processes: [DiscoveredAgentProcess] = [],
         terminalState: @escaping (Int32) -> AgentProcessLocator.TerminalState?,
+        agentProcessStartedAt: @escaping (Int32) -> Date? = { _ in nil },
         released: @escaping (String) -> Void = { _ in },
-        notes: @escaping (String) -> Void = { _ in }
+        notes: @escaping (String) -> Void = { _ in },
+        hungUp: @escaping (Int32) -> Void = { _ in },
+        focusHost: @escaping (SessionSnapshot, [String]) -> SessionHostRegistry.FocusOutcome = { _, _ in
+            SessionHostRegistry.FocusOutcome(raised: false, tab: .unaddressable)
+        },
+        tabIsGone: @escaping (SessionSnapshot, [String]) -> Bool = { _, _ in false }
     ) -> SessionSupervisor {
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         return SessionSupervisor(
@@ -241,13 +362,19 @@ final class ClosedTerminalRowTests: XCTestCase {
             history: SessionHistoryStore(directoryURL: scratch.appendingPathComponent("history")),
             now: { [now] in now },
             liveAgentProcesses: { processes },
-            agentProcessStartedAt: { _ in nil },
+            agentProcessStartedAt: agentProcessStartedAt,
             terminalState: terminalState,
             terminalDevicePath: { [device] _ in device },
             releaseTerminal: { path in
                 released(path)
                 return true
             },
+            hangUp: { processID in
+                hungUp(processID)
+                return true
+            },
+            focusHost: focusHost,
+            tabIsGoneWithTerminalKept: tabIsGone,
             onChange: { _, _ in },
             onNotableEvent: notes
         )

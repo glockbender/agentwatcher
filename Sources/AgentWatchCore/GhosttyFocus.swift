@@ -25,6 +25,12 @@ public enum GhosttyFocusRefusal: Equatable, Sendable {
     /// More than one tab would do, and picking one of them would be a guess. Two sessions
     /// can be given the same name by the agent, and then the name stops identifying either.
     case severalTabsMatch
+
+    /// No tab is named after this session because its tab is gone: Ghostty closed it and
+    /// kept the terminal, and the agent runs on in there. Measured on Ghostty 1.3.1, where
+    /// such a terminal was still read and drawn but listed nowhere — not by AppleScript, not
+    /// in the tab bar, not in the Window menu.
+    case tabClosedTerminalKept(held: Int, shown: Int)
 }
 
 /// Bringing a Ghostty tab forward by the name the agent wrote into it.
@@ -52,21 +58,45 @@ public enum GhosttyFocus {
     /// **Exactly one, or nothing.** Two matches mean the name has stopped identifying a
     /// session, and choosing one of them would move a person to a tab that is not theirs —
     /// worse than not moving them at all.
-    public static func decision(among terminals: [GhosttyTerminal], sessionName: String?) -> Decision {
-        let name = sessionName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !name.isEmpty else {
+    ///
+    /// **Gone, not renamed, only on two more facts.** A missing name is also a tab whose
+    /// title something overwrote, or a session told not to title its tab at all
+    /// (`CLAUDE_CODE_DISABLE_TERMINAL_TITLE`). So Ghostty must hold more terminals than it
+    /// lists, and another session's name must be on a listed tab — titles do work on this
+    /// machine. The count alone proves nothing for long: once a closed tab has kept its
+    /// terminal, the count stays higher until Ghostty quits.
+    public static func decision(
+        among terminals: [GhosttyTerminal],
+        sessionName: String?,
+        heldTerminalCount: Int? = nil,
+        otherSessionNames: [String] = []
+    ) -> Decision {
+        guard let name = trimmedName(sessionName) else {
             return .decline(.sessionHasNoName)
         }
-        let matches = terminals.filter { terminal in
-            terminal.name.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(name)
-        }
+        let matches = terminals.filter { carries($0, name) }
         guard let only = matches.first else {
+            let titlesCarryNames = otherSessionNames.compactMap(trimmedName).contains { other in
+                terminals.contains { carries($0, other) }
+            }
+            if let held = heldTerminalCount, held > terminals.count, titlesCarryNames {
+                return .decline(.tabClosedTerminalKept(held: held, shown: terminals.count))
+            }
             return .decline(.noTabMatches)
         }
         guard matches.count == 1 else {
             return .decline(.severalTabsMatch)
         }
         return .ask(terminalID: only.id)
+    }
+
+    private static func trimmedName(_ name: String?) -> String? {
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func carries(_ terminal: GhosttyTerminal, _ name: String) -> Bool {
+        terminal.name.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(name)
     }
 
     /// Whether this identifier can be written into a script.
@@ -86,6 +116,8 @@ extension GhosttyFocusRefusal {
         case .sessionHasNoName: .missing("no session name yet to find the tab by")
         case .noTabMatches: .missing("no terminal tab is named after this session")
         case .severalTabsMatch: .missing("several terminal tabs match this session's name")
+        case let .tabClosedTerminalKept(held, shown):
+            .gone("Ghostty holds \(held) terminals and shows \(shown), none named after this session")
         }
     }
 }

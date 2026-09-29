@@ -78,11 +78,26 @@ final class MenuSessionLinesTests: XCTestCase {
                 testSession(index: 0, title: "Left behind", phase: .terminalClosed, lastObservedAt: now)
             ],
             listing: [.needsPerson],
-            reach: { _ in .closedTerminal(devicePath: "/dev/ttys004") }
+            reach: { _ in .closedTerminal(.discardOutput(devicePath: "/dev/ttys004")) }
         )
 
         XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed, click ends the agent"])
         XCTAssertEqual(lines.map(\.isEnabled), [true])
+    }
+
+    /// A tab Ghostty closed and kept is ended differently and said the same way: the person
+    /// closed a terminal either way, and the line is about what the click does.
+    func testALineWhoseClickHangsUpTheAgentSaysTheSame() {
+        let lines = menuSessionLines(
+            for: [
+                testSession(index: 0, title: "Left behind", phase: .terminalClosed, lastObservedAt: now)
+            ],
+            listing: [.needsPerson],
+            reach: { _ in .closedTerminal(.hangUp(processID: 52671)) }
+        )
+
+        XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed, click ends the agent"])
+        XCTAssertEqual(lines.map(\.endingAgentWasAnnounced), [true])
     }
 
     /// Nothing to end it with, so the click would do nothing: the line stays, greyed, and says
@@ -93,7 +108,7 @@ final class MenuSessionLinesTests: XCTestCase {
                 testSession(index: 0, title: "Left behind", phase: .terminalClosed, lastObservedAt: now)
             ],
             listing: [.needsPerson],
-            reach: { _ in .closedTerminal(devicePath: nil) }
+            reach: { _ in .closedTerminal(nil) }
         )
 
         XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed, nothing here can end it"])
@@ -110,7 +125,7 @@ final class MenuSessionLinesTests: XCTestCase {
             listing: Set(SessionAttention.counted),
             reach: { snapshot in
                 asked.append(snapshot.id)
-                return .closedTerminal(devicePath: "/dev/ttys004")
+                return .closedTerminal(.discardOutput(devicePath: "/dev/ttys004"))
             }
         )
 

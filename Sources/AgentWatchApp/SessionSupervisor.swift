@@ -40,6 +40,14 @@ final class SessionSupervisor {
     /// Discards the output waiting in a terminal, which is what ends an agent that hangs
     /// without one. Injected so a test never flushes a real terminal.
     private let releaseTerminal: (String) -> Bool
+    /// Sends an agent the hang-up its closed tab never did. Injected so a test never
+    /// signals a real process.
+    private let hangUp: (Int32) -> Bool
+    /// What a click asks of the session's host, and the question asked again before a
+    /// hang-up. `nil` asks the host registry; a test answers instead, because the process
+    /// running it may well be in a Ghostty tab, and the registry would ask that Ghostty.
+    private let focusHost: ((SessionSnapshot, [String]) -> SessionHostRegistry.FocusOutcome)?
+    private let tabIsGoneWithTerminalKept: ((SessionSnapshot, [String]) -> Bool)?
     /// Which session each live agent process is, by process number.
     ///
     /// Written down the moment a hook tells the app both halves, kept across restarts, and
@@ -117,6 +125,9 @@ final class SessionSupervisor {
         terminalState: @escaping (Int32) -> AgentProcessLocator.TerminalState? = AgentProcessLocator.terminalState(of:),
         terminalDevicePath: @escaping (Int32) -> String? = AgentProcessLocator.terminalDevicePath(of:),
         releaseTerminal: @escaping (String) -> Bool = ClosedTerminal.discardUnreadOutput(devicePath:),
+        hangUp: @escaping (Int32) -> Bool = ClosedTerminal.hangUp(processID:),
+        focusHost: ((SessionSnapshot, [String]) -> SessionHostRegistry.FocusOutcome)? = nil,
+        tabIsGoneWithTerminalKept: ((SessionSnapshot, [String]) -> Bool)? = nil,
         onChange: @escaping ([SessionSnapshot], [AgentUsageLimits]) -> Void,
         onNotableEvent: @escaping (String) -> Void
     ) {
@@ -131,6 +142,9 @@ final class SessionSupervisor {
         self.terminalState = terminalState
         self.terminalDevicePath = terminalDevicePath
         self.releaseTerminal = releaseTerminal
+        self.hangUp = hangUp
+        self.focusHost = focusHost
+        self.tabIsGoneWithTerminalKept = tabIsGoneWithTerminalKept
         self.onChange = onChange
         self.onNotableEvent = onNotableEvent
     }
@@ -261,9 +275,27 @@ final class SessionSupervisor {
         // Before the host: the process tree still leads to the IDE the terminal was in, and
         // raising it would show a window with no tab left for this session.
         guard snapshot.phase != .terminalClosed else {
-            return .closedTerminal(devicePath: snapshot.agentProcessID.flatMap(terminalDevicePath))
+            return .closedTerminal(closedTerminalEnding(of: snapshot))
         }
         return hostRegistry.reach(for: snapshot)
+    }
+
+    /// How a click would end the agent of a row marked closed, read from the kernel alone:
+    /// this is asked on every hover, and a hover sends Ghostty nothing.
+    private func closedTerminalEnding(of snapshot: SessionSnapshot) -> ClosedTerminalEnding? {
+        guard let agentProcessID = snapshot.agentProcessID else {
+            return nil
+        }
+        switch terminalState(agentProcessID) {
+        case .lost:
+            return terminalDevicePath(agentProcessID).map { .discardOutput(devicePath: $0) }
+        case .attached:
+            // Only a click that found the tab gone marks a row whose agent still has its
+            // terminal, so this is the Ghostty case.
+            return .hangUp(processID: agentProcessID)
+        case .neverHad, nil:
+            return nil
+        }
     }
 
     /// Menu rows keep their wording while the session can change. Resolve the current row,
@@ -303,7 +335,20 @@ final class SessionSupervisor {
             onNotableEvent(Self.terminalClosedNote(for: marked))
             return false
         }
-        let outcome = hostRegistry.focus(snapshot)
+        let otherNames = otherSessionNames(than: snapshot)
+        let outcome = focusHost?(snapshot, otherNames) ?? hostRegistry.focus(snapshot, otherSessionNames: otherNames)
+        // The other way a terminal is closed with its agent left behind, and the same rule:
+        // this click only marks the row, and the next one, announced by the card, ends it.
+        if case let .gone(evidence) = outcome.tab {
+            guard let marked = engine.markTerminalClosed(forSessionWithID: snapshot.id) else {
+                onNotableEvent("\(Self.label(snapshot)) · \(evidence); nothing to bring forward")
+                return false
+            }
+            publish()
+            onNotableEvent(
+                "\(Self.label(marked)) · its tab is gone and the terminal kept: \(evidence); a click ends it")
+            return false
+        }
         if !outcome.raised {
             // With the reason when there is one: a background session's click can fail on the
             // way to its terminal — no record of the process, no job in it, Ghostty declining
@@ -482,19 +527,27 @@ final class SessionSupervisor {
         return engine.markTerminalClosed(forSessionWithID: snapshot.id)
     }
 
-    /// Ends the agent a closed terminal left behind by discarding the output it waits on.
+    /// Ends the agent a closed terminal left behind, in the way that fits how the terminal
+    /// was closed.
     ///
-    /// Everything is asked again first, because the scan that marked the row may be minutes
-    /// old: the agent may have gone since, and its terminal been handed to somebody's new
-    /// tab, whose output this must never throw away. The row is not touched here — the
+    /// Everything is asked again first, because the finding that marked the row may be
+    /// minutes old: the agent may have gone since, and its terminal been handed to somebody's
+    /// new tab, whose output this must never throw away. The row is not touched here — the
     /// agent's exit, a moment later, is reported by the watch on its process like any other.
     private func releaseAgent(of snapshot: SessionSnapshot) {
-        guard let agentProcessID = snapshot.agentProcessID, terminalState(agentProcessID) == .lost else {
-            onNotableEvent(
-                "\(Self.label(snapshot)) · its agent no longer hangs without a terminal; nothing was discarded")
-            return
+        switch snapshot.agentProcessID.flatMap(terminalState) {
+        case .lost:
+            discardOutput(of: snapshot)
+        case .attached:
+            hangUpAgent(of: snapshot)
+        case .neverHad, nil:
+            onNotableEvent("\(Self.label(snapshot)) · its agent no longer hangs without a terminal; nothing was done")
         }
-        guard let devicePath = terminalDevicePath(agentProcessID) else {
+    }
+
+    /// Ends an agent that hangs without its terminal by discarding the output it waits on.
+    private func discardOutput(of snapshot: SessionSnapshot) {
+        guard let agentProcessID = snapshot.agentProcessID, let devicePath = terminalDevicePath(agentProcessID) else {
             onNotableEvent("\(Self.label(snapshot)) · no descriptor of its agent names a terminal; nothing to discard")
             return
         }
@@ -502,6 +555,42 @@ final class SessionSupervisor {
             releaseTerminal(devicePath)
                 ? "\(Self.label(snapshot)) · discarded the output its closed terminal held; the agent should exit now"
                 : "\(Self.label(snapshot)) · could not discard the output in \(devicePath)")
+    }
+
+    /// Ends an agent whose tab Ghostty closed and kept, with the hang-up the closed tab never
+    /// sent — once it is still the same process and its tab is still gone.
+    private func hangUpAgent(of snapshot: SessionSnapshot) {
+        guard
+            let agentProcessID = snapshot.agentProcessID,
+            SessionHostRegistry.isStillTheAgent(
+                agentProcessID: agentProcessID,
+                lastObservedAt: snapshot.lastObservedAt,
+                processStartedAt: agentProcessStartedAt
+            )
+        else {
+            onNotableEvent("\(Self.label(snapshot)) · its agent is gone; nothing was sent")
+            return
+        }
+        let otherNames = otherSessionNames(than: snapshot)
+        guard
+            tabIsGoneWithTerminalKept?(snapshot, otherNames)
+                ?? hostRegistry.tabIsGoneWithTerminalKept(snapshot, otherSessionNames: otherNames)
+        else {
+            onNotableEvent("\(Self.label(snapshot)) · its tab is no longer missing from Ghostty; nothing was sent")
+            return
+        }
+        onNotableEvent(
+            hangUp(agentProcessID)
+                ? "\(Self.label(snapshot)) · hung up its agent, as closing the tab should have; it should exit now"
+                : "\(Self.label(snapshot)) · could not signal its agent, process \(agentProcessID)")
+    }
+
+    /// What the other live rows are called: a tab title carrying one of them is what shows
+    /// that titles carry session names on this machine at all.
+    private func otherSessionNames(than snapshot: SessionSnapshot) -> [String] {
+        engine.snapshots.values
+            .filter { $0.id != snapshot.id && $0.phase != .sessionClosed }
+            .compactMap { $0.title?.nonEmpty }
     }
 
     private static func terminalClosedNote(for snapshot: SessionSnapshot) -> String {

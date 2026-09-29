@@ -16,4 +16,9 @@ public enum TabFocusAttempt: Equatable, Sendable {
 
     /// Something a person could act on is missing, said in words for the log.
     case missing(String)
+
+    /// The tab is gone and its host kept the terminal, so the agent runs on behind nothing a
+    /// click could bring forward. The words are the evidence, for the log; what changes is
+    /// the row, which the click marks as a closed terminal (ADR-0013).
+    case gone(String)
 }

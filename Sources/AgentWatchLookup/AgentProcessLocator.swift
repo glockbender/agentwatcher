@@ -221,6 +221,30 @@ public enum AgentProcessLocator {
     /// `NODEV` from `<sys/param.h>`, which Swift does not import: the macro is a cast.
     private static let noDevice: dev_t = -1
 
+    /// How many terminals an application holds with something running in them: the distinct
+    /// controlling terminals of its own child processes.
+    ///
+    /// Ghostty starts every terminal's shell as its own child, so this counts its terminals
+    /// from the kernel's side — including one it no longer lists, which is the point of
+    /// asking. A terminal whose shell has exited is not counted, and can only make the count
+    /// smaller than the list.
+    public static func terminalCount(heldBy applicationProcessID: Int32) -> Int {
+        let devices = AgentProcessScanner.allProcessIDs().compactMap { processID -> dev_t? in
+            guard
+                let process = kernelRecord(of: processID),
+                process.kp_eproc.e_ppid == applicationProcessID,
+                terminalState(
+                    controlsATerminal: process.kp_proc.p_flag & P_CONTROLT != 0,
+                    terminalDevice: process.kp_eproc.e_tdev
+                ) == .attached
+            else {
+                return nil
+            }
+            return process.kp_eproc.e_tdev
+        }
+        return Set(devices).count
+    }
+
     /// The terminal device a process reads and writes through, from its own standard
     /// descriptors, or `nil` when none of them is one.
     ///

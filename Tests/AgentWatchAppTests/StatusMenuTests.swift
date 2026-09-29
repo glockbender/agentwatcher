@@ -223,7 +223,7 @@ final class StatusMenuTests: XCTestCase {
         let ordinary = try XCTUnwrap(menu.sessionLineItems.first)
 
         host.sessions = [session(0, "Session", .terminalClosed)]
-        host.reaches = ["claude:session-0": .closedTerminal(devicePath: "/dev/ttys004")]
+        host.reaches = ["claude:session-0": .closedTerminal(.discardOutput(devicePath: "/dev/ttys004"))]
         try choose(ordinary)
         XCTAssertEqual(host.announcedReleases, [false], "the old title announced no terminal release")
 
@@ -263,7 +263,7 @@ final class StatusMenuTests: XCTestCase {
     func testALineWhoseClickCouldDoNothingIsGreyed() throws {
         let (menu, host, _) = try makeMenu()
         host.sessions = [session(0, "Left behind", .terminalClosed)]
-        host.reaches = ["claude:session-0": .closedTerminal(devicePath: nil)]
+        host.reaches = ["claude:session-0": .closedTerminal(nil)]
 
         menu.menuWillOpen(menu.menu)
 
