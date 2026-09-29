@@ -241,6 +241,14 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertTrue(titles[2].contains("nothing"), "\(titles[2]) does not say what is missing")
         XCTAssertTrue(titles[3].contains("Stop"), "a missing hook is named, not counted")
         XCTAssertTrue(titles[4].contains("/gone/AgentWatchSend"), "a stale entry shows where it points")
+
+        // A mark means "look here", so only the states that ask something of a person carry
+        // one: the owner asked for no more than that.
+        XCTAssertEqual(
+            titles.map { $0.first.map(String.init) },
+            ["N", "I", "◑", "!", "!", "!"],
+            "a mark only on waiting and on a problem: \(titles)"
+        )
     }
 
     /// The one thing the widget is allowed to ask for. With no integration at all it can show

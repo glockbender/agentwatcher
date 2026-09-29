@@ -9,17 +9,18 @@ import Foundation
 /// How far Agent Watch got into one agent's hooks, in one line.
 ///
 /// Six states, six answers, and the ones that mean something is wrong name what rather than
-/// only that. Each starts with the mark the setup guide gives the same state — ✓ working,
-/// ◑ waiting, ○ not there, ! needs you — and the words stay beside it: a shape alone is not
-/// an answer (ADR-0003). ◑ rather than a clock: the system font has no ◷, and the fallback
-/// drew it at half the size of the marks beside it. How many hooks there are is left out; it is a fact for the docs,
-/// not something a person decides anything by.
+/// only that. Only the states that ask something of a person carry a mark — ! for a problem,
+/// ◑ for waiting on the agent — so that a mark in this window always means "look here"; the
+/// words stay beside it, since a shape alone is not an answer (ADR-0003). ◑ rather than a
+/// clock: the system font has no ◷, and the fallback drew it at half the size of the words.
+/// How many hooks there are is left out; it is a fact for the docs, not something a person
+/// decides anything by.
 func toolingHookStateText(state: ToolingInstallationState) -> String {
     switch state {
     case .absent:
-        return "○ Not installed"
+        return "Not installed"
     case .installed:
-        return "✓ Installed · events are arriving"
+        return "Installed · events are arriving"
     case .unheard:
         return "◑ Installed · nothing has arrived yet"
     case let .incomplete(missing):
@@ -73,13 +74,13 @@ func toolingHookActionTitle(state: ToolingInstallationState) -> String? {
 func statusLineStateText(state: StatusLineState) -> String {
     switch state {
     case .notSet:
-        "○ Not connected"
+        "Not connected"
     case .connected:
-        "✓ Connected · your own command still runs"
+        "Connected · your own command still runs"
     case let .theirs(command):
         // The promise comes before the press. A person with their own status line needs to
         // know it survives before they find out.
-        "○ Not connected · your command is kept when you connect: \(command)"
+        "Not connected · your command is kept when you connect: \(command)"
     case .unreadable:
         "! settings.json exists but cannot be read"
     }
