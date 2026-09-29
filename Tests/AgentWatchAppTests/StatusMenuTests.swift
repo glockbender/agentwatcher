@@ -9,9 +9,8 @@ import XCTest
 /// what each one does when chosen.
 @MainActor
 final class StatusMenuTests: XCTestCase {
-    /// What a person does while working at the top; every setting, and every window that
-    /// holds settings, one level down.
-    func testTheMenuPutsActionsFirstAndEverySettingUnderSettings() throws {
+    /// What a person does while working, then the windows; every setting lives in them.
+    func testTheMenuHoldsActionsAndWindowsOnly() throws {
         let (menu, _, _) = try makeMenu()
 
         menu.menuWillOpen(menu.menu)
@@ -20,54 +19,9 @@ final class StatusMenuTests: XCTestCase {
             outline(menu.menu),
             [
                 "No active sessions",
-                "---",
                 "Show Widget",
-                "Highlight Widget",
                 "---",
-                "Settings",
-                "  Widget Settings…",
-                "  Tooling…",
-                "  ---",
-                "  Menu Bar Icon",
-                "    Sphere",
-                "    Counts",
-                "    ---",
-                "    Needs You",
-                "    Working",
-                "    Done",
-                "    Idle",
-                "  Sessions in Menu",
-                "    List Sessions in Menu",
-                "    ---",
-                "    Needs You",
-                "    Working",
-                "    Done",
-                "    Idle",
-                "  Widget Behavior",
-                "    Lock Position",
-                "    Lock Size",
-                "    ---",
-                "    Reset Widget Position",
-                "    Reset Widget Size",
-                "  Closed Sessions",
-                "    Remove after 2 minutes",
-                "    Remove after 10 minutes",
-                "    Keep until dismissed",
-                "  Read Session Transcripts",
-                "    Nothing to read — no session is working",
-                "    ---",
-                "    At most every 3 seconds",
-                "    At most every 5 seconds",
-                "    At most every 10 seconds",
-                "    Off",
-                "  Updates",
-                "    Agent Watch (development build)",
-                "    ---",
-                "    Check for Updates…",
-                "    Check on Launch",
-                "  ---",
-                "  Show Event Debug",
-                "  Record Raw Hook Payloads for 30 Minutes",
+                "Settings…",
                 "---",
                 "Quit Agent Watch",
             ]
@@ -83,69 +37,23 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertEqual(host.calls.prefix(2), ["menuWillOpen", "showShortcut"])
     }
 
-    func testOpeningTheMenuShowsWhatIsStoredAndWhatIsGoingOn() throws {
-        let (menu, host, settings) = try makeMenu()
-        settings.setMenuBarIconStyle(.counts)
-        settings.setMenuBarIconShows(.quiet, false)
-        settings.setLocksPosition(true)
-        settings.setClosedSessionRetention(.manual)
-        settings.setTranscriptPollInterval(nil)
+    func testOpeningTheMenuShowsWhatIsGoingOn() throws {
+        let (menu, host, _) = try makeMenu()
         host.attentionCounts = SessionAttentionCounts(needsPerson: 1, working: 2, done: 0, quiet: 0)
         host.isWidgetVisible = true
         host.isEventDebugVisible = true
-        host.checksForUpdatesOnLaunch = false
 
         menu.menuWillOpen(menu.menu)
 
         XCTAssertEqual(menu.summaryItem?.title, "1 needs you · 2 working")
-        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.counts])
-        XCTAssertEqual(
-            SessionAttention.counted.filter { menu.iconAttentionRows[$0]?.isOn == true },
-            [.needsPerson, .working, .done]
-        )
-        XCTAssertEqual(menu.widgetItem?.title, "Hide Widget")
-        XCTAssertEqual(menu.debugItem?.title, "Hide Event Debug")
-        XCTAssertEqual(menu.lockPositionItem?.state, .on)
-        XCTAssertEqual(menu.lockSizeItem?.state, .off)
-        XCTAssertEqual(menu.updateOnLaunchItem?.state, .off)
-        XCTAssertEqual(checked(menu.closedSessionItems), ["Keep until dismissed"])
-        XCTAssertEqual(checked(menu.transcriptItems), ["Off"])
-        XCTAssertEqual(
-            menu.transcriptSummaryItem?.title,
-            "Not reading — a finished call stays until the turn ends"
-        )
-    }
-
-    func testEachSettingLineWritesItsSetting() throws {
-        let (menu, host, settings) = try makeMenu()
-        menu.menuWillOpen(menu.menu)
-
-        try choose(XCTUnwrap(menu.lockPositionItem))
-        XCTAssertTrue(settings.locksPosition)
-        try choose(XCTUnwrap(menu.lockSizeItem))
-        XCTAssertTrue(settings.locksSize)
-        try choose(XCTUnwrap(menu.closedSessionItems.last))
-        XCTAssertEqual(settings.closedSessionRetention, .manual)
-        try choose(XCTUnwrap(menu.transcriptItems.first))
-        XCTAssertEqual(settings.transcriptPollInterval, 3)
-        try choose(XCTUnwrap(menu.transcriptItems.last))
-        XCTAssertNil(settings.transcriptPollInterval, "the last choice is off")
-        try choose(XCTUnwrap(menu.updateOnLaunchItem))
-        XCTAssertFalse(host.checksForUpdatesOnLaunch)
+        XCTAssertEqual(menu.widgetItem?.isHidden, true, "a visible widget needs no line to bring it back")
     }
 
     func testEachActionLineReachesTheHost() throws {
         let (menu, host, _) = try makeMenu()
         let expected: [(title: String, call: String)] = [
             ("Show Widget", "toggleWidget"),
-            ("Highlight Widget", "highlightWidget"),
-            ("Widget Settings…", "showWidgetSettings"),
-            ("Reset Widget Position", "resetWidgetPosition"),
-            ("Reset Widget Size", "resetWidgetSize"),
-            ("Show Event Debug", "toggleEventDebug"),
-            ("Tooling…", "showTooling"),
-            ("Check for Updates…", "checkForUpdates"),
-            ("Record Raw Hook Payloads for 30 Minutes", "toggleRawHookCapture"),
+            ("Settings…", "showWidgetSettings"),
             ("Quit Agent Watch", "quit"),
         ]
 
@@ -156,28 +64,6 @@ final class StatusMenuTests: XCTestCase {
         }
     }
 
-    #if AGENT_WATCH_DEBUG_CAPTURE
-        func testARunningRecordingSaysWhenItStopsAndWhatItHolds() throws {
-            let (menu, host, _) = try makeMenu()
-            host.rawCaptureExpiry = Date().addingTimeInterval(9 * 60 + 30)
-            host.recordedPayloadBytes = 0
-
-            menu.menuWillOpen(menu.menu)
-            XCTAssertEqual(menu.rawCaptureItem?.title, "Stop Recording Raw Hook Payloads (10m)")
-            XCTAssertEqual(menu.rawCaptureItem?.state, .on)
-            XCTAssertEqual(menu.deleteRecordingsItem?.isHidden, true, "nothing on disk, nothing to delete")
-
-            host.rawCaptureExpiry = nil
-            host.recordedPayloadBytes = 2_048
-            menu.menuWillOpen(menu.menu)
-            XCTAssertEqual(menu.rawCaptureItem?.title, "Record Raw Hook Payloads for 30 Minutes")
-            XCTAssertEqual(menu.deleteRecordingsItem?.isHidden, false)
-            XCTAssertEqual(
-                menu.deleteRecordingsItem?.title,
-                "Delete Recorded Payloads (\(ByteCountFormatter.string(fromByteCount: 2_048, countStyle: .file)))"
-            )
-        }
-    #endif
 
     // MARK: - Sessions in the menu
 
@@ -323,87 +209,6 @@ final class StatusMenuTests: XCTestCase {
         return inked
     }
 
-    // MARK: - Choosing which sessions
-
-    func testTheChoiceOffersEveryCountedStateAndShowsWhatIsStored() throws {
-        let (menu, _, _) = try makeMenu()
-
-        menu.menuWillOpen(menu.menu)
-
-        XCTAssertEqual(menu.listSessionsRow?.isOn, true)
-        XCTAssertEqual(Set(menu.attentionRows.keys), Set(SessionAttention.counted))
-        XCTAssertEqual(
-            SessionAttention.counted.filter { menu.attentionRows[$0]?.isOn == true },
-            [.needsPerson, .done]
-        )
-        XCTAssertEqual(
-            menu.attentionRows[.working]?.accessibilityRole(),
-            .checkBox,
-            "a line that draws itself says what it is to a screen reader"
-        )
-    }
-
-    /// The styles are one choice: picking one writes it and moves the tick, and a screen
-    /// reader hears a group of radio buttons rather than two checkboxes.
-    func testTheIconStylesAreOneChoice() throws {
-        let (menu, _, settings) = try makeMenu()
-        menu.menuWillOpen(menu.menu)
-        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.sphere])
-
-        try XCTUnwrap(menu.iconStyleRows[.counts]).toggle()
-
-        XCTAssertEqual(settings.menuBarIconStyle, .counts)
-        XCTAssertEqual(MenuBarIconStyle.allCases.filter { menu.iconStyleRows[$0]?.isOn == true }, [.counts])
-        XCTAssertEqual(menu.iconStyleRows[.counts]?.accessibilityRole(), .radioButton)
-        XCTAssertEqual(menu.iconAttentionRows[.working]?.accessibilityRole(), .checkBox)
-    }
-
-    /// An icon with nothing to count has nothing to draw, so the last state left is greyed
-    /// and says why on its own line — and a click on it changes nothing.
-    func testTheLastStateInTheIconCannotBeTakenAway() throws {
-        let (menu, _, settings) = try makeMenu()
-        menu.menuWillOpen(menu.menu)
-
-        for attention in [SessionAttention.working, .done, .quiet] {
-            try XCTUnwrap(menu.iconAttentionRows[attention]).toggle()
-        }
-
-        let last = try XCTUnwrap(menu.iconAttentionRows[.needsPerson])
-        XCTAssertEqual(settings.menuBarIconAttentions, [.needsPerson])
-        XCTAssertFalse(last.isAvailable)
-        XCTAssertEqual(last.note, StatusMenu.lastIconStateNote)
-        XCTAssertEqual(
-            SessionAttention.counted.filter { menu.iconAttentionRows[$0]?.note != nil },
-            [.needsPerson],
-            "a line that can still be chosen carries the reason it cannot"
-        )
-        last.toggle()
-        XCTAssertEqual(settings.menuBarIconAttentions, [.needsPerson])
-
-        try XCTUnwrap(menu.iconAttentionRows[.done]).toggle()
-        XCTAssertTrue(last.isAvailable, "a second state did not free the first")
-        XCTAssertNil(last.note)
-    }
-
-    /// The note appears while the menu is open, so its room is taken when the line is made:
-    /// whether an open menu widens for a line that grows has not been measured.
-    func testTheLastStatesNoteFitsTheLineItIsOn() throws {
-        let (menu, _, settings) = try makeMenu()
-        menu.menuWillOpen(menu.menu)
-        let row = try XCTUnwrap(menu.iconAttentionRows[.needsPerson])
-        let text = "\(row.title) — \(StatusMenu.lastIconStateNote)" as NSString
-        let needed = text.size(withAttributes: [.font: NSFont.menuFont(ofSize: 0)]).width
-        let mark = try XCTUnwrap(row.image).size.width
-
-        for attention in [SessionAttention.working, .done, .quiet] {
-            settings.setMenuBarIconShows(attention, false)
-        }
-        menu.refreshMenuBarIcon()
-
-        XCTAssertNotNil(row.note)
-        XCTAssertGreaterThanOrEqual(row.frame.width, 23 + mark + 6 + needed, "the note runs past the line")
-    }
-
     /// The counts can move while the menu is open. The first line follows them; the session
     /// lines keep their wording until the menu opens again, so none moves under the pointer.
     func testTheFirstLineFollowsTheCountsWhileTheMenuIsOpen() throws {
@@ -422,76 +227,6 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertEqual(menu.sessionLineItems, linesBefore)
     }
 
-    /// The menu is still open when a state is chosen, and the lines at its top follow at once.
-    func testChoosingAStateListsItsSessionsWithoutReopeningTheMenu() throws {
-        let (menu, host, settings) = try makeMenu()
-        host.sessions = [session(0, "Still building", .executing)]
-        menu.menuWillOpen(menu.menu)
-        XCTAssertEqual(menu.sessionLineItems, [], "working is not listed by default")
-
-        try XCTUnwrap(menu.attentionRows[.working]).toggle()
-
-        XCTAssertTrue(settings.menuSessionAttentions.contains(.working))
-        XCTAssertEqual(menu.attentionRows[.working]?.isOn, true)
-        XCTAssertEqual(menu.sessionLineItems.map(\.title), ["Still building"])
-    }
-
-    /// Off greys the states rather than hiding them, keeps what they were, and takes the lines
-    /// away at once.
-    func testTheSwitchGreysTheStatesAndKeepsThem() throws {
-        let (menu, host, settings) = try makeMenu()
-        host.sessions = [session(0, "Waiting on a question", .waitingForUser)]
-        menu.menuWillOpen(menu.menu)
-
-        try XCTUnwrap(menu.listSessionsRow).toggle()
-
-        XCTAssertFalse(settings.listsSessionsInMenu)
-        XCTAssertEqual(menu.sessionLineItems, [])
-        XCTAssertEqual(menu.attentionRows.values.map(\.isAvailable), [false, false, false, false])
-        XCTAssertEqual(menu.attentionRows[.needsPerson]?.isOn, true, "the choice is kept for later")
-
-        try XCTUnwrap(menu.attentionRows[.quiet]).toggle()
-        XCTAssertFalse(settings.menuSessionAttentions.contains(.quiet), "a greyed line took a click")
-    }
-
-    /// The menu hands its keys to the highlighted line: Return and Space choose it, and every
-    /// other key goes on to the menu. Measured on macOS 15.3.1 — and the item's own action is
-    /// never called for a line with a view, so it is not where the keyboard is handled.
-    func testReturnAndSpaceChooseALineAndOtherKeysGoOnToTheMenu() throws {
-        let (menu, _, settings) = try makeMenu()
-        menu.menuWillOpen(menu.menu)
-        let idle = try XCTUnwrap(menu.attentionRows[.quiet])
-        XCTAssertTrue(idle.acceptsFirstResponder, "without it the menu keeps its keys to itself")
-
-        idle.keyDown(with: try key(36))
-        XCTAssertTrue(settings.menuSessionAttentions.contains(.quiet), "Return did not choose the line")
-        idle.keyDown(with: try key(49))
-        XCTAssertFalse(settings.menuSessionAttentions.contains(.quiet), "Space did not choose the line")
-        XCTAssertEqual(idle.accessibilityValue() as? Bool, false)
-
-        let responder = KeyRecorder()
-        idle.nextResponder = responder
-        idle.keyDown(with: try key(125))
-        XCTAssertEqual(responder.keyCodes, [125], "the arrow did not reach the menu")
-        XCTAssertFalse(settings.menuSessionAttentions.contains(.quiet), "an arrow chose the line")
-    }
-
-    private func key(_ code: UInt16) throws -> NSEvent {
-        try XCTUnwrap(
-            NSEvent.keyEvent(
-                with: .keyDown,
-                location: .zero,
-                modifierFlags: [],
-                timestamp: 0,
-                windowNumber: 0,
-                context: nil,
-                characters: "",
-                charactersIgnoringModifiers: "",
-                isARepeat: false,
-                keyCode: code
-            ))
-    }
-
     private func session(_ index: Int, _ title: String, _ phase: SessionPhase) -> SessionSnapshot {
         testSession(index: index, title: title, phase: phase, lastObservedAt: Date(timeIntervalSince1970: 1_000))
     }
@@ -501,7 +236,7 @@ final class StatusMenuTests: XCTestCase {
     private func makeMenu() throws -> (StatusMenu, FakeStatusMenuHost, WidgetSettingsStore) {
         let settings = WidgetSettingsStore(preferences: try isolatedPreferences())
         let host = FakeStatusMenuHost()
-        let menu = StatusMenu(settings: settings, version: nil, host: host)
+        let menu = StatusMenu(settings: settings, host: host)
         // The menu holds its host weakly, as it holds the application, so something has to
         // keep this one alive for the test that does not keep it itself.
         addTeardownBlock { _ = host }
@@ -575,7 +310,6 @@ final class FakeStatusMenuHost: StatusMenuHost {
     func menuWillOpen() { calls.append("menuWillOpen") }
     func showShortcut(on item: NSMenuItem) { calls.append("showShortcut") }
     func toggleWidget() { calls.append("toggleWidget") }
-    func highlightWidget() { calls.append("highlightWidget") }
     func showWidgetSettings() { calls.append("showWidgetSettings") }
     func showTooling() { calls.append("showTooling") }
     func toggleEventDebug() { calls.append("toggleEventDebug") }

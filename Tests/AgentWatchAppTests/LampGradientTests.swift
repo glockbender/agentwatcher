@@ -8,16 +8,14 @@ import XCTest
 @MainActor
 final class LampGradientTests: XCTestCase {
     func testStoredEndpointsAndCycleReachTheAnimationForEveryShape() throws {
-        let preferences = try isolatedPreferences()
-        let store = LampSchemeStore(preferences: preferences)
         for phase: SessionPhase in [.executing, .disconnected, .rateLimited] {
-            store.setColor(NSColor(sRGB: "#00EEEC"), for: phase)
-            store.setGradientColor(NSColor(sRGB: "#BF9BFA"), for: phase)
-            store.setAnimationCycle(4, for: phase)
-            store.setMotion(.gradient, for: phase)
-            let reopened = LampSchemeStore(preferences: preferences)
+            let scheme = LampScheme(styles: [
+                phase: LampStyle(
+                    color: NSColor(sRGB: "#00EEEC"), motion: .gradient,
+                    gradientColor: NSColor(sRGB: "#BF9BFA"), animationCycle: 4)
+            ])
             let look = SessionLamp.appearance(
-                for: testSession(phase: phase, lastObservedAt: Date()), scheme: reopened.scheme)
+                for: testSession(phase: phase, lastObservedAt: Date()), scheme: scheme)
             let lamp = SessionLampView(appearance: look, diameter: 12)
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
@@ -71,12 +69,12 @@ final class LampGradientTests: XCTestCase {
     }
 
     func testDimUsesTheChosenFullCycleForEveryShape() throws {
-        let store = LampSchemeStore(preferences: try isolatedPreferences())
         for phase: SessionPhase in [.executing, .disconnected, .rateLimited] {
-            store.setMotion(.dim, for: phase)
-            store.setAnimationCycle(6, for: phase)
+            let scheme = LampScheme(styles: [
+                phase: LampStyle(color: phase.defaultLampStyle.color, motion: .dim, animationCycle: 6)
+            ])
             let look = SessionLamp.appearance(
-                for: testSession(phase: phase, lastObservedAt: Date()), scheme: store.scheme)
+                for: testSession(phase: phase, lastObservedAt: Date()), scheme: scheme)
             let lamp = SessionLampView(appearance: look, diameter: 12)
             let animation = try XCTUnwrap(lamp.layer?.animation(forKey: "lamp") as? CABasicAnimation)
             XCTAssertEqual(animation.keyPath, "opacity")
@@ -86,37 +84,18 @@ final class LampGradientTests: XCTestCase {
         }
     }
 
-    func testLegacyModesMigrateBeforeSeedingAndDoNotOverwriteLaterChoices() throws {
+    func testLegacyModesMigrateWhenTheOldSettingsAreRead() throws {
         for (oldMotion, expectedCycle) in [("pulse", 2.8), ("urgent", 1.1), ("gradient", 7.0)] {
             let preferences = try isolatedPreferences()
             preferences.set(oldMotion, forKey: "lampMotion.executing")
             preferences.set(7, forKey: "lampGradientCycle.executing")
             preferences.set("#ABCDEF", forKey: "lampGradientColor.executing")
-            let store = LampSchemeStore(preferences: preferences)
-            preferences.seed(store.defaultValues)
+            _ = LampSchemeStore(preferences: preferences)
             let reopened = LampSchemeStore(preferences: preferences)
             XCTAssertEqual(reopened.scheme.style(for: .executing).motion, oldMotion == "gradient" ? .gradient : .dim)
             XCTAssertEqual(reopened.scheme.style(for: .executing).animationCycle, expectedCycle)
             XCTAssertEqual(reopened.scheme.style(for: .executing).gradientColor.srgbHex, "#ABCDEF")
-            reopened.setAnimationCycle(5, for: .executing)
-            XCTAssertEqual(LampSchemeStore(preferences: preferences).scheme.style(for: .executing).animationCycle, 5)
-            reopened.reset()
-            XCTAssertTrue(LampSchemeStore(preferences: preferences).scheme.isDefault)
         }
-    }
-
-    func testChangingMotionKeepsTheChosenGradientForTheNextTime() throws {
-        let store = LampSchemeStore(preferences: try isolatedPreferences())
-        store.setGradientColor(NSColor(sRGB: "#123456"), for: .executing)
-        store.setAnimationCycle(7, for: .executing)
-        store.setMotion(.steady, for: .executing)
-        store.setMotion(.gradient, for: .executing)
-        XCTAssertEqual(store.scheme.style(for: .executing).gradientColor.srgbHex, "#123456")
-        XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, 7)
-        XCTAssertEqual(store.scheme.style(for: .idle).gradientColor.srgbHex, "#FFFFFF")
-        store.reset()
-        XCTAssertTrue(store.scheme.isDefault)
-        XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, 2.5)
     }
 
     func testInvalidSettingsCannotProduceAnInvalidAnimationPeriod() throws {
@@ -130,9 +109,5 @@ final class LampGradientTests: XCTestCase {
             preferences.set(stored, forKey: "lampAnimationCycle.executing")
             XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, expected)
         }
-        store.setAnimationCycle(4, for: .executing)
-        store.setAnimationCycle(.nan, for: .executing)
-        store.setAnimationCycle(.infinity, for: .executing)
-        XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, 4)
     }
 }

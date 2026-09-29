@@ -111,18 +111,6 @@ struct WidgetStyle {
     /// three characters is one width rather than four near-misses.
     var timerFont: NSFont { .monospacedSystemFont(ofSize: points(11), weight: .regular) }
 
-    /// What the row's timer turns when the session has gone quiet, and when it has gone
-    /// quiet for long enough to say so.
-    ///
-    /// Fixed values for the same measured reason the lamp's table gives (`LampScheme`): a
-    /// system colour adapts to the machine's light or dark appearance, and this number is
-    /// drawn on the widget's own background — one of ten fixed colours a person picks, half
-    /// of them light — so the adaptation was tracking a surface the timer never touches.
-    /// These are `systemYellow` and `systemOrange` as they resolve on a dark machine, which
-    /// is what the timer already looked like there.
-    static let timerQuiet = NSColor(sRGB: "#FFD60A")
-    static let timerStale = NSColor(sRGB: "#FF9F0A")
-
     // MARK: - Pictures
 
     /// The agent's own application icon, the one picture in a row that is not a symbol.

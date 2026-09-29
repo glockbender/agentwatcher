@@ -15,11 +15,6 @@ enum MenuBarSphereMetrics {
     /// to them it looked like nothing. The owner asked for no less than half.
     static let needsPersonFloor: CGFloat = 0.5
     static let otherFloor: CGFloat = 1.0 / 12
-    /// Idle, in the sphere's own colour rather than the grid's grey. The owner chose it from
-    /// drawings of both side by side: grey mixed into its neighbours reads as a dull patch,
-    /// and a soft violet as a colour of its own. It is the least saturated of the four, which
-    /// keeps idle the quietest.
-    static let quiet = NSColor(srgbRed: 0.52, green: 0.50, blue: 0.90, alpha: 1)
     /// How far from the middle each state's colour is centred, as a share of the radius.
     static let anchorDistance: CGFloat = 0.52
     /// How widely a colour spreads from its centre, as a share of the radius, for a state
@@ -34,9 +29,21 @@ enum MenuBarSphereMetrics {
     static let highlightCentre = CGPoint(x: -0.36, y: 0.44)
     static let highlightRadius: CGFloat = 0.32
     static let highlightStrength: CGFloat = 0.95
-    /// How far the whole sphere fades at the bottom of its breath, while anything needs a
-    /// person. Nothing else makes it breathe.
-    static let breathDepth: CGFloat = 0.55
+    /// The halo around the sphere, in the colour of the most important state it holds.
+    static let glowRadius: CGFloat = 2.5
+    static let glowOpacity: Float = 0.6
+    /// While anything needs a person the halo breathes between these, and the sphere itself
+    /// never fades: a glow that swells and settles, not a lamp that blinks.
+    static let glowBreath: ClosedRange<Float> = 0.3...0.95
+    static let glowBreathSeconds: TimeInterval = 4
+    /// While anything is working or needs a person, the colours sway to and fro under the
+    /// light, by this many degrees each way. A sway rather than a turn keeps needs you near
+    /// twelve o'clock.
+    static let swayDegrees: CGFloat = 35
+    static let swaySeconds: TimeInterval = 7
+    /// When a count changes the sphere swells once, this much larger, and settles.
+    static let swellScale: CGFloat = 1.08
+    static let swellSeconds: TimeInterval = 1.6
     /// The line an empty sphere is drawn with.
     static let emptyLineWidth: CGFloat = 1.5
 }
@@ -51,8 +58,9 @@ struct MenuBarSphereShare: Equatable {
 
 /// Draws the counts as one sphere, each state's colour a soft patch on it, lit from above.
 ///
-/// One picture rather than a part per state, as the grid has: the sphere breathes as a whole,
-/// and only while something needs a person, so nothing on it moves on its own.
+/// Two pictures: the colours, which sway while anything is alive, and the light over them —
+/// the rim, the haze and the highlight — which stays where it is, so the colours seem to flow
+/// inside a still glass ball.
 @MainActor
 enum MenuBarSphereRenderer {
     /// `nil` only for no cells at all. A sphere whose states hold nothing is an empty ring, not
@@ -70,22 +78,21 @@ enum MenuBarSphereRenderer {
         guard let first = held.first else {
             return MenuBarIconDrawing(
                 size: size,
-                parts: [MenuBarIconPart(image: emptyRing(size: size, dark: dark), frame: frame, breathDepth: 0)]
+                parts: [MenuBarIconPart(image: emptyRing(size: size, dark: dark), frame: frame)]
             )
         }
         // The cells come in their order of importance, so needs you, when it holds anything,
         // is the first.
         let needsPerson = first.attention == .needsPerson
+        let alive = held.contains { $0.attention == .needsPerson || $0.attention == .working }
         let shares = MenuBarSphereShare.layout(counts: held.map(\.count), needsPersonFirst: needsPerson)
-        let colours = held.map { $0.attention == .quiet ? MenuBarSphereMetrics.quiet : $0.accent }
+        let (colours, light) = paint(shares: shares, colours: held.map(\.accent), size: size, scale: scale)
         return MenuBarIconDrawing(
             size: size,
             parts: [
                 MenuBarIconPart(
-                    image: paint(shares: shares, colours: colours, size: size, scale: scale),
-                    frame: frame,
-                    breathDepth: needsPerson ? MenuBarSphereMetrics.breathDepth : 0
-                )
+                    image: colours, frame: frame, glow: first.accent, glowBreathes: needsPerson, sways: alive),
+                MenuBarIconPart(image: light, frame: frame),
             ]
         )
     }
@@ -108,10 +115,6 @@ enum MenuBarSphereRenderer {
             self.b = b
         }
 
-        func mixed(with other: RGB, by t: CGFloat) -> RGB {
-            RGB(r: r + (other.r - r) * t, g: g + (other.g - g) * t, b: b + (other.b - b) * t)
-        }
-
         func scaled(by k: CGFloat) -> RGB {
             RGB(r: r * k, g: g * k, b: b * k)
         }
@@ -121,15 +124,18 @@ enum MenuBarSphereRenderer {
     /// state holds and how close the pixel is to its centre — so the colours flow into one
     /// another with no boundary anywhere, and a larger share is a larger patch.
     ///
+    /// The light is painted apart from the colours, as white and black laid over them, so that
+    /// the colours can move under it.
+    ///
     /// Painted into an sRGB bitmap rather than with `lockFocus`, whose image is kept in the
     /// screen's profile: the colours here are mixed by arithmetic, and have to be stored as
     /// the numbers they were mixed to.
     private static func paint(shares: [MenuBarSphereShare], colours: [NSColor], size: NSSize, scale: CGFloat)
-        -> NSImage
+        -> (colours: NSImage, light: NSImage)
     {
         let width = Int((size.width * scale).rounded())
         let height = Int((size.height * scale).rounded())
-        guard
+        func bitmap() -> NSBitmapImageRep? {
             let map = NSBitmapImageRep(
                 bitmapDataPlanes: nil,
                 pixelsWide: width,
@@ -141,12 +147,15 @@ enum MenuBarSphereRenderer {
                 colorSpaceName: .deviceRGB,
                 bytesPerRow: 0,
                 bitsPerPixel: 0
-            )?.retagging(with: .sRGB),
-            let data = map.bitmapData
-        else {
-            return NSImage(size: size)
+            )?.retagging(with: .sRGB)
+            map?.size = size
+            return map
         }
-        map.size = size
+        guard let map = bitmap(), let data = map.bitmapData, let lightMap = bitmap(),
+            let lightData = lightMap.bitmapData
+        else {
+            return (NSImage(size: size), NSImage(size: size))
+        }
         let radius = MenuBarSphereMetrics.diameter / 2 * scale
         let centre = CGPoint(x: CGFloat(width) / 2, y: CGFloat(height) / 2)
         let palette = colours.map(RGB.init)
@@ -161,7 +170,6 @@ enum MenuBarSphereRenderer {
             )
         }
         let spreads = shares.map { MenuBarSphereMetrics.spread * sqrt($0.share / 0.25) }
-        let white = RGB(r: 1, g: 1, b: 1)
         let highlight = MenuBarSphereMetrics.highlightCentre
         let highlightRadius = MenuBarSphereMetrics.highlightRadius
 
@@ -176,6 +184,7 @@ enum MenuBarSphereRenderer {
                 guard coverage > 0 else {
                     for channel in 0..<4 {
                         data[offset + channel] = 0
+                        lightData[offset + channel] = 0
                     }
                     continue
                 }
@@ -192,29 +201,38 @@ enum MenuBarSphereRenderer {
                     total += weight
                 }
                 colour = colour.scaled(by: 1 / max(total, .leastNonzeroMagnitude))
-                // Lit from above: darker towards the rim, a haze of light at the bottom, and
-                // one small highlight.
-                colour = colour.scaled(by: 1 - MenuBarSphereMetrics.rimDarkening * pow(distance, 3))
-                let glow = MenuBarSphereMetrics.bottomGlow * smoothstep(0.15, 1, -y) * smoothstep(0.3, 1, distance)
-                colour = colour.mixed(with: white, by: glow)
-                let hx = (x - highlight.x) / highlightRadius
-                let hy = (y - highlight.y) / (highlightRadius * 0.7)
-                colour = colour.mixed(
-                    with: white,
-                    by: MenuBarSphereMetrics.highlightStrength * exp(-(hx * hx + hy * hy) * 1.6)
-                )
-
-                // Premultiplied, as the bitmap stores it.
                 data[offset] = UInt8(min(max(colour.r, 0), 1) * coverage * 255)
                 data[offset + 1] = UInt8(min(max(colour.g, 0), 1) * coverage * 255)
                 data[offset + 2] = UInt8(min(max(colour.b, 0), 1) * coverage * 255)
                 data[offset + 3] = UInt8(coverage * 255)
+
+                // Lit from above: darker towards the rim, a haze of light at the bottom, and
+                // one small highlight — black, then white, then white again, laid over the
+                // colours one after another.
+                let rim = MenuBarSphereMetrics.rimDarkening * pow(distance, 3)
+                let glow = MenuBarSphereMetrics.bottomGlow * smoothstep(0.15, 1, -y) * smoothstep(0.3, 1, distance)
+                let hx = (x - highlight.x) / highlightRadius
+                let hy = (y - highlight.y) / (highlightRadius * 0.7)
+                let shine = MenuBarSphereMetrics.highlightStrength * exp(-(hx * hx + hy * hy) * 1.6)
+                var white = glow
+                var alpha = glow + rim * (1 - glow)
+                white = shine + white * (1 - shine)
+                alpha = shine + alpha * (1 - shine)
+                // Premultiplied, as the bitmap stores it.
+                let grey = UInt8(min(max(white, 0), 1) * coverage * 255)
+                lightData[offset] = grey
+                lightData[offset + 1] = grey
+                lightData[offset + 2] = grey
+                lightData[offset + 3] = UInt8(min(max(alpha, 0), 1) * coverage * 255)
             }
         }
-        let image = NSImage(size: size)
-        image.addRepresentation(map)
-        image.isTemplate = false
-        return image
+        func image(_ map: NSBitmapImageRep) -> NSImage {
+            let image = NSImage(size: size)
+            image.addRepresentation(map)
+            image.isTemplate = false
+            return image
+        }
+        return (image(map), image(lightMap))
     }
 
     private static func smoothstep(_ lower: CGFloat, _ upper: CGFloat, _ value: CGFloat) -> CGFloat {

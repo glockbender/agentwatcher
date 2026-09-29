@@ -22,14 +22,9 @@ extension SessionAttention {
         }
     }
 
-    /// The accent drawn behind the mark. ADR-0012 says why these are fixed values.
+    /// The accent drawn behind the mark, from the theme in use.
     var accent: NSColor {
-        switch self {
-        case .needsPerson: MenuBarIconPalette.needsPerson
-        case .working: MenuBarIconPalette.working
-        case .done: MenuBarIconPalette.done
-        case .quiet, .closed: MenuBarIconPalette.quiet
-        }
+        WidgetTheme.active.accent(for: self == .closed ? .quiet : self)
     }
 
     /// The state's name where a person chooses it, and what a screen reader says for its mark.

@@ -48,9 +48,16 @@ final class MenuBarIconView: NSView {
         guard cells != self.cells || style != self.style else {
             return drawing != nil
         }
+        let counted = !self.cells.isEmpty && cells.map(\.count) != self.cells.map(\.count)
         self.cells = cells
         self.style = style
-        return render()
+        guard render() else {
+            return false
+        }
+        if counted && style == .sphere {
+            cellLayers.forEach(swell)
+        }
+        return true
     }
 
     /// How long the status item has to be to hold what is drawn.
@@ -124,6 +131,12 @@ final class MenuBarIconView: NSView {
             layer?.addSublayer(cell)
             if part.breathDepth > 0 {
                 breathe(cell, downTo: Float(1 - part.breathDepth))
+            }
+            if let glow = part.glow {
+                halo(cell, colour: glow, breathing: part.glowBreathes, in: part.frame.size)
+            }
+            if part.sways {
+                sway(cell)
             }
             return cell
         }
@@ -254,9 +267,70 @@ final class MenuBarIconView: NSView {
         target.add(animation, forKey: Self.breathKey)
     }
 
+    private static let swayKey = "sway"
+    private static let swellKey = "swell"
+
+    private func halo(_ target: CALayer, colour: NSColor, breathing: Bool, in size: CGSize) {
+        target.shadowColor = colour.cgColor
+        target.shadowOffset = .zero
+        target.shadowRadius = MenuBarSphereMetrics.glowRadius
+        target.shadowOpacity = MenuBarSphereMetrics.glowOpacity
+        let side = MenuBarSphereMetrics.diameter
+        target.shadowPath = CGPath(
+            ellipseIn: CGRect(
+                x: (size.width - side) / 2, y: (size.height - side) / 2, width: side, height: side),
+            transform: nil
+        )
+        guard breathing else {
+            return
+        }
+        let animation = CABasicAnimation(keyPath: "shadowOpacity")
+        animation.fromValue = MenuBarSphereMetrics.glowBreath.lowerBound
+        animation.toValue = MenuBarSphereMetrics.glowBreath.upperBound
+        target.add(onTheClock(animation, period: MenuBarSphereMetrics.glowBreathSeconds), forKey: Self.breathKey)
+    }
+
+    private func sway(_ target: CALayer) {
+        let reach = MenuBarSphereMetrics.swayDegrees * .pi / 180
+        let animation = CABasicAnimation(keyPath: "transform.rotation.z")
+        animation.fromValue = -reach
+        animation.toValue = reach
+        target.add(onTheClock(animation, period: MenuBarSphereMetrics.swaySeconds), forKey: Self.swayKey)
+    }
+
+    /// Once, when a count changes: a little larger and brighter, then back.
+    private func swell(_ target: CALayer) {
+        let scale = CAKeyframeAnimation(keyPath: "transform.scale")
+        scale.values = [1, MenuBarSphereMetrics.swellScale, 1]
+        let brightness = CAKeyframeAnimation(keyPath: "shadowRadius")
+        brightness.values = [target.shadowRadius, target.shadowRadius * 2, target.shadowRadius]
+        let group = CAAnimationGroup()
+        group.animations = [scale, brightness]
+        group.duration = MenuBarSphereMetrics.swellSeconds
+        group.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        target.add(group, forKey: Self.swellKey)
+    }
+
+    /// To and fro forever, anchored to whole periods on the shared clock so that a layer rebuilt
+    /// halfway carries on where the old one was.
+    private func onTheClock(_ animation: CABasicAnimation, period: TimeInterval) -> CABasicAnimation {
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        animation.duration = period / 2
+        animation.autoreverses = true
+        animation.repeatCount = .infinity
+        let clock = CACurrentMediaTime()
+        animation.beginTime = clock - clock.truncatingRemainder(dividingBy: period)
+        return animation
+    }
+
     /// Which cells are breathing, for a test that cannot see the screen.
     var breathingCells: [Int] {
         cellLayers.enumerated().compactMap { $0.element.animation(forKey: Self.breathKey) == nil ? nil : $0.offset }
+    }
+
+    /// Which cells are swelling, for the test that a changed count swells the sphere.
+    var swellingCells: [Int] {
+        cellLayers.enumerated().compactMap { $0.element.animation(forKey: Self.swellKey) == nil ? nil : $0.offset }
     }
 
     /// How many times the view has asked to be shown again.

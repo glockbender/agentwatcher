@@ -37,6 +37,7 @@ class HUDSessionListView: NSView {
     private let background: WidgetBackground
     private let lampScheme: LampScheme
     private let backgroundOpacity: CGFloat
+    private let material = WidgetMaterial.current
     private let style: WidgetStyle
     private let restoredScrollOffset: NSPoint?
     private let onScroll: (NSPoint) -> Void
@@ -44,6 +45,8 @@ class HUDSessionListView: NSView {
 
     /// How many sessions the counters are currently reporting as out of sight, each way.
     private(set) var hiddenSessions: HiddenRows = .none
+    /// Of those, the ones that need a person: the only hidden rows worth a badge.
+    private(set) var hiddenNeedingYou: HiddenRows = .none
 
     private var scrollView: NSScrollView?
     /// Both badges are built with the list and live for as long as it does, so neither is
@@ -241,6 +244,7 @@ class HUDSessionListView: NSView {
             && background == self.background
             && lampScheme == self.lampScheme
             && backgroundOpacity == self.backgroundOpacity
+            && material == WidgetMaterial.current
             && style.scale == self.style.scale
     }
 
@@ -536,31 +540,59 @@ class HUDSessionListView: NSView {
             return
         }
 
-        let hidden = hiddenRows(
-            rowFrames: rowStack.arrangedSubviews.map(\.frame),
-            visibleRect: scrollView.documentVisibleRect
+        let visible = scrollView.documentVisibleRect
+        let rows = rowStack.arrangedSubviews
+        let hidden = hiddenRows(rowFrames: rows.map(\.frame), visibleRect: visible)
+        let urgent = hiddenRows(
+            rowFrames: rows.filter {
+                ($0 as? HUDSessionRowView)?.snapshot.phase.attention == .needsPerson
+            }.map(\.frame),
+            visibleRect: visible
         )
+        fade(scrollView, top: hidden.above > 0, bottom: hidden.below > 0)
         // Nothing is touched when nothing changed, and the widget lays out on every event.
-        guard hidden != hiddenSessions else {
+        guard hidden != hiddenSessions || urgent != hiddenNeedingYou else {
             return
         }
-        // Per badge, not per pair: scrolling one row on usually moves one count and leaves
-        // the other alone, and a label given the string it already holds is marked for
+        // Per badge, not per pair: a label given the string it already holds is marked for
         // redraw all the same — which re-blurs the translucent panel behind it.
-        if hidden.above != hiddenSessions.above {
-            show(hidden.above, on: overflowBadgeAbove)
+        if urgent.above != hiddenNeedingYou.above {
+            show(urgent.above, on: overflowBadgeAbove)
         }
-        if hidden.below != hiddenSessions.below {
-            show(hidden.below, on: overflowBadgeBelow)
+        if urgent.below != hiddenNeedingYou.below {
+            show(urgent.below, on: overflowBadgeBelow)
         }
         hiddenSessions = hidden
+        hiddenNeedingYou = urgent
+    }
+
+    /// Rows cut off by an edge fade into it, as a scrolling list does; only a hidden session
+    /// that needs a person also gets a badge.
+    private func fade(_ scrollView: NSScrollView, top: Bool, bottom: Bool) {
+        scrollView.wantsLayer = true
+        guard top || bottom, let layer = scrollView.layer else {
+            scrollView.layer?.mask = nil
+            return
+        }
+        let mask = (layer.mask as? CAGradientLayer) ?? CAGradientLayer()
+        let reach = min(0.25, style.rowHeight / max(scrollView.bounds.height, 1))
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        mask.frame = scrollView.bounds
+        mask.colors = [
+            NSColor.black.withAlphaComponent(bottom ? 0 : 1).cgColor, NSColor.black.cgColor, NSColor.black.cgColor,
+            NSColor.black.withAlphaComponent(top ? 0 : 1).cgColor,
+        ]
+        mask.locations = [0, NSNumber(value: Double(reach)), NSNumber(value: Double(1 - reach)), 1]
+        CATransaction.commit()
+        layer.mask = mask
     }
 
     /// Writes `isHidden` and a string and nothing else — this runs inside AppKit's own layout
     /// pass, where activating a constraint hung the widget once.
     private func show(_ count: Int, on badge: HUDOverflowBadge) {
         badge.isHidden = count == 0
-        badge.label.stringValue = count == 0 ? "" : "+\(count)"
+        badge.label.stringValue = count == 0 ? "" : SessionAttention.needsPerson.summaryPhrase(count: count)
     }
 
     private func makeUsageStack() -> NSStackView? {
@@ -673,7 +705,7 @@ final class HUDOverflowBadge: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         label.font = style.overflowFont
-        label.textColor = background.secondaryForegroundColor
+        label.textColor = SessionAttention.needsPerson.accent
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
 
@@ -682,7 +714,7 @@ final class HUDOverflowBadge: NSView {
         // whichever palette a person chose. Opaque, because what it covers is text.
         layer?.backgroundColor = background.color.cgColor
         layer?.borderWidth = 1
-        layer?.borderColor = background.secondaryForegroundColor.withAlphaComponent(0.25).cgColor
+        layer?.borderColor = SessionAttention.needsPerson.accent.withAlphaComponent(0.6).cgColor
 
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: horizontalPadding),

@@ -62,18 +62,16 @@ final class PreferenceSeedingTests: XCTestCase {
 
     func testASettingChosenBeforeAnUpdateSurvivesTheNextLaunchsSeeding() throws {
         let (preferences, owners) = try makeStores()
-        let lampSchemes = LampSchemeStore(preferences: preferences)
-        lampSchemes.setColor(NSColor(srgbRed: 1, green: 0, blue: 1, alpha: 1), for: .executing)
-        WidgetBackgroundStore(preferences: preferences).select(.mint)
+        ThemeStore(preferences: preferences, folder: nil).select(ThemeMode.light)
+        WidgetBackgroundStore(preferences: preferences).selectOpacity(0.5)
 
         seed(owners, into: preferences)
 
-        XCTAssertEqual(lampSchemes.scheme.style(for: .executing).color.srgbHex, "#FF00FF")
-        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).selected, .mint)
+        XCTAssertEqual(ThemeStore(preferences: preferences, folder: nil).mode, .light)
+        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).opacity, 0.5)
         XCTAssertEqual(
-            lampSchemes.scheme.style(for: .failed).color.srgbHex,
-            SessionPhase.failed.defaultLampStyle.color.srgbHex,
-            "and the phases it never mentioned are written out as the defaults"
+            preferences.string(forKey: "theme"), WidgetTheme.standard.name,
+            "and what it never chose is written out as the default"
         )
     }
 
@@ -124,7 +122,7 @@ final class PreferenceSeedingTests: XCTestCase {
                 WidgetBackgroundStore(preferences: preferences),
                 WidgetSettingsStore(preferences: preferences),
                 HUDFrameStore(preferences: preferences),
-                LampSchemeStore(preferences: preferences),
+                ThemeStore(preferences: preferences, folder: nil),
                 RowLayoutStore(preferences: preferences),
                 AppUpdater(preferences: preferences),
             ]
