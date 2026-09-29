@@ -11,16 +11,16 @@ notice, so an entry checked on an older version than yours may no longer hold.
 **Why:** Agent Watch does not choose the name. Claude Code names a session itself: after a prompt
 of at least 10 characters, it asks a small model for a short title — the same title your terminal
 tab shows. A shorter prompt such as `show doc`, or a slash command, does not count; the next longer
-prompt does. Until then the tab says `Claude Code`, and the row says `[still no name] … ⓘ`. Hover
-the row to see this reason in its card. Claude Code names no session at all when
-`CLAUDE_CODE_DISABLE_TERMINAL_TITLE` is set to `1`, `true`, `yes` or `on`.
+prompt does. Until then the tab keeps Claude Code's default title, and the row says
+`[still no name] … ⓘ`. Hover the row to see this reason in its card. Claude Code names no session
+at all when `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` is set to `1`, `true`, `yes` or `on`.
 
 **What to do:** Send a prompt of 10 or more characters, or name the session yourself: `/rename
 <name>` in the session, or `claude --name <name>` when you start it. A name you give is shown
 ahead of Claude's own title.
 
-**Checked on:** Claude Code 2.1.284. The 10-character rule was reproduced in a session; the
-environment variable was read in Claude Code's code, not tried.
+**Checked on:** Claude Code 2.1.284. The 10-character rule was reproduced in a session; the tab
+title and the environment variable were read in Claude Code's code, not tried.
 
 ## No session appears, and Tooling says the connection is waiting for a signal
 
