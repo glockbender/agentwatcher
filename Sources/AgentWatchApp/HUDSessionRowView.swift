@@ -163,7 +163,7 @@ final class HUDSessionRowView: NSStackView {
         // leaves room for. It used to be taken from the part that gives way, which is the
         // same string until somebody moves that job elsewhere — and then the row announced
         // itself as `feature/probe` with the name drawn right beside it.
-        accessibleName = rowName(for: snapshot, layout: layout)?.nonEmpty
+        accessibleName = rowName(for: snapshot, layout: layout, marked: false)?.nonEmpty
         super.init(frame: .zero)
 
         var views: [NSView] = []

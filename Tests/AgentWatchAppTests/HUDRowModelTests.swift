@@ -83,7 +83,7 @@ final class HUDRowModelTests: XCTestCase {
         XCTAssertNil(HUDRowModel(snapshot: nameless, now: now, layout: titleOnly).flexibleText)
         XCTAssertEqual(
             HUDRowModel(snapshot: nameless, now: now, layout: .standard).flexibleText,
-            "[still no name] in agent-watch"
+            "[still no name] in agent-watch ⓘ"
         )
     }
 }

@@ -341,6 +341,42 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertTrue(hidden.contains("Claude Code"), "everything else the card knows still stands")
     }
 
+    /// A running session without a name was reported as a bug, and all a row can say is that
+    /// the name is missing. The card says why, where the name would stand — per agent, and for
+    /// a row found by its process before any event arrived.
+    func testTheCardSaysWhyASessionHasNoName() {
+        let claude = testSession(source: .claude, title: nil, lastObservedAt: now)
+        let codex = testSession(source: .codex, title: nil, lastObservedAt: now)
+        let discovered = DiscoveredAgentProcess(
+            source: .claude,
+            processID: 4_242,
+            startedAt: now,
+            projectName: "agent-watch"
+        ).row(arrivalIndex: 0)
+
+        func firstLine(_ session: SessionSnapshot, _ layout: RowLayout = .standard) -> String? {
+            hoverCardText(for: session, now: now, layout: layout).split(separator: "\n").first.map(String.init)
+        }
+
+        XCTAssertEqual(
+            firstLine(claude),
+            "No name yet — Claude Code names a session after a prompt of 10 or more characters; /rename names it now"
+        )
+        XCTAssertEqual(firstLine(codex), "No name yet — Codex has not named this thread")
+        XCTAssertEqual(
+            firstLine(discovered), "No name yet — found by its process; the name comes with the session's first event")
+        XCTAssertEqual(
+            firstLine(claude, RowLayout(parts: RowLayout.standard.parts, nameStyle: .title)),
+            firstLine(claude),
+            "`Name only` draws nothing in the row, so the card is the one place left to say why"
+        )
+        XCTAssertFalse(
+            hoverCardText(for: claude, now: now, layout: layoutWithoutTheName).contains("No name yet"),
+            "a template without the name has stopped talking about it"
+        )
+        XCTAssertFalse(hoverCardText(for: snapshot(), now: now, layout: .standard).contains("No name yet"))
+    }
+
     /// The card is silent about a click that works, and speaks when the host is gone.
     ///
     /// It used to spell out the ordinary case too — which application a click raises, which

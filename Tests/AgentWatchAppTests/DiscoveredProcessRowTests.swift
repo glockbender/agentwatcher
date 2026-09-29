@@ -221,8 +221,8 @@ final class DiscoveredProcessRowTests: XCTestCase {
             lastObservedAt: now
         )
 
-        XCTAssertEqual(rowName(for: discovered, layout: .standard), "[still no name] in agent-watch")
-        XCTAssertEqual(rowName(for: unnamedSession, layout: .standard), "[still no name] in agent-watch")
+        XCTAssertEqual(rowName(for: discovered, layout: .standard), "[still no name] in agent-watch ⓘ")
+        XCTAssertEqual(rowName(for: unnamedSession, layout: .standard), "[still no name] in agent-watch ⓘ")
 
         var named = unnamedSession
         named.title = "Slack thread diagnostic"

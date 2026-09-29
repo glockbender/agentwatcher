@@ -113,6 +113,13 @@ final class WidgetRenderProbe: XCTestCase {
             named: "card-terminal-closed",
             in: directory
         )
+        // The card for a running session with no name: the line that says why stands where the
+        // name would, and it is the longest first line a card has.
+        try draw(
+            hoverCard(for: sessions().first { $0.title == nil && $0.discoveredProcess == nil }),
+            named: "card-no-name",
+            in: directory
+        )
         try draw(dismissStates(style: WidgetStyle(scale: 0.5)), named: "dismiss-50", in: directory)
         try draw(emptyState(complaint: nil), named: "empty", in: directory)
         try draw(
