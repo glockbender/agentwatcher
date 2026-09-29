@@ -129,11 +129,10 @@ enum ToolingReport {
         state: ToolingInstallationState,
         path: String
     ) -> ToolingReportRow {
-        let hooks = ToolingHooks.hooks(for: source)
-        return ToolingReportRow(
+        ToolingReportRow(
             title: "Hooks",
             status: nil,
-            state: toolingHookStateText(state: state, hooks: hooks),
+            state: toolingHookStateText(state: state),
             details: ["Writes \(path)"],
             nextStep: toolingHookNextStep(state: state, source: source, path: path),
             actions: toolingHookActionTitle(state: state).map {
@@ -205,16 +204,6 @@ enum ToolingReport {
         } else {
             rows.append(contentsOf: readings.map { ideRow($0, stagedPlugin: stagedPlugin) })
         }
-        rows.append(
-            ToolingReportRow(
-                title: "Marketplace",
-                status: nil,
-                state: idePluginMarketplaceText,
-                details: [],
-                nextStep: nil,
-                actions: []
-            )
-        )
         rows.append(
             ToolingReportRow(
                 title: "Plugin file",

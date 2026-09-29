@@ -19,7 +19,7 @@ Agent Watch shows yours.
 **Checked on:** Claude Code 2.1.284. Tested: the 10-character rule. Read in Claude Code's code but
 not tested: slash commands and the environment variable.
 
-## No session appears, and Tooling says "nothing has arrived from this agent yet"
+## No session appears, and Tooling says "nothing has arrived yet"
 
 **Why:** The connection is installed, but the agent has not loaded it. Claude Code loads plugins
 when a session starts. Codex runs new hooks only after you trust them.
@@ -29,16 +29,16 @@ prompt to trust the hooks. Then send a request.
 
 **Checked on:** not recorded.
 
-## No session appears, and Tooling says hooks are "Missing" or the sender "is gone"
+## No session appears, and Tooling says "Hooks missing" or "Points to a program that is gone"
 
-**Why:** Agent Watch's entries in the agent's configuration are incomplete, or point to a file
+**Why:** Agent Watch's entries in the agent's configuration are incomplete, or point to a program
 that no longer exists.
 
 **What to do:** Press **Repair** or **Point at this build** in Tooling.
 
 **Checked on:** not recorded.
 
-## Tooling says a file "is there and cannot be read"
+## Tooling says "The file exists but cannot be read"
 
 **Why:** The file has an error, for example invalid JSON. Agent Watch does not change a file it
 cannot read, so it cannot damage your settings.

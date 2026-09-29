@@ -654,7 +654,7 @@ socket — а socket слушает та копия, которая держит
 значило бы врать. Отсюда три ответа — `arrived`, `nothingSinceInstall`, `unknown`, — и `unheard`
 получается только из среднего.
 
-Что видно человеку: строка окна `Installed — 11 hooks, and nothing has arrived from this agent yet`,
+Что видно человеку: строка окна `◑ Installed · nothing has arrived yet`,
 а в пустом виджете — `Hooks are installed, but no event has arrived`. Рядом со строкой стоит и
 совет, потому что причины у двух агентов разные: Codex ждёт подтверждения доверия, Claude Code не
 перечитает уже загруженный плагин без `/reload-plugins`. Обе фразы даёт `toolingHookNextStep`.

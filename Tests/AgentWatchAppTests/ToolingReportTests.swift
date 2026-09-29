@@ -110,9 +110,9 @@ final class ToolingReportTests: XCTestCase {
         XCTAssertTrue(file.details.contains { $0.hasSuffix("ide-plugin") }, "and always names the folder")
     }
 
-    /// Check works only on a running IDE, so that fact is carried three ways: a dot on every
-    /// IDE row, words wherever it takes something away, and the sentence at the top of the
-    /// section. None of them is a colour a person has to interpret alone.
+    /// Check works only on a running IDE, so that fact is carried two ways: a dot on every IDE
+    /// row, and words wherever it takes something away — beside the greyed button, where a
+    /// person looks. Neither is a colour a person has to interpret alone.
     func testEveryIDERowCarriesWhetherItIsRunning() throws {
         let rows = try XCTUnwrap(
             report(
@@ -126,8 +126,9 @@ final class ToolingReportTests: XCTestCase {
         XCTAssertFalse(ides[0].state.contains("unning"), "the ordinary case says it with the dot alone")
         XCTAssertTrue(ides[1].state.hasPrefix("Not running ·"), ides[1].state)
 
+        XCTAssertTrue(ides[0].state.first?.isUppercase == true, "a line that starts the row starts a sentence")
+
         let header = try XCTUnwrap(rows.first { $0.title == "JetBrains plugin" })
-        XCTAssertTrue(header.state.contains("needs that IDE running"), header.state)
         XCTAssertNil(header.status, "and a row about the plugin itself is neither running nor not")
     }
 

@@ -224,14 +224,13 @@ final class HUDRowLayoutTests: XCTestCase {
     /// their tooling, so each answer has to be a different sentence — and the two that mean
     /// something is wrong have to name what, not just that.
     func testTheToolingWindowSaysWhichStateEachIntegrationIsIn() {
-        let hooks = ToolingHooks.hooks(for: .claude)
         let titles = [
-            toolingHookStateText(state: .absent, hooks: hooks),
-            toolingHookStateText(state: .installed, hooks: hooks),
-            toolingHookStateText(state: .unheard, hooks: hooks),
-            toolingHookStateText(state: .incomplete(missing: ["Stop"]), hooks: hooks),
-            toolingHookStateText(state: .stale(senderPaths: ["/gone/AgentWatchSend"]), hooks: hooks),
-            toolingHookStateText(state: .unreadable, hooks: hooks),
+            toolingHookStateText(state: .absent),
+            toolingHookStateText(state: .installed),
+            toolingHookStateText(state: .unheard),
+            toolingHookStateText(state: .incomplete(missing: ["Stop"])),
+            toolingHookStateText(state: .stale(senderPaths: ["/gone/AgentWatchSend"])),
+            toolingHookStateText(state: .unreadable),
         ]
 
         XCTAssertEqual(Set(titles).count, 6, "six states, six answers")
