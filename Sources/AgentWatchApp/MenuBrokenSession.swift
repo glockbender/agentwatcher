@@ -141,7 +141,8 @@ final class MenuBrokenSessionLineView: NSView {
 ///
 /// Its buttons take no click of their own: whether a button inside a menu's line can track a
 /// press has not been measured, and this line's own release is what a menu is known to
-/// deliver. The release is handed to the button it lands on.
+/// deliver — seen again with real clicks on this question (`docs/measurements.md`). The
+/// release is handed to the button it lands on.
 @MainActor
 final class MenuEndAgentQuestionView: NSView {
     let dialog: HUDEndAgentDialog
