@@ -1,45 +1,48 @@
 # Troubleshooting
 
-Things that look wrong in Agent Watch but have a cause you can act on — most often the agent
-behaving in a way nobody would guess from the widget.
+Situations that look like a bug in Agent Watch, why they happen, and what to do.
 
-Each entry names the version it was checked on. Claude Code, Codex and macOS change without
-notice, so an entry checked on an older version than yours may no longer hold.
+Each entry says which version it was checked on. Claude Code, Codex and macOS change without
+notice, so on a newer version an entry may no longer be true.
 
-## A running Claude session shows `[still no name]`
+## A Claude session shows `[still no name]`
 
-**Why:** Agent Watch does not choose the name. Claude Code names a session itself: after a prompt
-of at least 10 characters, it asks a small model for a short title — the same title your terminal
-tab shows. A shorter prompt such as `show doc`, or a slash command, does not count; the next longer
-prompt does. Until then the tab keeps Claude Code's default title, and the row says
-`[still no name] … ⓘ`. Hover the row to see this reason in its card. Claude Code names no session
-at all when `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` is set to `1`, `true`, `yes` or `on`.
+**Why:** Claude Code names the session, not Agent Watch. After the first prompt of 10 or more
+characters, Claude Code asks a model for a short title; your terminal tab shows the same title.
+Shorter prompts, such as `show doc`, and slash commands do not count. Claude Code gives no titles
+at all when `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` is `1`, `true`, `yes` or `on`.
 
-**What to do:** Send a prompt of 10 or more characters, or name the session yourself: `/rename
-<name>` in the session, or `claude --name <name>` when you start it. A name you give is shown
-ahead of Claude's own title.
+**What to do:** Send a prompt of 10 or more characters. Or name the session yourself: `/rename
+<name>` in the session, or `claude --name <name>` when you start it. If a session has both names,
+Agent Watch shows yours.
 
-**Checked on:** Claude Code 2.1.284. The 10-character rule was reproduced in a session; the tab
-title and the environment variable were read in Claude Code's code, not tried.
+**Checked on:** Claude Code 2.1.284. Tested: the 10-character rule. Read in Claude Code's code but
+not tested: slash commands and the environment variable.
 
-## No session appears, and Tooling says the connection is waiting for a signal
+## No session appears, and Tooling says "nothing has arrived from this agent yet"
 
-**Why:** Installing writes the agent's configuration. It does not prove the agent has loaded it:
-Claude Code reads plugins when a session starts, and Codex asks you to trust new hooks first.
+**Why:** The connection is installed, but the agent has not loaded it. Claude Code loads plugins
+when a session starts. Codex runs new hooks only after you trust them.
 
-**What to do:** Claude Code: run `/reload-plugins` in an existing session, or start a new one.
-Codex: accept its trust prompts for the hooks. Then send a request — the first signal changes the
-state.
+**What to do:** Claude Code: run `/reload-plugins`, or start a new session. Codex: accept its
+prompt to trust the hooks. Then send a request.
 
 **Checked on:** not recorded.
 
-## No session appears, and Tooling says the connection needs repair or cannot read a file
+## No session appears, and Tooling says hooks are "Missing" or the sender "is gone"
 
-**Why:** A file Agent Watch wrote into was changed or moved, or a configuration file does not
-parse. Agent Watch never writes over a file it cannot read, because it cannot know what the write
-would destroy.
+**Why:** Agent Watch's entries in the agent's configuration are incomplete, or point to a file
+that no longer exists.
 
-**What to do:** Use the repair action in Tooling. For a file it cannot read, Tooling offers no
-action and names the file instead: fix or move that file, then reopen Tooling.
+**What to do:** Press **Repair** or **Point at this build** in Tooling.
+
+**Checked on:** not recorded.
+
+## Tooling says a file "is there and cannot be read"
+
+**Why:** The file has an error, for example invalid JSON. Agent Watch does not change a file it
+cannot read, so it cannot damage your settings.
+
+**What to do:** Fix or move the file that Tooling names, then reopen Tooling.
 
 **Checked on:** not recorded.

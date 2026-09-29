@@ -91,8 +91,7 @@ The app does not download the plugin for you yet, so install the ZIP from disk a
 
 ## If something looks wrong
 
-A session that does not appear, a session with no name, a connection that waits for a signal:
-[Troubleshooting](TROUBLESHOOTING.md) says why each happens and what to do.
+If a session does not appear or has no name, see [Troubleshooting](TROUBLESHOOTING.md).
 Use **Remove** or **Disconnect** in Tooling to undo an integration.
 
 ## Local by default
