@@ -53,18 +53,24 @@ enum ClosedTerminal {
         return tcflush(descriptor, TCOFLUSH) == 0
     }
 
-    /// What a person runs to hang up an agent whose tab Ghostty closed and kept.
-    static func hangUpCommand(processID: Int32) -> String {
-        "kill -HUP \(processID)"
+    /// What a person runs to hang up the processes of a tab Ghostty closed and kept.
+    static func hangUpCommand(processIDs: [Int32]) -> String {
+        "kill -HUP " + processIDs.map(String.init).joined(separator: " ")
     }
 
-    /// Sends the agent the hang-up its closed tab never did, and answers whether it went out.
+    /// Sends the processes of a closed tab the hang-up it never did — the agent first, then
+    /// the shell and `login` above it — and answers whether every signal went out.
     ///
-    /// `SIGHUP` rather than `SIGTERM` because it is what closing a terminal sends. Claude
-    /// Code 2.1.284 answers it with its ordinary shutdown — read in its code
-    /// (`docs/measurements.md`).
-    static func hangUp(processID: Int32) -> Bool {
-        processID > 1 && kill(processID, SIGHUP) == 0
+    /// `SIGHUP` rather than `SIGTERM` because it is what closing a terminal sends, and the
+    /// whole chain because closing a tab ends its shell too: left running, the shell keeps
+    /// Ghostty holding a terminal it does not show, which is half of how the next closed tab
+    /// is recognised. Claude Code 2.1.284 answers `SIGHUP` with its ordinary shutdown — read in
+    /// its code (`docs/measurements.md`).
+    static func hangUp(processIDs: [Int32]) -> Bool {
+        guard !processIDs.isEmpty, processIDs.allSatisfy({ $0 > 1 && $0 != getpid() }) else {
+            return false
+        }
+        return processIDs.map { kill($0, SIGHUP) == 0 }.allSatisfy { $0 }
     }
 }
 

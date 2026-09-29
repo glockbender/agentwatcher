@@ -24,8 +24,9 @@ not tested: slash commands and the environment variable.
 **Why:** Ghostty sometimes removes a closed tab but keeps the terminal behind it, so the agent in it
 keeps running. The tab is gone from every window, so a click has nothing to bring forward.
 
-**What to do:** Click the row. It changes to "terminal closed". Click it again to end the agent.
-The conversation is kept, and `claude --resume` continues it in a new tab.
+**What to do:** Click the row. It changes to "terminal closed". Click it again to end the agent and
+the shell of the closed tab. The conversation is kept, and `claude --resume` continues it in a new
+tab.
 
 **Checked on:** Ghostty 1.3.1, Claude Code 2.1.284. Seen once. Why Ghostty keeps the terminal is
 not known.

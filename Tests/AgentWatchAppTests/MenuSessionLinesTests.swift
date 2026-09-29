@@ -93,7 +93,7 @@ final class MenuSessionLinesTests: XCTestCase {
                 testSession(index: 0, title: "Left behind", phase: .terminalClosed, lastObservedAt: now)
             ],
             listing: [.needsPerson],
-            reach: { _ in .closedTerminal(.hangUp(processID: 52671)) }
+            reach: { _ in .closedTerminal(.hangUp(processIDs: [52671, 52482, 52480])) }
         )
 
         XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed, click ends the agent"])

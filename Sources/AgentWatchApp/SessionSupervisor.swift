@@ -40,9 +40,12 @@ final class SessionSupervisor {
     /// Discards the output waiting in a terminal, which is what ends an agent that hangs
     /// without one. Injected so a test never flushes a real terminal.
     private let releaseTerminal: (String) -> Bool
-    /// Sends an agent the hang-up its closed tab never did. Injected so a test never
-    /// signals a real process.
-    private let hangUp: (Int32) -> Bool
+    /// The processes a hang-up of an agent's terminal reaches: the agent, its shell and the
+    /// `login` above it.
+    private let terminalProcessChain: (Int32) -> [Int32]
+    /// Sends those processes the hang-up their closed tab never did. Injected so a test
+    /// never signals a real process.
+    private let hangUp: ([Int32]) -> Bool
     /// What a click asks of the session's host, and the question asked again before a
     /// hang-up. `nil` asks the host registry; a test answers instead, because the process
     /// running it may well be in a Ghostty tab, and the registry would ask that Ghostty.
@@ -125,7 +128,8 @@ final class SessionSupervisor {
         terminalState: @escaping (Int32) -> AgentProcessLocator.TerminalState? = AgentProcessLocator.terminalState(of:),
         terminalDevicePath: @escaping (Int32) -> String? = AgentProcessLocator.terminalDevicePath(of:),
         releaseTerminal: @escaping (String) -> Bool = ClosedTerminal.discardUnreadOutput(devicePath:),
-        hangUp: @escaping (Int32) -> Bool = ClosedTerminal.hangUp(processID:),
+        terminalProcessChain: @escaping (Int32) -> [Int32] = AgentProcessLocator.terminalProcessChain(from:),
+        hangUp: @escaping ([Int32]) -> Bool = ClosedTerminal.hangUp(processIDs:),
         focusHost: ((SessionSnapshot, [String]) -> SessionHostRegistry.FocusOutcome)? = nil,
         tabIsGoneWithTerminalKept: ((SessionSnapshot, [String]) -> Bool)? = nil,
         onChange: @escaping ([SessionSnapshot], [AgentUsageLimits]) -> Void,
@@ -142,6 +146,7 @@ final class SessionSupervisor {
         self.terminalState = terminalState
         self.terminalDevicePath = terminalDevicePath
         self.releaseTerminal = releaseTerminal
+        self.terminalProcessChain = terminalProcessChain
         self.hangUp = hangUp
         self.focusHost = focusHost
         self.tabIsGoneWithTerminalKept = tabIsGoneWithTerminalKept
@@ -292,7 +297,8 @@ final class SessionSupervisor {
         case .attached:
             // Only a click that found the tab gone marks a row whose agent still has its
             // terminal, so this is the Ghostty case.
-            return .hangUp(processID: agentProcessID)
+            let chain = terminalProcessChain(agentProcessID)
+            return chain.isEmpty ? nil : .hangUp(processIDs: chain)
         case .neverHad, nil:
             return nil
         }
@@ -557,8 +563,9 @@ final class SessionSupervisor {
                 : "\(Self.label(snapshot)) · could not discard the output in \(devicePath)")
     }
 
-    /// Ends an agent whose tab Ghostty closed and kept, with the hang-up the closed tab never
-    /// sent — once it is still the same process and its tab is still gone.
+    /// Ends an agent whose tab Ghostty closed and kept, and the shell it was started from,
+    /// with the hang-up the closed tab never sent — once it is still the same process and its
+    /// tab is still gone.
     private func hangUpAgent(of snapshot: SessionSnapshot) {
         guard
             let agentProcessID = snapshot.agentProcessID,
@@ -579,10 +586,16 @@ final class SessionSupervisor {
             onNotableEvent("\(Self.label(snapshot)) · its tab is no longer missing from Ghostty; nothing was sent")
             return
         }
+        let chain = terminalProcessChain(agentProcessID)
+        guard chain.first == agentProcessID else {
+            onNotableEvent("\(Self.label(snapshot)) · its agent has no terminal to hang up; nothing was sent")
+            return
+        }
+        let processes = chain.map(String.init).joined(separator: " ")
         onNotableEvent(
-            hangUp(agentProcessID)
-                ? "\(Self.label(snapshot)) · hung up its agent, as closing the tab should have; it should exit now"
-                : "\(Self.label(snapshot)) · could not signal its agent, process \(agentProcessID)")
+            hangUp(chain)
+                ? "\(Self.label(snapshot)) · hung up its agent and shell (\(processes)), as closing the tab should have"
+                : "\(Self.label(snapshot)) · could not hang up every process of its closed tab (\(processes))")
     }
 
     /// What the other live rows are called: a tab title carrying one of them is what shows

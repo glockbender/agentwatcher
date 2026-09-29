@@ -231,11 +231,15 @@ final class ClosedTerminalRowTests: XCTestCase {
     /// Reported on 2026-09-29: a person closed a Ghostty tab, Ghostty kept the terminal
     /// behind it with the agent running, and a click on the row brought forward whichever
     /// Ghostty window was in front — an empty shell.
+    /// The shell the agent was typed into and the `login` above it, as the kernel's walk up
+    /// the agent's terminal would find them.
+    private let shell: Int32 = 52482
+    private let login: Int32 = 52480
     private let tabGone = SessionHostRegistry.FocusOutcome(
         raised: false, tab: .gone("Ghostty holds 5 terminals and shows 4, none named after this session"))
 
     func testAClickThatFindsItsTabGoneMarksTheRowAndRaisesNothing() throws {
-        var hungUp: [Int32] = []
+        var hungUp: [[Int32]] = []
         var notes: [String] = []
         let supervisor = makeSupervisor(
             terminalState: { _ in .attached },
@@ -269,13 +273,13 @@ final class ClosedTerminalRowTests: XCTestCase {
         let reach = supervisor.reach(for: row)
         let card = hoverCardText(for: row, now: now, layout: .standard, reach: reach)
 
-        XCTAssertEqual(reach, .closedTerminal(.hangUp(processID: agent)))
-        XCTAssertTrue(card.contains("Click ends it"), card)
-        XCTAssertTrue(card.contains("kill -HUP \(agent)"), card)
+        XCTAssertEqual(reach, .closedTerminal(.hangUp(processIDs: [agent, shell, login])))
+        XCTAssertTrue(card.contains("Click ends it and its shell"), card)
+        XCTAssertTrue(card.contains("kill -HUP \(agent) \(shell) \(login)"), card)
     }
 
     func testTheNextClickHangsUpTheAgentWhileItsTabIsStillGone() throws {
-        var hungUp: [Int32] = []
+        var hungUp: [[Int32]] = []
         let supervisor = makeSupervisor(
             terminalState: { _ in .attached },
             agentProcessStartedAt: { [now] _ in now.addingTimeInterval(-60) },
@@ -291,13 +295,13 @@ final class ClosedTerminalRowTests: XCTestCase {
 
         supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
 
-        XCTAssertEqual(hungUp, [agent])
+        XCTAssertEqual(hungUp, [[agent, shell, login]], "the agent first, then what its closed tab ran it in")
     }
 
     /// Asked again at the click, like the flush: the tab may be back, or Ghostty may have let
     /// the terminal go and the count with it.
     func testTheNextClickSendsNothingOnceTheTabIsNoLongerMissing() throws {
-        var hungUp: [Int32] = []
+        var hungUp: [[Int32]] = []
         let supervisor = makeSupervisor(
             terminalState: { _ in .attached },
             agentProcessStartedAt: { [now] _ in now.addingTimeInterval(-60) },
@@ -319,7 +323,7 @@ final class ClosedTerminalRowTests: XCTestCase {
     /// A process that started after the row last heard from its agent is somebody else under
     /// a number handed out again, and a hang-up would end a stranger.
     func testTheNextClickSendsNothingToAProcessNewerThanTheRow() throws {
-        var hungUp: [Int32] = []
+        var hungUp: [[Int32]] = []
         let supervisor = makeSupervisor(
             terminalState: { _ in .attached },
             agentProcessStartedAt: { [now] _ in now.addingTimeInterval(60) },
@@ -348,7 +352,7 @@ final class ClosedTerminalRowTests: XCTestCase {
         agentProcessStartedAt: @escaping (Int32) -> Date? = { _ in nil },
         released: @escaping (String) -> Void = { _ in },
         notes: @escaping (String) -> Void = { _ in },
-        hungUp: @escaping (Int32) -> Void = { _ in },
+        hungUp: @escaping ([Int32]) -> Void = { _ in },
         focusHost: @escaping (SessionSnapshot, [String]) -> SessionHostRegistry.FocusOutcome = { _, _ in
             SessionHostRegistry.FocusOutcome(raised: false, tab: .unaddressable)
         },
@@ -369,8 +373,9 @@ final class ClosedTerminalRowTests: XCTestCase {
                 released(path)
                 return true
             },
-            hangUp: { processID in
-                hungUp(processID)
+            terminalProcessChain: { [shell, login] processID in [processID, shell, login] },
+            hangUp: { processIDs in
+                hungUp(processIDs)
                 return true
             },
             focusHost: focusHost,

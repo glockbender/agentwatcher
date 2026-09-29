@@ -116,7 +116,7 @@ final class WidgetRenderProbe: XCTestCase {
         // The same row when Ghostty closed the tab and kept the terminal: a shorter command,
         // and the one sentence that says which way the terminal went.
         try draw(
-            hoverCard(for: abandoned, reach: .closedTerminal(.hangUp(processID: 52671))),
+            hoverCard(for: abandoned, reach: .closedTerminal(.hangUp(processIDs: [52671, 52482, 52480]))),
             named: "card-tab-kept",
             in: directory
         )

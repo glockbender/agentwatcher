@@ -30,6 +30,6 @@ enum ClosedTerminalEnding: Equatable, Sendable {
     /// output. Discarding that output through this device lets it exit.
     case discardOutput(devicePath: String)
     /// Ghostty closed the tab and kept the terminal, and the agent runs on in it. The hang-up
-    /// the closed tab never sent ends it.
-    case hangUp(processID: Int32)
+    /// the closed tab never sent ends it and the shell it was started from, the agent first.
+    case hangUp(processIDs: [Int32])
 }

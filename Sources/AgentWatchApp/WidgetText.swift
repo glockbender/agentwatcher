@@ -492,11 +492,11 @@ func closedTerminalHint(_ ending: ClosedTerminalEnding?) -> String {
             By hand:
             \(ClosedTerminal.releaseCommand(devicePath: devicePath))
             """
-    case let .hangUp(processID):
+    case let .hangUp(processIDs):
         return """
-            Click ends it: Ghostty closed its tab but kept the terminal, and the agent runs on there.
+            Click ends it and its shell: Ghostty closed the tab but kept the terminal, and both run on there.
             By hand:
-            \(ClosedTerminal.hangUpCommand(processID: processID))
+            \(ClosedTerminal.hangUpCommand(processIDs: processIDs))
             """
     }
 }
