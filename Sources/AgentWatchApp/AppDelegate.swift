@@ -411,8 +411,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             WidgetMaterial.current = look.widgetMaterial
             hudController.setAppearance(
                 background: look.widgetBackground, lampScheme: look.lampScheme, opacity: look.widgetOpacity)
+            // Not the menu's lines: it reads them, marks included, each time it opens, and
+            // building them asks the process tree about every broken session.
             menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
-            statusMenu?.refreshSessions()
             settingsWindow.refresh()
         case .scale:
             // Read back for the reason the opacity gives above: the store clamps, and a

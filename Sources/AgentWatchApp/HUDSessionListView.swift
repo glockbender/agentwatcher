@@ -51,7 +51,8 @@ class HUDSessionListView: NSView {
     private var scrollView: NSScrollView?
     /// Both badges are built with the list and live for as long as it does, so neither is
     /// optional: `updateOverflowIndicator` runs inside a layout pass and may only write
-    /// `isHidden` and a string there, never build a view or touch a constraint.
+    /// `isHidden`, a string and a border colour there, never build a view or touch a
+    /// constraint.
     private(set) var overflowBadgeAbove: HUDOverflowBadge
     private(set) var overflowBadgeBelow: HUDOverflowBadge
     private var hasRestoredScrollOffset = false
