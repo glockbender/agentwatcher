@@ -123,7 +123,7 @@ final class HoverCardFreshnessTests: XCTestCase {
         let preferences = try isolatedPreferences()
         return HUDPanelController(
             reach: { _ in .nowhere },
-            focus: { _ in },
+            focus: { _ in .nothingRaised },
             remove: { _ in },
             background: .graphite,
             lampScheme: LampScheme(),

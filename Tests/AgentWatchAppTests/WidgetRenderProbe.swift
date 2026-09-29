@@ -75,6 +75,20 @@ final class WidgetRenderProbe: XCTestCase {
                 in: directory
             )
         }
+        // The question a broken session's click puts, over the whole widget. The smallest widget
+        // is where the one-line layout has to take over, at every end of the size range.
+        try draw(widgetAskingToEndAnAgent(width: 420), named: "ask-end", in: directory)
+        for scale: CGFloat in [0.5, 1, 2] {
+            let style = WidgetStyle(scale: scale)
+            try draw(
+                widgetAskingToEndAnAgent(size: style.minimumWindowSize, style: style),
+                named: "ask-end-smallest-\(Int(scale * 100))",
+                in: directory
+            )
+        }
+        try draw(
+            widgetAskingToEndAnAgent(size: NSSize(width: 200, height: 200)), named: "ask-end-tall-narrow", in: directory
+        )
         try draw(highlightedWidget(.left), named: "edge-left", in: directory)
         try draw(highlightedWidget(.bottomRight), named: "edge-corner", in: directory)
         try draw(listView(width: 190), named: "narrow", in: directory)
@@ -502,6 +516,28 @@ final class WidgetRenderProbe: XCTestCase {
     /// The widget with one border strip lit, which is what replaces a resize cursor the
     /// widget cannot have: a cursor appears only over the window holding keyboard focus, and
     /// this one refuses focus so that clicking it never interrupts typing elsewhere.
+    /// Built the way the widget builds it: the list, and the dialog over it at full strength —
+    /// the end of its fade.
+    private func widgetAskingToEndAnAgent(
+        width: CGFloat = 420, size: NSSize? = nil, style: WidgetStyle = .standard
+    ) -> NSView {
+        let container = HUDContentContainer()
+        let list = listView(width: size?.width ?? width, style: style)
+        container.setBody(list)
+        let dialog = HUDEndAgentDialog(
+            sessionID: "claude:session-1",
+            sessionName: "Документация проекта",
+            style: style,
+            onCancel: {},
+            onEnd: {}
+        )
+        container.showDialog(dialog)
+        dialog.alphaValue = 1
+        place(container, size: size ?? NSSize(width: width, height: list.frame.height))
+        container.layoutSubtreeIfNeeded()
+        return container
+    }
+
     private func highlightedWidget(_ edge: WidgetEdgeHighlightView.Edge) -> NSView {
         let width: CGFloat = 420
         let container = HUDContentContainer()

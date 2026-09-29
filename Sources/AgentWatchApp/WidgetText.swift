@@ -476,8 +476,8 @@ func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
         : "No window to bring forward"
 }
 
-/// What a click on a row whose terminal was closed does, said before it is done — the one
-/// click in the widget that ends something.
+/// What a click on a row whose terminal was closed offers, said before it is made — the one
+/// click in the widget that can end something, and it asks first.
 ///
 /// The command is on the card because the card cannot be selected: it takes no mouse events,
 /// so a command a person wants to run somewhere else has to be readable, not copyable.
@@ -487,14 +487,14 @@ func closedTerminalHint(_ ending: ClosedTerminalEnding?) -> String {
         return "Nothing here can end it: none of the agent's descriptors names its terminal"
     case let .discardOutput(devicePath):
         return """
-            Click ends it: the agent is waiting for its closed terminal to take its last output, \
+            A click asks to end it: the agent is waiting for its closed terminal to take its last output, \
             and discarding that output lets it exit.
             By hand:
             \(ClosedTerminal.releaseCommand(devicePath: devicePath))
             """
     case let .hangUp(processIDs):
         return """
-            Click ends it and its shell: Ghostty closed the tab but kept the terminal, and both run on there.
+            A click asks to end it and its shell: Ghostty closed the tab but kept the terminal, and both run on there.
             By hand:
             \(ClosedTerminal.hangUpCommand(processIDs: processIDs))
             """
@@ -613,7 +613,7 @@ extension SessionPhase {
         case .failed:
             "A tool or the agent itself ended with an error."
         case .terminalClosed:
-            "The terminal the session ran in was closed, and the agent did not exit. A click on the row ends it."
+            "The terminal the session ran in was closed, and the agent did not exit. A click on the row asks whether to end it."
         case .disconnected:
             """
             Nothing has arrived for a long time and nothing can confirm what the session is \

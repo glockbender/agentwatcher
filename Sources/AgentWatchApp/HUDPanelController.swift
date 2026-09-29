@@ -12,8 +12,10 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// A single deadline, including while all sessions wait or rest. No idle polling.
     private(set) var nextDismissRefreshAt: Date?
     private let reach: (SessionSnapshot) -> SessionReach
-    private let focus: (SessionSnapshot) -> Void
+    private let focus: (SessionSnapshot) -> SessionClick
     private let remove: (SessionSnapshot) -> Void
+    /// The yes to the question a broken session's click puts, by session.
+    private let endAgent: (String) -> Void
     private var background: WidgetBackground
     private var lampScheme: LampScheme
     private var backgroundOpacity: CGFloat
@@ -48,8 +50,9 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
 
     init(
         reach: @escaping (SessionSnapshot) -> SessionReach,
-        focus: @escaping (SessionSnapshot) -> Void,
+        focus: @escaping (SessionSnapshot) -> SessionClick,
         remove: @escaping (SessionSnapshot) -> Void,
+        endAgent: @escaping (String) -> Void = { _ in },
         background: WidgetBackground,
         lampScheme: LampScheme,
         backgroundOpacity: CGFloat,
@@ -61,6 +64,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         self.reach = reach
         self.focus = focus
         self.remove = remove
+        self.endAgent = endAgent
         self.background = background
         self.lampScheme = lampScheme
         self.backgroundOpacity = backgroundOpacity
@@ -160,6 +164,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
 
         if window.isVisible {
             window.orderOut(nil)
+            container.hideDialog(animated: false)
             endHover()
             freshnessTimer?.invalidate()
             freshnessTimer = nil
@@ -178,6 +183,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         }
         self.state = state
         refreshContent()
+        closeDialogIfMoot()
     }
 
     func highlight() {
@@ -259,6 +265,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     }
 
     func shutdown() {
+        container.hideDialog(animated: false)
         endHover()
         freshnessTimer?.invalidate()
         freshnessTimer = nil
@@ -341,7 +348,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 usageLimits: state.usageLimits,
                 now: moment,
                 availableWidth: width,
-                focus: focus,
+                focus: { [weak self] snapshot in self?.rowClicked(snapshot) },
                 remove: remove,
                 background: background,
                 lampScheme: lampScheme,
@@ -358,6 +365,48 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         )
     }
 
+    /// A click on a row, which a broken session answers with a question instead of a window.
+    func rowClicked(_ snapshot: SessionSnapshot) {
+        guard case .asksToEndAgent = focus(snapshot) else {
+            return
+        }
+        // The click has just marked the row, and the widget was redrawn for it before the
+        // answer came back; its name is read from what is on screen now.
+        let current = state.sessions.first { $0.id == snapshot.id } ?? snapshot
+        endHover()
+        container.showDialog(
+            HUDEndAgentDialog(
+                sessionID: current.id,
+                sessionName: current.title?.nonEmpty ?? current.projectName?.nonEmpty,
+                style: style,
+                onCancel: { [weak self] in
+                    self?.container.hideDialog()
+                },
+                onEnd: { [weak self] in
+                    self?.container.hideDialog()
+                    self?.endAgent(current.id)
+                }
+            )
+        )
+    }
+
+    /// The open dialog, for a test: its question and its two buttons.
+    var visibleDialog: HUDEndAgentDialog? {
+        container.dialog
+    }
+
+    /// A question about a session that has gone, or that is no longer without its terminal,
+    /// is no longer the question — it closes without an answer.
+    private func closeDialogIfMoot() {
+        guard let dialog = container.dialog else {
+            return
+        }
+        let session = state.sessions.first { $0.id == dialog.sessionID }
+        if session?.phase != .terminalClosed {
+            container.hideDialog()
+        }
+    }
+
     /// Every row the widget is showing, in order. The one way a test can see what the list
     /// did with a report rather than what it was told.
     var visibleRows: [HUDSessionRowView] {
@@ -368,6 +417,11 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// view it was opened from would vanish mid-read on exactly the busy session a reader is
     /// most likely to be inspecting.
     func hoverChanged(_ row: HUDSessionRowView, isInside: Bool) {
+        // The rows' own tracking goes on under an open dialog, and a card over it would read
+        // as part of the question.
+        guard container.dialog == nil else {
+            return
+        }
         let sessionID = row.snapshot.id
         apply(isInside ? hover.pointerEntered(sessionID: sessionID) : hover.pointerLeft(sessionID: sessionID))
     }

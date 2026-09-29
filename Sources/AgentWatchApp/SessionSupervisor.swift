@@ -78,6 +78,10 @@ final class SessionSupervisor {
     /// seeing everything that runs is worth more than remembering one gesture about it, so a
     /// restart shows every running agent again.
     private var dismissedRowIDs: Set<String> = []
+    /// Broken sessions whose agent a person asked to end, by row identifier. Each row goes
+    /// the moment its session closes, and not before: taken away at the answer, a row whose
+    /// agent survived the ending would hide the very process it was there to show.
+    private var rowsToRemoveOnClose: Set<String> = []
 
     private lazy var hostRegistry = SessionHostRegistry(
         claudeHome: claudeHome,
@@ -319,7 +323,13 @@ final class SessionSupervisor {
             onNotableEvent("Menu · terminal closed; open the menu again to choose the announced action")
             return
         }
-        focus(snapshot)
+        // The line said the click ends the agent, so choosing it is the answer the widget
+        // asks for.
+        if snapshot.phase == .terminalClosed {
+            endAgent(ofSessionWithID: snapshot.id)
+        } else {
+            focus(snapshot)
+        }
     }
 
     /// A click that reached nothing is said out loud rather than swallowed.
@@ -327,33 +337,32 @@ final class SessionSupervisor {
     /// The row always answers a click, so "nothing happened" is a state a person can now
     /// arrive at, and an app whose whole job is noticing things should not be silent about
     /// its own. The card said as much before the click; this is the record afterwards.
+    ///
+    /// A broken session's click ends nothing by itself: it answers with the question, and
+    /// `endAgent` carries out a yes (ADR-0013).
     @discardableResult
-    func focus(_ snapshot: SessionSnapshot) -> Bool {
+    func focus(_ snapshot: SessionSnapshot) -> SessionClick {
         if snapshot.phase == .terminalClosed {
-            releaseAgent(of: snapshot)
-            return false
+            return askToEndAgent(of: snapshot)
         }
         // Asked at the click as well as on a scan, because a click is exactly when a person
-        // wants the answer. Found now, the row is only marked: a click that ends a process
-        // has to have been announced by the card first, and this row's card did not say so.
+        // wants the answer.
         if let marked = markTerminalClosed(snapshot) {
             publish()
             onNotableEvent(Self.terminalClosedNote(for: marked))
-            return false
+            return askToEndAgent(of: marked)
         }
         let otherNames = otherSessionNames(than: snapshot)
         let outcome = focusHost?(snapshot, otherNames) ?? hostRegistry.focus(snapshot, otherSessionNames: otherNames)
-        // The other way a terminal is closed with its agent left behind, and the same rule:
-        // this click only marks the row, and the next one, announced by the card, ends it.
+        // The other way a terminal is closed with its agent left behind.
         if case let .gone(evidence) = outcome.tab {
             guard let marked = engine.markTerminalClosed(forSessionWithID: snapshot.id) else {
                 onNotableEvent("\(Self.label(snapshot)) · \(evidence); nothing to bring forward")
-                return false
+                return .nothingRaised
             }
             publish()
-            onNotableEvent(
-                "\(Self.label(marked)) · its tab is gone and the terminal kept: \(evidence); a click ends it")
-            return false
+            onNotableEvent("\(Self.label(marked)) · its tab is gone and the terminal kept: \(evidence)")
+            return askToEndAgent(of: marked)
         }
         if !outcome.raised {
             // With the reason when there is one: a background session's click can fail on the
@@ -367,7 +376,33 @@ final class SessionSupervisor {
         } else if case .missing(let reason) = outcome.tab {
             onNotableEvent("\(Self.label(snapshot)) · \(reason); window only")
         }
-        return outcome.raised
+        return outcome.raised ? .raised : .nothingRaised
+    }
+
+    /// The question a broken session's click puts, or nothing when no way here can end its
+    /// agent — a question whose yes could do nothing would be a lie.
+    private func askToEndAgent(of snapshot: SessionSnapshot) -> SessionClick {
+        guard let ending = closedTerminalEnding(of: snapshot) else {
+            onNotableEvent("\(Self.label(snapshot)) · terminal closed, and nothing here can end its agent")
+            return .nothingRaised
+        }
+        return .asksToEndAgent(ending)
+    }
+
+    /// Ends the agent of a broken session, once the person who clicked has said yes, and
+    /// takes its row away when the session closes.
+    func endAgent(ofSessionWithID id: String) {
+        guard let snapshot = engine.snapshots[id] else {
+            onNotableEvent("\(Self.label(sessionID: id)) · the session was gone before the answer; nothing was done")
+            return
+        }
+        guard snapshot.phase == .terminalClosed else {
+            onNotableEvent("\(Self.label(snapshot)) · no longer without its terminal; nothing was done")
+            return
+        }
+        if releaseAgent(of: snapshot) {
+            rowsToRemoveOnClose.insert(id)
+        }
     }
 
     // MARK: - Events
@@ -383,6 +418,14 @@ final class SessionSupervisor {
         var snapshot: SessionSnapshot
         do {
             event = try HookIngressProcessor.normalize(request, observedAt: now())
+            // The end of a session a person removed is not a new row. An agent ended from the
+            // widget reports its own end as it exits, and that report can land after its row
+            // went: without this it came back as a closed row to be dismissed a second time.
+            let ownRowID = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
+            if event.kind == .sessionEnded, dismissedRowIDs.contains(ownRowID), engine.snapshots[ownRowID] == nil {
+                onNotableEvent("\(Self.label(sessionID: ownRowID)) · a removed session reported its end; no row for it")
+                return event
+            }
             let change = try engine.receive(event)
             // Whatever left as this event landed: its watcher goes with it, since the row it
             // watched is gone. The watcher the arriving session gets is installed by
@@ -538,35 +581,39 @@ final class SessionSupervisor {
     ///
     /// Everything is asked again first, because the finding that marked the row may be
     /// minutes old: the agent may have gone since, and its terminal been handed to somebody's
-    /// new tab, whose output this must never throw away. The row is not touched here — the
-    /// agent's exit, a moment later, is reported by the watch on its process like any other.
-    private func releaseAgent(of snapshot: SessionSnapshot) {
+    /// new tab, whose output this must never throw away. The row is not touched here: the
+    /// agent's exit, a moment later, is reported by the watch on its process like any other,
+    /// and `endAgent` takes the row away then. Answers whether the ending went out.
+    private func releaseAgent(of snapshot: SessionSnapshot) -> Bool {
         switch snapshot.agentProcessID.flatMap(terminalState) {
         case .lost:
-            discardOutput(of: snapshot)
+            return discardOutput(of: snapshot)
         case .attached:
-            hangUpAgent(of: snapshot)
+            return hangUpAgent(of: snapshot)
         case .neverHad, nil:
             onNotableEvent("\(Self.label(snapshot)) · its agent no longer hangs without a terminal; nothing was done")
+            return false
         }
     }
 
     /// Ends an agent that hangs without its terminal by discarding the output it waits on.
-    private func discardOutput(of snapshot: SessionSnapshot) {
+    private func discardOutput(of snapshot: SessionSnapshot) -> Bool {
         guard let agentProcessID = snapshot.agentProcessID, let devicePath = terminalDevicePath(agentProcessID) else {
             onNotableEvent("\(Self.label(snapshot)) · no descriptor of its agent names a terminal; nothing to discard")
-            return
+            return false
         }
+        let discarded = releaseTerminal(devicePath)
         onNotableEvent(
-            releaseTerminal(devicePath)
+            discarded
                 ? "\(Self.label(snapshot)) · discarded the output its closed terminal held; the agent should exit now"
                 : "\(Self.label(snapshot)) · could not discard the output in \(devicePath)")
+        return discarded
     }
 
     /// Ends an agent whose tab Ghostty closed and kept, and the shell it was started from,
     /// with the hang-up the closed tab never sent — once it is still the same process and its
     /// tab is still gone.
-    private func hangUpAgent(of snapshot: SessionSnapshot) {
+    private func hangUpAgent(of snapshot: SessionSnapshot) -> Bool {
         guard
             let agentProcessID = snapshot.agentProcessID,
             SessionHostRegistry.isStillTheAgent(
@@ -576,7 +623,7 @@ final class SessionSupervisor {
             )
         else {
             onNotableEvent("\(Self.label(snapshot)) · its agent is gone; nothing was sent")
-            return
+            return false
         }
         let otherNames = otherSessionNames(than: snapshot)
         guard
@@ -584,18 +631,20 @@ final class SessionSupervisor {
                 ?? hostRegistry.tabIsGoneWithTerminalKept(snapshot, otherSessionNames: otherNames)
         else {
             onNotableEvent("\(Self.label(snapshot)) · its tab is no longer missing from Ghostty; nothing was sent")
-            return
+            return false
         }
         let chain = terminalProcessChain(agentProcessID)
         guard chain.first == agentProcessID else {
             onNotableEvent("\(Self.label(snapshot)) · its agent has no terminal to hang up; nothing was sent")
-            return
+            return false
         }
         let processes = chain.map(String.init).joined(separator: " ")
+        let sent = hangUp(chain)
         onNotableEvent(
-            hangUp(chain)
+            sent
                 ? "\(Self.label(snapshot)) · hung up its agent and shell (\(processes)), as closing the tab should have"
                 : "\(Self.label(snapshot)) · could not hang up every process of its closed tab (\(processes))")
+        return sent
     }
 
     /// What the other live rows are called: a tab title carrying one of them is what shows
@@ -607,7 +656,7 @@ final class SessionSupervisor {
     }
 
     private static func terminalClosedNote(for snapshot: SessionSnapshot) -> String {
-        "\(label(snapshot)) · terminal closed; its agent hangs without it, and a click ends it"
+        "\(label(snapshot)) · terminal closed; its agent hangs without it"
     }
 
     private static func viewerGoneNote(for snapshot: SessionSnapshot) -> String {
@@ -1100,6 +1149,9 @@ final class SessionSupervisor {
     }
 
     func publish() {
+        // First, so nothing that reads the rows ever sees the closed row of a session whose
+        // agent a person asked to end.
+        removeRowsEndedOnRequest()
         let snapshots = orderedSnapshots()
         // The waits go with the snapshots, because a row under check says `no signal` while
         // the file still has to remember what it is waiting for. Without them a publish
@@ -1115,6 +1167,25 @@ final class SessionSupervisor {
         updateMaintenanceTimer()
         transcripts.update(sessions: snapshots)
         sessionRecords.update(sessions: snapshots)
+    }
+
+    /// Takes away the row of each session that closed after a person asked to end its agent,
+    /// whichever way the close arrived: the agent's exit, or its own last hook.
+    private func removeRowsEndedOnRequest() {
+        for id in rowsToRemoveOnClose {
+            guard let row = engine.snapshots[id] else {
+                rowsToRemoveOnClose.remove(id)
+                continue
+            }
+            guard row.phase == .sessionClosed else {
+                continue
+            }
+            rowsToRemoveOnClose.remove(id)
+            engine.removeSession(id: id)
+            dismissedRowIDs.insert(id)
+            hostRegistry.forget(row)
+            onNotableEvent("\(Self.label(row)) · its agent ended as asked; session removed")
+        }
     }
 
     /// Sorted, because `snapshots` is a dictionary and its order changes on rehash. The

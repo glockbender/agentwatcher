@@ -222,7 +222,7 @@ perl -MPOSIX -e 'open(my $t, ">", $ARGV[0]) or die $!; tcflush(fileno($t), TCOFL
 
 Отсюда два решения приложения. Строку такой сессии оно помечает фазой `TerminalClosed` по паре
 «флаг стоит, устройства нет» (`AgentProcessLocator.TerminalState`, `docs/architecture.md` §7), а клик
-по ней делает этот `tcflush`
+по ней спрашивает, завершить ли агента, и на «End» делает этот `tcflush`
 ([ADR-0013](adr/0013-a-click-ends-an-agent-its-closed-terminal-left-behind.md)). Не замерено:
 оставляют ли агента так же VS Code и Terminal.app, и получает ли агент при закрытии вкладки PyCharm
 `SIGHUP` или что-то другое. Ghostty оставляет агента по-другому — ниже.

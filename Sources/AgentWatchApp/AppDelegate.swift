@@ -90,10 +90,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.supervisor.reach(for: snapshot) ?? .nowhere
             },
             focus: { [weak self] snapshot in
-                self?.supervisor.focus(snapshot)
+                self?.supervisor.focus(snapshot) ?? .nothingRaised
             },
             remove: { [weak self] snapshot in
                 self?.supervisor.remove(snapshot)
+            },
+            endAgent: { [weak self] sessionID in
+                self?.supervisor.endAgent(ofSessionWithID: sessionID)
             },
             background: themes.look.widgetBackground,
             lampScheme: themes.look.lampScheme,

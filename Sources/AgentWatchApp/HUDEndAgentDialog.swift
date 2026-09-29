@@ -1,0 +1,232 @@
+import AppKit
+
+/// The question a click on a broken session puts: its terminal is gone, its agent runs on,
+/// and whether to end the agent is for the person who clicked (ADR-0013).
+///
+/// Drawn over the whole widget rather than as a window of its own. The panel never becomes
+/// key, and a window here would take the focus from whatever is being worked in; an alert
+/// would also activate the app.
+///
+/// The widget is darkened and the question stands on a card of its own: text over the
+/// darkened rows alone was drawn and could not be read. Two layouts, chosen by the room the
+/// widget has — a heading, a sentence and the buttons where they fit, and otherwise one line
+/// over the buttons, on a card as large as the widget. The smallest widget is two rows tall,
+/// and the second layout fits it at every size.
+@MainActor
+final class HUDEndAgentDialog: NSView {
+    static let fadeDuration: TimeInterval = 0.15
+
+    let sessionID: String
+    private let style: WidgetStyle
+    private let card = NSView()
+    private let heading = NSTextField(labelWithString: "Broken session")
+    private let explanation: NSTextField
+    private let shortQuestion = NSTextField(labelWithString: "Broken session. End it?")
+    let cancelButton: HUDDialogButton
+    let endButton: HUDDialogButton
+
+    init(
+        sessionID: String,
+        sessionName: String?,
+        style: WidgetStyle,
+        onCancel: @escaping () -> Void,
+        onEnd: @escaping () -> Void
+    ) {
+        self.sessionID = sessionID
+        self.style = style
+        explanation = NSTextField(wrappingLabelWithString: Self.explanation(naming: sessionName))
+        cancelButton = HUDDialogButton(
+            title: "Cancel", fill: NSColor(calibratedWhite: 1, alpha: 0.18), style: style, perform: onCancel)
+        endButton = HUDDialogButton(title: "End", fill: .systemRed, style: style, perform: onEnd)
+        super.init(frame: .zero)
+        // Dark whatever the widget's colour: the rows under it are darkened, and the card, its
+        // text and its buttons are drawn for that.
+        appearance = NSAppearance(named: .darkAqua)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(calibratedWhite: 0, alpha: 0.55).cgColor
+        layer?.cornerRadius = WidgetStyle.windowCornerRadius
+        card.wantsLayer = true
+        card.layer?.backgroundColor = NSColor(calibratedWhite: 0.12, alpha: 1).cgColor
+        card.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.12).cgColor
+        card.layer?.borderWidth = 1
+        addSubview(card)
+        heading.font = .systemFont(ofSize: style.points(12), weight: .semibold)
+        heading.lineBreakMode = .byTruncatingTail
+        explanation.font = style.secondaryFont
+        explanation.textColor = NSColor(calibratedWhite: 1, alpha: 0.8)
+        shortQuestion.font = .systemFont(ofSize: style.points(11), weight: .medium)
+        shortQuestion.lineBreakMode = .byTruncatingTail
+        for label in [heading, explanation, shortQuestion] {
+            if label !== explanation {
+                label.textColor = .white
+            }
+            label.alignment = .center
+            card.addSubview(label)
+        }
+        card.addSubview(cancelButton)
+        card.addSubview(endButton)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    /// Short on purpose, and it names the session: the dialog covers the row that was
+    /// clicked. The conversation is said to be kept, because "end" is otherwise read as
+    /// losing it.
+    static func explanation(naming name: String?) -> String {
+        let subject = name.map { "“\($0)”" } ?? "This session"
+        return "\(subject): its terminal is gone, but the agent still runs. End it? The conversation is kept."
+    }
+
+    /// Whether this size shows the one line over the buttons rather than the heading and the
+    /// sentence.
+    private(set) var isCompact = false
+
+    override func layout() {
+        super.layout()
+        let gap = style.points(6)
+        let buttons = [cancelButton, endButton].map(\.intrinsicContentSize)
+        let buttonHeight = buttons.map(\.height).max() ?? 0
+        let buttonsWidth = buttons.map(\.width).reduce(0, +) + gap
+
+        // The full layout: a card no wider than a sentence reads well at, centred.
+        let margin = style.points(10)
+        let padding = style.points(12)
+        let cardWidth = min(bounds.width - 2 * margin, style.points(300))
+        let textWidth = max(0, cardWidth - 2 * padding)
+        let headingHeight = heading.intrinsicContentSize.height
+        let explanationHeight =
+            explanation.cell?.cellSize(
+                forBounds: NSRect(x: 0, y: 0, width: textWidth, height: .greatestFiniteMagnitude)
+            ).height ?? 0
+        let contentHeight = headingHeight + gap + explanationHeight + 2 * gap + buttonHeight
+        isCompact = contentHeight + 2 * padding + 2 * margin > bounds.height
+        heading.isHidden = isCompact
+        explanation.isHidden = isCompact
+        shortQuestion.isHidden = !isCompact
+
+        if isCompact {
+            layOutCompact(gap: gap, buttons: buttons, buttonHeight: buttonHeight, buttonsWidth: buttonsWidth)
+            return
+        }
+        let cardHeight = contentHeight + 2 * padding
+        card.frame = NSRect(
+            x: (bounds.width - cardWidth) / 2, y: (bounds.height - cardHeight) / 2, width: cardWidth,
+            height: cardHeight)
+        card.layer?.cornerRadius = style.points(10)
+        // Top to bottom; the view is not flipped, so the heading has the largest `y`.
+        var y = cardHeight - padding - headingHeight
+        heading.frame = NSRect(x: padding, y: y, width: textWidth, height: headingHeight)
+        y -= gap + explanationHeight
+        explanation.frame = NSRect(x: padding, y: y, width: textWidth, height: explanationHeight)
+        y -= 2 * gap + buttonHeight
+        place(buttons, from: (cardWidth - buttonsWidth) / 2, y: y, height: buttonHeight, gap: gap)
+    }
+
+    /// The card takes the whole widget, the line over the buttons, both centred.
+    private func layOutCompact(gap: CGFloat, buttons: [NSSize], buttonHeight: CGFloat, buttonsWidth: CGFloat) {
+        let inset = style.points(3)
+        card.frame = bounds.insetBy(dx: inset, dy: inset)
+        card.layer?.cornerRadius = max(0, WidgetStyle.windowCornerRadius - inset)
+        let lineHeight = shortQuestion.intrinsicContentSize.height
+        let blockHeight = lineHeight + gap / 2 + buttonHeight
+        let bottom = (card.bounds.height - blockHeight) / 2
+        let side = style.points(6)
+        shortQuestion.frame = NSRect(
+            x: side, y: bottom + buttonHeight + gap / 2, width: max(0, card.bounds.width - 2 * side),
+            height: lineHeight)
+        place(buttons, from: (card.bounds.width - buttonsWidth) / 2, y: bottom, height: buttonHeight, gap: gap)
+    }
+
+    private func place(_ sizes: [NSSize], from left: CGFloat, y: CGFloat, height: CGFloat, gap: CGFloat) {
+        var x = left
+        for (button, size) in zip([cancelButton, endButton], sizes) {
+            button.frame = NSRect(x: x, y: y + (height - size.height) / 2, width: size.width, height: size.height)
+            x += size.width + gap
+        }
+    }
+
+    /// The whole widget is the dialog's while it is open: a press anywhere but a button goes
+    /// nowhere, rather than to the row under it.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else {
+            return nil
+        }
+        return hit.isDescendant(of: cancelButton) || hit.isDescendant(of: endButton) ? hit : self
+    }
+
+    /// The panel never becomes key, so every click on it is a first click.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    /// A press on the darkened rows is not the start of a move, for the reason
+    /// `HUDSessionRowView.mouseDownCanMoveWindow` gives.
+    override var mouseDownCanMoveWindow: Bool {
+        false
+    }
+
+    override func mouseDown(with event: NSEvent) {}
+}
+
+/// A button drawn in full by itself, so it looks the same in a panel that is never key:
+/// AppKit greys the colour of its own bezels in a window that is not.
+@MainActor
+final class HUDDialogButton: NSButton {
+    private let fill: NSColor
+    private let style: WidgetStyle
+    private let perform: () -> Void
+
+    init(title: String, fill: NSColor, style: WidgetStyle, perform: @escaping () -> Void) {
+        self.fill = fill
+        self.style = style
+        self.perform = perform
+        super.init(frame: .zero)
+        isBordered = false
+        wantsLayer = true
+        layer?.cornerRadius = style.points(5)
+        attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: style.points(11), weight: .medium), .foregroundColor: NSColor.white,
+            ]
+        )
+        target = self
+        action = #selector(run)
+        updateFill()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let text = attributedTitle.size()
+        return NSSize(width: ceil(text.width) + 2 * style.points(12), height: ceil(text.height) + 2 * style.points(4))
+    }
+
+    override var isHighlighted: Bool {
+        didSet {
+            updateFill()
+        }
+    }
+
+    private func updateFill() {
+        layer?.backgroundColor = (isHighlighted ? fill.shadow(withLevel: 0.25) ?? fill : fill).cgColor
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override var mouseDownCanMoveWindow: Bool {
+        false
+    }
+
+    @objc private func run() {
+        perform()
+    }
+}

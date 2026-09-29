@@ -23,6 +23,17 @@ enum SessionReach: Equatable, Sendable {
     case closedTerminal(ClosedTerminalEnding?)
 }
 
+/// What a click on a session's row came to.
+enum SessionClick: Equatable, Sendable {
+    /// A window came forward.
+    case raised
+    /// Nothing did, and the log says why.
+    case nothingRaised
+    /// The session is broken — its terminal is gone and its agent runs on — and ending the
+    /// agent this way is put to the person who clicked before anything is done (ADR-0013).
+    case asksToEndAgent(ClosedTerminalEnding)
+}
+
 /// How a click ends an agent its closed terminal left behind (ADR-0013). Two ways, because a
 /// terminal is closed two ways.
 enum ClosedTerminalEnding: Equatable, Sendable {
