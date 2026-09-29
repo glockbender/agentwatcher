@@ -70,9 +70,9 @@ final class MenuSessionLinesTests: XCTestCase {
         XCTAssertEqual(lines.map(\.isEnabled), [true, true, true])
     }
 
-    /// The one click in the app that ends something. The widget's card says so before the
-    /// click; a menu line has no card, so the line itself has to.
-    func testALineWhoseClickEndsTheAgentSaysSo() {
+    /// The one click in the app that can end something, and it asks first — in the widget. The
+    /// line says a question follows, the way a menu does: with an ellipsis.
+    func testALineWhoseClickAsksToEndTheAgentSaysSo() {
         let lines = menuSessionLines(
             for: [
                 testSession(index: 0, title: "Left behind", phase: .terminalClosed, lastObservedAt: now)
@@ -81,7 +81,7 @@ final class MenuSessionLinesTests: XCTestCase {
             reach: { _ in .closedTerminal(.discardOutput(devicePath: "/dev/ttys004")) }
         )
 
-        XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed, click ends the agent"])
+        XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed; end its agent…"])
         XCTAssertEqual(lines.map(\.isEnabled), [true])
     }
 
@@ -96,8 +96,8 @@ final class MenuSessionLinesTests: XCTestCase {
             reach: { _ in .closedTerminal(.hangUp(processIDs: [52671, 52482, 52480])) }
         )
 
-        XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed, click ends the agent"])
-        XCTAssertEqual(lines.map(\.endingAgentWasAnnounced), [true])
+        XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed; end its agent…"])
+        XCTAssertEqual(lines.map(\.isEnabled), [true])
     }
 
     /// Nothing to end it with, so the click would do nothing: the line stays, greyed, and says

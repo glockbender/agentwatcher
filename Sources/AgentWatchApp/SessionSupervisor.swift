@@ -308,28 +308,20 @@ final class SessionSupervisor {
         }
     }
 
-    /// Menu rows keep their wording while the session can change. Resolve the current row,
-    /// but never turn a displayed focus action into an unannounced terminal release (ADR-0013).
-    func focusSession(id: String, endingAgentWasAnnounced: Bool) {
+    /// Menu lines keep their wording while the session can change, so the click is answered
+    /// from the session as it is now. A line ends nothing either: a broken session's click
+    /// asks, like its row's (ADR-0013).
+    @discardableResult
+    func focusSession(id: String) -> SessionClick {
         guard let snapshot = sessions.first(where: { $0.id == id }) else {
             onNotableEvent("Menu · the session was gone before the click; nothing to bring forward")
-            return
+            return .nothingRaised
         }
         guard snapshot.phase != .sessionClosed else {
             onNotableEvent("Menu · the session ended while the menu was open; nothing was done")
-            return
+            return .nothingRaised
         }
-        guard snapshot.phase != .terminalClosed || endingAgentWasAnnounced else {
-            onNotableEvent("Menu · terminal closed; open the menu again to choose the announced action")
-            return
-        }
-        // The line said the click ends the agent, so choosing it is the answer the widget
-        // asks for.
-        if snapshot.phase == .terminalClosed {
-            endAgent(ofSessionWithID: snapshot.id)
-        } else {
-            focus(snapshot)
-        }
+        return focus(snapshot)
     }
 
     /// A click that reached nothing is said out loud rather than swallowed.

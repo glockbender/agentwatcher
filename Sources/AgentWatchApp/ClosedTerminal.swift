@@ -64,8 +64,9 @@ enum ClosedTerminal {
     /// `SIGHUP` rather than `SIGTERM` because it is what closing a terminal sends, and the
     /// whole chain because closing a tab ends its shell too: left running, the shell keeps
     /// Ghostty holding a terminal it does not show, which is half of how the next closed tab
-    /// is recognised. Claude Code 2.1.284 answers `SIGHUP` with its ordinary shutdown — read in
-    /// its code (`docs/measurements.md`).
+    /// is recognised. Claude Code 2.1.284 answers `SIGHUP` with its ordinary shutdown: read in
+    /// its code, and seen on the case reported on 2026-09-29, where the shell, `login` and the
+    /// hidden terminal went with it (`docs/measurements.md`).
     static func hangUp(processIDs: [Int32]) -> Bool {
         guard !processIDs.isEmpty, processIDs.allSatisfy({ $0 > 1 && $0 != getpid() }) else {
             return false

@@ -66,6 +66,24 @@ final class EndAgentDialogTests: XCTestCase {
         controller.shutdown()
     }
 
+    /// The menu cannot put the question, so the widget does — and a widget that was hidden
+    /// comes up for it and goes again with the answer.
+    func testTheMenusQuestionBringsAHiddenWidgetUpAndPutsItBack() throws {
+        var ended: [String] = []
+        let (controller, broken) = try makeController(ended: { ended.append($0) })
+        controller.toggle()
+        XCTAssertEqual(controller.window?.isVisible, false)
+
+        controller.askToEndAgent(ofSessionWithID: broken.id)
+
+        XCTAssertEqual(controller.window?.isVisible, true)
+        XCTAssertEqual(controller.visibleDialog?.sessionID, broken.id)
+        try XCTUnwrap(controller.visibleDialog).endButton.performClick(nil)
+        XCTAssertEqual(ended, [broken.id])
+        XCTAssertEqual(controller.window?.isVisible, false, "hidden again, as it was")
+        controller.shutdown()
+    }
+
     /// A question about a session that has since gone, or come back to its terminal, is no
     /// longer the question.
     func testTheQuestionClosesWhenItsSessionIsNoLongerBroken() throws {

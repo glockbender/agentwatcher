@@ -156,8 +156,14 @@ enum WidgetMaterial: String, CaseIterable {
         self == .glass || self == .clearGlass
     }
 
+    /// The system, and the build: one made with an SDK older than macOS 26 draws no glass
+    /// anywhere (`makeGlass`), and settings that offered it would promise what it cannot draw.
     static var systemHasLiquidGlass: Bool {
-        if #available(macOS 26.0, *) { true } else { false }
+        #if compiler(>=6.2)
+            if #available(macOS 26.0, *) { true } else { false }
+        #else
+            false
+        #endif
     }
 
     /// What is drawn: glass asked for on a system without it is frosted.

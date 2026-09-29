@@ -294,7 +294,9 @@ final class ClosedTerminalRowTests: XCTestCase {
         XCTAssertEqual(supervisor.sessions, [])
     }
 
-    func testAMenuClickDoesNotEndAnAgentUnlessTheDisplayedLineAnnouncedIt() throws {
+    /// A menu line ends nothing either: its click asks, like the row's, whatever the line said
+    /// when the menu opened.
+    func testAMenuClickAsksAndEndsNothing() throws {
         var state = AgentProcessLocator.TerminalState.attached
         var released: [String] = []
         var notes: [String] = []
@@ -304,32 +306,21 @@ final class ClosedTerminalRowTests: XCTestCase {
         defer { supervisor.stop() }
         supervisor.ingest(
             testRequest(event: "UserPromptSubmit", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
-        let ordinary = try XCTUnwrap(
+        let line = try XCTUnwrap(
             menuSessionLines(
                 for: supervisor.sessions, listing: Set(SessionAttention.counted), reach: supervisor.reach(for:)
             ).first)
 
         state = .lost
-        supervisor.discoverAgentProcesses()
+        XCTAssertEqual(supervisor.focusSession(id: line.sessionID), .asksToEndAgent(.discardOutput(devicePath: device)))
         XCTAssertEqual(try XCTUnwrap(supervisor.sessions.first).phase, .terminalClosed)
-        supervisor.focusSession(id: ordinary.sessionID, endingAgentWasAnnounced: ordinary.endingAgentWasAnnounced)
-        XCTAssertEqual(released, [], "a change since the menu opened must not turn focus into terminal release")
-
-        let announced = try XCTUnwrap(
-            menuSessionLines(
-                for: supervisor.sessions, listing: Set(SessionAttention.counted), reach: supervisor.reach(for:)
-            ).first)
-        XCTAssertTrue(announced.title.contains("click ends the agent"))
-        supervisor.focusSession(id: announced.sessionID, endingAgentWasAnnounced: announced.endingAgentWasAnnounced)
-        XCTAssertEqual(released, [device])
+        XCTAssertEqual(released, [])
 
         supervisor.ingest(testRequest(event: "SessionEnd", sessionID: "devx"))
-        XCTAssertEqual(supervisor.sessions, [], "the line's click is the widget's yes, row and all")
-        supervisor.focusSession(id: announced.sessionID, endingAgentWasAnnounced: true)
-        XCTAssertEqual(released, [device], "an old announced action must still check the current session")
-        XCTAssertTrue(notes.contains { $0.contains("gone before the click") }, "said, not swallowed: \(notes)")
-        supervisor.focusSession(id: "gone", endingAgentWasAnnounced: true)
-        XCTAssertEqual(released, [device])
+        XCTAssertEqual(supervisor.focusSession(id: line.sessionID), .nothingRaised)
+        XCTAssertTrue(notes.contains { $0.contains("ended while the menu was open") }, "said, not swallowed: \(notes)")
+        XCTAssertEqual(supervisor.focusSession(id: "gone"), .nothingRaised)
+        XCTAssertEqual(released, [])
     }
 
     // MARK: - A tab Ghostty closed and kept

@@ -5,8 +5,8 @@
 
 **See which Claude Code or Codex session needs you — without switching between terminals.**
 
-Agent Watch is a small menu bar app for **Apple Silicon Macs running macOS 14+**.
-Its floating widget shows your sessions together. Click a row to return to the session;
+Agent Watch is a small menu bar app for **Apple Silicon Macs running macOS 14+**; on macOS 26
+its widget can also be Liquid Glass. Its floating widget shows your sessions together. Click a row to return to the session;
 hover for details. `⌥⌘W` shows or hides the widget; Widget Settings lets you change the shortcut.
 
 <img src="docs/images/widget.png" alt="Five sessions in a compact blue Agent Watch widget" width="339">
@@ -105,7 +105,8 @@ See [agent integration](docs/agent-integration.md) for the files it writes and
 
 ## Build from source
 
-Requires Swift 6, the macOS 26 SDK (Xcode 26 or its Command Line Tools) and [Task](https://taskfile.dev/).
+Requires Xcode 16 or newer, for Swift 6, and [Task](https://taskfile.dev/). Liquid Glass needs the
+macOS 26 SDK, which comes with Xcode 26: built with an older one, the widget is frosted instead.
 
 ```sh
 task verify   # formatting, tests, debug/release builds and app bundle

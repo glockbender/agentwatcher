@@ -18,8 +18,9 @@ protocol StatusMenuHost: AnyObject {
     /// Every session the widget has, in the widget's order.
     var sessions: [SessionSnapshot] { get }
     func reach(for snapshot: SessionSnapshot) -> SessionReach
-    /// A click on a session's line, which is a click on its row in the widget.
-    func focusSession(id: String, endingAgentWasAnnounced: Bool)
+    /// A click on a session's line, which is a click on its row in the widget — a broken
+    /// session's included, whose question the widget then puts.
+    func focusSession(id: String)
     /// Called before anything is refreshed, so what the menu then reads is current.
     func menuWillOpen()
     /// Puts the registered combination on the widget line, or takes it off.
@@ -214,7 +215,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         guard let line = sender.representedObject as? MenuSessionLine else {
             return
         }
-        host?.focusSession(id: line.sessionID, endingAgentWasAnnounced: line.endingAgentWasAnnounced)
+        host?.focusSession(id: line.sessionID)
     }
 
     @objc private func toggleWidget() {

@@ -367,27 +367,47 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
 
     /// A click on a row, which a broken session answers with a question instead of a window.
     func rowClicked(_ snapshot: SessionSnapshot) {
-        guard case .asksToEndAgent = focus(snapshot) else {
+        if case .asksToEndAgent = focus(snapshot) {
+            askToEndAgent(ofSessionWithID: snapshot.id)
+        }
+    }
+
+    /// Puts the question over the widget: for a click on a row, and for a line of the menu,
+    /// which cannot put it itself. A hidden widget comes up for it and goes again with the
+    /// answer, as it was.
+    func askToEndAgent(ofSessionWithID id: String) {
+        // Read from what is on screen now: the click has just marked the row, and the widget
+        // was redrawn for it before the answer came back.
+        guard let session = state.sessions.first(where: { $0.id == id }), session.phase == .terminalClosed else {
             return
         }
-        // The click has just marked the row, and the widget was redrawn for it before the
-        // answer came back; its name is read from what is on screen now.
-        let current = state.sessions.first { $0.id == snapshot.id } ?? snapshot
+        let wasHidden = window?.isVisible == false
+        if wasHidden {
+            show()
+        }
         endHover()
         container.showDialog(
             HUDEndAgentDialog(
-                sessionID: current.id,
-                sessionName: current.title?.nonEmpty ?? current.projectName?.nonEmpty,
+                sessionID: id,
+                sessionName: session.title?.nonEmpty ?? session.projectName?.nonEmpty,
                 style: style,
                 onCancel: { [weak self] in
-                    self?.container.hideDialog()
+                    self?.closeDialog(hidingTheWidget: wasHidden)
                 },
                 onEnd: { [weak self] in
-                    self?.container.hideDialog()
-                    self?.endAgent(current.id)
+                    self?.closeDialog(hidingTheWidget: wasHidden)
+                    self?.endAgent(id)
                 }
             )
         )
+    }
+
+    private func closeDialog(hidingTheWidget: Bool) {
+        if hidingTheWidget, window?.isVisible == true {
+            toggle()
+        } else {
+            container.hideDialog()
+        }
     }
 
     /// The open dialog, for a test: its question and its two buttons.
