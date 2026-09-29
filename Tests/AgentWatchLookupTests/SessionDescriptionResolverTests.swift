@@ -38,6 +38,62 @@ final class SessionDescriptionResolverTests: XCTestCase {
         XCTAssertNil(SessionDescriptionResolver.claudeDescription(inTranscriptTail: tail).title)
     }
 
+    func testANameThePersonGaveOutranksClaudesOwn() {
+        // The order Claude Code 2.1.284 re-appends its metadata in: the name a person gave
+        // comes before its own title, so the newer record is not the one that wins.
+        let tail = lines([
+            #"{"type":"ai-title","aiTitle":"Сгенерированный заголовок","sessionId":"abc"}"#,
+            #"{"type":"last-prompt","lastPrompt":"продолжай","sessionId":"abc"}"#,
+            #"{"type":"custom-title","customTitle":"Релиз 0.3","sessionId":"abc"}"#,
+            #"{"type":"ai-title","aiTitle":"Сгенерированный заголовок","sessionId":"abc"}"#,
+        ])
+
+        XCTAssertEqual(SessionDescriptionResolver.claudeDescription(inTranscriptTail: tail).title, "Релиз 0.3")
+    }
+
+    func testASessionNamedAtLaunchHasANameWithoutAnAITitle() {
+        // What `claude -p --name aw-name-probe` wrote on 2.1.284: no `ai-title` at all, which
+        // is also every session of a person whose Claude Code generates no titles.
+        let tail = lines([
+            #"{"type":"custom-title","customTitle":"aw-name-probe","sessionId":"abc"}"#,
+            #"{"type":"agent-name","agentName":"aw-name-probe","sessionId":"abc"}"#,
+            #"{"type":"user","message":{"role":"user"}}"#,
+            #"{"type":"assistant","message":{"role":"assistant"}}"#,
+            #"{"type":"custom-title","customTitle":"aw-name-probe","sessionId":"abc"}"#,
+            #"{"type":"agent-name","agentName":"aw-name-probe","sessionId":"abc"}"#,
+        ])
+
+        XCTAssertEqual(SessionDescriptionResolver.claudeDescription(inTranscriptTail: tail).title, "aw-name-probe")
+    }
+
+    func testANameTakenBackLeavesClaudesOwnTitle() {
+        for cleared in [#""""#, #""   ""#] {
+            let tail = lines([
+                #"{"type":"custom-title","customTitle":"Старое имя","sessionId":"abc"}"#,
+                #"{"type":"custom-title","customTitle":\#(cleared),"sessionId":"abc"}"#,
+                #"{"type":"ai-title","aiTitle":"Сгенерированный заголовок","sessionId":"abc"}"#,
+            ])
+
+            XCTAssertEqual(
+                SessionDescriptionResolver.claudeDescription(inTranscriptTail: tail).title,
+                "Сгенерированный заголовок",
+                "the newest name decides, and an empty one means there is none: \(cleared)"
+            )
+        }
+    }
+
+    func testAPromptThatReadsLikeTheRecordDoesNotHideTheName() {
+        // A prompt that is exactly the word passes the text match unescaped; only the decoded
+        // type tells it apart, and it must not stand in for the newest name.
+        let tail = lines([
+            #"{"type":"custom-title","customTitle":"Релиз 0.3","sessionId":"abc"}"#,
+            #"{"type":"ai-title","aiTitle":"Сгенерированный заголовок","sessionId":"abc"}"#,
+            #"{"type":"user","message":{"role":"user","content":"custom-title"}}"#,
+        ])
+
+        XCTAssertEqual(SessionDescriptionResolver.claudeDescription(inTranscriptTail: tail).title, "Релиз 0.3")
+    }
+
     func testReadsTheCodexThreadNameForTheMatchingSession() {
         let index = lines([
             #"{"id":"other","thread_name":"Чужая ветка","updated_at":"2026-09-01T18:57:29Z"}"#,
