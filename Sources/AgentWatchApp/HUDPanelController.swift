@@ -372,18 +372,11 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Puts the question over the widget: for a click on a row, and for a line of the menu,
-    /// which cannot put it itself. A hidden widget comes up for it and goes again with the
-    /// answer, as it was.
-    func askToEndAgent(ofSessionWithID id: String) {
+    private func askToEndAgent(ofSessionWithID id: String) {
         // Read from what is on screen now: the click has just marked the row, and the widget
         // was redrawn for it before the answer came back.
         guard let session = state.sessions.first(where: { $0.id == id }), session.phase == .terminalClosed else {
             return
-        }
-        let wasHidden = window?.isVisible == false
-        if wasHidden {
-            show()
         }
         endHover()
         container.showDialog(
@@ -392,22 +385,14 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 sessionName: session.title?.nonEmpty ?? session.projectName?.nonEmpty,
                 style: style,
                 onCancel: { [weak self] in
-                    self?.closeDialog(hidingTheWidget: wasHidden)
+                    self?.container.hideDialog()
                 },
                 onEnd: { [weak self] in
-                    self?.closeDialog(hidingTheWidget: wasHidden)
+                    self?.container.hideDialog()
                     self?.endAgent(id)
                 }
             )
         )
-    }
-
-    private func closeDialog(hidingTheWidget: Bool) {
-        if hidingTheWidget, window?.isVisible == true {
-            toggle()
-        } else {
-            container.hideDialog()
-        }
     }
 
     /// The open dialog, for a test: its question and its two buttons.

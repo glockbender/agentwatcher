@@ -9,6 +9,9 @@ struct MenuSessionLine: Equatable {
     let title: String
     /// `false` only when a click could do nothing at all — and the title then says why.
     let isEnabled: Bool
+    /// A broken session whose click asks whether to end its agent, which the menu asks in
+    /// place of its lines.
+    var leadsToQuestion = false
 }
 
 /// The sessions the menu lists, and what each line says, in the order they are handed over.
@@ -34,9 +37,8 @@ func menuSessionLines(
         guard snapshot.phase == .terminalClosed else {
             return MenuSessionLine(sessionID: snapshot.id, attention: attention, title: name, isEnabled: true)
         }
-        // The one click in the app that can end something, and it asks first — in the
-        // widget, since a menu cannot. The ellipsis is the menu's own way of saying a question
-        // follows.
+        // The one click in the app that can end something, and it asks first. The ellipsis is
+        // the menu's own way of saying a question follows.
         guard case .closedTerminal(.some) = reach(snapshot) else {
             return MenuSessionLine(
                 sessionID: snapshot.id,
@@ -49,7 +51,8 @@ func menuSessionLines(
             sessionID: snapshot.id,
             attention: attention,
             title: "\(name) — terminal closed; end its agent…",
-            isEnabled: true
+            isEnabled: true,
+            leadsToQuestion: true
         )
     }
 }

@@ -91,43 +91,73 @@ final class HUDEndAgentDialog: NSView {
     /// line the box has no room for.
     override func layout() {
         super.layout()
+        let full = fullLayout(atWidth: bounds.width)
+        isCompact = full.height > bounds.height
+        heading.isHidden = isCompact
+        explanation.isHidden = isCompact
+        shortQuestion.isHidden = !isCompact
+
+        if isCompact {
+            layOutCompact(
+                gap: full.gap, buttons: full.buttons, buttonHeight: full.buttonHeight, buttonsWidth: full.buttonsWidth)
+            return
+        }
+        let cardHeight = full.contentHeight + 2 * full.padding
+        card.frame = NSRect(
+            x: half(bounds.width - full.cardWidth), y: half(bounds.height - cardHeight), width: full.cardWidth,
+            height: cardHeight)
+        card.layer?.cornerRadius = style.points(10)
+        // Top to bottom; the view is not flipped, so the heading has the largest `y`.
+        var y = cardHeight - full.padding - full.headingHeight
+        heading.frame = NSRect(x: full.padding, y: y, width: full.textWidth, height: full.headingHeight)
+        y -= full.gap + full.explanationHeight
+        explanation.frame = NSRect(x: full.padding, y: y, width: full.textWidth, height: full.explanationHeight)
+        y -= 2 * full.gap + full.buttonHeight
+        place(
+            full.buttons, from: half(full.cardWidth - full.buttonsWidth), y: y, height: full.buttonHeight, gap: full.gap
+        )
+    }
+
+    /// How tall the question has to be at this width to show the heading and the sentence —
+    /// for a menu, which gives a line the height it asks for rather than a size of its own.
+    func heightShowingEverything(atWidth width: CGFloat) -> CGFloat {
+        fullLayout(atWidth: width).height
+    }
+
+    private struct FullLayout {
+        var gap: CGFloat
+        var margin: CGFloat
+        var padding: CGFloat
+        var buttons: [NSSize]
+        var buttonHeight: CGFloat
+        var buttonsWidth: CGFloat
+        var cardWidth: CGFloat
+        var textWidth: CGFloat
+        var headingHeight: CGFloat
+        var explanationHeight: CGFloat
+        var contentHeight: CGFloat
+        var height: CGFloat { contentHeight + 2 * padding + 2 * margin }
+    }
+
+    /// The full layout: a card no wider than a sentence reads well at, centred.
+    private func fullLayout(atWidth width: CGFloat) -> FullLayout {
         let gap = whole(style.points(6))
         let buttons = [cancelButton, endButton].map(\.intrinsicContentSize)
         let buttonHeight = buttons.map(\.height).max() ?? 0
-        let buttonsWidth = buttons.map(\.width).reduce(0, +) + gap
-
-        // The full layout: a card no wider than a sentence reads well at, centred.
         let margin = whole(style.points(10))
         let padding = whole(style.points(12))
-        let cardWidth = min(bounds.width - 2 * margin, style.points(300)).rounded(.down)
+        let cardWidth = min(width - 2 * margin, style.points(300)).rounded(.down)
         let textWidth = max(0, cardWidth - 2 * padding)
         let headingHeight = heading.intrinsicContentSize.height.rounded(.up)
         let explanationHeight =
             (explanation.cell?.cellSize(
                 forBounds: NSRect(x: 0, y: 0, width: textWidth, height: .greatestFiniteMagnitude)
             ).height ?? 0).rounded(.up)
-        let contentHeight = headingHeight + gap + explanationHeight + 2 * gap + buttonHeight
-        isCompact = contentHeight + 2 * padding + 2 * margin > bounds.height
-        heading.isHidden = isCompact
-        explanation.isHidden = isCompact
-        shortQuestion.isHidden = !isCompact
-
-        if isCompact {
-            layOutCompact(gap: gap, buttons: buttons, buttonHeight: buttonHeight, buttonsWidth: buttonsWidth)
-            return
-        }
-        let cardHeight = contentHeight + 2 * padding
-        card.frame = NSRect(
-            x: half(bounds.width - cardWidth), y: half(bounds.height - cardHeight), width: cardWidth,
-            height: cardHeight)
-        card.layer?.cornerRadius = style.points(10)
-        // Top to bottom; the view is not flipped, so the heading has the largest `y`.
-        var y = cardHeight - padding - headingHeight
-        heading.frame = NSRect(x: padding, y: y, width: textWidth, height: headingHeight)
-        y -= gap + explanationHeight
-        explanation.frame = NSRect(x: padding, y: y, width: textWidth, height: explanationHeight)
-        y -= 2 * gap + buttonHeight
-        place(buttons, from: half(cardWidth - buttonsWidth), y: y, height: buttonHeight, gap: gap)
+        return FullLayout(
+            gap: gap, margin: margin, padding: padding, buttons: buttons, buttonHeight: buttonHeight,
+            buttonsWidth: buttons.map(\.width).reduce(0, +) + gap, cardWidth: cardWidth, textWidth: textWidth,
+            headingHeight: headingHeight, explanationHeight: explanationHeight,
+            contentHeight: headingHeight + gap + explanationHeight + 2 * gap + buttonHeight)
     }
 
     /// The card takes the whole widget, the line over the buttons, both centred.

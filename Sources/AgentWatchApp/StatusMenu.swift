@@ -18,9 +18,12 @@ protocol StatusMenuHost: AnyObject {
     /// Every session the widget has, in the widget's order.
     var sessions: [SessionSnapshot] { get }
     func reach(for snapshot: SessionSnapshot) -> SessionReach
-    /// A click on a session's line, which is a click on its row in the widget — a broken
-    /// session's included, whose question the widget then puts.
-    func focusSession(id: String)
+    /// A click on a session's line, which is a click on its row in the widget. A broken
+    /// session's answers with the question, which the menu then puts in place of its lines.
+    @discardableResult
+    func focusSession(id: String) -> SessionClick
+    /// The yes to that question.
+    func endAgent(ofSessionWithID id: String)
     /// Called before anything is refreshed, so what the menu then reads is current.
     func menuWillOpen()
     /// Puts the registered combination on the widget line, or takes it off.
@@ -62,6 +65,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     private(set) var widgetItem: NSMenuItem?
     /// At most this many sessions are listed; the rest are counted on one line.
     static let listedSessionLimit = 8
+    /// The broken session whose question stands where the session lines were, while the menu
+    /// is open. A menu cannot draw over its own lines, so the lines give way to it.
+    private(set) var askingAbout: String?
 
     init(settings: WidgetSettingsStore, host: StatusMenuHost) {
         self.settings = settings
@@ -123,6 +129,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         refresh()
     }
 
+    /// Closing the menu with the question open — Escape, a click elsewhere — is a no.
+    func menuDidClose(_ menu: NSMenu) {
+        askingAbout = nil
+    }
+
     /// Every title and checkmark, read again from what they describe.
     func refresh() {
         guard let host else {
@@ -172,6 +183,17 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             reach: host.reach(for:)
         )
         let first = summaryItem.map { menu.index(of: $0) + 1 } ?? 0
+        // Asked again on every rebuild, as the widget does: a question about a session that
+        // has gone, or is no longer broken, is no longer the question.
+        if let askingAbout, let session = host.sessions.first(where: { $0.id == askingAbout }),
+            lines.contains(where: { $0.sessionID == askingAbout && $0.leadsToQuestion })
+        {
+            let item = questionItem(for: session)
+            menu.insertItem(item, at: first)
+            sessionLineItems = [item]
+            return
+        }
+        askingAbout = nil
         sessionLineItems = lines.prefix(Self.listedSessionLimit).enumerated().map { offset, line in
             // A line with nothing to do has no action, which is how a menu that enables its
             // own items knows to grey it: `isEnabled` alone is overwritten when it opens.
@@ -183,6 +205,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             item.target = self
             item.representedObject = line
             item.image = Self.mark(for: line.attention)
+            if line.leadsToQuestion {
+                let view = MenuBrokenSessionLineView(title: line.title, image: item.image)
+                view.onChoose = { [weak self] in
+                    self?.chooseBrokenLine(line)
+                }
+                item.view = view
+            }
             menu.insertItem(item, at: first + offset)
             return item
         }
@@ -209,10 +238,50 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             .withSymbolConfiguration(configuration)
     }
 
+    /// The question, as tall as it needs to be at the menu's width, with the rest of the
+    /// menu around it.
+    private func questionItem(for session: SessionSnapshot) -> NSMenuItem {
+        let item = NSMenuItem(title: "Broken session", action: nil, keyEquivalent: "")
+        let id = session.id
+        item.view = MenuEndAgentQuestionView(
+            sessionID: id,
+            sessionName: session.title?.nonEmpty ?? session.projectName?.nonEmpty,
+            onCancel: { [weak self] in
+                self?.askingAbout = nil
+                self?.refreshSessions()
+            },
+            onEnd: { [weak self] in
+                self?.askingAbout = nil
+                self?.host?.endAgent(ofSessionWithID: id)
+                // Closed rather than kept: the lines are read once per opening, and an open
+                // menu would go on listing the session the answer just ended.
+                self?.menu.cancelTracking()
+            }
+        )
+        return item
+    }
+
+    /// A broken session's line, which stays open for the question its click leads to.
+    func chooseBrokenLine(_ line: MenuSessionLine) {
+        guard case .asksToEndAgent = host?.focusSession(id: line.sessionID) else {
+            refreshSessions()
+            return
+        }
+        askingAbout = line.sessionID
+        refreshSessions()
+    }
+
     // MARK: - Actions
 
+    /// An ordinary line, whose click closes the menu. The one broken session that can only be
+    /// found by a click — a tab Ghostty closed and kept — is found here, after the menu has
+    /// gone: its row is marked, and the next opening of the menu shows its line, which asks.
     @objc private func focusSession(_ sender: NSMenuItem) {
         guard let line = sender.representedObject as? MenuSessionLine else {
+            return
+        }
+        if line.leadsToQuestion {
+            chooseBrokenLine(line)
             return
         }
         host?.focusSession(id: line.sessionID)

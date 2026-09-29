@@ -94,6 +94,19 @@ final class WidgetRenderProbe: XCTestCase {
         try draw(
             widgetAskingToEndAnAgent(size: NSSize(width: 331, height: 173)), named: "ask-end-1x", pixelsPerPoint: 1,
             in: directory)
+        // The same question in the menu, where the session lines were, and the line that
+        // leads to it. Drawn on the menu's own material; a real menu is also translucent.
+        try draw(
+            menuPiece(
+                MenuEndAgentQuestionView(
+                    sessionID: "claude:session-1", sessionName: "Документация проекта", onCancel: {}, onEnd: {})),
+            named: "menu-question", in: directory)
+        try draw(
+            menuPiece(
+                MenuBrokenSessionLineView(
+                    title: "Документация проекта — terminal closed; end its agent…",
+                    image: StatusMenu.mark(for: .needsPerson))),
+            named: "menu-broken-line", in: directory)
         try draw(highlightedWidget(.left), named: "edge-left", in: directory)
         try draw(highlightedWidget(.bottomRight), named: "edge-corner", in: directory)
         try draw(listView(width: 190), named: "narrow", in: directory)
@@ -541,6 +554,17 @@ final class WidgetRenderProbe: XCTestCase {
         place(container, size: size ?? NSSize(width: width, height: list.frame.height))
         container.layoutSubtreeIfNeeded()
         return container
+    }
+
+    /// A menu's line on the material a menu is drawn with.
+    private func menuPiece(_ line: NSView) -> NSView {
+        let backdrop = NSVisualEffectView(frame: line.frame)
+        backdrop.material = .menu
+        backdrop.state = .active
+        line.frame.origin = .zero
+        backdrop.addSubview(line)
+        place(backdrop, size: line.frame.size)
+        return backdrop
     }
 
     private func highlightedWidget(_ edge: WidgetEdgeHighlightView.Edge) -> NSView {

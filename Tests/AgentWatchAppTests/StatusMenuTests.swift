@@ -100,20 +100,117 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertEqual(host.calls, ["focusSession claude:session-0"])
     }
 
-    /// A broken session's line is a click like any other: the question it leads to is put by
-    /// the widget, so the line only has to say that one follows.
-    func testABrokenSessionsLineLeadsToTheWidgetsQuestion() throws {
-        let (menu, host, _) = try makeMenu()
-        host.sessions = [session(0, "Session", .terminalClosed)]
-        host.reaches = ["claude:session-0": .closedTerminal(.discardOutput(devicePath: "/dev/ttys004"))]
-        menu.menuWillOpen(menu.menu)
-        host.calls = []
+    // MARK: - The question in the menu
+
+    /// A broken session's line draws itself, so its click reaches it with the menu still open,
+    /// and it keeps an action, so the menu does not read it as disabled and never light it up.
+    func testABrokenSessionsLineDrawsItselfAndStaysEnabled() throws {
+        let (menu, _, _) = try openMenuWithABrokenSession()
 
         let line = try XCTUnwrap(menu.sessionLineItems.first)
-        XCTAssertTrue(line.title.hasSuffix("end its agent…"), line.title)
-        try choose(line)
+        let view = try XCTUnwrap(line.view as? MenuBrokenSessionLineView)
+        XCTAssertTrue(view.title.hasSuffix("end its agent…"), view.title)
+        XCTAssertNotNil(line.action)
+        XCTAssertNotNil(view.image, "it carries its state's mark, like the other lines")
+    }
 
-        XCTAssertEqual(host.calls, ["focusSession claude:session-0"])
+    /// The menu cannot draw over its lines, so they give way: the question stands where they
+    /// were, and the rest of the menu stays around it.
+    func testChoosingTheLinePutsTheQuestionWhereTheLinesWere() throws {
+        let (menu, host, _) = try openMenuWithABrokenSession()
+
+        try brokenLine(in: menu).choose()
+
+        XCTAssertEqual(host.calls.last, "focusSession claude:session-0")
+        XCTAssertEqual(menu.askingAbout, "claude:session-0")
+        XCTAssertEqual(menu.sessionLineItems.count, 1)
+        let question = try XCTUnwrap(menu.sessionLineItems.first?.view as? MenuEndAgentQuestionView)
+        XCTAssertEqual(question.dialog.sessionID, "claude:session-0")
+        XCTAssertFalse(question.dialog.isCompact, "a menu line is as tall as the whole question needs")
+        XCTAssertEqual(Array(outline(menu.menu).prefix(3)), ["No active sessions", "Broken session", "Show Widget"])
+    }
+
+    func testCancelBringsTheLinesBack() throws {
+        let (menu, host, _) = try openMenuWithABrokenSession()
+        try brokenLine(in: menu).choose()
+
+        try question(in: menu).dialog.cancelButton.performClick(nil)
+
+        XCTAssertNil(menu.askingAbout)
+        XCTAssertNotNil(menu.sessionLineItems.first?.view as? MenuBrokenSessionLineView)
+        XCTAssertEqual(host.ended, [])
+    }
+
+    func testEndEndsTheAgentOfThatSession() throws {
+        let (menu, host, _) = try openMenuWithABrokenSession()
+        try brokenLine(in: menu).choose()
+
+        try question(in: menu).dialog.endButton.performClick(nil)
+
+        XCTAssertEqual(host.ended, ["claude:session-0"])
+        XCTAssertNil(menu.askingAbout)
+    }
+
+    /// Closing the menu with the question open — Escape, a click elsewhere — is a no, and the
+    /// next opening shows the lines.
+    func testClosingTheMenuIsANo() throws {
+        let (menu, host, _) = try openMenuWithABrokenSession()
+        try brokenLine(in: menu).choose()
+
+        menu.menuDidClose(menu.menu)
+        menu.menuWillOpen(menu.menu)
+
+        XCTAssertNil(menu.askingAbout)
+        XCTAssertNotNil(menu.sessionLineItems.first?.view as? MenuBrokenSessionLineView)
+        XCTAssertEqual(host.ended, [])
+    }
+
+    /// Asked again on every rebuild: a session that came back to its terminal is no longer
+    /// the question.
+    func testAQuestionAboutASessionNoLongerBrokenIsDropped() throws {
+        let (menu, host, _) = try openMenuWithABrokenSession()
+        try brokenLine(in: menu).choose()
+
+        host.sessions = [session(0, "Session", .waitingForUser)]
+        menu.refreshSessions()
+
+        XCTAssertNil(menu.askingAbout)
+        XCTAssertEqual(menu.sessionLineItems.map(\.title), ["Session"])
+    }
+
+    /// A line whose click asks nothing — the ending is no longer there by the time of the
+    /// click — leaves the lines as they are.
+    func testALineWhoseClickNoLongerAsksLeavesTheLines() throws {
+        let (menu, host, _) = try openMenuWithABrokenSession()
+        host.clicks = [:]
+
+        try brokenLine(in: menu).choose()
+
+        XCTAssertNil(menu.askingAbout)
+        XCTAssertNotNil(menu.sessionLineItems.first?.view as? MenuBrokenSessionLineView)
+    }
+
+    /// The release lands on the question's own view, which hands it to the button under it.
+    /// Called here rather than clicked: what a real menu delivers is for a real click to show.
+    func testAReleaseOverEndIsAnEnd() throws {
+        let (menu, host, _) = try openMenuWithABrokenSession()
+        try brokenLine(in: menu).choose()
+        let question = try question(in: menu)
+        let window = NSWindow(
+            contentRect: question.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = question
+        question.layoutSubtreeIfNeeded()
+        let end = question.dialog.endButton
+        let point = end.convert(NSPoint(x: end.bounds.midX, y: end.bounds.midY), to: nil)
+
+        XCTAssertTrue(question.hitTest(question.convert(point, from: nil)) === question, "the buttons take no press")
+        let release = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .leftMouseUp, location: point, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+        question.mouseUp(with: release)
+
+        XCTAssertEqual(host.ended, ["claude:session-0"])
     }
 
     func testOpeningTheMenuAgainListsTheSessionsAsTheyAreNow() throws {
@@ -229,6 +326,24 @@ final class StatusMenuTests: XCTestCase {
 
     // MARK: - Helpers
 
+    private func openMenuWithABrokenSession() throws -> (StatusMenu, FakeStatusMenuHost, WidgetSettingsStore) {
+        let (menu, host, settings) = try makeMenu()
+        let ending = ClosedTerminalEnding.discardOutput(devicePath: "/dev/ttys004")
+        host.sessions = [session(0, "Session", .terminalClosed)]
+        host.reaches = ["claude:session-0": .closedTerminal(ending)]
+        host.clicks = ["claude:session-0": .asksToEndAgent(ending)]
+        menu.menuWillOpen(menu.menu)
+        return (menu, host, settings)
+    }
+
+    private func brokenLine(in menu: StatusMenu) throws -> MenuBrokenSessionLineView {
+        try XCTUnwrap(menu.sessionLineItems.first?.view as? MenuBrokenSessionLineView)
+    }
+
+    private func question(in menu: StatusMenu) throws -> MenuEndAgentQuestionView {
+        try XCTUnwrap(menu.sessionLineItems.first?.view as? MenuEndAgentQuestionView)
+    }
+
     private func makeMenu() throws -> (StatusMenu, FakeStatusMenuHost, WidgetSettingsStore) {
         let settings = WidgetSettingsStore(preferences: try isolatedPreferences())
         let host = FakeStatusMenuHost()
@@ -297,8 +412,18 @@ final class FakeStatusMenuHost: StatusMenuHost {
         reaches[snapshot.id] ?? .anApplication
     }
 
-    func focusSession(id: String) {
+    /// What each session's click comes to; a window comes forward for any other.
+    var clicks: [String: SessionClick] = [:]
+    var ended: [String] = []
+
+    func focusSession(id: String) -> SessionClick {
         calls.append("focusSession \(id)")
+        return clicks[id] ?? .raised
+    }
+
+    func endAgent(ofSessionWithID id: String) {
+        calls.append("endAgent \(id)")
+        ended.append(id)
     }
 
     func menuWillOpen() { calls.append("menuWillOpen") }

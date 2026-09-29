@@ -527,11 +527,12 @@ extension AppDelegate: StatusMenuHost {
 
     /// Looked up at the click, not taken from when the menu opened: the session may have moved
     /// on, or gone, while the menu stood open.
-    func focusSession(id: String) {
-        // A menu cannot put the question itself, so the widget puts it.
-        if case .asksToEndAgent = supervisor.focusSession(id: id) {
-            hudController.askToEndAgent(ofSessionWithID: id)
-        }
+    func focusSession(id: String) -> SessionClick {
+        supervisor.focusSession(id: id)
+    }
+
+    func endAgent(ofSessionWithID id: String) {
+        supervisor.endAgent(ofSessionWithID: id)
     }
 
     func menuWillOpen() {
