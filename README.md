@@ -29,8 +29,8 @@ with the optional plugin below.
 
 ## Install and connect
 
-1. Download `AgentWatch-<version>.zip` from [Releases](https://github.com/glockbender/agentwatcher/releases)
-   and unzip the app into `/Applications`.
+1. Download `AgentWatch-<version>.dmg` from [Releases](https://github.com/glockbender/agentwatcher/releases),
+   open it and drag Agent Watch to the Applications folder beside it.
 2. Alpha builds have an ad-hoc signature. After downloading from this project's release,
    remove the quarantine flag so macOS can open the app:
 

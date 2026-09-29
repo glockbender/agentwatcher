@@ -50,11 +50,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          checksum="$(cut -d' ' -f1 "dist/AgentWatch-$version.zip.sha256")"
+          checksums="$(cat "dist/AgentWatch-$version.dmg.sha256" "dist/AgentWatch-$version.zip.sha256")"
           cat > dist/notes.md <<NOTES
           ## Install
 
-          1. Download \`AgentWatch-$version.zip\` and unzip it into \`/Applications\`.
+          1. Download \`AgentWatch-$version.dmg\`, open it and drag Agent Watch to the
+             Applications folder beside it.
           2. Remove the quarantine flag macOS puts on anything downloaded:
 
           \`\`\`sh
@@ -65,9 +66,13 @@ jobs:
           Apple Developer ID certificate, so macOS cannot check who made it. Without the step
           it refuses to open the app.
 
+          SHA-256, in the format \`shasum -a 256 -c\` reads:
+
           \`\`\`
-          sha256  $checksum
+          $checksums
           \`\`\`
+
+          The \`.zip\` holds the same app. It is the file the app downloads when it updates itself.
 
           Then open the app's Tooling window and install the hooks for whichever agents you
           use. Nothing is written to any agent's configuration until you press install there.
@@ -84,5 +89,7 @@ jobs:
             --draft \
             --title "Agent Watch $version" \
             --notes-file dist/notes.md \
+            "dist/AgentWatch-$version.dmg" \
+            "dist/AgentWatch-$version.dmg.sha256" \
             "dist/AgentWatch-$version.zip" \
             "dist/AgentWatch-$version.zip.sha256"
