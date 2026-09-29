@@ -224,7 +224,8 @@ final class HUDOverflowTests: XCTestCase {
         let fromTheTop = listView(sessionCount: 8)
         place(fromTheTop, height: 80)
 
-        let list = listView(sessionCount: 8, restoredScrollOffset: NSPoint(x: 0, y: 2 * oneRow))
+        let list = listView(
+            sessionCount: 8, phase: .waitingForUser, restoredScrollOffset: NSPoint(x: 0, y: 2 * oneRow))
         place(list, height: 80)
 
         XCTAssertEqual(list.hiddenSessions.above, 2, "two rows were scrolled past before the rebuild")
@@ -269,7 +270,7 @@ final class HUDOverflowTests: XCTestCase {
     /// partly the cause of what it reported: while it was there the widget showed one row
     /// fewer. As a badge over the list it costs the rows nothing.
     func testTheCounterTakesNoHeightFromTheList() throws {
-        let list = listView(sessionCount: 8)
+        let list = listView(sessionCount: 8, phase: .waitingForUser)
         place(list, height: 60)
         XCTAssertGreaterThan(list.hiddenSessions.below, 0, "this size really does cut rows off")
 
@@ -307,7 +308,7 @@ final class HUDOverflowTests: XCTestCase {
     /// The same margin at the other end. The list view is not flipped, so "above the rows"
     /// is the larger `y` here.
     func testTheCounterAboveSitsInTheSameMargin() throws {
-        let list = listView(sessionCount: 8)
+        let list = listView(sessionCount: 8, phase: .waitingForUser)
         place(list, height: 80)
         try scrollToBottom(list)
         let scrollView = try XCTUnwrap(firstScrollView(in: list))
@@ -324,7 +325,7 @@ final class HUDOverflowTests: XCTestCase {
     /// Both counters can stand at once — a list scrolled to the middle has rows either way —
     /// and neither may land on the other.
     func testBothCountersCanStandAtOnceWithoutMeeting() throws {
-        let list = listView(sessionCount: 20)
+        let list = listView(sessionCount: 20, phase: .waitingForUser)
         place(list, height: 120)
         try scroll(list, by: 3 * (WidgetStyle.standard.rowHeight + WidgetStyle.standard.rowSpacing))
 
@@ -363,7 +364,16 @@ final class HUDOverflowTests: XCTestCase {
             let fits = HUDSessionListView.selfSizedHeight(
                 sessionCount: 8, usageLimits: [], background: .graphite, style: style
             )
-            let list = listView(sessionCount: 8, phase: .sessionClosed, style: style)
+            // A badge counts only the rows past an edge that wait for a person, and only a
+            // closed row carries the mark: so the rows in view are closed and the rest wait.
+            let probe = listView(sessionCount: 8, phase: .sessionClosed, style: style)
+            place(probe, height: fits * 0.6)
+            try scroll(probe, by: style.rowHeight + style.rowSpacing)
+            let inView = Set(try wholeRowsInView(of: probe).map(\.snapshot.id))
+            let phases = (0..<8).map { index in
+                inView.contains(session(index: index).id) ? SessionPhase.sessionClosed : .waitingForUser
+            }
+            let list = listView(sessionCount: 8, phases: phases, style: style)
             place(list, height: fits * 0.6)
             try scroll(list, by: style.rowHeight + style.rowSpacing)
             let percent = Int(scale * 100)
@@ -401,6 +411,7 @@ final class HUDOverflowTests: XCTestCase {
     func testTheCounterStaysClearOfTheUsageBlock() throws {
         let list = listView(
             sessionCount: 8,
+            phase: .waitingForUser,
             usageLimits: [AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 17), observedAt: now)]
         )
         place(list, height: 120)
@@ -896,15 +907,20 @@ final class HUDOverflowTests: XCTestCase {
         sessionCount: Int,
         title: String? = nil,
         phase: SessionPhase = .executing,
+        phases: [SessionPhase]? = nil,
         usageLimits: [AgentUsageLimits] = [],
         style: WidgetStyle = .standard,
         restoredScrollOffset: NSPoint? = nil
     ) -> HUDSessionListView {
-        HUDSessionListView(
-            models: rowModels(
-                (0..<sessionCount).map { session(index: $0, title: title, phase: phase) },
-                now: now
-            ),
+        let sessions = (0..<sessionCount).map { session(index: $0, title: title, phase: phases?[$0] ?? phase) }
+        // Rows of mixed phases keep the order given, which the list shows as it is handed:
+        // sorted into blocks, every row that waits would go to the top.
+        let models =
+            phases == nil
+            ? rowModels(sessions, now: now)
+            : sessions.map { HUDRowModel(snapshot: $0, now: now, layout: .standard) }
+        return HUDSessionListView(
+            models: models,
             usageLimits: usageLimits,
             now: now,
             availableWidth: 400,

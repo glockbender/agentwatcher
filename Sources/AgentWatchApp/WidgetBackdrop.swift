@@ -52,21 +52,26 @@ func makeBackdrop(
 }
 
 /// Liquid Glass, or the frosted material on a system without it.
+///
+/// Frosted as well when built with an SDK older than macOS 26, which has no
+/// `NSGlassEffectView`; Swift 6.2 is the compiler that SDK comes with.
 @MainActor
 private func makeGlass(cornerRadius: CGFloat, tint: NSColor?, opacity: CGFloat, clear: Bool) -> NSView {
-    guard #available(macOS 26.0, *) else {
-        return makeBackdrop(cornerRadius: cornerRadius, tint: tint, opacity: opacity, material: .frosted)
-    }
-    let glass = NSGlassEffectView()
-    glass.style = clear ? .clear : .regular
-    glass.cornerRadius = cornerRadius
-    if let tint {
-        let colour = NSView()
-        colour.wantsLayer = true
-        colour.layer?.backgroundColor = glassTint(tint, opacity: opacity, clear: clear).cgColor
-        glass.contentView = colour
-    }
-    return glass
+    #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.style = clear ? .clear : .regular
+            glass.cornerRadius = cornerRadius
+            if let tint {
+                let colour = NSView()
+                colour.wantsLayer = true
+                colour.layer?.backgroundColor = glassTint(tint, opacity: opacity, clear: clear).cgColor
+                glass.contentView = colour
+            }
+            return glass
+        }
+    #endif
+    return makeBackdrop(cornerRadius: cornerRadius, tint: tint, opacity: opacity, material: .frosted)
 }
 
 /// How much of the chosen colour the glass carries.

@@ -64,7 +64,6 @@ final class StatusMenuTests: XCTestCase {
         }
     }
 
-
     // MARK: - Sessions in the menu
 
     /// Directly under the summary, so the line that counts the sessions heads the list of them.
@@ -80,7 +79,7 @@ final class StatusMenuTests: XCTestCase {
 
         XCTAssertEqual(
             Array(outline(menu.menu).prefix(5)),
-            ["No active sessions", "Waiting on a question", "Finished the port", "---", "Show Widget"],
+            ["No active sessions", "Waiting on a question", "Finished the port", "Show Widget", "---"],
             "the defaults list the sessions that need a person or are done, and no others"
         )
         XCTAssertEqual(
@@ -142,7 +141,7 @@ final class StatusMenuTests: XCTestCase {
         menu.refresh()
 
         XCTAssertEqual(menu.sessionLineItems, [])
-        XCTAssertEqual(Array(outline(menu.menu).prefix(2)), ["No active sessions", "---"])
+        XCTAssertEqual(Array(outline(menu.menu).prefix(2)), ["No active sessions", "Show Widget"])
     }
 
     /// A menu enables its own lines as it opens, so a line is greyed by having nothing to do.
