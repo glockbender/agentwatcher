@@ -23,8 +23,6 @@ enum MenuBarIconMetrics {
     static let knockout: CGFloat = 10
     /// What an empty cell is drawn at. A zero has to hold its place without asking to be read.
     static let emptyCellAlpha: CGFloat = 0.4
-    /// One breath, the same length as the widget's lamp so the two read as one app.
-    static let breathSeconds: TimeInterval = 1.4
     /// How much wider than its drawing the status item is made.
     ///
     /// Left to itself `NSStatusItem` adds 16 pt around an image — measured, and constant from
@@ -64,38 +62,47 @@ struct MenuBarIconCell: Equatable {
     let accent: NSColor
     /// How far the cell fades at the bottom of its breath. Zero means it does not breathe.
     let breathDepth: CGFloat
+    /// One full breath, or one trip to `fadeTo` and back, in seconds.
+    var cycle: TimeInterval = WidgetTheme.markCycle
+    /// The colour the cell's mark fades to and back from, when it moves that way instead.
+    var fadeTo: NSColor?
 
     /// One cell per state shown, in the order of `SessionAttention.counted` — which is also
     /// their order of importance, and what `MenuBarIconGrid` places them by.
     ///
-    /// Only the two a person can do something about breathe, and only when they hold
-    /// something. Movement has to mean "there is something here"; a breathing zero would say
-    /// the opposite with the same gesture.
+    /// How each moves is the theme's (`WidgetTheme.Look.markStyle`); as shipped, only the two a
+    /// person can do something about breathe. A cell moves only when it holds something:
+    /// movement has to mean "there is something here", and a breathing zero would say the
+    /// opposite with the same gesture.
     static func cells(
         for counts: SessionAttentionCounts,
-        showing shown: Set<SessionAttention> = Set(SessionAttention.counted)
+        showing shown: Set<SessionAttention> = Set(SessionAttention.counted),
+        look: WidgetTheme.Look = WidgetTheme.active
     ) -> [MenuBarIconCell] {
         SessionAttention.counted.filter(shown.contains).map { attention in
-            MenuBarIconCell(
+            let style = look.markStyle(for: attention)
+            return MenuBarIconCell(
                 attention: attention,
                 symbol: attention.symbolName,
                 count: counts.count(of: attention),
                 accent: attention.accent,
-                breathDepth: attention.breathDepth
+                breathDepth: style.motion == .dim ? attention.breathDepth : 0,
+                cycle: style.animationCycle,
+                fadeTo: style.motion == .gradient && style.gradientColor.srgbHex != style.color.srgbHex
+                    ? style.gradientColor : nil
             )
         }
     }
 }
 
 extension SessionAttention {
-    /// How far this state's cell fades at the bottom of its breath; zero for a still one.
-    fileprivate var breathDepth: CGFloat {
+    /// How far this state's cell fades at the bottom of its breath, when it breathes.
+    var breathDepth: CGFloat {
         switch self {
         // Deeper than working, at the same rhythm: the one that needs a person has to carry
         // further across a glance without becoming a blink.
         case .needsPerson: 0.65
-        case .working: 0.45
-        case .done, .quiet, .closed: 0
+        case .working, .done, .quiet, .closed: 0.45
         }
     }
 }
@@ -111,16 +118,25 @@ struct MenuBarIconPart {
     let image: NSImage
     let frame: NSRect
     var breathDepth: CGFloat = 0
+    /// One full breath of the part, or of its fade, in seconds.
+    var cycle: TimeInterval = WidgetTheme.markCycle
+    /// The same part in the colour it fades to, laid over it and faded in and out.
+    var fadeImage: NSImage?
     /// A halo of this colour around the part, for the sphere.
     var glow: NSColor?
     var glowBreathes = false
+    var glowCycle: TimeInterval = WidgetTheme.Sphere().haloCycle
     var sways = false
+    var swayDegrees: CGFloat = WidgetTheme.Sphere().swayDegrees
+    var swayCycle: TimeInterval = WidgetTheme.Sphere().swayCycle
 }
 
 /// The whole grid, drawn, in pieces.
 struct MenuBarIconDrawing {
     let size: NSSize
     let parts: [MenuBarIconPart]
+    /// How long the sphere swells for when a count changes; nil for a drawing that does not.
+    var swellSeconds: TimeInterval?
 
     /// The strip as one picture, at a given point of the breath — `0` for a still icon.
     @MainActor
@@ -240,27 +256,32 @@ enum MenuBarIconRenderer {
                     ceil(slot + MenuBarIconMetrics.gapToDigit - MenuBarIconMetrics.overlap + textWidth)
                 )
 
-                let cellImage = NSImage(size: NSSize(width: cellWidth, height: height))
-                cellImage.lockFocus()
-                drawGlyph(glyphs[index], tint: holdsSomething ? cell.accent : dim, slot: slot, rowHeight: height)
-                drawDigit(
-                    text,
-                    font: font,
-                    colour: holdsSomething ? ink : dim,
-                    x: slot + MenuBarIconMetrics.gapToDigit - MenuBarIconMetrics.overlap,
-                    rowHeight: height
-                )
-                cellImage.unlockFocus()
+                func cellImage(tint: NSColor) -> NSImage {
+                    let image = NSImage(size: NSSize(width: cellWidth, height: height))
+                    image.lockFocus()
+                    drawGlyph(glyphs[index], tint: tint, slot: slot, rowHeight: height)
+                    drawDigit(
+                        text,
+                        font: font,
+                        colour: holdsSomething ? ink : dim,
+                        x: slot + MenuBarIconMetrics.gapToDigit - MenuBarIconMetrics.overlap,
+                        rowHeight: height
+                    )
+                    image.unlockFocus()
+                    return image
+                }
 
                 parts[index] = MenuBarIconPart(
-                    image: cellImage,
+                    image: cellImage(tint: holdsSomething ? cell.accent : dim),
                     frame: NSRect(
                         x: left,
                         y: column.count == 1 ? 0 : (row == 0 ? rowHeight : 0),
                         width: cellWidth,
                         height: height
                     ),
-                    breathDepth: holdsSomething ? cell.breathDepth : 0
+                    breathDepth: holdsSomething ? cell.breathDepth : 0,
+                    cycle: cell.cycle,
+                    fadeImage: holdsSomething ? cell.fadeTo.map { cellImage(tint: $0) } : nil
                 )
             }
             left += columnWidth + MenuBarIconMetrics.gapBetweenColumns

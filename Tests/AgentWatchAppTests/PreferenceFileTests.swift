@@ -135,11 +135,11 @@ final class PreferenceFileTests: XCTestCase {
         let directory = try makeDirectory()
         let preferences = PreferenceFile(directoryURL: directory)
 
-        WidgetBackgroundStore(preferences: preferences).selectMaterial(.solid)
+        ThemeStore(preferences: preferences, folder: nil).select(ThemeMode.dark)
         WidgetSettingsStore(preferences: preferences).setLocksPosition(true)
 
         let reopened = PreferenceFile(directoryURL: directory)
-        XCTAssertEqual(WidgetBackgroundStore(preferences: reopened).material, .solid)
+        XCTAssertEqual(ThemeStore(preferences: reopened, folder: nil).mode, .dark)
         XCTAssertTrue(WidgetSettingsStore(preferences: reopened).locksPosition)
     }
 

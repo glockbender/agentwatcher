@@ -19,34 +19,35 @@ final class WidgetBackgroundStoreTests: XCTestCase {
         XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).selected, .mint)
     }
 
-    func testUsesTheExistingBackgroundOpacityByDefault() throws {
-        let preferences = try isolatedPreferences()
-
-        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).opacity, 0.82)
-    }
-
-    func testPersistsTheSelectedBackgroundOpacity() throws {
+    /// Opacity and material are the theme's now. What is left here is reading what an older
+    /// file kept, so it can be carried over once, and forgetting it afterwards.
+    func testReadsTheSurfaceAnOlderFileKeptAndForgetsItWhenAsked() throws {
         let preferences = try isolatedPreferences()
         let store = WidgetBackgroundStore(preferences: preferences)
+        XCTAssertNil(store.opacity, "nothing to carry when nothing was set")
+        XCTAssertNil(store.material)
 
-        store.selectOpacity(0.64)
+        preferences.set(0.42, forKey: "widgetBackgroundOpacity")
+        preferences.set("frosted", forKey: "widgetBackgroundMaterial")
+        XCTAssertEqual(store.opacity, 0.42)
+        XCTAssertEqual(store.material, .frosted)
 
-        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).opacity, 0.64)
+        store.forgetSurface()
+        XCTAssertNil(store.opacity)
+        XCTAssertNil(store.material)
+        XCTAssertNil(preferences.number(forKey: "widgetBackgroundOpacity"))
     }
 
-    func testClampsBackgroundOpacityToTheReadableRange() throws {
+    /// Clamped on the way in, like everything a person could have typed into the file: an
+    /// opacity of zero carried into a theme would make the widget impossible to find.
+    func testAnOpacityOutOfRangeIsCarriedInsideIt() throws {
         let preferences = try isolatedPreferences()
-        let store = WidgetBackgroundStore(preferences: preferences)
+        preferences.set(-1, forKey: "widgetBackgroundOpacity")
 
-        store.selectOpacity(-1)
-        XCTAssertEqual(store.opacity, WidgetBackgroundStore.minimumOpacity)
-        // The floor itself is the point: at zero the widget becomes invisible and the
-        // person who made it invisible cannot find it again.
-        XCTAssertGreaterThan(WidgetBackgroundStore.minimumOpacity, 0)
-        XCTAssertLessThan(WidgetBackgroundStore.minimumOpacity, 0.2, "the old floor was too high to read as glass")
-
-        store.selectOpacity(2)
-        XCTAssertEqual(store.opacity, 1)
+        XCTAssertEqual(
+            WidgetBackgroundStore(preferences: preferences).opacity, CGFloat(WidgetTheme.opacityRange.lowerBound))
+        XCTAssertGreaterThan(WidgetTheme.opacityRange.lowerBound, 0)
+        XCTAssertLessThan(WidgetTheme.opacityRange.lowerBound, 0.2, "the old floor was too high to read as glass")
     }
 
     func testLightBackgroundsUseDarkTextIndependentOfSystemAppearance() {
@@ -121,25 +122,5 @@ final class WidgetBackgroundStoreTests: XCTestCase {
 
     private func custom(_ hex: String) throws -> WidgetBackground {
         try XCTUnwrap(NSColor(hex: hex).flatMap(WidgetBackground.init(custom:)))
-    }
-
-    func testPersistsTheChosenMaterial() throws {
-        let preferences = try isolatedPreferences()
-        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).material, .glass)
-
-        WidgetBackgroundStore(preferences: preferences).selectMaterial(.solid)
-
-        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).material, .solid)
-    }
-
-    func testTellsItsOneListenerWhichSettingChanged() throws {
-        let store = WidgetBackgroundStore(preferences: try isolatedPreferences())
-        var changed: [WidgetSetting] = []
-        store.onChange = { changed.append($0) }
-
-        store.selectMaterial(.frosted)
-        store.selectOpacity(0.5)
-
-        XCTAssertEqual(changed, [.background, .backgroundOpacity])
     }
 }

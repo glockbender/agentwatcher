@@ -171,22 +171,21 @@ enum WidgetMaterial: String, CaseIterable {
         needsLiquidGlass && !Self.systemHasLiquidGlass ? .frosted : self
     }
 
-    /// Kept here rather than handed down through every view that draws a backdrop; the store
-    /// sets it, and the widget is rebuilt on every change.
+    /// Kept here rather than handed down through every view that draws a backdrop; set from
+    /// the theme in use, and the widget is rebuilt on every change.
     @MainActor static var current: WidgetMaterial = .glass
 }
 
-final class WidgetBackgroundStore: PreferenceDefaults {
-    static let defaultOpacity: CGFloat = 0.82
-    /// Not zero: an invisible widget cannot be found again by the person who made it
-    /// invisible. At five percent it is already glass, and `Highlight Widget` can still
-    /// point at it.
-    static let minimumOpacity: CGFloat = 0.05
-
+/// The widget's panel as versions before themes kept it, one setting per key — read once at
+/// launch, to carry into a theme (`ThemeStore.adoptIfNeeded`).
+///
+/// The colour keys stay where they are, as the lamp's do: they only matter while no theme has
+/// been chosen, and a theme is chosen by the first launch that reads them. Material and opacity
+/// are forgotten once carried, because they can be carried into a theme already in use.
+final class WidgetBackgroundStore {
     private enum Key {
         static let selectedBackground = "widgetBackground"
-        /// The person's own colour, as `#RRGGBB`. Its own key rather than folded into the one
-        /// above, so it outlives a detour through a preset: the palette keeps offering it back.
+        /// The person's own colour, as `#RRGGBB`.
         static let customColor = "widgetBackgroundCustomColor"
         static let opacity = "widgetBackgroundOpacity"
         static let material = "widgetBackgroundMaterial"
@@ -194,25 +193,12 @@ final class WidgetBackgroundStore: PreferenceDefaults {
 
     private let preferences: PreferenceFile
 
-    var defaultValues: [String: JSONValue] {
-        [
-            Key.opacity: .number(Double(Self.defaultOpacity)),
-            Key.material: .string(WidgetMaterial.glass.rawValue),
-        ]
-    }
-
-    /// Told after every write, for the same reason `WidgetSettingsStore` is: nothing else
-    /// tells the widget, and the follow-up belongs with the setting rather than with
-    /// whichever control happened to make the write.
-    var onChange: ((WidgetSetting) -> Void)?
-
     init(preferences: PreferenceFile) {
         self.preferences = preferences
     }
 
     /// The default blue for anything that cannot be read — a mistyped name, or `custom` with no colour
-    /// behind it — for the reason the lamp store gives: the file is meant to be corrected by
-    /// hand, and the app's own is the honest answer to "this is not a background".
+    /// behind it.
     var selected: WidgetBackground {
         let name = preferences.string(forKey: Key.selectedBackground) ?? ""
         if name == WidgetBackground.customName {
@@ -221,33 +207,26 @@ final class WidgetBackgroundStore: PreferenceDefaults {
         return WidgetBackground.preset(named: name) ?? .defaultBackground
     }
 
-    /// The saved custom colour, seeded with default blue for new installations; nil if absent or invalid.
+    /// The saved custom colour; nil if absent or invalid.
     var customColor: NSColor? {
         preferences.string(forKey: Key.customColor).flatMap(NSColor.init(hex:))
     }
 
-    var opacity: CGFloat {
-        guard let stored = preferences.number(forKey: Key.opacity) else {
-            return Self.defaultOpacity
+    /// The opacity a person set before it joined the theme, or nil when there is none to carry.
+    var opacity: CGFloat? {
+        preferences.number(forKey: Key.opacity).map {
+            CGFloat($0.clamped(to: WidgetTheme.opacityRange, or: WidgetTheme.defaultOpacity))
         }
-        return normalizedOpacity(CGFloat(stored))
     }
 
-    var material: WidgetMaterial {
-        preferences.string(forKey: Key.material).flatMap(WidgetMaterial.init(rawValue:)) ?? .glass
+    var material: WidgetMaterial? {
+        preferences.string(forKey: Key.material).flatMap(WidgetMaterial.init(rawValue:))
     }
 
-    func selectMaterial(_ material: WidgetMaterial) {
-        preferences.set(material.rawValue, forKey: Key.material)
-        onChange?(.background)
-    }
-
-    func selectOpacity(_ opacity: CGFloat) {
-        preferences.set(Double(normalizedOpacity(opacity)), forKey: Key.opacity)
-        onChange?(.backgroundOpacity)
-    }
-
-    private func normalizedOpacity(_ opacity: CGFloat) -> CGFloat {
-        min(max(opacity, Self.minimumOpacity), 1)
+    /// Once carried into a theme, the two are the theme's, and a key left behind would be
+    /// carried again over whatever the theme says by then.
+    func forgetSurface() {
+        preferences.removeValue(forKey: Key.opacity)
+        preferences.removeValue(forKey: Key.material)
     }
 }

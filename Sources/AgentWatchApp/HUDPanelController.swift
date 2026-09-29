@@ -208,6 +208,15 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         refreshContent()
     }
 
+    /// Everything a theme decides about the widget at once, so a new theme rebuilds the list
+    /// once rather than once for each of them.
+    func setAppearance(background: WidgetBackground, lampScheme: LampScheme, opacity: CGFloat) {
+        self.background = background
+        self.lampScheme = lampScheme
+        backgroundOpacity = opacity
+        refreshContent()
+    }
+
     /// Draws the widget at a new size, now.
     ///
     /// Everything on screen is rebuilt: a row reads its fonts and its height once, when it is

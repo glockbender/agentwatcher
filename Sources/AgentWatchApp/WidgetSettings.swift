@@ -27,8 +27,6 @@ enum WidgetSetting {
     case interactionLocks
     case closedSessionRetention
     case transcriptPollInterval
-    case background
-    case backgroundOpacity
     case theme
     case scale
     case toggleShortcut

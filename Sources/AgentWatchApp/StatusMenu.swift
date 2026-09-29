@@ -68,6 +68,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// The broken session whose question stands where the session lines were, while the menu
     /// is open. A menu cannot draw over its own lines, so the lines give way to it.
     private(set) var askingAbout: String?
+    /// The session lines' marks, which a theme can colour and move.
+    let marks = MenuMarkAnimator()
 
     init(settings: WidgetSettingsStore, host: StatusMenuHost) {
         self.settings = settings
@@ -127,11 +129,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         host?.menuWillOpen()
         refresh()
+        marks.start()
     }
 
     /// Closing the menu with the question open — Escape, a click elsewhere — is a no.
     func menuDidClose(_ menu: NSMenu) {
         askingAbout = nil
+        marks.stop()
     }
 
     /// Every title and checkmark, read again from what they describe.
@@ -174,6 +178,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             menu.removeItem(item)
         }
         sessionLineItems = []
+        marks.show([])
         guard settings.listsSessionsInMenu else {
             return
         }
@@ -194,6 +199,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             return
         }
         askingAbout = nil
+        let look = WidgetTheme.active
+        var marked: [(item: NSMenuItem, attention: SessionAttention, style: LampStyle)] = []
         sessionLineItems = lines.prefix(Self.listedSessionLimit).enumerated().map { offset, line in
             // A line with nothing to do has no action, which is how a menu that enables its
             // own items knows to grey it: `isEnabled` alone is overwritten when it opens.
@@ -204,17 +211,22 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             )
             item.target = self
             item.representedObject = line
-            item.image = Self.mark(for: line.attention)
+            let style = look.menuMarkStyle(for: line.phase)
+            item.image = MenuMarkAnimator.mark(for: line.attention, colour: style.color)
             if line.leadsToQuestion {
+                // Still: the line draws itself, and its picture is taken once.
                 let view = MenuBrokenSessionLineView(title: line.title, image: item.image)
                 view.onChoose = { [weak self] in
                     self?.chooseBrokenLine(line)
                 }
                 item.view = view
+            } else {
+                marked.append((item, line.attention, style))
             }
             menu.insertItem(item, at: first + offset)
             return item
         }
+        marks.show(marked)
         let unlisted = lines.count - Self.listedSessionLimit
         if unlisted > 0 {
             let more = NSMenuItem(title: "\(unlisted) more in the widget", action: nil, keyEquivalent: "")
@@ -223,19 +235,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    /// The mark the state has in the menu bar, in its colour. The shape tells the states apart
-    /// on its own, so the colour only speeds the reading (ADR-0003).
-    ///
-    /// Two palette colours, the mark first. Given only the accent, the palette paints every
-    /// layer with it — drawn offscreen, all four came out as plain discs of four colours, which
-    /// is the one thing ADR-0003 rules out. The menu bar cuts the mark out of the disc instead;
-    /// a menu has a background of its own, so a white mark reads the same on a light and a dark
-    /// one.
+    /// The mark the state has in the menu bar, in the state's colour (`MenuMarkAnimator.mark`).
     static func mark(for attention: SessionAttention) -> NSImage? {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [.white, attention.accent]))
-        return NSImage(systemSymbolName: attention.symbolName, accessibilityDescription: attention.name)?
-            .withSymbolConfiguration(configuration)
+        MenuMarkAnimator.mark(for: attention, colour: attention.accent)
     }
 
     /// The question, as tall as it needs to be at the menu's width, with the rest of the

@@ -100,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             background: themes.look.widgetBackground,
             lampScheme: themes.look.lampScheme,
-            backgroundOpacity: backgroundStore.opacity,
+            backgroundOpacity: themes.look.widgetOpacity,
             style: WidgetStyle(scale: settings.scale),
             frameStore: frameStore,
             settings: settings,
@@ -117,7 +117,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return controller
     }()
     private lazy var settingsWindow: WidgetSettingsWindowController = WidgetSettingsWindowController(
-        backgroundStore: backgroundStore,
         themes: themes,
         settings: settings,
         rowLayouts: rowLayouts,
@@ -168,9 +167,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
-        backgroundStore.onChange = { [weak self] setting in
-            self?.settingChanged(setting)
-        }
         themes.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
@@ -181,21 +177,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        themes.adoptIfNeeded(lampScheme: lampSchemes.scheme, background: backgroundStore.selected)
+        themes.adoptIfNeeded(
+            lampScheme: lampSchemes.scheme, background: backgroundStore.selected,
+            material: backgroundStore.material, opacity: backgroundStore.opacity)
+        backgroundStore.forgetSurface()
         rowLayouts.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
         // Before anything reads a setting: a fresh install gets the whole configuration
         // written out, and a version that adds one fills in that key alone.
         let owners: [PreferenceDefaults] = [
-            backgroundStore, settings, frameStore, themes, rowLayouts, updater,
+            settings, frameStore, themes, rowLayouts, updater,
         ]
         var everyDefault: [String: JSONValue] = [:]
         for owner in owners {
             everyDefault.merge(owner.defaultValues) { existing, _ in existing }
         }
         preferences.seed(everyDefault)
-        WidgetMaterial.current = backgroundStore.material
+        WidgetMaterial.current = themes.look.widgetMaterial
         WidgetTheme.active = themes.look
         // Said out loud, because the alternative is a person's settings apparently reset for
         // no reason. The seeding above is the write that moves the old file aside.
@@ -403,21 +402,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .transcriptPollInterval:
             supervisor.transcriptSettingsChanged()
             statusMenu?.refresh()
-        case .background:
-            WidgetMaterial.current = backgroundStore.material
-            hudController.setBackground(themes.look.widgetBackground)
         case .theme:
-            WidgetTheme.active = themes.look
-            hudController.setLampScheme(themes.look.lampScheme)
-            hudController.setBackground(themes.look.widgetBackground)
+            // Read back from the theme rather than carried in the notification: the look
+            // clamps opacity to a non-zero floor, and a control that passed its own raw value
+            // would let the live widget reach full invisibility while the saved theme did not.
+            let look = themes.look
+            WidgetTheme.active = look
+            WidgetMaterial.current = look.widgetMaterial
+            hudController.setAppearance(
+                background: look.widgetBackground, lampScheme: look.lampScheme, opacity: look.widgetOpacity)
             menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
+            statusMenu?.refreshSessions()
             settingsWindow.refresh()
-        case .backgroundOpacity:
-            // Read back rather than carrying the value in the notification: the store clamps
-            // to a non-zero floor, and a control that passed its own raw value would let the
-            // live widget reach full invisibility while the saved setting did not — so the
-            // widget would reappear on the next launch.
-            hudController.setBackgroundOpacity(backgroundStore.opacity)
         case .scale:
             // Read back for the reason the opacity gives above: the store clamps, and a
             // control that passed its own raw value would draw the widget at a size the saved
@@ -461,9 +457,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 let (mode, opacity, material) = cases[index]
-                backgroundStore.selectMaterial(material)
                 themes.select(mode)
-                backgroundStore.selectOpacity(opacity)
+                // Drawn over the theme without writing it: this is a picture, not a setting.
+                WidgetMaterial.current = material
+                let look = themes.look
+                hudController.setAppearance(
+                    background: look.widgetBackground, lampScheme: look.lampScheme, opacity: opacity)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
                     if let window = hudController.window, let screen = NSScreen.screens.first {
                         let frame = window.frame.insetBy(dx: -24, dy: -24)

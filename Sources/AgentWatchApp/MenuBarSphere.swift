@@ -33,17 +33,12 @@ enum MenuBarSphereMetrics {
     static let glowRadius: CGFloat = 2.5
     static let glowOpacity: Float = 0.6
     /// While anything needs a person the halo breathes between these, and the sphere itself
-    /// never fades: a glow that swells and settles, not a lamp that blinks.
+    /// never fades: a glow that swells and settles, not a lamp that blinks. How long a breath
+    /// takes, how far the colours sway and for how long, and whether any of it happens, are
+    /// the theme's (`WidgetTheme.Sphere`).
     static let glowBreath: ClosedRange<Float> = 0.3...0.95
-    static let glowBreathSeconds: TimeInterval = 4
-    /// While anything is working or needs a person, the colours sway to and fro under the
-    /// light, by this many degrees each way. A sway rather than a turn keeps needs you near
-    /// twelve o'clock.
-    static let swayDegrees: CGFloat = 35
-    static let swaySeconds: TimeInterval = 7
     /// When a count changes the sphere swells once, this much larger, and settles.
     static let swellScale: CGFloat = 1.08
-    static let swellSeconds: TimeInterval = 1.6
     /// The line an empty sphere is drawn with.
     static let emptyLineWidth: CGFloat = 1.5
 }
@@ -68,7 +63,10 @@ enum MenuBarSphereRenderer {
     ///
     /// `scale` is pixels per point. The sphere is painted a pixel at a time, so it has to be
     /// painted for the screen it is shown on rather than scaled to it.
-    static func draw(_ cells: [MenuBarIconCell], dark: Bool, scale: CGFloat = 2) -> MenuBarIconDrawing? {
+    static func draw(
+        _ cells: [MenuBarIconCell], dark: Bool, scale: CGFloat = 2,
+        motion: WidgetTheme.Sphere = WidgetTheme.active.sphereMotion
+    ) -> MenuBarIconDrawing? {
         guard !cells.isEmpty else {
             return nil
         }
@@ -91,9 +89,12 @@ enum MenuBarSphereRenderer {
             size: size,
             parts: [
                 MenuBarIconPart(
-                    image: colours, frame: frame, glow: first.accent, glowBreathes: needsPerson, sways: alive),
+                    image: colours, frame: frame, glow: motion.halo ? first.accent : nil,
+                    glowBreathes: motion.haloBreathes && needsPerson, glowCycle: motion.haloCycle,
+                    sways: motion.sway && alive, swayDegrees: motion.swayDegrees, swayCycle: motion.swayCycle),
                 MenuBarIconPart(image: light, frame: frame),
-            ]
+            ],
+            swellSeconds: motion.swell ? motion.swellSeconds : nil
         )
     }
 

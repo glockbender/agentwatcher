@@ -17,7 +17,6 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     let model: SettingsModel
 
     init(
-        backgroundStore: WidgetBackgroundStore,
         themes: ThemeStore,
         settings: WidgetSettingsStore,
         rowLayouts: RowLayoutStore,
@@ -26,7 +25,6 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         version: String?
     ) {
         model = SettingsModel(
-            backgroundStore: backgroundStore,
             themes: themes,
             settings: settings,
             rowLayouts: rowLayouts,
@@ -159,7 +157,6 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
 /// store has changed. The stores are not observable, so every write goes through `update`.
 @MainActor
 final class SettingsModel: ObservableObject {
-    let backgroundStore: WidgetBackgroundStore
     let themes: ThemeStore
     let settings: WidgetSettingsStore
     let rowLayouts: RowLayoutStore
@@ -202,7 +199,6 @@ final class SettingsModel: ObservableObject {
     weak var shortcutRecorder: ShortcutRecorderButton?
 
     init(
-        backgroundStore: WidgetBackgroundStore,
         themes: ThemeStore,
         settings: WidgetSettingsStore,
         rowLayouts: RowLayoutStore,
@@ -210,7 +206,6 @@ final class SettingsModel: ObservableObject {
         host: StatusMenuHost,
         version: String?
     ) {
-        self.backgroundStore = backgroundStore
         self.themes = themes
         self.settings = settings
         self.rowLayouts = rowLayouts
@@ -267,6 +262,66 @@ final class SettingsModel: ObservableObject {
             guard newValue != isWidgetVisible else { return }
             update { host?.toggleWidget() }
         }
+    }
+
+    // MARK: - The theme
+
+    /// Which of the theme's two looks an edit goes into. Both by default: an edit made to the
+    /// look on screen alone would leave the other one as it was, and the change would seem to
+    /// undo itself the next time the Mac switches between light and dark.
+    enum ThemeScope: String, CaseIterable {
+        case both, light, dark
+
+        var name: String {
+            switch self {
+            case .both: "Light and Dark"
+            case .light: "Light"
+            case .dark: "Dark"
+            }
+        }
+    }
+
+    @Published var themeScope: ThemeScope = .both
+    /// What the last change to a theme was refused for, shown until the next one succeeds.
+    @Published private(set) var themeProblem: String?
+
+    /// The look the editor shows: the one it writes into, or the one on screen when it writes
+    /// into both.
+    var editedLook: WidgetTheme.Look {
+        switch themeScope {
+        case .both: themes.look
+        case .light: themes.theme.light
+        case .dark: themes.theme.dark
+        }
+    }
+
+    /// Changes the theme in use — a copy of it first, when it is the built-in one.
+    func editTheme(_ change: (inout WidgetTheme.Look) -> Void) {
+        changeTheme { theme in
+            switch themeScope {
+            case .both:
+                change(&theme.light)
+                change(&theme.dark)
+            case .light:
+                change(&theme.light)
+            case .dark:
+                change(&theme.dark)
+            }
+        }
+    }
+
+    /// Changes something about the theme in use that is not one of its looks: its name.
+    func changeTheme(_ change: (inout WidgetTheme) -> Void) {
+        do {
+            var theme = try themes.editable()
+            let name = theme.name
+            change(&theme)
+            try themes.save(theme, replacing: name)
+            themeProblem = nil
+        } catch {
+            themeProblem = error.localizedDescription
+        }
+        refresh()
     }
 
     func showThemeFolder() {

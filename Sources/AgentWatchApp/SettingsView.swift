@@ -439,7 +439,7 @@ struct SampleRowsView: NSViewRepresentable {
         holder.subviews.filter { $0 !== stack }.forEach { $0.removeFromSuperview() }
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let background = model.themes.look.widgetBackground
-        let panel = makeBackgroundView(for: background, opacity: model.backgroundStore.opacity)
+        let panel = makeBackgroundView(for: background, opacity: model.themes.look.widgetOpacity)
         panel.translatesAutoresizingMaskIntoConstraints = false
         holder.addSubview(panel, positioned: .below, relativeTo: stack)
         panel.pinToEdges(of: holder)
@@ -593,7 +593,7 @@ struct OrderPreview: NSViewRepresentable {
         SessionOrderTab(
             settings: model.settings,
             look: { [themes = model.themes] in themes.look },
-            opacity: { [store = model.backgroundStore] in store.opacity },
+            opacity: { [themes = model.themes] in themes.look.widgetOpacity },
             rowLayouts: model.rowLayouts
         )
     }
@@ -658,15 +658,15 @@ struct AppearancePane: View {
                         .tag(material)
                     }
                 }
-                Slider(value: opacity, in: Double(WidgetBackgroundStore.minimumOpacity)...1) {
+                Slider(value: opacity, in: WidgetTheme.opacityRange) {
                     Text("Opacity")
                 } minimumValueLabel: {
                     Image(systemName: "circle.dotted")
                 } maximumValueLabel: {
                     Image(systemName: "circle.fill")
                 }
-                .help("\(Int((model.backgroundStore.opacity * 100).rounded()))%")
-                .disabled(model.backgroundStore.material.drawn == .solid)
+                .help("\(Int((model.themes.look.widgetOpacity * 100).rounded()))%")
+                .disabled(model.themes.look.widgetMaterial.drawn == .solid)
                 Picker("Size", selection: scale) {
                     ForEach(WidgetSettingsStore.offeredScales, id: \.self) { scale in
                         Text("\(Int((scale * 100).rounded()))%").tag(scale)
@@ -707,13 +707,13 @@ struct AppearancePane: View {
 
     private var material: Binding<WidgetMaterial> {
         Binding(
-            get: { model.backgroundStore.material },
-            set: { material in model.update { model.backgroundStore.selectMaterial(material) } }
+            get: { model.themes.look.widgetMaterial },
+            set: { material in model.editTheme { $0.widgetMaterial = material } }
         )
     }
 
     private var materialNote: String {
-        switch model.backgroundStore.material.drawn {
+        switch model.themes.look.widgetMaterial.drawn {
         case .glass: "Glass is recommended: the desktop shows through, and the colour keeps text readable."
         case .clearGlass: "Clear glass shows more of the desktop. Best on a quiet wallpaper."
         case .frosted: "Frosted blurs what is behind the widget."
@@ -723,8 +723,8 @@ struct AppearancePane: View {
 
     private var opacity: Binding<Double> {
         Binding(
-            get: { Double(model.backgroundStore.opacity) },
-            set: { value in model.update { model.backgroundStore.selectOpacity(CGFloat(value)) } }
+            get: { Double(model.themes.look.widgetOpacity) },
+            set: { value in model.editTheme { $0.widgetOpacity = CGFloat(value) } }
         )
     }
 

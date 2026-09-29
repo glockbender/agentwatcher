@@ -74,7 +74,6 @@ final class SettingsModelHistoryTests: XCTestCase {
         let settings = WidgetSettingsStore(preferences: preferences)
         let host = FakeStatusMenuHost()
         let model = SettingsModel(
-            backgroundStore: WidgetBackgroundStore(preferences: preferences),
             themes: ThemeStore(preferences: preferences, folder: nil),
             settings: settings,
             rowLayouts: RowLayoutStore(preferences: preferences),

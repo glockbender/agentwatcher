@@ -129,6 +129,249 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(changed, [.theme, .theme])
     }
 
+    // MARK: - What a file written before a field existed reads as
+
+    /// A theme file from before the panel, the states' lamps, the menu and the sphere joined
+    /// the theme — shaped like the owner's own `Default copy.json` — draws exactly what the
+    /// screen showed then.
+    func testAnOlderThemeFileLooksAsItDidBeforeTheNewFields() throws {
+        let older = ##"""
+            {"name": "Mine", "dark": {"background": "#006996",
+              "attention": {"done": "#30D159", "needsPerson": "#FF9F0A", "quiet": "#9E9E9E", "working": "#0A85FF"},
+              "colors": {"highlight": "#FF9F0A", "timerQuiet": "#FFD60A", "timerStale": "#FF9F0A"},
+              "lamps": {"executing": {"color": "#00FF5C", "cycle": 2.5, "fadeTo": "#00A900", "motion": "dim"}}},
+             "light": {}}
+            """##
+        let look = try ThemeStore.decode(Data(older.utf8)).dark
+
+        XCTAssertEqual(look.widgetMaterial, .glass)
+        XCTAssertEqual(look.widgetOpacity, CGFloat(WidgetTheme.defaultOpacity))
+        XCTAssertEqual(look.accent(for: .working).srgbHex, "#0A85FF", "a state keeps its own colour")
+        XCTAssertEqual(look.sphereMotion, WidgetTheme.Sphere())
+        // The grid as it shipped: the two states a person acts on breathe, at 1.4 s.
+        for attention in [SessionAttention.needsPerson, .working] {
+            XCTAssertEqual(look.markStyle(for: attention).motion, .dim, attention.rawValue)
+            XCTAssertEqual(look.markStyle(for: attention).animationCycle, 1.4, attention.rawValue)
+        }
+        XCTAssertEqual(look.markStyle(for: .done).motion, .steady)
+        // And the menu's marks hold still in the state's colour.
+        let line = look.menuMarkStyle(for: .executing)
+        XCTAssertEqual(line.motion, .steady)
+        XCTAssertEqual(line.color.srgbHex, "#0A85FF")
+    }
+
+    // MARK: - States that take a lamp's colour
+
+    /// Eleven lamps and four states: a state can take the colour of one of its own phases'
+    /// lamps, and only those — waiting for you can stand for needs you, working cannot.
+    func testAStateTakesItsColourOnlyFromALampOfItsOwn() throws {
+        var look = WidgetTheme.standard.dark
+        look.setLamp(.failed, for: .needsPerson)
+        XCTAssertEqual(look.accent(for: .needsPerson), look.lampScheme.style(for: .failed).color)
+        XCTAssertEqual(look.ownAccent(for: .needsPerson).srgbHex, "#FF9F0A", "its own colour is kept for later")
+
+        look.setLamp(.executing, for: .needsPerson)
+        XCTAssertNil(look.lamp(for: .needsPerson), "a lamp of another state is refused")
+
+        // A file may say anything; a phase of another state reads as the state's own colour.
+        look.attentionLamps[SessionAttention.done.rawValue] = SessionPhase.executing.rawValue
+        XCTAssertEqual(look.accent(for: .done).srgbHex, "#30D159")
+    }
+
+    /// The one switch for a person who wants everything to match: every state shown in the
+    /// menu bar takes its lead lamp, and every menu line its own session's lamp.
+    func testFollowingTheLampsMatchesTheMenuBarAndTheMenuToThem() throws {
+        var look = WidgetTheme.standard.dark
+        XCTAssertFalse(look.followsLamps)
+
+        look.setFollowsLamps(true)
+
+        XCTAssertTrue(look.followsLamps)
+        XCTAssertEqual(look.lamp(for: .working), .executing)
+        XCTAssertEqual(look.accent(for: .working), look.lampScheme.style(for: .executing).color)
+        XCTAssertEqual(look.menuMarkStyle(for: .failed).color, look.lampScheme.style(for: .failed).color)
+
+        look.setFollowsLamps(false)
+
+        XCTAssertNil(look.lamp(for: .working))
+        XCTAssertEqual(look.accent(for: .working).srgbHex, "#0A85FF")
+    }
+
+    /// A lead lamp chosen by hand survives the switch being turned on over it.
+    func testTurningEverythingToTheLampsKeepsALeadLampChosenBefore() {
+        var look = WidgetTheme.standard.dark
+        look.setLamp(.failed, for: .needsPerson)
+
+        look.setFollowsLamps(true)
+
+        XCTAssertEqual(look.lamp(for: .needsPerson), .failed)
+    }
+
+    /// A menu line moves like its session's lamp when told to, and like its state otherwise.
+    func testAMenuLineMovesLikeWhatTheThemeSays() {
+        var look = WidgetTheme.standard.dark
+        look.menuMotion = .lamp
+        let waiting = look.menuMarkStyle(for: .waitingForUser)
+        XCTAssertEqual(waiting.motion, .gradient)
+        XCTAssertEqual(waiting.animationCycle, 0.5)
+
+        look.menuMotion = .state
+        XCTAssertEqual(look.menuMarkStyle(for: .waitingForUser).motion, .dim)
+        XCTAssertEqual(look.menuMarkStyle(for: .waitingForUser).animationCycle, 1.4)
+    }
+
+    // MARK: - Making, changing and removing themes
+
+    /// The built-in theme lives in the code and is never written; the first change to it is
+    /// made to a copy, which is then the theme in use.
+    func testEditingTheBuiltInThemeMakesACopyFirst() throws {
+        let folder = try themesFolder()
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: folder)
+
+        let copy = try store.editable()
+
+        XCTAssertEqual(copy.name, "Default copy")
+        XCTAssertEqual(store.theme.name, "Default copy")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Default copy.json").path))
+        XCTAssertEqual(try store.editable().name, "Default copy", "a file is its own copy")
+        XCTAssertThrowsError(try store.save(.standard, replacing: WidgetTheme.standard.name))
+    }
+
+    /// A save writes the file over, follows a new name onto a new file, and tells the widget
+    /// only when the theme on screen changed — and only when something did.
+    func testSavingWritesTheFileAndFollowsARename() throws {
+        let folder = try themesFolder()
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: folder)
+        var theme = try store.create(named: "Mine")
+        var changes = 0
+        store.onChange = { _ in changes += 1 }
+
+        try store.save(theme, replacing: "Mine")
+        XCTAssertEqual(changes, 0, "nothing changed, so nothing was written")
+
+        theme.dark.widgetOpacity = 0.5
+        theme.name = "Renamed"
+        try store.save(theme, replacing: "Mine")
+
+        XCTAssertEqual(changes, 1)
+        XCTAssertEqual(store.theme.name, "Renamed")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Mine.json").path))
+        let reread = ThemeStore(preferences: try isolatedPreferences(), folder: folder)
+        XCTAssertEqual(reread.themes.first { $0.name == "Renamed" }?.dark.widgetOpacity, 0.5)
+    }
+
+    func testANameIsNeitherEmptyNorOneAlreadyTaken() throws {
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: try themesFolder())
+        try store.create(named: "First")
+        var second = try store.create(named: "Second")
+
+        second.name = "First"
+        XCTAssertThrowsError(try store.save(second, replacing: "Second")) {
+            XCTAssertEqual($0 as? ThemeStore.Problem, .nameTaken("First"))
+        }
+        second.name = "  "
+        XCTAssertThrowsError(try store.save(second, replacing: "Second")) {
+            XCTAssertEqual($0 as? ThemeStore.Problem, .emptyName)
+        }
+        XCTAssertEqual(store.theme.name, "Second")
+    }
+
+    /// Deleting hands the file to the Trash — here, to the test — and the built-in theme takes
+    /// over if the deleted one was on screen.
+    func testDeletingHandsTheFileOverAndFallsBackToTheBuiltInTheme() throws {
+        let folder = try themesFolder()
+        var discarded: [String] = []
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: folder) { url in
+            discarded.append(url.lastPathComponent)
+            try FileManager.default.removeItem(at: url)
+        }
+        let mine = try store.create(named: "Mine")
+
+        try store.delete(mine)
+
+        XCTAssertEqual(discarded, ["Mine.json"])
+        XCTAssertEqual(store.theme, .standard)
+        XCTAssertEqual(store.customThemes, [])
+        XCTAssertThrowsError(try store.delete(.standard))
+    }
+
+    /// An imported file joins the folder under a name nobody has, and is put in use. The
+    /// built-in theme's name is never given away.
+    func testImportingCopiesTheFileInUnderAFreeName() throws {
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: try themesFolder())
+        let outside = try themesFolder()
+        try write(##"{"name": "Shared", "dark": {"background": "#112233"}}"##, to: outside, as: "Shared")
+        try write(##"{"name": "Default"}"##, to: outside, as: "Claims the default")
+
+        let first = try store.importTheme(from: outside.appendingPathComponent("Shared.json"))
+        let second = try store.importTheme(from: outside.appendingPathComponent("Shared.json"))
+        let claimed = try store.importTheme(from: outside.appendingPathComponent("Claims the default.json"))
+
+        XCTAssertEqual([first.name, second.name, claimed.name], ["Shared", "Shared 2", "Default (file)"])
+        XCTAssertEqual(store.theme.name, "Default (file)")
+        XCTAssertEqual(first.dark.background, "#112233")
+    }
+
+    func testAFileThatIsNotAThemeIsRefusedAndNothingIsAdded() throws {
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: try themesFolder())
+        let outside = try themesFolder()
+        try write("not a theme", to: outside, as: "Broken")
+
+        XCTAssertThrowsError(try store.importTheme(from: outside.appendingPathComponent("Broken.json")))
+        XCTAssertEqual(store.themes, [.standard])
+    }
+
+    /// What is exported is what imports back.
+    func testAnExportedThemeImportsBackTheSame() throws {
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: try themesFolder())
+        var theme = try store.create(named: "Round trip")
+        theme.dark.setFollowsLamps(true)
+        theme.dark.sphere.swayDegrees = 20
+        try store.save(theme, replacing: theme.name)
+        let file = try themesFolder().appendingPathComponent("out.json")
+
+        try store.export(theme, to: file)
+
+        XCTAssertEqual(try ThemeStore.decode(Data(contentsOf: file)), theme)
+    }
+
+    // MARK: - The panel's material and opacity, from before they were the theme's
+
+    /// Set by hand while they were settings of their own, they go into the theme in use — both
+    /// of its looks — so the widget on screen does not change on update.
+    func testTheSurfaceSetBeforeThemesGoesIntoTheThemeInUse() throws {
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: try themesFolder())
+        try store.create(named: "Mine")
+        var changes = 0
+        store.onChange = { _ in changes += 1 }
+
+        store.adoptIfNeeded(
+            lampScheme: LampScheme(), background: .defaultBackground, material: .frosted, opacity: 0.42)
+
+        XCTAssertEqual(store.theme.name, "Mine")
+        for look in [store.theme.light, store.theme.dark] {
+            XCTAssertEqual(look.widgetMaterial, .frosted)
+            XCTAssertEqual(look.widgetOpacity, 0.42, accuracy: 0.0001)
+        }
+        XCTAssertEqual(changes, 0, "a launch-time carry-over builds nothing")
+    }
+
+    /// On the built-in theme, which is never written, a surface of the person's own becomes a
+    /// theme of its own; the built-in values themselves need none.
+    func testTheSurfaceOnTheBuiltInThemeBecomesATheme() throws {
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: try themesFolder())
+        store.select(WidgetTheme.standard)
+
+        store.adoptIfNeeded(
+            lampScheme: LampScheme(), background: .defaultBackground, material: .glass,
+            opacity: CGFloat(WidgetTheme.defaultOpacity))
+        XCTAssertEqual(store.theme, .standard)
+
+        store.adoptIfNeeded(lampScheme: LampScheme(), background: .defaultBackground, material: nil, opacity: 0.5)
+        XCTAssertEqual(store.theme.name, "My Theme")
+        XCTAssertEqual(store.theme.dark.widgetOpacity, 0.5, accuracy: 0.0001)
+    }
+
     private func themesFolder() throws -> URL {
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("AgentWatchThemes.\(UUID().uuidString)", isDirectory: true)
