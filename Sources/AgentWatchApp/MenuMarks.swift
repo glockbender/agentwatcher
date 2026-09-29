@@ -10,9 +10,9 @@ import QuartzCore
 /// frames are taken off the same clock the widget's lamps run on, so a line and its row move
 /// in step.
 ///
-/// Whether an open menu redraws a line whose image changes has not been measured yet; the
-/// menu's title is known to follow (`StatusMenu.refreshSummary`). Nothing moves until a theme
-/// asks: the built-in one holds the marks still.
+/// An open menu redraws a line whose image is replaced: the owner watched a waiting session's
+/// mark breathe on macOS 15.3.1 (`docs/measurements.md`). Nothing moves until a theme asks: the
+/// built-in one holds the marks still.
 @MainActor
 final class MenuMarkAnimator {
     private struct Mark {

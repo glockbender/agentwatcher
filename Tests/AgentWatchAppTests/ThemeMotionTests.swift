@@ -104,6 +104,25 @@ final class ThemeMotionTests: XCTestCase {
         XCTAssertEqual(view.swayingCells, [])
     }
 
+    /// With the menu bar matched to the lamps, a new colour on a lead lamp reaches the sphere
+    /// on the next drawing the theme change asks for.
+    func testANewLeadLampColourRedrawsTheSphere() throws {
+        use { $0.setFollowsLamps(true) }
+        let view = MenuBarIconView()
+        view.show(cells(needsPerson: 1, working: 0, done: 0, quiet: 0), as: .sphere)
+        let before = view.cellContents.first.map { $0 as AnyObject }
+
+        var look = WidgetTheme.active
+        var lamp = look.lampScheme.style(for: .waitingForUser)
+        lamp.color = NSColor(sRGB: "#00FF00")
+        look.setLampStyle(lamp, for: .waitingForUser)
+        WidgetTheme.active = look
+        view.show(cells(needsPerson: 1, working: 0, done: 0, quiet: 0), as: .sphere)
+
+        XCTAssertFalse(view.cellContents.first.map { $0 as AnyObject } === before, "the sphere kept its old picture")
+        XCTAssertEqual(cells(needsPerson: 1).first?.accent.srgbHex, "#00FF00")
+    }
+
     // MARK: - The menu's marks
 
     /// A dimmed mark is the same mark drawn fainter halfway through its breath, and whole at
