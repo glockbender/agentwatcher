@@ -58,3 +58,25 @@ cannot read, so it cannot damage your settings.
 **What to do:** Fix or move the file that Tooling names, then reopen Tooling.
 
 **Checked on:** not recorded.
+
+## A theme you added is not in the list
+
+**Why:** Agent Watch could not read its file: it is not JSON, or a value in it has the wrong type.
+A file whose theme is called `Default` is listed as `Default (file)`, because the built-in theme
+keeps that name.
+
+**What to do:** **Settings → Appearance** names the file and what was wrong. Fix it in the Themes
+folder (**Your Themes → Show Theme Folder**), or export the theme again from where it came from and
+use **Import…**.
+
+**Checked on:** macOS 15.3.1.
+
+## The widget is frosted, though its material is Glass
+
+**Why:** Liquid Glass comes with macOS 26. On an older macOS, or in a build made without the
+macOS 26 SDK, the widget draws Glass and Clear glass as frosted.
+
+**What to do:** Nothing is broken. On macOS 26 the same theme draws glass. The settings mark both
+glass materials `(macOS 26)` where they cannot be drawn.
+
+**Checked on:** macOS 15.3.1.

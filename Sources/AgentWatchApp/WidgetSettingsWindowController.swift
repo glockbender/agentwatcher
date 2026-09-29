@@ -324,6 +324,66 @@ final class SettingsModel: ObservableObject {
         refresh()
     }
 
+    /// Puts a theme in use and opens it in the editor: the editor changes the theme on screen,
+    /// so what it shows is what the widget does.
+    func edit(_ theme: WidgetTheme) {
+        update { themes.select(theme) }
+        go(.theme)
+    }
+
+    func duplicate(_ theme: WidgetTheme) {
+        attempt { try themes.create(from: theme, named: "\(theme.name) copy") }
+    }
+
+    /// A theme of the built-in colours, in use and open in the editor.
+    func newTheme() {
+        if attempt({ try themes.create() }) {
+            go(.theme)
+        }
+    }
+
+    func delete(_ theme: WidgetTheme) {
+        attempt { try themes.delete(theme) }
+    }
+
+    func importTheme() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.message = "Choose a theme file to add to Agent Watch."
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+        attempt { try themes.importTheme(from: url) }
+    }
+
+    func export(_ theme: WidgetTheme) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "\(theme.name).json"
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+        attempt { try themes.export(theme, to: url) }
+    }
+
+    var themeFolderNote: String {
+        "Themes are JSON files in the Themes folder, so they can also be shared and edited by hand."
+    }
+
+    /// Runs a change to the themes, and keeps what it was refused for to show.
+    @discardableResult
+    private func attempt(_ change: () throws -> Void) -> Bool {
+        defer { refresh() }
+        do {
+            try change()
+            themeProblem = nil
+            return true
+        } catch {
+            themeProblem = error.localizedDescription
+            return false
+        }
+    }
+
     func showThemeFolder() {
         guard let folder = themes.folder else { return }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

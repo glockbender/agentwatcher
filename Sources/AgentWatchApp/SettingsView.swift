@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case widget, rows, order, appearance, menuBar, general, tooling, diagnostics
+    case widget, rows, order, appearance, theme, themes, menuBar, general, tooling, diagnostics
 
     var id: String { rawValue }
 
@@ -11,6 +11,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var parent: SettingsPage {
         switch self {
         case .rows, .order: .widget
+        case .theme, .themes: .appearance
         default: self
         }
     }
@@ -23,6 +24,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .rows: "Rows"
         case .order: "Order"
         case .appearance: "Appearance"
+        case .theme: "Edit Theme"
+        case .themes: "Your Themes"
         case .menuBar: "Menu Bar"
         case .general: "General"
         case .tooling: "Tooling"
@@ -33,7 +36,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .widget, .rows, .order: "rectangle.split.3x1"
-        case .appearance: "paintpalette"
+        case .appearance, .theme, .themes: "paintpalette"
         case .menuBar: "menubar.rectangle"
         case .general: "gearshape"
         case .tooling: "wrench.and.screwdriver"
@@ -62,6 +65,8 @@ struct SettingsView: View {
                 case .rows: RowPane(model: model)
                 case .order: OrderPane(model: model)
                 case .appearance: AppearancePane(model: model)
+                case .theme: ThemeEditorPane(model: model)
+                case .themes: ThemesPane(model: model)
                 case .menuBar: MenuBarPane(model: model)
                 case .general: GeneralPane(model: model)
                 case .tooling: ToolingPane(model: model)
@@ -122,7 +127,7 @@ struct WidgetPane: View {
 }
 
 /// A row that opens a page, as System Settings draws one.
-private struct PageLink: View {
+struct PageLink: View {
     let title: String
     let detail: String
     let open: () -> Void
@@ -141,7 +146,7 @@ private struct PageLink: View {
     }
 }
 
-private struct Footnote: View {
+struct Footnote: View {
     let text: String
 
     init(_ text: String) {
@@ -154,7 +159,7 @@ private struct Footnote: View {
 }
 
 /// Buttons under a section, outside its box, as System Settings places them.
-private struct SectionButtons<Buttons: View>: View {
+struct SectionButtons<Buttons: View>: View {
     var note: String?
     @ViewBuilder let buttons: Buttons
 
@@ -172,7 +177,7 @@ private struct SectionButtons<Buttons: View>: View {
 }
 
 /// A section's title with one line under it saying how to use what follows.
-private struct Heading: View {
+struct Heading: View {
     let title: String
     let hint: String
 
@@ -626,9 +631,13 @@ struct AppearancePane: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
+        let _ = model.revision
         let themes = model.themes
         Form {
             Section {
+                ThemeRowsPreview(look: themes.look, layout: model.layout)
+                    .frame(height: ThemeRowsPreview.height)
+                    .listRowInsets(EdgeInsets())
                 Picker("Theme", selection: theme) {
                     ForEach(themes.themes, id: \.name) { theme in
                         Text(theme.name).tag(theme.name)
@@ -640,52 +649,36 @@ struct AppearancePane: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                PageLink(title: "Edit Theme", detail: themes.theme.name) { model.go(.theme) }
+                PageLink(title: "Your Themes", detail: "\(themes.customThemes.count)") { model.go(.themes) }
             } header: {
                 Text("Theme")
             } footer: {
                 SectionButtons(note: themeNote) {
-                    Button("Show Theme Folder") { model.showThemeFolder() }
-                    Button("Duplicate Theme…") { model.update { themes.duplicate() } }
+                    Button("Import…") { model.importTheme() }
+                    Button("Export…") { model.export(themes.theme) }
+                    Button("New Theme") { model.newTheme() }
                 }
             }
-            Section {
-                Picker("Material", selection: material) {
-                    ForEach(WidgetMaterial.allCases, id: \.self) { material in
-                        Text(
-                            material.needsLiquidGlass && !WidgetMaterial.systemHasLiquidGlass
-                                ? "\(material.name) (macOS 26)" : material.name
-                        )
-                        .tag(material)
-                    }
-                }
-                Slider(value: opacity, in: WidgetTheme.opacityRange) {
-                    Text("Opacity")
-                } minimumValueLabel: {
-                    Image(systemName: "circle.dotted")
-                } maximumValueLabel: {
-                    Image(systemName: "circle.fill")
-                }
-                .help("\(Int((model.themes.look.widgetOpacity * 100).rounded()))%")
-                .disabled(model.themes.look.widgetMaterial.drawn == .solid)
+            Section("Widget") {
                 Picker("Size", selection: scale) {
                     ForEach(WidgetSettingsStore.offeredScales, id: \.self) { scale in
                         Text("\(Int((scale * 100).rounded()))%").tag(scale)
                     }
                 }
-            } header: {
-                Text("Widget")
-            } footer: {
-                Footnote(materialNote)
             }
         }
     }
 
     private var themeNote: String {
+        if let problem = model.themeProblem {
+            return problem
+        }
         let problems = model.themes.problems
         guard problems.isEmpty else {
             return "Some theme files could not be read: " + problems.joined(separator: "; ")
         }
-        return "A theme holds every colour and animation, for light and dark. Duplicate one to edit it as a file."
+        return "A theme holds every colour and animation, the widget's panel included, for light and dark."
     }
 
     private var theme: Binding<String> {
@@ -702,29 +695,6 @@ struct AppearancePane: View {
         Binding(
             get: { model.themes.mode },
             set: { mode in model.update { model.themes.select(mode) } }
-        )
-    }
-
-    private var material: Binding<WidgetMaterial> {
-        Binding(
-            get: { model.themes.look.widgetMaterial },
-            set: { material in model.editTheme { $0.widgetMaterial = material } }
-        )
-    }
-
-    private var materialNote: String {
-        switch model.themes.look.widgetMaterial.drawn {
-        case .glass: "Glass is recommended: the desktop shows through, and the colour keeps text readable."
-        case .clearGlass: "Clear glass shows more of the desktop. Best on a quiet wallpaper."
-        case .frosted: "Frosted blurs what is behind the widget."
-        case .solid: "Solid hides the desktop entirely, so opacity does not apply. Best on a busy wallpaper."
-        }
-    }
-
-    private var opacity: Binding<Double> {
-        Binding(
-            get: { Double(model.themes.look.widgetOpacity) },
-            set: { value in model.editTheme { $0.widgetOpacity = CGFloat(value) } }
         )
     }
 

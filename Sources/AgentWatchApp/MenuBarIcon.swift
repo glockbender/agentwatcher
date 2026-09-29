@@ -85,7 +85,7 @@ struct MenuBarIconCell: Equatable {
                 attention: attention,
                 symbol: attention.symbolName,
                 count: counts.count(of: attention),
-                accent: attention.accent,
+                accent: style.color,
                 breathDepth: style.motion == .dim ? attention.breathDepth : 0,
                 cycle: style.animationCycle,
                 fadeTo: style.motion == .gradient && style.gradientColor.srgbHex != style.color.srgbHex

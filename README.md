@@ -63,15 +63,19 @@ still connect an agent installed elsewhere.
 
 ## Settings
 
-The menu bar menu lists your sessions at the top and shows or hides the widget; everything that
-configures the app is under **Settings**.
+The menu bar menu lists your sessions and shows the widget when it is hidden. Everything else is
+in one window: **Settings…** in the menu, or ⌘, while the menu is open.
 
-- **Widget Settings…** — what a row shows, how rows are ordered (**Arrival**, **Recent activity**,
-  **By state** or **By blocks**), the lamp for each state, the background and the shortcut.
-- **Menu Bar Icon** — a sphere coloured by the states it shows, or a count for each state.
-- **Sessions in Menu** — which states the menu lists.
-- **Updates** — the app checks GitHub for a newer release at launch and installs one when you ask.
-  **Check on Launch** turns the launch check off.
+- **Widget** — what a row shows and how rows are ordered (**Arrival**, **Recent activity**,
+  **By state** or **By blocks**).
+- **Appearance** — the theme, light or dark, and the widget's size. A theme holds every colour
+  and animation: the widget's background, material and opacity, the lamp for each state, the
+  menu bar icon and the marks in the menu. **Edit Theme** changes it with live examples beside
+  each setting; the built-in theme is copied on the first change. **Your Themes** lists your own
+  themes to edit, export or delete, and **Import…** adds one somebody shared.
+- **Menu Bar** — a sphere coloured by the states it shows or a count for each state, and which
+  states the menu lists.
+- **General** — the widget's shortcut, locks, closed sessions and updates.
 
 ## JetBrains IDE plugin
 

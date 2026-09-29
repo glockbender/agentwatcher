@@ -46,8 +46,10 @@ final class MenuBarIconView: NSView {
     /// system's, the deployment floor is older than the machine they were measured on, and an
     /// icon that says less beats an icon that is not there.
     @discardableResult
-    func show(_ cells: [MenuBarIconCell], as style: MenuBarIconStyle = .counts) -> Bool {
-        let motion = WidgetTheme.active.sphereMotion
+    func show(
+        _ cells: [MenuBarIconCell], as style: MenuBarIconStyle = .counts,
+        motion: WidgetTheme.Sphere = WidgetTheme.active.sphereMotion
+    ) -> Bool {
         guard cells != self.cells || style != self.style || motion != sphereMotion else {
             return drawing != nil
         }
