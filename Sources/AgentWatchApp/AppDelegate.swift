@@ -342,7 +342,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// moves nothing on the bar.
     private func updateMenuBarIcon(sessions: [SessionSnapshot]) {
         let counts = SessionAttentionCounts(sessions: sessions)
-        guard counts != menuBarCounts else {
+        let phases = sessions.reduce(into: [SessionPhase: Int]()) { $0[$1.phase, default: 0] += 1 }
+        let phasesMatter = WidgetTheme.active.dependsOnSessionPhases && phases != WidgetTheme.sessionPhases
+        WidgetTheme.sessionPhases = phases
+        guard counts != menuBarCounts || phasesMatter else {
             return
         }
         menuBarCounts = counts

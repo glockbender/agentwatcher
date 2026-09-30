@@ -44,8 +44,9 @@ final class SettingsRenderProbe: XCTestCase {
         _ = host
     }
 
+    /// 570 points: the settings window opens 760 wide, and its sidebar takes about 190 of them.
     private func draw(_ root: AnyView, height: CGFloat, named name: String, in directory: String) throws {
-        let size = NSSize(width: 620, height: height)
+        let size = NSSize(width: 570, height: height)
         let hosting = NSHostingView(rootView: root.formStyle(.grouped))
         hosting.frame = NSRect(origin: .zero, size: size)
         let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)

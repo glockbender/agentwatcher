@@ -180,6 +180,7 @@ final class MenuBarIconPreviewView: NSView {
 /// A menu with a few session lines in it, their marks drawn and moved as the theme says.
 struct MenuLinesPreview: NSViewRepresentable {
     static let height: CGFloat = CGFloat(MenuLinesPreviewView.lines.count) * 22 + 12
+    static let width: CGFloat = 220
     let look: WidgetTheme.Look
 
     func makeNSView(context: Context) -> MenuLinesPreviewView {
@@ -212,7 +213,7 @@ final class MenuLinesPreviewView: NSVisualEffectView {
     private var timer: Timer?
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 260, height: MenuLinesPreview.height))
+        super.init(frame: NSRect(x: 0, y: 0, width: MenuLinesPreview.width, height: MenuLinesPreview.height))
         material = .menu
         state = .active
         wantsLayer = true
@@ -225,7 +226,7 @@ final class MenuLinesPreviewView: NSVisualEffectView {
             marks.append(mark)
             let label = NSTextField(labelWithString: title)
             label.font = .menuFont(ofSize: 0)
-            label.frame = NSRect(x: 38, y: y + 2, width: 210, height: 18)
+            label.frame = NSRect(x: 38, y: y + 2, width: MenuLinesPreview.width - 46, height: 18)
             addSubview(label)
         }
         drawFrame()
@@ -237,7 +238,7 @@ final class MenuLinesPreviewView: NSVisualEffectView {
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: 260, height: MenuLinesPreview.height)
+        NSSize(width: MenuLinesPreview.width, height: MenuLinesPreview.height)
     }
 
     override func viewDidMoveToWindow() {

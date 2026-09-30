@@ -39,8 +39,10 @@ struct WidgetTheme: Codable, Equatable {
         /// Each state's own colour, by state as `SessionAttention` spells it: the menu bar's
         /// marks, the menu's, and the widget's counter of hidden sessions that need you.
         var attention: [String: String]
-        /// A state that takes its colour from a lamp instead: state → phase. Only a phase of
-        /// that state counts (`SessionPhase.attention`); anything else leaves the state's own.
+        /// A state that takes its colour from a lamp instead: state → phase, or
+        /// `mostSessions` for the lamp of the phase most of its sessions are in at the moment.
+        /// Only a phase of that state counts (`SessionPhase.attention`); anything else leaves
+        /// the state its own colour.
         var attentionLamps: [String: String]
         /// How each state's mark moves, in the menu bar's grid and in the menu.
         var attentionMotion: [String: Motion]
@@ -239,6 +241,22 @@ struct WidgetTheme: Codable, Equatable {
     /// the menu's and the counter's. Set whenever the theme or the system's appearance changes.
     nonisolated(unsafe) static var active: Look = standard.dark
 
+    /// How many sessions are in each phase right now, for a state that takes the lamp of the
+    /// phase most of its sessions are in. Set with the menu bar's counts.
+    nonisolated(unsafe) static var sessionPhases: [SessionPhase: Int] = [:]
+
+    /// Where a state's colour comes from.
+    enum ColourSource: Hashable {
+        /// The state's own colour.
+        case own
+        /// Always this phase's lamp.
+        case lamp(SessionPhase)
+        /// The lamp of the phase most of the state's sessions are in at the moment.
+        case mostSessions
+
+        static let mostSessionsName = "mostSessions"
+    }
+
     static let standard = WidgetTheme(
         name: "Default",
         light: Look(background: "#E3EAF2", lamps: lamps(from: LampScheme())),
@@ -299,8 +317,10 @@ extension WidgetTheme.Look {
     }
 
     /// The state's colour as it is drawn: its lamp's when it follows one, its own otherwise.
-    func accent(for attention: SessionAttention) -> NSColor {
-        if let phase = lamp(for: attention) {
+    func accent(
+        for attention: SessionAttention, phases: [SessionPhase: Int] = WidgetTheme.sessionPhases
+    ) -> NSColor {
+        if let phase = lamp(for: attention, phases: phases) {
             return lampScheme.style(for: phase).color
         }
         return ownAccent(for: attention)
@@ -317,31 +337,79 @@ extension WidgetTheme.Look {
         self.attention[attention.rawValue] = colour.srgbHex ?? self.attention[attention.rawValue]
     }
 
-    /// The phase whose lamp the state takes its colour from, if it takes one at all.
-    func lamp(for attention: SessionAttention) -> SessionPhase? {
-        guard let phase = attentionLamps[attention.rawValue].flatMap(SessionPhase.init(rawValue:)),
-            phase.attention == attention
-        else {
-            return nil
+    func colourSource(for attention: SessionAttention) -> WidgetTheme.ColourSource {
+        let stored = attentionLamps[attention.rawValue]
+        if stored == WidgetTheme.ColourSource.mostSessionsName, !attention.phases.isEmpty {
+            return .mostSessions
         }
-        return phase
+        guard let phase = stored.flatMap(SessionPhase.init(rawValue:)), phase.attention == attention else {
+            return .own
+        }
+        return .lamp(phase)
+    }
+
+    mutating func setColourSource(_ source: WidgetTheme.ColourSource, for attention: SessionAttention) {
+        switch source {
+        case .own:
+            attentionLamps[attention.rawValue] = nil
+        case let .lamp(phase):
+            attentionLamps[attention.rawValue] = phase.attention == attention ? phase.rawValue : nil
+        case .mostSessions:
+            attentionLamps[attention.rawValue] = WidgetTheme.ColourSource.mostSessionsName
+        }
+    }
+
+    /// The phase whose lamp the state takes its colour from now, if it takes one at all.
+    ///
+    /// For `mostSessions`, the phase most of the state's sessions are in. A tie goes to the
+    /// state's lead phase, then to the phases in their order, and a state with no sessions
+    /// takes its lead phase — it shows nowhere then, but its colour in the editor has to be one.
+    func lamp(for attention: SessionAttention, phases: [SessionPhase: Int] = WidgetTheme.sessionPhases)
+        -> SessionPhase?
+    {
+        switch colourSource(for: attention) {
+        case .own:
+            return nil
+        case let .lamp(phase):
+            return phase
+        case .mostSessions:
+            let lead = attention.leadPhase
+            let ranked = attention.phases.sorted { phases[$0, default: 0] > phases[$1, default: 0] }
+            guard let top = ranked.first else { return lead }
+            let topCount = phases[top, default: 0]
+            if let lead, phases[lead, default: 0] == topCount {
+                return lead
+            }
+            return top
+        }
     }
 
     mutating func setLamp(_ phase: SessionPhase?, for attention: SessionAttention) {
-        attentionLamps[attention.rawValue] = phase.flatMap { $0.attention == attention ? $0.rawValue : nil }
+        setColourSource(phase.map { .lamp($0) } ?? .own, for: attention)
     }
 
     /// Whether every state shown in the menu bar takes a lamp's colour, and the menu's lines
     /// their own session's lamp: the one switch for a person who wants everything to match.
     var followsLamps: Bool {
-        SessionAttention.counted.allSatisfy { lamp(for: $0) != nil } && menuColors == .lamp
+        SessionAttention.counted.allSatisfy { colourSource(for: $0) != .own } && menuColors == .lamp
     }
 
+    /// Turned on, every state that has its own colour takes the lamp most of its sessions are
+    /// in; a lamp chosen by hand stays.
     mutating func setFollowsLamps(_ follows: Bool) {
         for attention in SessionAttention.counted {
-            setLamp(follows ? (lamp(for: attention) ?? attention.leadPhase) : nil, for: attention)
+            if !follows {
+                setColourSource(.own, for: attention)
+            } else if colourSource(for: attention) == .own {
+                setColourSource(.mostSessions, for: attention)
+            }
         }
         menuColors = follows ? .lamp : .state
+    }
+
+    /// Whether any state's colour depends on which phases its sessions are in.
+    var dependsOnSessionPhases: Bool {
+        SessionAttention.counted.contains { colourSource(for: $0) == .mostSessions }
     }
 
     /// The state's mark as the grid and the menu draw it: its colour and how it moves.

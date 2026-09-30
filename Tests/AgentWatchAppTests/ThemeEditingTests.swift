@@ -1,5 +1,6 @@
 import AgentWatchCore
 import AppKit
+import SwiftUI
 import XCTest
 
 @testable import AgentWatchApp
@@ -82,6 +83,32 @@ final class ThemeEditingTests: XCTestCase {
 
         XCTAssertEqual(themes.theme, .standard)
         XCTAssertEqual(themes.customThemes, [])
+    }
+
+    /// The editor fits the settings window as it opens: 760 points, of which the sidebar
+    /// takes about 190. One table of six columns for the states asked for 640, and the page
+    /// cut off the lamps' samples on the right.
+    func testTheEditorFitsTheWindowAsItOpens() throws {
+        let (model, themes) = try makeModel()
+        try themes.create(named: "Wide")
+        // The longest choice everywhere there is one to make.
+        model.editTheme { look in
+            look.setFollowsLamps(true)
+            look.menuMotion = .lamp
+            for attention in SessionAttention.counted {
+                look.setMarkMotion(.gradient, fadeTo: .white, cycle: 2, for: attention)
+            }
+        }
+        let hosting = NSHostingView(rootView: ThemeEditorPane(model: model).formStyle(.grouped))
+        hosting.frame = NSRect(x: 0, y: 0, width: 570, height: 2600)
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = hosting
+        hosting.layoutSubtreeIfNeeded()
+        // SwiftUI fills a form in over a few turns of the run loop, and widens the view only then.
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+
+        // Content wider than it is given widens the view to fit rather than wrapping.
+        XCTAssertEqual(hosting.frame.width, 570, "the editor needs \(hosting.frame.width) points")
     }
 
     private func makeModel() throws -> (SettingsModel, ThemeStore) {

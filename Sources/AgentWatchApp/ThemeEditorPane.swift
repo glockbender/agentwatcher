@@ -139,7 +139,7 @@ private struct LampsSection: View {
 
     var body: some View {
         Section {
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
                 GridRow {
                     ForEach(["State", "Color", "Motion", "To color", "Full cycle", ""], id: \.self) { title in
                         Text(title).font(.caption).foregroundStyle(.secondary)
@@ -174,7 +174,10 @@ private struct LampRow: View {
     var body: some View {
         let style = look.lampScheme.style(for: phase)
         GridRow {
-            Text(phase.settingsName).help(phase.explanation)
+            Text(phase.settingsName)
+                .lineLimit(2)
+                .frame(width: 110, alignment: .leading)
+                .help(phase.explanation)
             ColorPicker("", selection: change(Color(nsColor: style.color)) { $0.color = NSColor($1) })
                 .labelsHidden()
             Picker("", selection: change(style.motion) { $0.motion = $1 }) {
@@ -220,11 +223,11 @@ private struct CycleSlider: View {
     var unit = "s"
 
     var body: some View {
-        HStack(spacing: 6) {
-            Slider(value: $value, in: range).frame(width: 90)
+        HStack(spacing: 4) {
+            Slider(value: $value, in: range).frame(width: 64)
             Text(String(format: "%.1f \(unit)", value))
                 .font(.caption.monospacedDigit())
-                .frame(width: 44, alignment: .leading)
+                .frame(width: 38, alignment: .leading)
         }
         .help("Seconds for one complete animation, out and back.")
     }
@@ -238,14 +241,25 @@ private struct StatesSection: View {
     var body: some View {
         Section {
             Toggle("Match the menu bar and the menu to the lamps", isOn: followsLamps)
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+            // Two tables rather than one six columns wide, which did not fit the window.
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
                 GridRow {
-                    ForEach(["State", "Color from", "Color", "Motion", "To color", "Full cycle"], id: \.self) {
+                    ForEach(["State", "Color from", "Color"], id: \.self) {
                         Text($0).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 ForEach(SessionAttention.counted, id: \.self) { attention in
-                    StateRow(model: model, attention: attention, look: look)
+                    StateColourRow(model: model, attention: attention, look: look)
+                }
+            }
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
+                GridRow {
+                    ForEach(["State", "Motion", "To color", "Full cycle"], id: \.self) {
+                        Text($0).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(SessionAttention.counted, id: \.self) { attention in
+                    StateMotionRow(model: model, attention: attention, look: look)
                 }
             }
             MenuBarIconPreview(look: look)
@@ -270,75 +284,91 @@ private struct StatesSection: View {
     }
 }
 
-private struct StateRow: View {
+private struct StateColourRow: View {
     @ObservedObject var model: SettingsModel
     let attention: SessionAttention
     let look: WidgetTheme.Look
 
     var body: some View {
-        let style = look.markStyle(for: attention)
         let lamp = look.lamp(for: attention)
         GridRow {
-            Text(attention.name).lineLimit(1).fixedSize()
+            Text(attention.name).frame(width: StateColourRow.nameWidth, alignment: .leading)
             Picker("", selection: source) {
-                Text("Its own").tag(SessionPhase?.none)
-                Section("A lamp") {
+                Text("Its own").tag(WidgetTheme.ColourSource.own)
+                Text("Most sessions").tag(WidgetTheme.ColourSource.mostSessions)
+                Section("One lamp") {
                     ForEach(attention.phases, id: \.self) { phase in
-                        Text(phase.settingsName).tag(SessionPhase?.some(phase))
+                        Text(phase.settingsName).tag(WidgetTheme.ColourSource.lamp(phase))
                     }
                 }
             }
             .labelsHidden()
-            .frame(maxWidth: 160)
+            .fixedSize()
+            .help("Most sessions: the lamp of the phase most of this state's sessions are in right now.")
             ColorPicker(
                 "",
                 selection: Binding(
-                    get: { Color(nsColor: lamp == nil ? look.ownAccent(for: attention) : style.color) },
+                    get: { Color(nsColor: look.accent(for: attention)) },
                     set: { chosen in model.editTheme { $0.setOwnAccent(NSColor(chosen), for: attention) } }
                 )
             )
             .labelsHidden()
             .disabled(lamp != nil)
             .help(lamp.map { "Taken from the \($0.settingsName) lamp." } ?? "This state's own colour.")
-            Picker("", selection: motion(style).motion) {
+        }
+    }
+
+    static let nameWidth: CGFloat = 80
+
+    private var source: Binding<WidgetTheme.ColourSource> {
+        Binding(
+            get: { model.editedLook.colourSource(for: attention) },
+            set: { source in model.editTheme { $0.setColourSource(source, for: attention) } }
+        )
+    }
+}
+
+private struct StateMotionRow: View {
+    @ObservedObject var model: SettingsModel
+    let attention: SessionAttention
+    let look: WidgetTheme.Look
+
+    var body: some View {
+        let style = look.markStyle(for: attention)
+        GridRow {
+            Text(attention.name).frame(width: StateColourRow.nameWidth, alignment: .leading)
+            Picker("", selection: binding(style, \.motion)) {
                 ForEach(SessionLampAppearance.Motion.allCases, id: \.self) { motion in
                     Text(motion.title).tag(motion)
                 }
             }
             .labelsHidden()
             .fixedSize()
-            ColorPicker("", selection: motion(style).fadeTo)
-                .labelsHidden()
-                .disabled(style.motion != .gradient)
-            CycleSlider(value: motion(style).cycle, range: LampStyle.animationCycleRange)
+            ColorPicker(
+                "",
+                selection: Binding(
+                    get: { Color(nsColor: style.gradientColor) },
+                    set: { chosen in write(style) { $0.gradientColor = NSColor(chosen) } }
+                )
+            )
+            .labelsHidden()
+            .disabled(style.motion != .gradient)
+            CycleSlider(value: binding(style, \.animationCycle), range: LampStyle.animationCycleRange)
                 .disabled(style.motion == .steady)
         }
     }
 
-    private var source: Binding<SessionPhase?> {
-        Binding(
-            get: { model.editedLook.lamp(for: attention) },
-            set: { phase in model.editTheme { $0.setLamp(phase, for: attention) } }
-        )
+    private func binding<Value>(_ style: LampStyle, _ path: WritableKeyPath<LampStyle, Value>) -> Binding<Value> {
+        Binding(get: { style[keyPath: path] }, set: { value in write(style) { $0[keyPath: path] = value } })
     }
 
-    private struct MotionBindings {
-        let motion: Binding<SessionLampAppearance.Motion>
-        let fadeTo: Binding<Color>
-        let cycle: Binding<Double>
-    }
-
-    private func motion(_ style: LampStyle) -> MotionBindings {
-        func write(_ motion: SessionLampAppearance.Motion, _ fadeTo: NSColor, _ cycle: Double) {
-            model.editTheme { $0.setMarkMotion(motion, fadeTo: fadeTo, cycle: cycle, for: attention) }
+    private func write(_ style: LampStyle, _ change: (inout LampStyle) -> Void) {
+        var changed = style
+        change(&changed)
+        model.editTheme {
+            $0.setMarkMotion(
+                changed.motion, fadeTo: changed.gradientColor, cycle: changed.animationCycle, for: attention)
         }
-        return MotionBindings(
-            motion: Binding(get: { style.motion }, set: { write($0, style.gradientColor, style.animationCycle) }),
-            fadeTo: Binding(
-                get: { Color(nsColor: style.gradientColor) },
-                set: { write(style.motion, NSColor($0), style.animationCycle) }),
-            cycle: Binding(get: { style.animationCycle }, set: { write(style.motion, style.gradientColor, $0) })
-        )
     }
 }
 
@@ -414,7 +444,7 @@ private struct MenuSection: View {
                     }
                 }
                 MenuLinesPreview(look: look)
-                    .frame(width: 260, height: MenuLinesPreview.height)
+                    .frame(width: MenuLinesPreview.width, height: MenuLinesPreview.height)
             }
         } header: {
             Heading(title: "Menu", hint: "The mark at the start of each session line in the menu.")

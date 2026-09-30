@@ -207,6 +207,45 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(look.lamp(for: .needsPerson), .failed)
     }
 
+    /// The owner's case: nineteen sessions with no signal and none idle. A state told to take
+    /// the lamp most of its sessions are in shows the no-signal lamp, as the widget's rows do.
+    func testAStateCanTakeTheLampMostOfItsSessionsAreIn() {
+        var look = WidgetTheme.standard.dark
+        look.setColourSource(.mostSessions, for: .quiet)
+
+        let noSignal: [SessionPhase: Int] = [.disconnected: 19, .idle: 2, .executing: 3]
+        XCTAssertEqual(look.lamp(for: .quiet, phases: noSignal), .disconnected)
+        XCTAssertEqual(look.accent(for: .quiet, phases: noSignal), look.lampScheme.style(for: .disconnected).color)
+
+        let waiting: [SessionPhase: Int] = [.waitingForUser: 2, .failed: 1]
+        look.setColourSource(.mostSessions, for: .needsPerson)
+        XCTAssertEqual(look.lamp(for: .needsPerson, phases: waiting), .waitingForUser)
+    }
+
+    /// A tie goes to the state's lead lamp, and so does a state with no sessions at all.
+    func testATieOrNoSessionsGoesToTheLeadLamp() {
+        var look = WidgetTheme.standard.dark
+        look.setColourSource(.mostSessions, for: .quiet)
+
+        XCTAssertEqual(look.lamp(for: .quiet, phases: [.idle: 2, .disconnected: 2]), .idle)
+        XCTAssertEqual(look.lamp(for: .quiet, phases: [.rateLimited: 1, .disconnected: 1]), .rateLimited)
+        XCTAssertEqual(look.lamp(for: .quiet, phases: [:]), .idle)
+    }
+
+    /// Matching everything to the lamps now means each state follows most of its sessions,
+    /// and the choice is kept in the file under a name of its own.
+    func testMatchingToTheLampsFollowsMostSessionsAndIsKeptInTheFile() throws {
+        var theme = WidgetTheme.standard
+        theme.dark.setFollowsLamps(true)
+
+        XCTAssertEqual(theme.dark.colourSource(for: .quiet), .mostSessions)
+        XCTAssertTrue(theme.dark.dependsOnSessionPhases)
+        let reread = try ThemeStore.decode(ThemeStore.encode(theme))
+        XCTAssertEqual(reread.dark.colourSource(for: .quiet), .mostSessions)
+        XCTAssertEqual(reread.dark.attentionLamps[SessionAttention.quiet.rawValue], "mostSessions")
+        XCTAssertFalse(WidgetTheme.standard.dark.dependsOnSessionPhases)
+    }
+
     /// A menu line moves like its session's lamp when told to, and like its state otherwise.
     func testAMenuLineMovesLikeWhatTheThemeSays() {
         var look = WidgetTheme.standard.dark
