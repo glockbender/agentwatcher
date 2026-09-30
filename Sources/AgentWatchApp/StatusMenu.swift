@@ -187,10 +187,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             reach: host.reach(for:)
         )
         let first = summaryItem.map { menu.index(of: $0) + 1 } ?? 0
-        // Asked again on every rebuild, as the widget does: a question about a session that
-        // has gone, or is no longer broken, is no longer the question.
+        // Asked again on every rebuild, as the widget does.
         if let askingAbout, let session = host.sessions.first(where: { $0.id == askingAbout }),
-            lines.contains(where: { $0.sessionID == askingAbout && $0.leadsToQuestion })
+            EndAgentQuestion.holds(for: session, reach: host.reach(for:))
         {
             let item = questionItem(for: session)
             menu.insertItem(item, at: first)
@@ -246,7 +245,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let id = session.id
         item.view = MenuEndAgentQuestionView(
             sessionID: id,
-            sessionName: session.title?.nonEmpty ?? session.projectName?.nonEmpty,
+            sessionName: EndAgentQuestion.name(of: session),
             onCancel: { [weak self] in
                 self?.askingAbout = nil
                 self?.refreshSessions()

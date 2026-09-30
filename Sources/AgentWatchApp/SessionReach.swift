@@ -1,9 +1,7 @@
-/// Whether a click on a session's row has anything to bring forward.
-///
-/// It used to be `SessionLocator`, a value naming the application, the project window and the
-/// terminal tab — three answers, because the hover card spelled out where a click would land.
-/// That line is gone: a click that works needs no sentence (§8 of the architecture). What the
-/// card still needs is the one case worth saying out loud, and this is the question it asks.
+import AgentWatchCore
+
+/// Whether a click on a session's row has anything to bring forward — the one thing the hover
+/// card says about where a click lands, since a click that works needs no sentence.
 ///
 /// Cases and not a `Bool`: `nowhere` reads at the call site as a fact about the session,
 /// where `false` reads only as something not being true — and the third case is a click that
@@ -43,4 +41,23 @@ enum ClosedTerminalEnding: Equatable, Sendable {
     /// Ghostty closed the tab and kept the terminal, and the agent runs on in it. The hang-up
     /// the closed tab never sent ends it and the shell it was started from, the agent first.
     case hangUp(processIDs: [Int32])
+}
+
+/// The question a broken session's click puts, the same in the widget and in the menu.
+enum EndAgentQuestion {
+    /// Whether the question still holds: the session is still without its terminal, and
+    /// something here can still end its agent — a question whose yes could do nothing would be
+    /// a lie. Asked again whenever what is shown is rebuilt.
+    @MainActor
+    static func holds(for session: SessionSnapshot?, reach: (SessionSnapshot) -> SessionReach) -> Bool {
+        guard let session, session.phase == .terminalClosed, case .closedTerminal(.some) = reach(session) else {
+            return false
+        }
+        return true
+    }
+
+    /// What the question calls the session: its name, or its project when it has none.
+    static func name(of session: SessionSnapshot) -> String? {
+        session.title?.nonEmpty ?? session.projectName?.nonEmpty
+    }
 }

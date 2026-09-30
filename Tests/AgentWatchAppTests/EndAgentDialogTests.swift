@@ -66,6 +66,22 @@ final class EndAgentDialogTests: XCTestCase {
         controller.shutdown()
     }
 
+    /// A question whose yes could no longer do anything closes the next time the widget is
+    /// drawn, as the menu's does: the session is still broken, but nothing here can end it.
+    func testTheQuestionClosesWhenNothingCanEndTheAgentAnyMore() throws {
+        var ending: ClosedTerminalEnding? = self.ending
+        let (controller, broken) = try makeController(ended: { _ in }, reach: { _ in .closedTerminal(ending) })
+        try click(broken, in: controller)
+        XCTAssertNotNil(controller.visibleDialog)
+
+        ending = nil
+        let other = testSession(index: 1, title: "Another", phase: .executing, lastObservedAt: now)
+        controller.render(WidgetState(sessions: [broken, other]))
+
+        XCTAssertNil(controller.visibleDialog)
+        controller.shutdown()
+    }
+
     /// One answer per question. The buttons stay on screen while the question fades, and a
     /// second press there would end the agent twice.
     func testOnlyTheFirstAnswerCounts() throws {
@@ -196,13 +212,14 @@ final class EndAgentDialogTests: XCTestCase {
     }
 
     private func makeController(
-        ended: @escaping (String) -> Void
+        ended: @escaping (String) -> Void,
+        reach: ((SessionSnapshot) -> SessionReach)? = nil
     ) throws -> (HUDPanelController, SessionSnapshot) {
         let preferences = try isolatedPreferences()
         let frameStore = HUDFrameStore(preferences: preferences)
         preferences.seed(frameStore.defaultValues)
         let controller = HUDPanelController(
-            reach: { [ending] _ in .closedTerminal(ending) },
+            reach: reach ?? { [ending] _ in .closedTerminal(ending) },
             focus: { [ending] snapshot in snapshot.phase == .terminalClosed ? .asksToEndAgent(ending) : .raised },
             remove: { _ in },
             endAgent: ended,

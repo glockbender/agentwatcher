@@ -378,7 +378,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         container.showDialog(
             HUDEndAgentDialog(
                 sessionID: id,
-                sessionName: session.title?.nonEmpty ?? session.projectName?.nonEmpty,
+                sessionName: EndAgentQuestion.name(of: session),
                 style: style,
                 onCancel: { [weak self] in
                     self?.container.hideDialog()
@@ -396,14 +396,13 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         container.dialog
     }
 
-    /// A question about a session that has gone, or that is no longer without its terminal,
-    /// is no longer the question — it closes without an answer.
+    /// A question that no longer holds closes without an answer (`EndAgentQuestion.holds`).
     private func closeDialogIfMoot() {
         guard let dialog = container.dialog else {
             return
         }
         let session = state.sessions.first { $0.id == dialog.sessionID }
-        if session?.phase != .terminalClosed {
+        if !EndAgentQuestion.holds(for: session, reach: reach) {
             container.hideDialog()
         }
     }
