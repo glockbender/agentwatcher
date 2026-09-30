@@ -61,7 +61,8 @@ cannot read, so it cannot damage your settings.
 
 ## A theme you added is not in the list
 
-**Why:** Agent Watch could not read its file: it is not JSON, or a value in it has the wrong type.
+**Why:** Agent Watch could not read its file: it is not JSON, a value in it has the wrong type, or
+a lamp in it lacks one of its four fields.
 A file whose theme is called `Default` is listed as `Default (file)`, because the built-in theme
 keeps that name.
 

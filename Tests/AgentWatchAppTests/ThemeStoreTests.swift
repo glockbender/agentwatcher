@@ -11,8 +11,8 @@ import XCTest
 /// there to fall back on.
 @MainActor
 final class ThemeStoreTests: XCTestCase {
-    /// Anything a file leaves out is the built-in theme's, so a theme that names a single
-    /// colour is a theme, not an error.
+    /// Anything a file leaves out is the built-in theme's, in the same mode, so a theme that
+    /// names a single colour is a theme, not an error.
     func testAThemeFileMissingFieldsIsReadWithTheDefaults() throws {
         let folder = try themesFolder()
         try write(##"{"name": "Sparse", "light": {}, "dark": {"background": "#112233"}}"##, to: folder, as: "Sparse")
@@ -22,8 +22,8 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(store.problems, [])
         let sparse = try XCTUnwrap(store.themes.first { $0.name == "Sparse" })
         XCTAssertEqual(sparse.dark.widgetBackground.color.srgbHex, "#112233")
-        XCTAssertEqual(sparse.light.background, "#006996")
-        XCTAssertTrue(sparse.light.lampScheme.isDefault)
+        XCTAssertEqual(sparse.light, WidgetTheme.standard.light, "an empty look is the built-in light one")
+        XCTAssertTrue(sparse.dark.lampScheme.isDefault)
         XCTAssertEqual(
             sparse.dark.accent(for: .working).srgbHex,
             NSColor(hex: try XCTUnwrap(WidgetTheme.attention[SessionAttention.working.rawValue]))?.srgbHex
@@ -42,6 +42,20 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertTrue(store.problems[0].hasPrefix("Broken.json"), store.problems[0])
         XCTAssertEqual(store.themes, [.standard])
         XCTAssertEqual(store.theme, .standard)
+    }
+
+    /// A value of the wrong kind is not guessed at: the file is not read, and is named with what
+    /// was wrong. A lamp is one value, so a lamp missing a field is one of those.
+    func testAFileWithAValueOfTheWrongKindIsReportedRatherThanGuessedAt() throws {
+        let folder = try themesFolder()
+        try write(##"{"name": "Typed", "dark": {"opacity": "half"}}"##, to: folder, as: "Typed")
+        try write(
+            ##"{"name": "Lamp", "dark": {"lamps": {"executing": {"color": "#FF0000"}}}}"##, to: folder, as: "Lamp")
+
+        let store = ThemeStore(preferences: try isolatedPreferences(), folder: folder)
+
+        XCTAssertEqual(store.themes, [.standard])
+        XCTAssertEqual(store.problems.map { String($0.prefix(while: { $0 != ":" })) }, ["Lamp.json", "Typed.json"])
     }
 
     /// Duplicating is how editing starts: the copy is a file of its own, selected, with a name
@@ -83,10 +97,9 @@ final class ThemeStoreTests: XCTestCase {
 
     // MARK: - What a file written before a field existed reads as
 
-    /// A theme file from before the panel, the states' lamps, the menu and the sphere joined
-    /// the theme — shaped like the owner's own `Default copy.json` — draws exactly what the
-    /// screen showed then.
-    func testAnOlderThemeFileLooksAsItDidBeforeTheNewFields() throws {
+    /// A file with none of the panel's, the states' motion, the menu's or the sphere's fields
+    /// draws them as the built-in theme does.
+    func testAFileWithoutTheLaterFieldsDrawsThemAsTheBuiltInThemeDoes() throws {
         let older = ##"""
             {"name": "Mine", "dark": {"background": "#006996",
               "attention": {"done": "#30D159", "needsPerson": "#FF9F0A", "quiet": "#9E9E9E", "working": "#0A85FF"},

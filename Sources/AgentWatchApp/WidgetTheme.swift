@@ -5,9 +5,9 @@ import AppKit
 /// and for dark.
 ///
 /// One file per theme in the `Themes` folder, so a theme can be shared, edited by hand, or
-/// written by somebody else. Anything a file leaves out or gets wrong is taken from `standard`,
-/// and every field a later version adds reads as what the screen showed before it existed — so
-/// an older file looks the same after an update (ADR-0017).
+/// written by somebody else. Anything a file leaves out is taken from `standard`, in the same
+/// mode; a value of the wrong kind makes the file unreadable, and the settings window says
+/// which file and why (ADR-0017).
 struct WidgetTheme: Codable, Equatable {
     var name: String
     var light: Look
@@ -19,12 +19,16 @@ struct WidgetTheme: Codable, Equatable {
         self.dark = dark
     }
 
-    /// A look the file leaves out is the built-in theme's, like anything else it leaves out.
+    /// A look is filled in from the built-in theme's look of the same mode.
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        name = try values.decodeIfPresent(String.self, forKey: .name) ?? "Untitled Theme"
-        light = try values.decodeIfPresent(Look.self, forKey: .light) ?? Self.standard.light
-        dark = try values.decodeIfPresent(Look.self, forKey: .dark) ?? Self.standard.dark
+        name = try values.decode(.name, or: "Untitled Theme")
+        light =
+            try values.contains(.light)
+            ? Look(from: values.superDecoder(forKey: .light), defaults: Self.standard.light) : Self.standard.light
+        dark =
+            try values.contains(.dark)
+            ? Look(from: values.superDecoder(forKey: .dark), defaults: Self.standard.dark) : Self.standard.dark
     }
 
     struct Look: Codable, Equatable {
@@ -75,19 +79,23 @@ struct WidgetTheme: Codable, Equatable {
             self.sphere = sphere
         }
 
-        /// A file may leave anything out: what is missing is the built-in theme's.
         init(from decoder: Decoder) throws {
+            try self.init(from: decoder, defaults: WidgetTheme.standard.dark)
+        }
+
+        /// What the file leaves out is `defaults`'s.
+        init(from decoder: Decoder, defaults: Look) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
-            background = try values.decodeIfPresent(String.self, forKey: .background) ?? "#006996"
-            material = try values.decodeIfPresent(String.self, forKey: .material) ?? WidgetMaterial.glass.rawValue
-            opacity = try values.decodeIfPresent(Double.self, forKey: .opacity) ?? WidgetTheme.defaultOpacity
-            lamps = try values.decodeIfPresent([String: Lamp].self, forKey: .lamps) ?? [:]
-            attention = try values.decodeIfPresent([String: String].self, forKey: .attention) ?? [:]
-            attentionLamps = try values.decodeIfPresent([String: String].self, forKey: .attentionLamps) ?? [:]
-            attentionMotion = try values.decodeIfPresent([String: Motion].self, forKey: .attentionMotion) ?? [:]
-            colors = try values.decodeIfPresent([String: String].self, forKey: .colors) ?? [:]
-            menu = try values.decodeIfPresent(Menu.self, forKey: .menu) ?? Menu()
-            sphere = try values.decodeIfPresent(Sphere.self, forKey: .sphere) ?? Sphere()
+            background = try values.decode(.background, or: defaults.background)
+            material = try values.decode(.material, or: defaults.material)
+            opacity = try values.decode(.opacity, or: defaults.opacity)
+            lamps = try values.decode(.lamps, or: defaults.lamps)
+            attention = try values.decode(.attention, or: defaults.attention)
+            attentionLamps = try values.decode(.attentionLamps, or: defaults.attentionLamps)
+            attentionMotion = try values.decode(.attentionMotion, or: defaults.attentionMotion)
+            colors = try values.decode(.colors, or: defaults.colors)
+            menu = try values.decode(.menu, or: defaults.menu)
+            sphere = try values.decode(.sphere, or: defaults.sphere)
         }
     }
 
@@ -113,10 +121,9 @@ struct WidgetTheme: Codable, Equatable {
 
         init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
-            motion =
-                try values.decodeIfPresent(String.self, forKey: .motion) ?? SessionLampAppearance.Motion.steady.rawValue
-            fadeTo = try values.decodeIfPresent(String.self, forKey: .fadeTo) ?? "#FFFFFF"
-            cycle = try values.decodeIfPresent(Double.self, forKey: .cycle) ?? WidgetTheme.markCycle
+            motion = try values.decode(.motion, or: SessionLampAppearance.Motion.steady.rawValue)
+            fadeTo = try values.decode(.fadeTo, or: "#FFFFFF")
+            cycle = try values.decode(.cycle, or: WidgetTheme.markCycle)
         }
     }
 
@@ -132,8 +139,9 @@ struct WidgetTheme: Codable, Equatable {
 
         init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
-            colors = try values.decodeIfPresent(String.self, forKey: .colors) ?? MenuColors.state.rawValue
-            motion = try values.decodeIfPresent(String.self, forKey: .motion) ?? MenuMotion.none.rawValue
+            let standard = Menu()
+            colors = try values.decode(.colors, or: standard.colors)
+            motion = try values.decode(.motion, or: standard.motion)
         }
     }
 
@@ -166,14 +174,14 @@ struct WidgetTheme: Codable, Equatable {
         init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             let standard = Sphere()
-            halo = try values.decodeIfPresent(Bool.self, forKey: .halo) ?? standard.halo
-            haloBreathes = try values.decodeIfPresent(Bool.self, forKey: .haloBreathes) ?? standard.haloBreathes
-            haloCycle = try values.decodeIfPresent(Double.self, forKey: .haloCycle) ?? standard.haloCycle
-            sway = try values.decodeIfPresent(Bool.self, forKey: .sway) ?? standard.sway
-            swayDegrees = try values.decodeIfPresent(Double.self, forKey: .swayDegrees) ?? standard.swayDegrees
-            swayCycle = try values.decodeIfPresent(Double.self, forKey: .swayCycle) ?? standard.swayCycle
-            swell = try values.decodeIfPresent(Bool.self, forKey: .swell) ?? standard.swell
-            swellSeconds = try values.decodeIfPresent(Double.self, forKey: .swellSeconds) ?? standard.swellSeconds
+            halo = try values.decode(.halo, or: standard.halo)
+            haloBreathes = try values.decode(.haloBreathes, or: standard.haloBreathes)
+            haloCycle = try values.decode(.haloCycle, or: standard.haloCycle)
+            sway = try values.decode(.sway, or: standard.sway)
+            swayDegrees = try values.decode(.swayDegrees, or: standard.swayDegrees)
+            swayCycle = try values.decode(.swayCycle, or: standard.swayCycle)
+            swell = try values.decode(.swell, or: standard.swell)
+            swellSeconds = try values.decode(.swellSeconds, or: standard.swellSeconds)
         }
 
         static let haloCycleRange: ClosedRange<Double> = 1...10
@@ -545,5 +553,13 @@ enum ThemeMode: String, CaseIterable {
         case .light: "Light"
         case .dark: "Dark"
         }
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// The value under `key`, or `fallback` when the file leaves it out. A value of the wrong
+    /// kind still throws: a guess at what a mistyped field meant would be drawn as if chosen.
+    fileprivate func decode<Value: Decodable>(_ key: Key, or fallback: Value) throws -> Value {
+        try decodeIfPresent(Value.self, forKey: key) ?? fallback
     }
 }
