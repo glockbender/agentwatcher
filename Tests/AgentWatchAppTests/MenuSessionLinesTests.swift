@@ -70,8 +70,8 @@ final class MenuSessionLinesTests: XCTestCase {
         XCTAssertEqual(lines.map(\.isEnabled), [true, true, true])
     }
 
-    /// The one click in the app that can end something, and it asks first — in the widget. The
-    /// line says a question follows, the way a menu does: with an ellipsis.
+    /// The one click in the app that can end something, and it asks first, in the menu itself.
+    /// The line says a question follows, the way a menu does: with an ellipsis.
     func testALineWhoseClickAsksToEndTheAgentSaysSo() {
         let lines = menuSessionLines(
             for: [
@@ -83,6 +83,7 @@ final class MenuSessionLinesTests: XCTestCase {
 
         XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed; end its agent…"])
         XCTAssertEqual(lines.map(\.isEnabled), [true])
+        XCTAssertEqual(lines.map(\.leadsToQuestion), [true])
     }
 
     /// A tab Ghostty closed and kept is ended differently and said the same way: the person
@@ -98,6 +99,7 @@ final class MenuSessionLinesTests: XCTestCase {
 
         XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed; end its agent…"])
         XCTAssertEqual(lines.map(\.isEnabled), [true])
+        XCTAssertEqual(lines.map(\.leadsToQuestion), [true])
     }
 
     /// Nothing to end it with, so the click would do nothing: the line stays, greyed, and says
@@ -113,6 +115,7 @@ final class MenuSessionLinesTests: XCTestCase {
 
         XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed, nothing here can end it"])
         XCTAssertEqual(lines.map(\.isEnabled), [false])
+        XCTAssertEqual(lines.map(\.leadsToQuestion), [false])
     }
 
     /// Asking where a session is walks the process tree, and the menu opens often. Only a

@@ -217,6 +217,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyShortcut()
         updater.checkAfterLaunch()
         #if DEBUG
+            // The probes write settings as they draw — the mode, the order, the row — so they
+            // run on a copy of the state only, never on a person's own.
+            let probes = [
+                "AGENT_WATCH_SETTINGS_SNAPSHOT", "AGENT_WATCH_WIDGET_SNAPSHOT", "AGENT_WATCH_THEME_DRAG_PROBE",
+            ]
+            let environment = ProcessInfo.processInfo.environment
+            if probes.contains(where: { environment[$0] != nil }), environment["AGENT_WATCH_SUPPORT_DIR"] == nil {
+                FileHandle.standardError.write(Data("a probe runs only with AGENT_WATCH_SUPPORT_DIR set\n".utf8))
+                NSApplication.shared.terminate(nil)
+                return
+            }
             if let directory = ProcessInfo.processInfo.environment["AGENT_WATCH_SETTINGS_SNAPSHOT"] {
                 settingsWindow.snapshot(into: URL(fileURLWithPath: directory)) {
                     NSApplication.shared.terminate(nil)
@@ -472,7 +483,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 let (mode, opacity, material) = cases[index]
                 themes.select(mode)
-                // Drawn over the theme without writing it: this is a picture, not a setting.
+                // Now rather than on the next turn, which would put the theme's own material
+                // back over the one this picture is of.
+                themeChange.runIfPending()
                 WidgetMaterial.current = material
                 let look = themes.look
                 hudController.setAppearance(

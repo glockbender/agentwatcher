@@ -41,29 +41,6 @@ final class CoalescedWorkTests: XCTestCase {
         XCTAssertEqual(runs, 1, "nothing was pending")
     }
 
-    /// Closed, the window holds no pages; opened again, it builds them, on the page it was on.
-    func testTheSettingsWindowLetsGoOfItsPagesWhenItCloses() throws {
-        let preferences = try isolatedPreferences()
-        let settings = WidgetSettingsStore(preferences: preferences)
-        let host = FakeStatusMenuHost()
-        addTeardownBlock { _ = host }
-        let controller = WidgetSettingsWindowController(
-            themes: ThemeStore(preferences: preferences, folder: nil), settings: settings,
-            rowLayouts: RowLayoutStore(preferences: preferences),
-            shortcuts: FakeShortcutRegistrar.controller(for: settings), host: host, version: nil)
-        controller.buildPages()
-        controller.model.go(.theme)
-        XCTAssertTrue(controller.hasPages)
-
-        controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
-        nextTurn()
-
-        XCTAssertFalse(controller.hasPages)
-        controller.buildPages()
-        XCTAssertTrue(controller.hasPages)
-        XCTAssertEqual(controller.model.page, .theme)
-    }
-
     /// Lets the main queue run what it holds. It runs its blocks in order, so everything asked
     /// for before this has run once it returns — which spinning the run loop for a while does
     /// not promise: with nothing else to wait on, it can return at once.

@@ -236,7 +236,6 @@ private struct ReorderTable<Item: Hashable, Row: View>: View {
 /// is, and only a drag moves anything.
 struct RowPane: View {
     @ObservedObject var model: SettingsModel
-    @State private var listed: [RowPart] = []
 
     var body: some View {
         let layout = model.layout
@@ -247,8 +246,8 @@ struct RowPane: View {
                     .listRowInsets(EdgeInsets())
             }
             Section {
-                ReorderTable(items: $listed) { listed in
-                    model.setLayout(model.layout.changing(parts: RowPartList.parts(from: listed, in: model.layout)))
+                ReorderTable(items: $model.listedParts) {
+                    model.reorderParts($0)
                 } row: { part in
                     PartRow(model: model, part: part, layout: layout)
                 }
@@ -265,17 +264,8 @@ struct RowPane: View {
                 Toggle("Keep the × column on every row", isOn: keepsDismissColumn(layout))
             } footer: {
                 SectionButtons {
-                    Button("Restore Defaults") {
-                        model.setLayout(.standard)
-                        listed = RowPartList.listed(for: .standard)
-                    }
+                    Button("Restore Defaults") { model.restoreRowDefaults() }
                 }
-            }
-        }
-        .onAppear { listed = RowPartList.listed(for: model.layout) }
-        .onChange(of: model.revision) {
-            if RowPartList.parts(from: listed, in: model.layout) != model.layout.parts {
-                listed = RowPartList.listed(for: model.layout)
             }
         }
     }
@@ -371,12 +361,7 @@ private struct PartRow: View {
     private var shown: Binding<Bool> {
         Binding(
             get: { layout.shows(part) },
-            set: { on in
-                let listed = RowPartList.listed(for: model.layout)
-                model.setLayout(
-                    model.layout.changing(
-                        parts: RowPartList.parts(from: listed, in: model.layout, switching: part, on: on)))
-            }
+            set: { on in model.switchPart(part, on: on) }
         )
     }
 

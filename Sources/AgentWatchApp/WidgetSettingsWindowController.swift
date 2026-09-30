@@ -195,8 +195,10 @@ final class SettingsModel: ObservableObject {
     @Published var isShown = false
     /// A page that shows themes reads their folder again, so a file dropped in or corrected
     /// there is listed, and the editor changes what the file now holds.
+    /// Leaving a page also ends a recording of the shortcut started on it.
     @Published private(set) var page: SettingsPage = .widget {
         didSet {
+            stopRecordingShortcut()
             if page.parent == .appearance {
                 themes.reload()
             }
@@ -247,9 +249,11 @@ final class SettingsModel: ObservableObject {
         self.shortcuts = shortcuts
         self.host = host
         self.version = version
+        listedParts = RowPartList.listed(for: rowLayouts.layout)
     }
 
     func refresh() {
+        syncListedParts()
         revision += 1
     }
 
@@ -264,6 +268,34 @@ final class SettingsModel: ObservableObject {
 
     func setLayout(_ layout: RowLayout) {
         update { rowLayouts.setLayout(layout) }
+    }
+
+    /// The Rows page's list: every part in the order a person arranged them, the ones switched
+    /// off included. Kept here rather than in the page, so that a part switched on takes the
+    /// place it is seen in — the row itself keeps no place for a part it does not show.
+    @Published var listedParts: [RowPart] = []
+
+    func reorderParts(_ listed: [RowPart]) {
+        listedParts = listed
+        setLayout(layout.changing(parts: RowPartList.parts(from: listed, in: layout)))
+    }
+
+    func switchPart(_ part: RowPart, on: Bool) {
+        setLayout(layout.changing(parts: RowPartList.parts(from: listedParts, in: layout, switching: part, on: on)))
+    }
+
+    func restoreRowDefaults() {
+        listedParts = RowPartList.listed(for: .standard)
+        setLayout(.standard)
+    }
+
+    /// The list read again from the row when the two disagree — the row was changed from
+    /// somewhere else — and left alone when they agree, which keeps the switched-off parts
+    /// where a drag put them.
+    private func syncListedParts() {
+        if listedParts.isEmpty || RowPartList.parts(from: listedParts, in: layout) != layout.parts {
+            listedParts = RowPartList.listed(for: layout)
+        }
     }
 
     var checksForUpdatesOnLaunch: Bool {
@@ -486,11 +518,15 @@ final class SettingsModel: ObservableObject {
     }
 
     func stopRecordingShortcut() {
-        guard let recorder = shortcutRecorder, recorder.isRecording else {
-            return
+        if let recorder = shortcutRecorder, recorder.isRecording {
+            recorder.stopRecording()
+            shortcutRecorded(.cancelled)
+        } else if shortcuts.isMuted {
+            // The button went with its page and took its recording along; the combination it
+            // muted is heard again.
+            shortcuts.isMuted = false
+            refresh()
         }
-        recorder.stopRecording()
-        shortcutRecorded(.cancelled)
     }
 
     func clearShortcut() {

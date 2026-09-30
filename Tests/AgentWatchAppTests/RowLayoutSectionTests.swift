@@ -16,15 +16,37 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertEqual(Array(listed.prefix(RowLayout.standard.parts.count)), RowLayout.standard.parts)
     }
 
-    func testSwitchingAPartOnPlacesItWhereItIsListed() {
-        var listed = RowPartList.listed(for: .standard)
+    /// A part switched off, dragged into place and switched on stands where it was dragged:
+    /// the row keeps no place for a part it does not show, so the list the page shows does.
+    func testSwitchingAPartOnPlacesItWhereItWasDragged() throws {
+        let model = try makeModel()
+        var listed = model.listedParts
         listed.removeAll { $0 == .branch }
         listed.insert(.branch, at: 1)
 
-        let parts = RowPartList.parts(from: listed, in: .standard, switching: .branch, on: true)
+        model.reorderParts(listed)
+        XCTAssertEqual(model.layout.parts, RowLayout.standard.parts, "a part switched off changes no row")
+        XCTAssertEqual(model.listedParts[1], .branch, "and keeps the place it was dragged to")
+        model.switchPart(.branch, on: true)
 
-        XCTAssertEqual(parts[1], .branch)
-        XCTAssertEqual(parts.filter { $0 != .branch }, RowLayout.standard.parts)
+        XCTAssertEqual(model.layout.parts[1], .branch)
+        XCTAssertEqual(model.layout.parts.filter { $0 != .branch }, RowLayout.standard.parts)
+        XCTAssertEqual(model.listedParts[1], .branch)
+    }
+
+    /// A row changed from outside the page is read again; Restore Defaults puts the list back
+    /// with it.
+    func testTheListFollowsARowChangedElsewhere() throws {
+        let model = try makeModel()
+        model.rowLayouts.setLayout(RowLayout(parts: [.lamp, .gap, .timer]))
+        model.refresh()
+
+        XCTAssertEqual(Array(model.listedParts.prefix(3)), [.lamp, .gap, .timer])
+
+        model.restoreRowDefaults()
+
+        XCTAssertEqual(model.layout, .standard)
+        XCTAssertEqual(model.listedParts, RowPartList.listed(for: .standard))
     }
 
     func testSwitchingAPartOffKeepsTheOthersInOrder() {
@@ -63,5 +85,16 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertEqual(RowPartText.counterKindsTitle(Set(ActivityKind.allCases)), "All kinds")
         XCTAssertEqual(
             RowPartText.counterKindsTitle([.shell]), "1 of \(ActivityKind.allCases.count) kinds")
+    }
+
+    private func makeModel() throws -> SettingsModel {
+        let preferences = try isolatedPreferences()
+        let settings = WidgetSettingsStore(preferences: preferences)
+        let host = FakeStatusMenuHost()
+        addTeardownBlock { _ = host }
+        return SettingsModel(
+            themes: ThemeStore(preferences: preferences, folder: nil), settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences),
+            shortcuts: FakeShortcutRegistrar.controller(for: settings), host: host, version: nil)
     }
 }

@@ -126,6 +126,9 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertEqual(menu.sessionLineItems.count, 1)
         let question = try XCTUnwrap(menu.sessionLineItems.first?.view as? MenuEndAgentQuestionView)
         XCTAssertEqual(question.dialog.sessionID, "claude:session-0")
+        XCTAssertEqual(
+            question.frame.height, question.dialog.heightShowingEverything(atWidth: MenuEndAgentQuestionView.width))
+        question.layoutSubtreeIfNeeded()
         XCTAssertFalse(question.dialog.isCompact, "a menu line is as tall as the whole question needs")
         XCTAssertEqual(Array(outline(menu.menu).prefix(3)), ["No active sessions", "Broken session", "Show Widget"])
     }
