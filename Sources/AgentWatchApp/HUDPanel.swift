@@ -9,7 +9,7 @@ import AppKit
 
 @MainActor
 final class HUDPanel: NSPanel {
-    private static let highlightDuration: CFTimeInterval = 5
+    private static var highlightDuration: CFTimeInterval { WidgetTheme.motion.highlightSeconds }
     private var highlightLayer: CAShapeLayer?
     private var highlightOverlay: HUDHighlightOverlayView?
     private var isHighlightRetryScheduled = false
@@ -43,8 +43,8 @@ final class HUDPanel: NSPanel {
 
         let pulse = CABasicAnimation(keyPath: "opacity")
         pulse.fromValue = 1
-        pulse.toValue = 0.2
-        pulse.duration = 0.5
+        pulse.toValue = WidgetTheme.motion.highlightPulseLow
+        pulse.duration = WidgetTheme.motion.highlightPulseSeconds
         pulse.autoreverses = true
         pulse.repeatDuration = Self.highlightDuration
         outline.add(pulse, forKey: "agent-watch-highlight")

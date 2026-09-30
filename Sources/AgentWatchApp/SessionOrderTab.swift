@@ -166,7 +166,7 @@ final class SessionOrderPreviewView: NSView {
     private static let spacing: CGFloat = 2
     /// How long a row takes to reach its new place: slow enough to follow, quick enough to be
     /// over before the next change two seconds later.
-    static let moveDuration: TimeInterval = 0.45
+    static var moveDuration: TimeInterval { WidgetTheme.motion.rowMoveSeconds }
 
     private var rows: [String: (row: HUDSessionRowView, snapshot: SessionSnapshot)] = [:]
     /// The sessions shown, top to bottom.

@@ -808,6 +808,13 @@ struct MenuBarPane: View {
                 }
             }
             Section {
+                Toggle("Show a dot on full-screen displays", isOn: showsDot)
+            } footer: {
+                Footnote(
+                    "The menu bar hides in full screen. A small dot in the top-right corner shows when a session needs you or is working, in its theme colour."
+                )
+            }
+            Section {
                 Toggle("List sessions in the menu", isOn: listsSessions)
                 ForEach(SessionAttention.counted, id: \.self) { attention in
                     Toggle(attention.name, isOn: menuListing(attention))
@@ -832,6 +839,13 @@ struct MenuBarPane: View {
         Binding(
             get: { model.settings.menuBarIconAttentions.contains(attention) },
             set: { on in model.update { model.settings.setMenuBarIconShows(attention, on) } }
+        )
+    }
+
+    private var showsDot: Binding<Bool> {
+        Binding(
+            get: { model.settings.showsFullScreenDot },
+            set: { on in model.update { model.settings.setShowsFullScreenDot(on) } }
         )
     }
 

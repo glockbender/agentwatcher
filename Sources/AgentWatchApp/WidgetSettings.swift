@@ -112,6 +112,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
     private enum Key {
         static let locksPosition = "lockWidgetPosition"
         static let locksSize = "lockWidgetSize"
+        static let showsFullScreenDot = "showsFullScreenDot"
+        static let showsWidget = "showsWidget"
         static let closedSessionRetention = "closedSessionRetentionSeconds"
         static let transcriptPollInterval = "transcriptPollIntervalSeconds"
         static let scale = "widgetScale"
@@ -134,6 +136,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
         [
             Key.locksPosition: .bool(false),
             Key.locksSize: .bool(false),
+            Key.showsFullScreenDot: .bool(true),
+            Key.showsWidget: .bool(false),
             Key.closedSessionRetention: .number(Self.defaultClosedSessionRetention),
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
             Key.scale: .number(Double(Self.defaultScale)),
@@ -165,6 +169,25 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     var locksSize: Bool {
         preferences.flag(forKey: Key.locksSize) ?? false
+    }
+
+    /// Whether the widget was on screen when it was last shown or hidden. Hidden on a fresh
+    /// install: the menu bar says what is going on, and the widget is one click away.
+    var showsWidget: Bool {
+        preferences.flag(forKey: Key.showsWidget) ?? false
+    }
+
+    func setShowsWidget(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsWidget)
+    }
+
+    var showsFullScreenDot: Bool {
+        preferences.flag(forKey: Key.showsFullScreenDot) ?? true
+    }
+
+    func setShowsFullScreenDot(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsFullScreenDot)
+        onChange?(.menuBarIcon)
     }
 
     var closedSessionRetention: ClosedSessionRetention {

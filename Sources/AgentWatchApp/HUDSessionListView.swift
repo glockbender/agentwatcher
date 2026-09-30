@@ -575,7 +575,7 @@ class HUDSessionListView: NSView {
             return
         }
         let mask = (layer.mask as? CAGradientLayer) ?? CAGradientLayer()
-        let reach = min(0.25, style.rowHeight / max(scrollView.bounds.height, 1))
+        let reach = min(WidgetTheme.motion.fadeReach, style.rowHeight / max(scrollView.bounds.height, 1))
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         mask.frame = scrollView.bounds
@@ -714,7 +714,8 @@ final class HUDOverflowBadge: NSView {
         // whichever palette a person chose. Opaque, because what it covers is text.
         layer?.backgroundColor = background.color.cgColor
         layer?.borderWidth = 1
-        layer?.borderColor = SessionAttention.needsPerson.accent.withAlphaComponent(0.6).cgColor
+        layer?.borderColor =
+            SessionAttention.needsPerson.accent.withAlphaComponent(WidgetTheme.motion.badgeBorderAlpha).cgColor
 
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: horizontalPadding),

@@ -22,9 +22,9 @@ enum MenuBarIconMetrics {
     /// hairline.
     static let knockout: CGFloat = 10
     /// What an empty cell is drawn at. A zero has to hold its place without asking to be read.
-    static let emptyCellAlpha: CGFloat = 0.4
+    static var emptyCellAlpha: CGFloat { WidgetTheme.motion.emptyAlpha }
     /// One breath, the same length as the widget's lamp so the two read as one app.
-    static let breathSeconds: TimeInterval = 1.4
+    static var breathSeconds: TimeInterval { WidgetTheme.motion.gridBreathSeconds }
     /// How much wider than its drawing the status item is made.
     ///
     /// Left to itself `NSStatusItem` adds 16 pt around an image — measured, and constant from
@@ -93,8 +93,8 @@ extension SessionAttention {
         switch self {
         // Deeper than working, at the same rhythm: the one that needs a person has to carry
         // further across a glance without becoming a blink.
-        case .needsPerson: 0.65
-        case .working: 0.45
+        case .needsPerson: WidgetTheme.motion.gridBreathNeedsYou
+        case .working: WidgetTheme.motion.gridBreathWorking
         case .done, .quiet, .closed: 0
         }
     }

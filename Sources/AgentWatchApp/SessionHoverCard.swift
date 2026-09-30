@@ -91,7 +91,7 @@ struct HoverCardState: Equatable {
 final class SessionHoverCard {
     /// Long enough not to flash while the pointer crosses the widget on its way elsewhere,
     /// short enough to feel like an answer rather than a wait.
-    static let appearanceDelay: TimeInterval = 0.5
+    static var appearanceDelay: TimeInterval { WidgetTheme.motion.hoverDelaySeconds }
     /// How far below the hovered row the card sits. Unscaled, unlike everything else about
     /// the card: it is the distance between two windows, not part of either drawing.
     static let rowGap: CGFloat = 4

@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings: settings,
         registrar: GlobalShortcutRegistrar(),
         onToggle: { [weak self] in
-            self?.hudController.toggle()
+            self?.toggleWidget()
         }
     )
     private let history = SessionHistoryStore()
@@ -123,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         version: updater.ownVersion
     )
     private var appearanceObservation: NSKeyValueObservation?
+    private lazy var fullScreenDot = FullScreenDot()
     private let debugLog = EventDebugLog()
     private lazy var debugController = EventDebugWindowController(initialEntries: debugLog.recentEntries())
     private lazy var ingress = HookIngressController(
@@ -194,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         preferences.seed(everyDefault)
         WidgetMaterial.current = backgroundStore.material
         WidgetTheme.active = themes.look
+        WidgetTheme.motion = themes.theme.motion
         // Said out loud, because the alternative is a person's settings apparently reset for
         // no reason. The seeding above is the write that moves the old file aside.
         if let kept = preferences.unreadableFileKeptAt {
@@ -207,7 +209,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Before the widget is shown, so a first launch with nothing installed explains
         // itself in its first frame rather than after the first menu is opened.
         refreshToolingComplaint()
-        hudController.show()
+        if settings.showsWidget {
+            hudController.show()
+        }
         // Restoring before listening, so the sessions of the last launch keep the row order
         // and the project names they had. An event that arrives first is still the live truth
         // and a memory never overwrites it — but it would come in as a brand new session.
@@ -248,6 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func revealExistingInstance() {
         hudController.show()
+        settings.setShowsWidget(true)
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
@@ -335,6 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menuBarCounts = counts
         menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
+        fullScreenDot.show(counts, enabled: settings.showsFullScreenDot)
         updateStatusItemWording()
         statusMenu?.refreshSummary()
     }
@@ -405,9 +411,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hudController.setBackground(themes.widgetBackground(on: backgroundStore.material))
         case .theme:
             WidgetTheme.active = themes.look
+            WidgetTheme.motion = themes.theme.motion
             hudController.setLampScheme(themes.look.lampScheme)
             hudController.setBackground(themes.widgetBackground(on: backgroundStore.material))
             menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
+            fullScreenDot.refresh()
             settingsWindow.refresh()
         case .backgroundOpacity:
             // Read back rather than carrying the value in the notification: the store clamps
@@ -424,6 +432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             applyShortcut()
         case .menuBarIcon:
             applyMenuBarIcon()
+            fullScreenDot.show(menuBarCounts, enabled: settings.showsFullScreenDot)
         case .sessionOrder:
             // A new order is a new set of rows, and the menu's lines follow it as well. Written
             // by the settings window, so nothing else refreshes them.
@@ -449,6 +458,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         /// at full and at half opacity — the cases where glass is hardest to read.
         private func snapshotWidget(into directory: URL) {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            hudController.show()
             let cases: [(ThemeMode, CGFloat, WidgetMaterial)] = [
                 (.dark, 0.05, .glass), (.dark, 0.5, .glass), (.dark, 1, .glass),
                 (.light, 0.05, .glass), (.light, 1, .glass), (.dark, 1, .clearGlass),
@@ -546,6 +556,7 @@ extension AppDelegate: StatusMenuHost {
     /// Showing the widget also flashes it, so it is found wherever it sits.
     func toggleWidget() {
         hudController.toggle()
+        settings.setShowsWidget(isWidgetVisible)
         if isWidgetVisible {
             hudController.highlight()
         }

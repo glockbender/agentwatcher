@@ -273,8 +273,8 @@ final class MenuBarIconView: NSView {
     private func halo(_ target: CALayer, colour: NSColor, breathing: Bool, in size: CGSize) {
         target.shadowColor = colour.cgColor
         target.shadowOffset = .zero
-        target.shadowRadius = MenuBarSphereMetrics.glowRadius
-        target.shadowOpacity = MenuBarSphereMetrics.glowOpacity
+        target.shadowRadius = WidgetTheme.motion.glowRadius
+        target.shadowOpacity = Float(WidgetTheme.motion.glowOpacity)
         let side = MenuBarSphereMetrics.diameter
         target.shadowPath = CGPath(
             ellipseIn: CGRect(
@@ -285,28 +285,28 @@ final class MenuBarIconView: NSView {
             return
         }
         let animation = CABasicAnimation(keyPath: "shadowOpacity")
-        animation.fromValue = MenuBarSphereMetrics.glowBreath.lowerBound
-        animation.toValue = MenuBarSphereMetrics.glowBreath.upperBound
-        target.add(onTheClock(animation, period: MenuBarSphereMetrics.glowBreathSeconds), forKey: Self.breathKey)
+        animation.fromValue = WidgetTheme.motion.glowBreathLow
+        animation.toValue = WidgetTheme.motion.glowBreathHigh
+        target.add(onTheClock(animation, period: WidgetTheme.motion.glowBreathSeconds), forKey: Self.breathKey)
     }
 
     private func sway(_ target: CALayer) {
-        let reach = MenuBarSphereMetrics.swayDegrees * .pi / 180
+        let reach = WidgetTheme.motion.swayDegrees * .pi / 180
         let animation = CABasicAnimation(keyPath: "transform.rotation.z")
         animation.fromValue = -reach
         animation.toValue = reach
-        target.add(onTheClock(animation, period: MenuBarSphereMetrics.swaySeconds), forKey: Self.swayKey)
+        target.add(onTheClock(animation, period: WidgetTheme.motion.swaySeconds), forKey: Self.swayKey)
     }
 
     /// Once, when a count changes: a little larger and brighter, then back.
     private func swell(_ target: CALayer) {
         let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-        scale.values = [1, MenuBarSphereMetrics.swellScale, 1]
+        scale.values = [1, WidgetTheme.motion.swellScale, 1]
         let brightness = CAKeyframeAnimation(keyPath: "shadowRadius")
         brightness.values = [target.shadowRadius, target.shadowRadius * 2, target.shadowRadius]
         let group = CAAnimationGroup()
         group.animations = [scale, brightness]
-        group.duration = MenuBarSphereMetrics.swellSeconds
+        group.duration = WidgetTheme.motion.swellSeconds
         group.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         target.add(group, forKey: Self.swellKey)
     }

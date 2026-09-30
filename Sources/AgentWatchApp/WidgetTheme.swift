@@ -9,6 +9,117 @@ struct WidgetTheme: Codable, Equatable {
     var name: String
     var light: Look
     var dark: Look
+    /// How the sphere and the full-screen dot move; the same in light and dark.
+    var motion: Motion = .standard
+
+    init(name: String, light: Look, dark: Look, motion: Motion = .standard) {
+        self.name = name
+        self.light = light
+        self.dark = dark
+        self.motion = motion
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        name = try values.decode(String.self, forKey: .name)
+        light = try values.decode(Look.self, forKey: .light)
+        dark = try values.decode(Look.self, forKey: .dark)
+        motion = try values.decodeIfPresent(Motion.self, forKey: .motion) ?? .standard
+    }
+
+    struct Motion: Codable, Equatable {
+        /// The halo around the sphere, and how it breathes while something needs a person.
+        var glowRadius = 2.5
+        var glowOpacity = 0.6
+        var glowBreathLow = 0.3
+        var glowBreathHigh = 0.95
+        var glowBreathSeconds = 4.0
+        /// How far, in degrees, and how slowly the sphere's colours sway while something is alive.
+        var swayDegrees = 35.0
+        var swaySeconds = 7.0
+        /// The swell when a count changes.
+        var swellScale = 1.08
+        var swellSeconds = 1.6
+        /// The full-screen dot: its size, how far it sits from the corner, which corner
+        /// (`topLeft` or `topRight`), and its colour cycle. Top right by default, held far enough
+        /// in to stay clear of the microphone dot the system draws in that corner.
+        var dotDiameter = 8.0
+        var dotInset = 28.0
+        var dotCorner = "topRight"
+        var dotCycleSeconds = 2.0
+        /// How much of each state's turn in the cycle is spent fading into the next.
+        var dotFadeShare = 0.3
+        /// The menu-bar grid's breath, and how far each state that breathes fades in it.
+        var gridBreathSeconds = 1.4
+        var gridBreathNeedsYou = 0.65
+        var gridBreathWorking = 0.45
+        /// What an empty mark is drawn at.
+        var emptyAlpha = 0.4
+        /// How far a dimming lamp fades: a disc, and a ring, which needs more to register.
+        var lampDimDisc = 0.55
+        var lampDimRing = 0.3
+        /// The outline flashed when the widget is shown: for how long, each pulse, how faint.
+        var highlightSeconds = 5.0
+        var highlightPulseSeconds = 0.5
+        var highlightPulseLow = 0.2
+        /// How long the pointer rests on a row before its card opens.
+        var hoverDelaySeconds = 0.5
+        /// How long a row takes to reach its new place, and the order preview's step.
+        var rowMoveSeconds = 0.45
+        var demoStepSeconds = 2.0
+        /// How strongly the theme's colour tints Liquid Glass; clear glass takes half.
+        var glassTint = 0.5
+        /// The wash under a hovered row, on a light and on a dark widget.
+        var hoverWashLight = 0.08
+        var hoverWashDark = 0.12
+        /// The border of the "needs you" badge, and how far the edge fade reaches at most.
+        var badgeBorderAlpha = 0.6
+        var fadeReach = 0.25
+
+        static let standard = Motion()
+
+        init() {}
+
+        /// Any field a file leaves out is the built-in value.
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            let fallback = Motion()
+            func read(_ key: CodingKeys, _ value: Double) throws -> Double {
+                try values.decodeIfPresent(Double.self, forKey: key) ?? value
+            }
+            glowRadius = try read(.glowRadius, fallback.glowRadius)
+            glowOpacity = try read(.glowOpacity, fallback.glowOpacity)
+            glowBreathLow = try read(.glowBreathLow, fallback.glowBreathLow)
+            glowBreathHigh = try read(.glowBreathHigh, fallback.glowBreathHigh)
+            glowBreathSeconds = try read(.glowBreathSeconds, fallback.glowBreathSeconds)
+            swayDegrees = try read(.swayDegrees, fallback.swayDegrees)
+            swaySeconds = try read(.swaySeconds, fallback.swaySeconds)
+            swellScale = try read(.swellScale, fallback.swellScale)
+            swellSeconds = try read(.swellSeconds, fallback.swellSeconds)
+            dotDiameter = try read(.dotDiameter, fallback.dotDiameter)
+            dotInset = try read(.dotInset, fallback.dotInset)
+            dotCorner = try values.decodeIfPresent(String.self, forKey: .dotCorner) ?? fallback.dotCorner
+            dotCycleSeconds = try read(.dotCycleSeconds, fallback.dotCycleSeconds)
+            dotFadeShare = try read(.dotFadeShare, fallback.dotFadeShare)
+            gridBreathSeconds = try read(.gridBreathSeconds, fallback.gridBreathSeconds)
+            gridBreathNeedsYou = try read(.gridBreathNeedsYou, fallback.gridBreathNeedsYou)
+            gridBreathWorking = try read(.gridBreathWorking, fallback.gridBreathWorking)
+            emptyAlpha = try read(.emptyAlpha, fallback.emptyAlpha)
+            lampDimDisc = try read(.lampDimDisc, fallback.lampDimDisc)
+            lampDimRing = try read(.lampDimRing, fallback.lampDimRing)
+            highlightSeconds = try read(.highlightSeconds, fallback.highlightSeconds)
+            highlightPulseSeconds = try read(.highlightPulseSeconds, fallback.highlightPulseSeconds)
+            highlightPulseLow = try read(.highlightPulseLow, fallback.highlightPulseLow)
+            hoverDelaySeconds = try read(.hoverDelaySeconds, fallback.hoverDelaySeconds)
+            rowMoveSeconds = try read(.rowMoveSeconds, fallback.rowMoveSeconds)
+            demoStepSeconds = try read(.demoStepSeconds, fallback.demoStepSeconds)
+            glassTint = try read(.glassTint, fallback.glassTint)
+            hoverWashLight = try read(.hoverWashLight, fallback.hoverWashLight)
+            hoverWashDark = try read(.hoverWashDark, fallback.hoverWashDark)
+            badgeBorderAlpha = try read(.badgeBorderAlpha, fallback.badgeBorderAlpha)
+            fadeReach = try read(.fadeReach, fallback.fadeReach)
+        }
+    }
 
     struct Look: Codable, Equatable {
         /// `#RRGGBB`.
@@ -59,17 +170,31 @@ struct WidgetTheme: Codable, Equatable {
         case timerQuiet, timerStale
         /// The outline that flashes when the widget is shown.
         case highlight
+        /// Text on a light widget; secondary text on a light and on a dark one.
+        case ink, inkSecondaryOnLight, inkSecondaryOnDark
+        /// The mark on a session the app is no longer sure about, on a light and a dark widget.
+        case warningOnLight, warningOnDark
+        /// What text is judged against on glass, in light and in dark mode.
+        case glassLight, glassDark
     }
 
     static let colors: [String: String] = [
         Role.timerQuiet.rawValue: "#FFD60A",
         Role.timerStale.rawValue: "#FF9F0A",
         Role.highlight.rawValue: "#FF9F0A",
+        Role.ink.rawValue: "#1A1F26",
+        Role.inkSecondaryOnLight.rawValue: "#4A5461",
+        Role.inkSecondaryOnDark.rawValue: "#FFFFFFAD",
+        Role.warningOnLight.rawValue: "#B37005",
+        Role.warningOnDark.rawValue: "#FFC74A",
+        Role.glassLight.rawValue: "#EDF2FA",
+        Role.glassDark.rawValue: "#212429",
     ]
 
     /// The look in use, for the few drawings that cannot be handed one: the menu bar's marks.
     /// Set whenever the theme or the system's appearance changes.
     nonisolated(unsafe) static var active: Look = standard.dark
+    nonisolated(unsafe) static var motion: Motion = .standard
 
     static let standard = WidgetTheme(
         name: "Default",
@@ -199,7 +324,7 @@ final class ThemeStore: PreferenceDefaults {
         guard material.drawn.needsLiquidGlass else {
             return look.widgetBackground
         }
-        return isDark ? .graphite : .pearl
+        return WidgetBackground(custom: look.color(isDark ? .glassDark : .glassLight)) ?? look.widgetBackground
     }
 
     func select(_ theme: WidgetTheme) {

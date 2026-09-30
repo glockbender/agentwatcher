@@ -16,7 +16,7 @@ struct SessionOrderDemo {
     private(set) var step = 0
 
     /// How far the demo's clock moves each step. Also what the window waits between steps.
-    static let stepInterval: TimeInterval = 2
+    static var stepInterval: TimeInterval { WidgetTheme.motion.demoStepSeconds }
 
     /// Who changes, and into what — eight steps that bring every session back where it began.
     static let script: [(index: Int, phase: SessionPhase)] = [

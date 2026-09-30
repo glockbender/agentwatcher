@@ -74,7 +74,7 @@ final class Backdrop: NSView {
 
 /// How much of the theme's colour the glass takes at full opacity; the opacity slider scales it,
 /// so lower is clearer glass. A hint, as the Dock's, not a coat of paint.
-let glassTint: CGFloat = 0.5
+var glassTint: CGFloat { WidgetTheme.motion.glassTint }
 
 @MainActor
 func makeBackdrop(cornerRadius: CGFloat, tint: NSColor? = nil, opacity: CGFloat = 1) -> Backdrop {

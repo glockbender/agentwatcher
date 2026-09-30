@@ -64,7 +64,7 @@ struct WidgetBackground: Hashable {
     }
 
     var foregroundColor: NSColor {
-        isLight ? Self.darkText : NSColor(calibratedWhite: 1, alpha: 1)
+        isLight ? Self.darkText : .white
     }
 
     /// The appearance AppKit is to draw controls on this background in — the bezel of a row's
@@ -74,7 +74,7 @@ struct WidgetBackground: Hashable {
         NSAppearance(named: isLight ? .aqua : .darkAqua)
     }
 
-    private static let darkText = NSColor(calibratedRed: 0.10, green: 0.12, blue: 0.15, alpha: 1)
+    private static var darkText: NSColor { WidgetTheme.active.color(.ink) }
 
     /// Whether dark text stands out from this colour more than white does.
     ///
@@ -109,13 +109,12 @@ struct WidgetBackground: Hashable {
     /// The wash under a hovered row. Faint on purpose: it answers "which row am I on"
     /// without competing with the lamp for attention.
     var hoverColor: NSColor {
-        foregroundColor.withAlphaComponent(isLight ? 0.08 : 0.12)
+        foregroundColor.withAlphaComponent(
+            isLight ? WidgetTheme.motion.hoverWashLight : WidgetTheme.motion.hoverWashDark)
     }
 
     var secondaryForegroundColor: NSColor {
-        isLight
-            ? NSColor(calibratedRed: 0.29, green: 0.33, blue: 0.38, alpha: 1)
-            : NSColor(calibratedWhite: 1, alpha: 0.68)
+        WidgetTheme.active.color(isLight ? .inkSecondaryOnLight : .inkSecondaryOnDark)
     }
 
     /// The marker for a session the app has stopped being sure about.
@@ -126,9 +125,7 @@ struct WidgetBackground: Hashable {
     /// which matters here more than anywhere, because half the palette is light and
     /// `systemYellow` is invisible on sand.
     var warningColor: NSColor {
-        isLight
-            ? NSColor(calibratedRed: 0.70, green: 0.44, blue: 0.02, alpha: 1)
-            : NSColor(calibratedRed: 1.00, green: 0.78, blue: 0.29, alpha: 1)
+        WidgetTheme.active.color(isLight ? .warningOnLight : .warningOnDark)
     }
 }
 

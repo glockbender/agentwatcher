@@ -192,7 +192,9 @@ final class SessionLampView: NSView {
             animate(animation, everySeconds: look.animationCycle / 2)
         case .dim:
             // A ring needs a deeper fade than a disc for the movement to register.
-            blink(everySeconds: look.animationCycle / 2, downTo: look.isFilled ? 0.55 : 0.3)
+            blink(
+                everySeconds: look.animationCycle / 2,
+                downTo: Float(look.isFilled ? WidgetTheme.motion.lampDimDisc : WidgetTheme.motion.lampDimRing))
         }
     }
 
