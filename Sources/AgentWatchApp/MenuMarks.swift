@@ -31,9 +31,7 @@ final class MenuMarkAnimator {
         for mark in marks {
             mark.item.image = Self.frame(of: mark.style, attention: mark.attention, at: CACurrentMediaTime())
         }
-        if !isMoving {
-            stop()
-        }
+        runIfWanted()
     }
 
     /// Whether any mark shown moves at all.
@@ -45,8 +43,26 @@ final class MenuMarkAnimator {
         timer != nil
     }
 
+    /// Between the menu's opening and its closing: lines shown again in that time keep moving.
+    private var isWanted = false
+
     func start() {
-        guard isMoving, timer == nil else {
+        isWanted = true
+        runIfWanted()
+    }
+
+    func stop() {
+        isWanted = false
+        runIfWanted()
+    }
+
+    private func runIfWanted() {
+        guard isWanted, isMoving else {
+            timer?.invalidate()
+            timer = nil
+            return
+        }
+        guard timer == nil else {
             return
         }
         let timer = Timer(timeInterval: 1 / Self.framesPerSecond, repeats: true) { [weak self] _ in
@@ -59,11 +75,6 @@ final class MenuMarkAnimator {
         // to.
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
-    }
-
-    func stop() {
-        timer?.invalidate()
-        timer = nil
     }
 
     private func drawFrame() {

@@ -253,7 +253,7 @@ struct RowPane: View {
                     PartRow(model: model, part: part, layout: layout)
                 }
             } header: {
-                Heading(title: "Parts", hint: "Drag a row to reorder. Hover a part to see when it appears.")
+                Heading(title: "Parts", hint: "Drag a row to reorder. Hover a part to read more about when it appears.")
             }
             Section {
                 Picker("When the widget is narrow, shorten", selection: flexible(layout)) {
@@ -315,6 +315,12 @@ enum RowPartList {
     static func isLast(_ part: RowPart, in layout: RowLayout) -> Bool {
         layout.shows(part) && layout.parts.filter { $0 != .gap }.count == 1
     }
+
+    /// What is said beside a part's switch, where it can be read without hovering: when the
+    /// part appears, or why the last one cannot be switched off.
+    static func note(for part: RowPart, in layout: RowLayout) -> String {
+        isLast(part, in: layout) ? "stays: a row has to draw something" : part.appearsWhenBriefly
+    }
 }
 
 private struct PartRow: View {
@@ -332,6 +338,9 @@ private struct PartRow: View {
                     .toggleStyle(.checkbox)
                     .disabled(RowPartList.isLast(part, in: layout))
                     .help("\(part.settingsName): \(part.appearsWhen)")
+                Text(RowPartList.note(for: part, in: layout))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             Spacer()
             options
@@ -760,7 +769,7 @@ struct MenuBarPane: View {
         let settings = model.settings
         let iconShows = settings.menuBarIconAttentions
         Form {
-            Section("Icon") {
+            Section {
                 Picker("Style", selection: iconStyle) {
                     ForEach(MenuBarIconStyle.allCases, id: \.self) { style in
                         Text(style.name).tag(style)
@@ -771,6 +780,10 @@ struct MenuBarPane: View {
                     Toggle(attention.name, isOn: iconShowing(attention))
                         .disabled(iconShows.contains(attention) && iconShows.count == 1)
                 }
+            } header: {
+                Text("Icon")
+            } footer: {
+                Footnote("At least one state stays in the icon.")
             }
             Section {
                 Toggle("List sessions in the menu", isOn: listsSessions)

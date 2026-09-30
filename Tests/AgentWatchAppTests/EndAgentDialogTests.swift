@@ -66,6 +66,42 @@ final class EndAgentDialogTests: XCTestCase {
         controller.shutdown()
     }
 
+    /// One answer per question. The buttons stay on screen while the question fades, and a
+    /// second press there would end the agent twice.
+    func testOnlyTheFirstAnswerCounts() throws {
+        var ended: [String] = []
+        let (controller, broken) = try makeController(ended: { ended.append($0) })
+        try click(broken, in: controller)
+        let dialog = try XCTUnwrap(controller.visibleDialog)
+
+        dialog.endButton.performClick(nil)
+        dialog.endButton.performClick(nil)
+        dialog.cancelButton.performClick(nil)
+
+        XCTAssertEqual(ended, [broken.id])
+
+        try click(broken, in: controller)
+        let next = try XCTUnwrap(controller.visibleDialog)
+        next.cancelButton.performClick(nil)
+        next.endButton.performClick(nil)
+
+        XCTAssertEqual(ended, [broken.id], "a no is an answer too")
+        controller.shutdown()
+    }
+
+    /// A new size reaches an open question as well as the rows under it.
+    func testAnOpenQuestionTakesANewSize() throws {
+        let (controller, broken) = try makeController(ended: { _ in })
+        try click(broken, in: controller)
+
+        controller.setScale(1.5)
+
+        let dialog = try XCTUnwrap(controller.visibleDialog)
+        XCTAssertEqual(dialog.style.scale, 1.5)
+        XCTAssertEqual(dialog.sessionID, broken.id)
+        controller.shutdown()
+    }
+
     /// A question about a session that has since gone, or come back to its terminal, is no
     /// longer the question.
     func testTheQuestionClosesWhenItsSessionIsNoLongerBroken() throws {

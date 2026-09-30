@@ -153,6 +153,8 @@ final class ThemeMotionTests: XCTestCase {
         use { $0.menuMotion = .lamp }
         menu.menuWillOpen(menu.menu)
         XCTAssertTrue(menu.marks.isRunning)
+        menu.refreshSessions()
+        XCTAssertTrue(menu.marks.isRunning, "lines shown again in an open menu keep moving")
 
         menu.menuDidClose(menu.menu)
         XCTAssertFalse(menu.marks.isRunning)

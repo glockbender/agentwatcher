@@ -203,9 +203,9 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
 
     /// Draws the widget at a new size, now.
     ///
-    /// Everything on screen is rebuilt: a row reads its fonts and its height once, when it is
-    /// built, so a scale that only changed the next row to arrive would leave a person
-    /// dragging the slider and watching nothing happen.
+    /// Everything on screen is rebuilt, an open question included: a row reads its fonts and
+    /// its height once, when it is built, so a scale that only changed the next row to arrive
+    /// would leave a person choosing a size and watching nothing happen.
     ///
     /// The window's floor moves with it and is enforced here rather than left to the next
     /// resize. A widget already at the old minimum is below the new one the moment the scale
@@ -218,10 +218,13 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         style = WidgetStyle(scale: scale)
         hoverCard.style = style
         refreshContent()
-        // And say which window just changed. A person dragging the size slider is looking at
-        // the slider, while the thing that changes is a small window elsewhere on the screen
-        // — behind something, or one they have lost track of. The same outline the
-        // `Highlight Widget` menu line draws, rather than a second mark invented for this.
+        if let asking = container.dialog?.sessionID {
+            askToEndAgent(ofSessionWithID: asking)
+        }
+        // And say which window just changed. A person choosing a size is looking at the
+        // settings window, while the thing that changes is a small window elsewhere on the
+        // screen — behind something, or one they have lost track of. The same outline showing
+        // the widget draws, rather than a second mark invented for this.
         //
         // Here rather than beside the menu action, because the guard above is what makes it
         // honest: the controller is born with the size already saved, so nothing is lit at
@@ -233,7 +236,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     ///
     /// Here rather than in `setScale`, so it covers the two other ways a widget can find
     /// itself under its own floor: a launch reading a scale already saved, and
-    /// `Reset Widget Size`, which writes the size a fresh install has whatever scale is in
+    /// `Reset Size`, which writes the size a fresh install has whatever scale is in
     /// force. `minSize` alone does not do it — macOS does not grow a window to meet a minimum
     /// it has just been handed — so the rows would be laid out inside a window too short to
     /// show them.

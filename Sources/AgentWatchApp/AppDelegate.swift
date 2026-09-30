@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings: settings,
         registrar: GlobalShortcutRegistrar(),
         onToggle: { [weak self] in
-            self?.hudController.toggle()
+            self?.toggleWidget()
         }
     )
     private let history = SessionHistoryStore()
@@ -563,12 +563,14 @@ extension AppDelegate: StatusMenuHost {
         shortcuts.showShortcut(on: item)
     }
 
-    /// Showing the widget also flashes it, so it is found wherever it sits.
+    /// Showing the widget also flashes it, so it is found wherever it sits. The menu and the
+    /// shortcut both come here, and the settings window's switch follows either.
     func toggleWidget() {
         hudController.toggle()
         if isWidgetVisible {
             hudController.highlight()
         }
+        settingsWindow.refresh()
     }
 
     func showWidgetSettings() {

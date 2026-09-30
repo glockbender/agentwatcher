@@ -17,7 +17,7 @@ final class HUDEndAgentDialog: NSView {
     static let fadeDuration: TimeInterval = 0.15
 
     let sessionID: String
-    private let style: WidgetStyle
+    let style: WidgetStyle
     private let card = NSView()
     private let heading = NSTextField(labelWithString: "Broken session")
     private let explanation: NSTextField
@@ -35,9 +35,13 @@ final class HUDEndAgentDialog: NSView {
         self.sessionID = sessionID
         self.style = style
         explanation = NSTextField(wrappingLabelWithString: Self.explanation(naming: sessionName))
+        // One answer to a question: its buttons stay on screen while it fades, and a second
+        // press on End would end the agent twice.
+        let answer = OneAnswer()
         cancelButton = HUDDialogButton(
-            title: "Cancel", fill: NSColor(calibratedWhite: 1, alpha: 0.18), style: style, perform: onCancel)
-        endButton = HUDDialogButton(title: "End", fill: .systemRed, style: style, perform: onEnd)
+            title: "Cancel", fill: NSColor(calibratedWhite: 1, alpha: 0.18), style: style,
+            perform: { answer.give(onCancel) })
+        endButton = HUDDialogButton(title: "End", fill: .systemRed, style: style, perform: { answer.give(onEnd) })
         super.init(frame: .zero)
         // Dark whatever the widget's colour: the rows under it are darkened, and the card, its
         // text and its buttons are drawn for that.
@@ -277,5 +281,19 @@ final class HUDDialogButton: NSButton {
 
     @objc private func run() {
         perform()
+    }
+}
+
+/// The first answer, and only that one.
+@MainActor
+private final class OneAnswer {
+    private var given = false
+
+    func give(_ answer: () -> Void) {
+        guard !given else {
+            return
+        }
+        given = true
+        answer()
     }
 }

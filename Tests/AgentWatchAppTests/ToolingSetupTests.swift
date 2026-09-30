@@ -72,7 +72,7 @@ final class ToolingSetupTests: XCTestCase {
     func testTheGuideNamesTheShortcutOnlyWhileItWorks() {
         XCTAssertEqual(
             setupWidgetToggleText(shortcut: "⌃⌥K"),
-            "⌃⌥K shows or hides the widget (you can change this in Widget Settings)."
+            "⌃⌥K shows or hides the widget (you can change it in Settings → General)."
         )
         let without = setupWidgetToggleText(shortcut: nil)
         XCTAssertFalse(without.contains("⌥⌘W"), without)

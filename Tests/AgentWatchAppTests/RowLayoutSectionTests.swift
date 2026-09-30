@@ -42,6 +42,14 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertFalse(RowPartList.isLast(.lamp, in: .standard))
     }
 
+    /// Said beside the switch, not only on hover: when the part appears, and for the last one,
+    /// why its switch is greyed.
+    func testEveryPartSaysWhenItAppearsAndTheLastSaysWhyItStays() {
+        XCTAssertEqual(RowPartList.note(for: .branch, in: .standard), "only in a git repo")
+        XCTAssertEqual(
+            RowPartList.note(for: .lamp, in: RowLayout(parts: [.lamp, .gap])), "stays: a row has to draw something")
+    }
+
     func testAVariantChoiceIsStoredForItsPartAlone() {
         let layout = RowPartText.layout(.standard, choosing: 1, for: .name)
 
