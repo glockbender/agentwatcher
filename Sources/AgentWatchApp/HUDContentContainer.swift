@@ -124,7 +124,11 @@ final class HUDContentContainer: NSView {
             context.duration = EndAgentDialog.fadeDuration
             dialog.animator().alphaValue = 0
         } completionHandler: {
-            dialog.removeFromSuperview()
+            // The macOS 26 SDK marks this handler Sendable, so Swift no longer knows it runs
+            // on the main thread; AppKit calls it there all the same.
+            MainActor.assumeIsolated {
+                dialog.removeFromSuperview()
+            }
         }
     }
 }
