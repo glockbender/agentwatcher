@@ -21,7 +21,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         settings: WidgetSettingsStore,
         rowLayouts: RowLayoutStore,
         shortcuts: WidgetShortcutController,
-        host: StatusMenuHost,
+        host: SettingsHost,
         version: String?
     ) {
         model = SettingsModel(

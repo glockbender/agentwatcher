@@ -3,18 +3,13 @@ import AppKit
 
 /// What the status item's menu reads and asks for, and nothing about how it is drawn.
 ///
-/// A protocol so that a test can stand in for the application: the menu used to be built
-/// inside `AppDelegate`, which cannot be made in a test without reading the real state
-/// directory, and so nothing checked a line of it.
+/// A protocol so that a test can stand in for the application, which cannot be made in a test
+/// without reading the real state directory.
 @MainActor
 protocol StatusMenuHost: AnyObject {
     /// The same counts the icon shows. Read when the menu opens.
     var attentionCounts: SessionAttentionCounts { get }
     var isWidgetVisible: Bool { get }
-    var isEventDebugVisible: Bool { get }
-    var checksForUpdatesOnLaunch: Bool { get set }
-    var isReadingTranscripts: Bool { get }
-    var transcriptFaultedSessionCount: Int { get }
     /// Every session the widget has, in the widget's order.
     var sessions: [SessionSnapshot] { get }
     func reach(for snapshot: SessionSnapshot) -> SessionReach
@@ -30,19 +25,7 @@ protocol StatusMenuHost: AnyObject {
     func showShortcut(on item: NSMenuItem)
     func toggleWidget()
     func showWidgetSettings()
-    func showTooling()
-    func toggleEventDebug()
-    func checkForUpdates()
-    func resetWidgetPosition()
-    func resetWidgetSize()
     func quit()
-    #if AGENT_WATCH_DEBUG_CAPTURE
-        /// When the current recording stops, or `nil` when none is running.
-        var rawCaptureExpiry: Date? { get }
-        var recordedPayloadBytes: Int { get }
-        func toggleRawHookCapture()
-        func deleteRawHookRecordings()
-    #endif
 }
 
 /// The status item's menu: its lines, and keeping them true each time it opens.

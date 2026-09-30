@@ -516,7 +516,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-extension AppDelegate: StatusMenuHost {
+extension AppDelegate: StatusMenuHost, SettingsHost {
     var attentionCounts: SessionAttentionCounts {
         menuBarCounts
     }

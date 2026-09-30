@@ -2,6 +2,30 @@ import AgentWatchCore
 import AppKit
 import SwiftUI
 
+/// What the settings window reads and asks for from the application, beside the stores it
+/// writes itself. A protocol for the reason `StatusMenuHost` is one.
+@MainActor
+protocol SettingsHost: AnyObject {
+    var isWidgetVisible: Bool { get }
+    var isEventDebugVisible: Bool { get }
+    var checksForUpdatesOnLaunch: Bool { get set }
+    var isReadingTranscripts: Bool { get }
+    var transcriptFaultedSessionCount: Int { get }
+    func toggleWidget()
+    func showTooling()
+    func toggleEventDebug()
+    func checkForUpdates()
+    func resetWidgetPosition()
+    func resetWidgetSize()
+    #if AGENT_WATCH_DEBUG_CAPTURE
+        /// When the current recording stops, or `nil` when none is running.
+        var rawCaptureExpiry: Date? { get }
+        var recordedPayloadBytes: Int { get }
+        func toggleRawHookCapture()
+        func deleteRawHookRecordings()
+    #endif
+}
+
 /// What the panes read and write: the stores themselves, and one counter that tells SwiftUI a
 /// store has changed. The stores are not observable, so every write goes through `update`.
 @MainActor
@@ -11,7 +35,7 @@ final class SettingsModel: ObservableObject {
     let rowLayouts: RowLayoutStore
     let shortcuts: WidgetShortcutController
     let version: String?
-    private weak var host: StatusMenuHost?
+    private weak var host: SettingsHost?
 
     @Published private(set) var revision = 0
     @Published var isShown = false
@@ -62,7 +86,7 @@ final class SettingsModel: ObservableObject {
         settings: WidgetSettingsStore,
         rowLayouts: RowLayoutStore,
         shortcuts: WidgetShortcutController,
-        host: StatusMenuHost,
+        host: SettingsHost,
         version: String?
     ) {
         self.themes = themes

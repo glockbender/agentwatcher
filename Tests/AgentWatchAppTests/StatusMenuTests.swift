@@ -400,7 +400,7 @@ final class KeyRecorder: NSResponder {
 }
 
 @MainActor
-final class FakeStatusMenuHost: StatusMenuHost {
+final class FakeStatusMenuHost: StatusMenuHost, SettingsHost {
     var calls: [String] = []
     var attentionCounts = SessionAttentionCounts.empty
     var isWidgetVisible = false
