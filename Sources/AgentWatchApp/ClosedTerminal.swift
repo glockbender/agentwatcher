@@ -10,6 +10,10 @@ import Foundation
 /// Discarding the unread output ends the wait, and the agent exits on its own a moment
 /// later. `docs/agent-integration.md` has the reproduction; ADR-0013 the decision to do it
 /// on a click.
+///
+/// A terminal Ghostty kept after closing its tab is the other way in, and needs the other
+/// ending: that terminal is still drained, the agent is not exiting at all, and the hang-up
+/// a closed tab sends is the one thing it never got.
 enum ClosedTerminal {
     /// What a person runs to do the click's work by hand.
     ///
@@ -47,6 +51,39 @@ enum ClosedTerminal {
         }
         defer { close(descriptor) }
         return tcflush(descriptor, TCOFLUSH) == 0
+    }
+
+    /// What a person runs to hang up the processes of a tab Ghostty closed and kept.
+    static func hangUpCommand(processIDs: [Int32]) -> String {
+        "kill -HUP " + processIDs.map(String.init).joined(separator: " ")
+    }
+
+    /// Sends the processes of a closed tab the hang-up it never did — the agent first, then
+    /// the shell and `login` above it — and answers whether it reached them.
+    ///
+    /// `SIGHUP` rather than `SIGTERM` because it is what closing a terminal sends, and the
+    /// whole chain because closing a tab ends its shell too: left running, the shell keeps
+    /// Ghostty holding a terminal it does not show, which is half of how the next closed tab
+    /// is recognised. Claude Code answers `SIGHUP` with its ordinary shutdown
+    /// (`docs/measurements.md`).
+    static func hangUp(processIDs: [Int32]) -> Bool {
+        guard mayHangUp(processIDs, ownProcessID: getpid()) else {
+            return false
+        }
+        var reached = true
+        for (index, processID) in processIDs.enumerated() where kill(processID, SIGHUP) != 0 {
+            // A shell or `login` that has already gone was reached by the agent's own exit.
+            if index == 0 || errno != ESRCH {
+                reached = false
+            }
+        }
+        return reached
+    }
+
+    /// Never zero, one or a negative number, which `kill` reads as a whole group of processes
+    /// or all of them, and never this app.
+    static func mayHangUp(_ processIDs: [Int32], ownProcessID: Int32) -> Bool {
+        !processIDs.isEmpty && processIDs.allSatisfy { $0 > 1 && $0 != ownProcessID }
     }
 }
 

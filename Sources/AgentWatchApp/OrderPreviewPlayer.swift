@@ -47,7 +47,7 @@ extension SessionBlock {
 /// pace, one change every two seconds, with the rows sliding to their new places. Real rows,
 /// built the way the widget builds them.
 @MainActor
-final class SessionOrderTab: NSObject {
+final class OrderPreviewPlayer: NSObject {
     private let settings: WidgetSettingsStore
     private let look: () -> WidgetTheme.Look
     private let background: () -> WidgetBackground
@@ -166,7 +166,7 @@ final class SessionOrderPreviewView: NSView {
     private static let spacing: CGFloat = 2
     /// How long a row takes to reach its new place: slow enough to follow, quick enough to be
     /// over before the next change two seconds later.
-    static var moveDuration: TimeInterval { WidgetTheme.motion.rowMoveSeconds }
+    static var moveDuration: TimeInterval { ThemeInUse.timing.widget.rowMoveSeconds }
 
     private var rows: [String: (row: HUDSessionRowView, snapshot: SessionSnapshot)] = [:]
     /// The sessions shown, top to bottom.

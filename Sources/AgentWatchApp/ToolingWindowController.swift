@@ -158,8 +158,10 @@ final class ToolingWindowController: NSWindowController {
             }
         }
 
-        content.addView(Self.makeRule(width: bodyWidth), in: .top)
-        content.addView(makeSenderNote(reading, width: bodyWidth), in: .top)
+        if reading.senderIsTiedToThisBuild {
+            content.addView(Self.makeRule(width: bodyWidth), in: .top)
+            content.addView(makeSenderNote(reading, width: bodyWidth), in: .top)
+        }
         if let error = reading.lastError {
             content.addView(Self.makeNextStep(error, width: bodyWidth), in: .top)
         }
@@ -272,11 +274,9 @@ final class ToolingWindowController: NSWindowController {
         return line
     }
 
-    /// One line about the program every entry above actually runs.
-    ///
-    /// Its own note rather than a line inside each row: it is the same path in all of them,
-    /// and the thing worth saying about it — that this build claimed it, and what happens if
-    /// the link could not be made — is worth saying once.
+    /// The program every entry above runs, shown only when the stable link to it could not be
+    /// made. In the ordinary case its path is an internal detail; this is the case where it
+    /// matters, because the entries stop working when this copy of the app goes away.
     private func makeSenderNote(_ reading: ToolingWindowFacts, width: CGFloat) -> NSView {
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -287,16 +287,13 @@ final class ToolingWindowController: NSWindowController {
             in: .top
         )
         stack.addView(Self.makePath(reading.senderPath, width: width), in: .top)
-        if reading.senderIsTiedToThisBuild {
-            stack.addView(
-                Self.makeNextStep(
-                    "The stable link could not be made, so the entries name this build directly. They stop "
-                        + "working if this copy of Agent Watch is moved or deleted.",
-                    width: width
-                ),
-                in: .top
-            )
-        }
+        stack.addView(
+            Self.makeNextStep(
+                "! The hooks name this copy of Agent Watch directly. They stop working if it is moved or deleted.",
+                width: width
+            ),
+            in: .top
+        )
         return stack
     }
 

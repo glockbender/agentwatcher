@@ -15,8 +15,8 @@
 
 Two gates, both installed by `task setup`:
 
-- **commit** — `task verify`: format, tests, debug and release builds, app bundle. Does not cover
-  `ide-plugin/`.
+- **commit** — `task verify`: format, the shape of `TROUBLESHOOTING.md`, tests, debug and release
+  builds, app bundle. Does not cover `ide-plugin/`.
 - **push** — `task verify-all`: the above plus the IDE plugin (`task plugin-check`: build and
   tests, without staging — the staged file may be a signed release), the network probe that
   downloads a published release (`task probe-update`), and the end-to-end update
@@ -94,3 +94,12 @@ Keep these current as part of the change, not after it.
 - `README.md` — for somebody installing the app: keep it short, and put developer-only notes in
   this file instead. It describes the latest commit, never a particular release: no version
   numbers, no "coming in the next release", no comparison with an older build.
+- `TROUBLESHOOTING.md` — for the same reader, in the same plain English: something that looks
+  wrong while the app works as designed, or whose cause nobody could guess from the widget. Add an
+  entry in the same change whenever an investigation ends in "this is how the agent or macOS
+  behaves" — a reported bug that turned out not to be one is the typical case. An entry is
+  `## <what the person sees>` and three paragraphs: **Why:**, **What to do:** and **Checked on:**
+  (the agent or macOS version, or `not recorded`). One that rests on a measurement also gets its row in
+  `docs/measurements.md`, which is what says to re-check it after an update. `task lint` checks the
+  shape and README's link to it. Whether an entry is missing, the check cannot tell; you decide
+  that.

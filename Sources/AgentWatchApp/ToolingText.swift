@@ -6,28 +6,29 @@ import Foundation
 // alone: a person looking for the wording of an install step had no reason to open a file
 // about rows.
 
-/// How far Agent Watch got into one agent's hooks, in one sentence.
+/// How far Agent Watch got into one agent's hooks, in one line.
 ///
-/// Six states, six answers, and the two that mean something is wrong name what rather than
-/// only that. The window has room the menu line did not, so each answer says the whole thing
-/// instead of stopping at the fact.
-func toolingHookStateText(state: ToolingInstallationState, hooks: [String]) -> String {
+/// Six states, six answers, and the ones that mean something is wrong name what rather than
+/// only that. Only the states that ask something of a person carry a mark — ! for a problem,
+/// ◑ for waiting on the agent — so that a mark in this window always means "look here"; the
+/// words stay beside it, since a shape alone is not an answer (ADR-0003). ◑ rather than a
+/// clock: the system font has no ◷, and the fallback drew it at half the size of the words.
+/// How many hooks there are is left out; it is a fact for the docs, not something a person
+/// decides anything by.
+func toolingHookStateText(state: ToolingInstallationState) -> String {
     switch state {
     case .absent:
         return "Not installed"
     case .installed:
-        // The number, not a fraction of itself: with no optional hook there is nothing for
-        // the whole to be a part of. It is still worth saying, because it is what a person
-        // pays — one process launch per event.
-        return "Installed — \(hooks.count) hooks, and events are arriving"
+        return "Installed · events are arriving"
     case .unheard:
-        return "Installed — \(hooks.count) hooks, and nothing has arrived from this agent yet"
+        return "◑ Installed · nothing has arrived yet"
     case let .incomplete(missing):
-        return "Missing \(missing.count) of \(hooks.count): \(missing.joined(separator: ", "))"
+        return "! Hooks missing: \(missing.joined(separator: ", "))"
     case let .stale(senderPaths):
-        return "Registered against a sender that is gone: \(senderPaths.joined(separator: ", "))"
+        return "! Points to a program that is gone: \(senderPaths.joined(separator: ", "))"
     case .unreadable:
-        return "The file is there and cannot be read"
+        return "! The file exists but cannot be read"
     }
 }
 
@@ -43,14 +44,12 @@ func toolingHookNextStep(state: ToolingInstallationState, source: AgentSource, p
         case .claude:
             return "Claude Code loads a plugin once per session. Run /reload-plugins, or start a new session."
         case .codex:
-            return "Codex runs a hook only after being told to trust its definition. Open Codex and accept the "
-                + "prompt for these records; until then they sit in the file and never fire."
+            return "Open Codex and accept its prompt to trust these hooks. Until then they do not run."
         }
     case .unreadable:
         // The one state where the app offers nothing: its only repair is a write, and this is
         // where writing over contents nobody can state is what must not happen.
-        return "Agent Watch will not write over a file it cannot read. Repair or move \(path), then reopen "
-            + "this window."
+        return "Agent Watch does not change a file it cannot read. Fix or move \(path), then reopen this window."
     case .absent, .installed, .incomplete, .stale:
         return nil
     }
@@ -77,13 +76,13 @@ func statusLineStateText(state: StatusLineState) -> String {
     case .notSet:
         "Not connected"
     case .connected:
-        "Connected — your own command still runs behind it"
+        "Connected · your own command still runs"
     case let .theirs(command):
         // The promise comes before the press. A person with their own status line needs to
         // know it survives before they find out.
-        "Not connected — your own command is kept and wrapped, not replaced: \(command)"
+        "Not connected · your command is kept when you connect: \(command)"
     case .unreadable:
-        "settings.json is there and cannot be read"
+        "! settings.json exists but cannot be read"
     }
 }
 
@@ -94,9 +93,8 @@ func statusLineStateText(state: StatusLineState) -> String {
 func statusLineNextStep(state: StatusLineState) -> String? {
     switch state {
     case .notSet, .theirs:
-        "The only place per-session context size and account usage reach the app. It costs one extra process "
-            + "launch per status-line refresh — measured at about 1 s instead of 0.5 s — and the agent's turn "
-            + "does not wait for it."
+        "Adds each session's context size and your account usage to the widget. It runs one extra process "
+            + "per refresh; the agent does not wait for it."
     case .connected, .unreadable:
         nil
     }
@@ -110,24 +108,18 @@ func statusLineActionTitle(state: StatusLineState) -> String? {
     }
 }
 
-/// What the plugin does, and what the one press on a row asks. Said once, at the top of the
+/// What the plugin does, and why it is installed from a file. Said once, at the top of the
 /// section, so no row has to repeat it.
 ///
-/// The second sentence is there because the button it names is not on every row: `Check`
-/// belongs to a running IDE only, and a button that is absent explains nothing by itself.
+/// What `Check` needs is not said here: an IDE that is not running says so in its own row,
+/// beside the greyed button, and that is where a person looks.
 let idePluginPurpose =
-    "Takes a click on a session's row to its terminal tab, not just to the IDE window. Optional. "
-    + "Check asks an IDE whether the plugin answers now, and needs that IDE running."
+    "Optional. A click on a row opens the exact terminal tab, not just the IDE window. "
+    + "Not on JetBrains Marketplace yet: install it from the file below."
 
 /// Said rather than left blank: an empty list means either no IDE here or an IDE somewhere
 /// this app did not look, and only one of those is a problem.
 let noJetBrainsIDEText = "Looked in /Applications, ~/Applications and everything running."
-
-/// The route that does not exist yet, named anyway — it is the one that will matter, and
-/// without it the file below reads as the intended way in.
-let idePluginMarketplaceText =
-    "Not published yet. It will replace the steps below with a search on the IDE's own Plugins page, "
-    + "and updates will stop needing a restart."
 
 /// Where the plugin stands in one IDE.
 ///
@@ -142,27 +134,35 @@ func idePluginStateText(presence: IDEPluginPresence, isRunning: Bool) -> String 
     // Said in words only when it is not running, because that is the case that takes
     // something away — the row's dot carries the other one, and a line that opens with
     // "Running ·" on every row is four words nobody reads twice.
-    let running = isRunning ? "" : "Not running · "
+    let answer = idePluginAnswerText(presence: presence)
+    guard !isRunning else {
+        return answer.prefix(1).uppercased() + answer.dropFirst()
+    }
+    return "Not running · \(answer)"
+}
+
+/// What the plugin last said, starting in lower case so that it can follow "Not running ·".
+private func idePluginAnswerText(presence: IDEPluginPresence) -> String {
     switch presence {
     case .unaddressable(.bundleNamesNoScheme):
-        return "No URL scheme in this bundle, so no address can reach it"
+        return "no URL scheme in this bundle, so no address can reach it"
     case .unaddressable(.daemonMissing):
-        return "The JetBrains daemon is missing, so no address reaches this IDE"
+        return "the JetBrains daemon is missing, so no address reaches this IDE"
     case .unaddressable:
-        return "Nothing can address this IDE"
+        return "nothing can address this IDE"
     case .neverAnswered:
-        return "\(running)the plugin has never answered here"
+        return "the plugin has never answered here"
     case .checking:
-        return "\(running)asked, waiting for an answer"
+        return "asked, waiting for an answer"
     case .askedAndSilent(let reply):
         guard reply != nil else {
-            return "\(running)asked just now, no answer: the plugin is not loaded"
+            return "asked just now, no answer: the plugin is not loaded"
         }
-        return "\(running)asked just now, no answer: the reply below is from a plugin that has gone"
+        return "asked just now, no answer: the reply below is from a plugin that has gone"
     case .answeredEarlier(let reply):
-        return "\(running)\(idePluginName(reply)) answered here earlier"
+        return "\(idePluginName(reply)) answered here earlier"
     case .confirmed(let reply):
-        return "\(running)\(idePluginName(reply)) answered just now"
+        return "\(idePluginName(reply)) answered just now"
     }
 }
 
@@ -179,14 +179,12 @@ func idePluginReplyDetails(presence: IDEPluginPresence) -> [String] {
     guard let reply = presence.reply else {
         return []
     }
-    var parts: [String] = []
-    if let answeredAt = reply.answeredAt {
-        parts.append("Answered \(idePluginDateFormatter.string(from: answeredAt))")
+    // The IDE's build number stays in the reply file: it tells a person nothing the row's own
+    // name does not, and it is there for whoever debugs the plugin.
+    guard let answeredAt = reply.answeredAt else {
+        return []
     }
-    if let ideBuild = reply.ideBuild {
-        parts.append("IDE build \(ideBuild)")
-    }
-    return parts.isEmpty ? [] : [parts.joined(separator: " · ")]
+    return ["Answered \(idePluginDateFormatter.string(from: answeredAt))"]
 }
 
 /// The person's own calendar and clock: this is a timestamp they compare against "when did I
@@ -226,7 +224,7 @@ private func idePluginUpdateStep(installedVersion: String?, staged: StagedIDEPlu
     else {
         return nil
     }
-    return "Newer file here: \(staged.version) against \(installedVersion). Updating from a file restarts the IDE."
+    return "Update available: \(staged.version) (installed: \(installedVersion)). Installing it restarts the IDE."
 }
 
 /// Why the check is off, when it is.
@@ -276,14 +274,13 @@ func idePluginFileText(staged: StagedIDEPlugin?) -> String {
 /// dialog that accepts it belongs to the IDE.
 func idePluginFileNextStep(staged: StagedIDEPlugin?) -> String? {
     guard staged == nil else {
-        return "Open Plugins beside an IDE, then the gear on that page → Install Plugin from Disk → paste. "
-            + "The path is already copied. A first install needs no restart."
+        return "Open Plugins beside an IDE copies this file's path and opens that IDE's Plugins page. "
+            + "There, choose the gear → Install Plugin from Disk, and paste. A first install needs no restart."
     }
     // Deliberately not "build it": this is read by somebody who has the application and not
-    // the repository. What it promises is a download; what it allows is a file put here by
-    // hand, which is what the person writing the plugin does.
-    return "Downloaded from the project's release page once there is one. Or put "
-        + "agent-watch-ide-<version>.zip here yourself — the folder is yours to create."
+    // the repository.
+    return "Download agent-watch-ide-<version>.zip from the project's release page and put it in this folder. "
+        + "You can also install it in the IDE from wherever you saved it."
 }
 
 /// What the widget says when nothing can report to it, and nothing otherwise.

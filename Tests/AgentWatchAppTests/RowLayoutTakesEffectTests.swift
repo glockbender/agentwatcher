@@ -56,7 +56,7 @@ final class RowLayoutTakesEffectTests: XCTestCase {
         let rowLayouts = RowLayoutStore(preferences: preferences)
         let controller = HUDPanelController(
             reach: { _ in .nowhere },
-            focus: { _ in },
+            focus: { _ in .nothingRaised },
             remove: { _ in },
             background: .graphite,
             lampScheme: LampScheme(),

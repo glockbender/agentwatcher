@@ -202,10 +202,10 @@ final class HUDRowLayoutTests: XCTestCase {
     /// each of the four answers has to be a different sentence.
     func testTheTranscriptMenuSaysWhichOfTheFourStatesItIsIn() {
         let summaries = [
-            transcriptMenuSummary(interval: nil, isReading: false, faultedSessionCount: 0),
-            transcriptMenuSummary(interval: 5, isReading: false, faultedSessionCount: 0),
-            transcriptMenuSummary(interval: 5, isReading: true, faultedSessionCount: 0),
-            transcriptMenuSummary(interval: 5, isReading: true, faultedSessionCount: 2),
+            transcriptReadingSummary(interval: nil, isReading: false, faultedSessionCount: 0),
+            transcriptReadingSummary(interval: 5, isReading: false, faultedSessionCount: 0),
+            transcriptReadingSummary(interval: 5, isReading: true, faultedSessionCount: 0),
+            transcriptReadingSummary(interval: 5, isReading: true, faultedSessionCount: 2),
         ]
 
         XCTAssertEqual(Set(summaries).count, 4, "four states, four answers")
@@ -224,14 +224,13 @@ final class HUDRowLayoutTests: XCTestCase {
     /// their tooling, so each answer has to be a different sentence — and the two that mean
     /// something is wrong have to name what, not just that.
     func testTheToolingWindowSaysWhichStateEachIntegrationIsIn() {
-        let hooks = ToolingHooks.hooks(for: .claude)
         let titles = [
-            toolingHookStateText(state: .absent, hooks: hooks),
-            toolingHookStateText(state: .installed, hooks: hooks),
-            toolingHookStateText(state: .unheard, hooks: hooks),
-            toolingHookStateText(state: .incomplete(missing: ["Stop"]), hooks: hooks),
-            toolingHookStateText(state: .stale(senderPaths: ["/gone/AgentWatchSend"]), hooks: hooks),
-            toolingHookStateText(state: .unreadable, hooks: hooks),
+            toolingHookStateText(state: .absent),
+            toolingHookStateText(state: .installed),
+            toolingHookStateText(state: .unheard),
+            toolingHookStateText(state: .incomplete(missing: ["Stop"])),
+            toolingHookStateText(state: .stale(senderPaths: ["/gone/AgentWatchSend"])),
+            toolingHookStateText(state: .unreadable),
         ]
 
         XCTAssertEqual(Set(titles).count, 6, "six states, six answers")
@@ -242,6 +241,14 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertTrue(titles[2].contains("nothing"), "\(titles[2]) does not say what is missing")
         XCTAssertTrue(titles[3].contains("Stop"), "a missing hook is named, not counted")
         XCTAssertTrue(titles[4].contains("/gone/AgentWatchSend"), "a stale entry shows where it points")
+
+        // A mark means "look here", so only the states that ask something of a person carry
+        // one: the owner asked for no more than that.
+        XCTAssertEqual(
+            titles.map { $0.first.map(String.init) },
+            ["N", "I", "◑", "!", "!", "!"],
+            "a mark only on waiting and on a problem: \(titles)"
+        )
     }
 
     /// The one thing the widget is allowed to ask for. With no integration at all it can show
@@ -295,8 +302,8 @@ final class HUDRowLayoutTests: XCTestCase {
     /// The number stopped meaning "how often" when reads began following hooks: it is now a
     /// ceiling on the rate, and a menu that still promised a metronome would be wrong.
     func testTheIntervalMenuPromisesACeilingRatherThanACadence() {
-        XCTAssertEqual(transcriptIntervalMenuTitle(interval: nil), "Off")
-        XCTAssertEqual(transcriptIntervalMenuTitle(interval: 5), "At most every 5 seconds")
+        XCTAssertEqual(transcriptIntervalTitle(interval: nil), "Off")
+        XCTAssertEqual(transcriptIntervalTitle(interval: 5), "At most every 5 seconds")
     }
 
     /// A transcript reports token counts and never says what they are a fraction of, so the
@@ -339,6 +346,42 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertTrue(shown.contains(longName))
         XCTAssertFalse(hidden.contains(longName))
         XCTAssertTrue(hidden.contains("Claude Code"), "everything else the card knows still stands")
+    }
+
+    /// A running session without a name was reported as a bug, and all a row can say is that
+    /// the name is missing. The card says why, where the name would stand — per agent, and for
+    /// a row found by its process before any event arrived.
+    func testTheCardSaysWhyASessionHasNoName() {
+        let claude = testSession(source: .claude, title: nil, lastObservedAt: now)
+        let codex = testSession(source: .codex, title: nil, lastObservedAt: now)
+        let discovered = DiscoveredAgentProcess(
+            source: .claude,
+            processID: 4_242,
+            startedAt: now,
+            projectName: "agent-watch"
+        ).row(arrivalIndex: 0)
+
+        func firstLine(_ session: SessionSnapshot, _ layout: RowLayout = .standard) -> String? {
+            hoverCardText(for: session, now: now, layout: layout).split(separator: "\n").first.map(String.init)
+        }
+
+        XCTAssertEqual(
+            firstLine(claude),
+            "No name yet — Claude Code names a session after a prompt of 10 or more characters; /rename names it now"
+        )
+        XCTAssertEqual(firstLine(codex), "No name yet — Codex has not named this thread")
+        XCTAssertEqual(
+            firstLine(discovered), "No name yet — found by its process; the name comes with the session's first event")
+        XCTAssertEqual(
+            firstLine(claude, RowLayout(parts: RowLayout.standard.parts, nameStyle: .title)),
+            firstLine(claude),
+            "`Name only` draws nothing in the row, so the card is the one place left to say why"
+        )
+        XCTAssertFalse(
+            hoverCardText(for: claude, now: now, layout: layoutWithoutTheName).contains("No name yet"),
+            "a template without the name has stopped talking about it"
+        )
+        XCTAssertFalse(hoverCardText(for: snapshot(), now: now, layout: .standard).contains("No name yet"))
     }
 
     /// The card is silent about a click that works, and speaks when the host is gone.
@@ -838,11 +881,11 @@ final class HUDRowLayoutTests: XCTestCase {
 
                 XCTAssertGreaterThanOrEqual(
                     greyed, working * Self.faintestGreyedMark,
-                    "at \(percent)% on \(background.title) the greyed × is too faint to see"
+                    "at \(percent)% on \(background.color) the greyed × is too faint to see"
                 )
                 XCTAssertLessThan(
                     greyed, working,
-                    "at \(percent)% on \(background.title) the greyed × is as strong as a working one"
+                    "at \(percent)% on \(background.color) the greyed × is as strong as a working one"
                 )
             }
         }
@@ -1088,10 +1131,10 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertTrue(tinted(row()).isEmpty)
     }
 
-    /// Shape as well as colour, as the visual language requires — half the palette is light,
-    /// and a warning tint that works on graphite can vanish on sand.
-    func testTheWarningIsTintedForBothHalvesOfThePalette() {
-        XCTAssertNotEqual(WidgetBackground.graphite.warningColor, WidgetBackground.sand.warningColor)
+    /// Shape as well as colour, as the visual language requires — a warning tint that works on
+    /// graphite can vanish on a light background.
+    func testTheWarningIsTintedForDarkAndLightBackgrounds() {
+        XCTAssertNotEqual(WidgetBackground.graphite.warningColor, WidgetBackground.pearl.warningColor)
     }
 
     // MARK: - Building a row

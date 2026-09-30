@@ -70,19 +70,36 @@ final class MenuSessionLinesTests: XCTestCase {
         XCTAssertEqual(lines.map(\.isEnabled), [true, true, true])
     }
 
-    /// The one click in the app that ends something. The widget's card says so before the
-    /// click; a menu line has no card, so the line itself has to.
-    func testALineWhoseClickEndsTheAgentSaysSo() {
+    /// The one click in the app that can end something, and it asks first, in the menu itself.
+    /// The line says a question follows, the way a menu does: with an ellipsis.
+    func testALineWhoseClickAsksToEndTheAgentSaysSo() {
         let lines = menuSessionLines(
             for: [
                 testSession(index: 0, title: "Left behind", phase: .terminalClosed, lastObservedAt: now)
             ],
             listing: [.needsPerson],
-            reach: { _ in .closedTerminal(devicePath: "/dev/ttys004") }
+            reach: { _ in .closedTerminal(.discardOutput(devicePath: "/dev/ttys004")) }
         )
 
-        XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed, click ends the agent"])
+        XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed; end its agent…"])
         XCTAssertEqual(lines.map(\.isEnabled), [true])
+        XCTAssertEqual(lines.map(\.leadsToQuestion), [true])
+    }
+
+    /// A tab Ghostty closed and kept is ended differently and said the same way: the person
+    /// closed a terminal either way, and the line is about what the click does.
+    func testALineWhoseClickHangsUpTheAgentSaysTheSame() {
+        let lines = menuSessionLines(
+            for: [
+                testSession(index: 0, title: "Left behind", phase: .terminalClosed, lastObservedAt: now)
+            ],
+            listing: [.needsPerson],
+            reach: { _ in .closedTerminal(.hangUp(processIDs: [52671, 52482, 52480])) }
+        )
+
+        XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed; end its agent…"])
+        XCTAssertEqual(lines.map(\.isEnabled), [true])
+        XCTAssertEqual(lines.map(\.leadsToQuestion), [true])
     }
 
     /// Nothing to end it with, so the click would do nothing: the line stays, greyed, and says
@@ -93,11 +110,12 @@ final class MenuSessionLinesTests: XCTestCase {
                 testSession(index: 0, title: "Left behind", phase: .terminalClosed, lastObservedAt: now)
             ],
             listing: [.needsPerson],
-            reach: { _ in .closedTerminal(devicePath: nil) }
+            reach: { _ in .closedTerminal(nil) }
         )
 
         XCTAssertEqual(lines.map(\.title), ["Left behind — terminal closed, nothing here can end it"])
         XCTAssertEqual(lines.map(\.isEnabled), [false])
+        XCTAssertEqual(lines.map(\.leadsToQuestion), [false])
     }
 
     /// Asking where a session is walks the process tree, and the menu opens often. Only a
@@ -110,7 +128,7 @@ final class MenuSessionLinesTests: XCTestCase {
             listing: Set(SessionAttention.counted),
             reach: { snapshot in
                 asked.append(snapshot.id)
-                return .closedTerminal(devicePath: "/dev/ttys004")
+                return .closedTerminal(.discardOutput(devicePath: "/dev/ttys004"))
             }
         )
 

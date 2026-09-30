@@ -133,20 +133,3 @@ struct LampScheme: Equatable {
         }
     }
 }
-
-extension NSColor {
-    /// A fixed colour from its `#RRGGBB` spelling, for the values written into this source
-    /// file. Distinct from `init?(hex:)`, which reads what a person may have typed: a literal
-    /// here is checked when the tests run, and a failure would mean this file is wrong.
-    convenience init(sRGB hex: String) {
-        guard let color = NSColor(hex: hex) else {
-            preconditionFailure("not a colour: \(hex)")
-        }
-        self.init(
-            srgbRed: color.redComponent,
-            green: color.greenComponent,
-            blue: color.blueComponent,
-            alpha: 1
-        )
-    }
-}

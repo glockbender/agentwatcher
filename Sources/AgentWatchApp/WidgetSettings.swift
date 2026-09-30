@@ -27,8 +27,6 @@ enum WidgetSetting {
     case interactionLocks
     case closedSessionRetention
     case transcriptPollInterval
-    case background
-    case backgroundOpacity
     case theme
     case scale
     case toggleShortcut
@@ -112,8 +110,6 @@ final class WidgetSettingsStore: PreferenceDefaults {
     private enum Key {
         static let locksPosition = "lockWidgetPosition"
         static let locksSize = "lockWidgetSize"
-        static let showsFullScreenDot = "showsFullScreenDot"
-        static let showsWidget = "showsWidget"
         static let closedSessionRetention = "closedSessionRetentionSeconds"
         static let transcriptPollInterval = "transcriptPollIntervalSeconds"
         static let scale = "widgetScale"
@@ -124,6 +120,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let menuSessionAttentions = "menuSessionAttentions"
         static let sessionOrder = "sessionOrder"
         static let sessionBlockOrder = "sessionBlockOrder"
+        static let showsWidget = "showsWidget"
+        static let showsFullScreenDot = "showsFullScreenDot"
     }
 
     /// Something waiting for the person, and something finished for them to look at: the two
@@ -136,8 +134,6 @@ final class WidgetSettingsStore: PreferenceDefaults {
         [
             Key.locksPosition: .bool(false),
             Key.locksSize: .bool(false),
-            Key.showsFullScreenDot: .bool(true),
-            Key.showsWidget: .bool(false),
             Key.closedSessionRetention: .number(Self.defaultClosedSessionRetention),
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
             Key.scale: .number(Double(Self.defaultScale)),
@@ -148,15 +144,17 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.menuSessionAttentions: .array(Self.stored(Self.defaultMenuSessionAttentions).map(JSONValue.string)),
             Key.sessionOrder: .string(SessionOrder.arrival.rawValue),
             Key.sessionBlockOrder: .array(SessionBlock.defaultOrder.map { .string($0.rawValue) }),
+            Key.showsWidget: .bool(false),
+            Key.showsFullScreenDot: .bool(true),
         ]
     }
 
     /// Told after every write, so the follow-up for each setting is written once.
     ///
     /// Three collaborators read this store lazily and nothing tells them a value has moved,
-    /// so every setting needs a poke afterwards — and each needs a different one. Those pokes used to live in the menu actions that made the write, which meant the
-    /// full list of who has to be told was knowledge every writer had to carry. A forgotten
-    /// one produces a setting that appears not to work and then fixes itself minutes later.
+    /// so every setting needs a poke afterwards — and each needs a different one. Written once
+    /// here, rather than by every writer: a forgotten one produces a setting that appears not
+    /// to work and then fixes itself minutes later.
     var onChange: ((WidgetSetting) -> Void)?
 
     init(preferences: PreferenceFile) {
@@ -169,25 +167,6 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     var locksSize: Bool {
         preferences.flag(forKey: Key.locksSize) ?? false
-    }
-
-    /// Whether the widget was on screen when it was last shown or hidden. Hidden on a fresh
-    /// install: the menu bar says what is going on, and the widget is one click away.
-    var showsWidget: Bool {
-        preferences.flag(forKey: Key.showsWidget) ?? false
-    }
-
-    func setShowsWidget(_ isShown: Bool) {
-        preferences.set(isShown, forKey: Key.showsWidget)
-    }
-
-    var showsFullScreenDot: Bool {
-        preferences.flag(forKey: Key.showsFullScreenDot) ?? true
-    }
-
-    func setShowsFullScreenDot(_ isShown: Bool) {
-        preferences.set(isShown, forKey: Key.showsFullScreenDot)
-        onChange?(.menuBarIcon)
     }
 
     var closedSessionRetention: ClosedSessionRetention {
@@ -270,6 +249,27 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     func setMenuBarIconStyle(_ style: MenuBarIconStyle) {
         preferences.set(style.rawValue, forKey: Key.menuBarIconStyle)
+        onChange?(.menuBarIcon)
+    }
+
+    /// Whether the widget was on screen when it was last shown or hidden, so the next launch
+    /// opens it the same way. Hidden on a fresh install: the menu bar says what is going on,
+    /// and the widget is one click away.
+    var showsWidget: Bool {
+        preferences.flag(forKey: Key.showsWidget) ?? false
+    }
+
+    func setShowsWidget(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsWidget)
+    }
+
+    /// Whether a full-screen display gets the dot that stands in for the hidden menu bar.
+    var showsFullScreenDot: Bool {
+        preferences.flag(forKey: Key.showsFullScreenDot) ?? true
+    }
+
+    func setShowsFullScreenDot(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsFullScreenDot)
         onChange?(.menuBarIcon)
     }
 

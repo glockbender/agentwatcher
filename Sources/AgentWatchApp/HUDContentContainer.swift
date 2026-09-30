@@ -10,6 +10,9 @@ import AppKit
 final class HUDContentContainer: NSView {
     private let edges = WidgetEdgeHighlightView()
     private(set) var body: NSView?
+    /// Over the body and under the edges, so the widget can still be resized while it is
+    /// open and the dialog lays itself out again for the new size.
+    private(set) var dialog: EndAgentDialog?
     /// Called when the pointer leaves the widget altogether.
     var onPointerLeft: () -> Void = {}
     /// Whether the pointer is over the widget, which is when its rows hold their places.
@@ -87,8 +90,41 @@ final class HUDContentContainer: NSView {
     func setBody(_ view: NSView) {
         body?.removeFromSuperview()
         body = view
-        // Below the overlay, which never takes a hit and so never gets in the body's way.
+        // Below the overlay, which never takes a hit and so never gets in the body's way —
+        // and below an open dialog, which a rebuilt list must not come up through.
+        addSubview(view, positioned: .below, relativeTo: dialog ?? edges)
+        view.pinToEdges(of: self)
+    }
+
+    /// Fades the dialog in over everything the widget shows. Added transparent and then
+    /// faded, never the other way round: added opaque, its first frame is drawn at full
+    /// strength before the fade starts, which is a flash.
+    func showDialog(_ view: EndAgentDialog) {
+        dialog?.removeFromSuperview()
+        dialog = view
+        view.alphaValue = 0
         addSubview(view, positioned: .below, relativeTo: edges)
         view.pinToEdges(of: self)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = EndAgentDialog.fadeDuration
+            view.animator().alphaValue = 1
+        }
+    }
+
+    func hideDialog(animated: Bool = true) {
+        guard let dialog else {
+            return
+        }
+        self.dialog = nil
+        guard animated else {
+            dialog.removeFromSuperview()
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = EndAgentDialog.fadeDuration
+            dialog.animator().alphaValue = 0
+        } completionHandler: {
+            MainActor.assumeIsolated { dialog.removeFromSuperview() }
+        }
     }
 }

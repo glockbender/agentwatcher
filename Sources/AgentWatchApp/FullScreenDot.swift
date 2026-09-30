@@ -8,10 +8,10 @@ import AppKit
 /// window covers. It cycles through the theme colour of every state that holds sessions, each
 /// for its share of them. Checked when the space or the frontmost
 /// application changes and when the counts move, never on a timer. Steps aside while the pointer
-/// is in the menu bar, which the system slides down over the dot, and returns a second after.
+/// is in the menu bar, which the system slides down over the dot, and returns after the theme's delay.
 @MainActor
 final class FullScreenDot {
-    private static var motion: WidgetTheme.Motion { WidgetTheme.motion }
+    private static var timing: WidgetTheme.Timing.Dot { ThemeInUse.timing.dot }
 
     private let panel: NSPanel
     private let dot = NSView()
@@ -70,9 +70,9 @@ final class FullScreenDot {
             let count = counts.count(of: state)
             return count > 0 ? (state.accent, Double(count)) : nil
         }
-        let diameter = Self.motion.dotDiameter
+        let diameter = Self.timing.diameter
         dot.layer?.cornerRadius = diameter / 2
-        show(Self.cycle(shares, fade: Self.motion.dotFadeShare), on: dot.layer)
+        show(Self.cycle(shares, fade: Self.timing.fadeShare), on: dot.layer)
         panel.setFrame(
             NSRect(origin: Self.origin(on: screen), size: NSSize(width: diameter, height: diameter)), display: true)
         panel.orderFrontRegardless()
@@ -109,7 +109,7 @@ final class FullScreenDot {
         let animation = CAKeyframeAnimation(keyPath: "backgroundColor")
         animation.values = frames.map(\.color.cgColor)
         animation.keyTimes = frames.map { NSNumber(value: $0.time) }
-        animation.duration = Self.motion.dotCycleSeconds
+        animation.duration = Self.timing.cycle
         animation.repeatCount = .infinity
         animation.calculationMode = .linear
         layer.add(animation, forKey: "cycle")
@@ -164,7 +164,7 @@ final class FullScreenDot {
                 self?.refresh()
             }
             comeBack = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.timing.returnDelay, execute: work)
         }
     }
 
@@ -175,9 +175,9 @@ final class FullScreenDot {
     /// In the corner the theme names, beside the notch where the screen has one — in the band the
     /// system leaves unobscured — and in the screen's own corner otherwise.
     static func origin(on screen: NSScreen) -> NSPoint {
-        let diameter = motion.dotDiameter
-        let inset = motion.dotInset
-        let right = motion.dotCorner == "topRight"
+        let diameter = timing.diameter
+        let inset = timing.inset
+        let right = timing.isOnTheRight
         let band = right ? screen.auxiliaryTopRightArea : screen.auxiliaryTopLeftArea
         let area =
             band.flatMap { $0.height > diameter ? $0 : nil }

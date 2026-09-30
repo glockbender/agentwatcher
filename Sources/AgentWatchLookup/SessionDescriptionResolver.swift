@@ -99,8 +99,8 @@ public enum SessionDescriptionResolver {
         return name.isEmpty || name == "/" ? nil : name
     }
 
-    /// Claude writes `ai-title`, `gitBranch` and per-turn `usage` into the transcript. One
-    /// backward pass reads all three, stopping as soon as each has been answered.
+    /// Claude writes the session's name, `gitBranch` and per-turn `usage` into the transcript.
+    /// One backward pass reads all three, stopping as soon as each has been answered.
     static func claudeDescription(payload: JSONValue, fileSystem: TitleFileSystem) -> SessionDescription? {
         guard
             let transcriptPath = string("transcript_path", in: payload),
@@ -112,11 +112,12 @@ public enum SessionDescriptionResolver {
     }
 
     public static func claudeDescription(inTranscriptTail tail: Data) -> SessionDescription {
-        var title: String?
+        let lines = linesNewestFirst(in: tail)
+        var title = customTitle(inLinesNewestFirst: lines)
         var branch: String?
         var tokens: Int?
 
-        for fields in objectsNewestFirst(in: tail) {
+        for fields in lines.lazy.compactMap(object(inLine:)) {
             if title == nil, case .string("ai-title")? = fields["type"], case let .string(value)? = fields["aiTitle"] {
                 title = value
             }
@@ -131,6 +132,30 @@ public enum SessionDescriptionResolver {
             }
         }
         return SessionDescription(title: title, gitBranch: branch, contextInputTokens: tokens)
+    }
+
+    /// The name a person gave the session with `/rename` or `claude --name`. Claude Code puts
+    /// it above its own `ai-title`, in the terminal tab and in `/resume`, so the widget does
+    /// too — and it is the only name a session has when Claude Code generates none.
+    ///
+    /// Only the newest record counts: an empty one is how a name is taken back, and the name
+    /// it replaced must not come back. Lines are matched as text before any is decoded, the
+    /// way Claude Code finds this record itself: a session nobody named has none, and proving
+    /// that by decoding would cost a decode of every line in the tail on every event.
+    private static func customTitle(inLinesNewestFirst lines: [Substring]) -> String? {
+        let newest = lines.lazy
+            .filter { $0.contains(#""custom-title""#) }
+            .compactMap(object(inLine:))
+            .first { fields in
+                if case .string("custom-title")? = fields["type"] { true } else { false }
+            }
+        guard
+            case let .string(name)? = newest?["customTitle"],
+            !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+        return name
     }
 
     /// Everything the last turn carried into the model: fresh input, what was read from the
@@ -209,20 +234,23 @@ public enum SessionDescriptionResolver {
     /// Lazy, so a caller that finds what it wants in the last few lines pays for those and
     /// stops.
     private static func objectsNewestFirst(in data: Data) -> some Sequence<[String: JSONValue]> {
-        let text = String(decoding: data, as: UTF8.self)
-        let decoder = JSONDecoder()
-        return text.split(separator: "\n", omittingEmptySubsequences: true)
+        linesNewestFirst(in: data).lazy.compactMap(object(inLine:))
+    }
+
+    private static func linesNewestFirst(in data: Data) -> [Substring] {
+        String(decoding: data, as: UTF8.self)
+            .split(separator: "\n", omittingEmptySubsequences: true)
             .reversed()
-            .lazy
-            .compactMap { line -> [String: JSONValue]? in
-                guard
-                    let value = try? decoder.decode(JSONValue.self, from: Data(line.utf8)),
-                    case let .object(fields) = value
-                else {
-                    return nil
-                }
-                return fields
-            }
+    }
+
+    private static func object(inLine line: Substring) -> [String: JSONValue]? {
+        guard
+            let value = try? JSONDecoder().decode(JSONValue.self, from: Data(line.utf8)),
+            case let .object(fields) = value
+        else {
+            return nil
+        }
+        return fields
     }
 
     private static func string(_ key: String, in payload: JSONValue) -> String? {

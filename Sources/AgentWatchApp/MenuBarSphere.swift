@@ -53,7 +53,10 @@ enum MenuBarSphereRenderer {
     ///
     /// `scale` is pixels per point. The sphere is painted a pixel at a time, so it has to be
     /// painted for the screen it is shown on rather than scaled to it.
-    static func draw(_ cells: [MenuBarIconCell], dark: Bool, scale: CGFloat = 2) -> MenuBarIconDrawing? {
+    static func draw(
+        _ cells: [MenuBarIconCell], dark: Bool, scale: CGFloat = 2,
+        motion: WidgetTheme.Sphere = ThemeInUse.look.sphereMotion
+    ) -> MenuBarIconDrawing? {
         guard !cells.isEmpty else {
             return nil
         }
@@ -76,9 +79,12 @@ enum MenuBarSphereRenderer {
             size: size,
             parts: [
                 MenuBarIconPart(
-                    image: colours, frame: frame, glow: first.accent, glowBreathes: needsPerson, sways: alive),
+                    image: colours, frame: frame, glow: motion.halo ? first.accent : nil,
+                    glowBreathes: motion.haloBreathes && needsPerson, glowCycle: motion.haloCycle,
+                    sways: motion.sway && alive, swayDegrees: motion.swayDegrees, swayCycle: motion.swayCycle),
                 MenuBarIconPart(image: light, frame: frame),
-            ]
+            ],
+            swellSeconds: motion.swell ? motion.swellSeconds : nil
         )
     }
 

@@ -153,8 +153,11 @@ final class SessionHostRegistry {
     /// alone — and raising first also keeps today's behaviour intact for every host that has
     /// no plugin behind it. The route, though, is decided before the raise: how many windows
     /// to bring forward is a question only the route can answer.
+    ///
+    /// - Parameter otherSessionNames: what the other rows are called, which is how Ghostty's
+    ///   tab titles are shown to carry session names at all (`GhosttyFocus.decision`).
     @discardableResult
-    func focus(_ snapshot: SessionSnapshot) -> FocusOutcome {
+    func focus(_ snapshot: SessionSnapshot, otherSessionNames: [String] = []) -> FocusOutcome {
         // A background session has no application anywhere above it and never will — its
         // tree ends at `launchd` — so there is no host to raise. What it has is a door, and
         // the click opens that instead. Unless a terminal is showing it already: then the
@@ -166,9 +169,29 @@ final class SessionHostRegistry {
         guard let application = application(for: snapshot) else {
             return FocusOutcome(raised: false, tab: .unaddressable)
         }
-        let route = tabRoute(of: snapshot, in: application)
+        let route = tabRoute(of: snapshot, in: application, otherSessionNames: otherSessionNames)
+        // Nothing is raised for a tab that is gone. Ghostty would show whichever window came
+        // forward, and in the case reported that was an empty shell nobody had asked for.
+        if case let .noTab(attempt) = route, case .gone = attempt {
+            return FocusOutcome(raised: false, tab: attempt)
+        }
         let raised = application.activate(options: Self.activationOptions(for: route))
         return FocusOutcome(raised: raised, tab: follow(route))
+    }
+
+    /// Whether this session's tab is still gone with its terminal kept, asked again by the
+    /// click that ends its agent — the first click's finding may be minutes old.
+    func tabIsGoneWithTerminalKept(_ snapshot: SessionSnapshot, otherSessionNames: [String]) -> Bool {
+        guard
+            let application = application(for: snapshot),
+            application.bundleIdentifier == GhosttyScripting.bundleIdentifier,
+            case let .noTab(attempt) = ghosttyRoute(
+                of: snapshot, heldBy: application.processIdentifier, otherSessionNames: otherSessionNames),
+            case .gone = attempt
+        else {
+            return false
+        }
+        return true
     }
 
     /// Opens a background session in a new Ghostty tab with `claude attach`.
@@ -240,22 +263,34 @@ final class SessionHostRegistry {
     /// address a tab, and that is the ordinary answer rather than a fault.
     private func tabRoute(
         of snapshot: SessionSnapshot,
-        in application: NSRunningApplication
+        in application: NSRunningApplication,
+        otherSessionNames: [String]
     ) -> TabRoute {
         if application.bundleIdentifier == GhosttyScripting.bundleIdentifier {
-            return ghosttyRoute(of: snapshot)
+            return ghosttyRoute(
+                of: snapshot, heldBy: application.processIdentifier, otherSessionNames: otherSessionNames)
         }
         return ideRoute(of: snapshot, in: application)
     }
 
-    private func ghosttyRoute(of snapshot: SessionSnapshot) -> TabRoute {
+    private func ghosttyRoute(
+        of snapshot: SessionSnapshot,
+        heldBy ghosttyProcessID: pid_t,
+        otherSessionNames: [String]
+    ) -> TabRoute {
         guard let terminals = GhosttyScripting.terminals() else {
             // Ghostty answered nothing, and by far the likeliest reason is that this app has
             // not been allowed to control it. Named rather than swallowed, because the fix
             // is one switch in System Settings and nothing else would ever hint at it.
             return .noTab(.missing("Ghostty did not answer; check Automation permission"))
         }
-        switch GhosttyFocus.decision(among: terminals, sessionName: snapshot.title) {
+        let decision = GhosttyFocus.decision(
+            among: terminals,
+            sessionName: snapshot.title,
+            heldTerminalCount: AgentProcessLocator.terminalCount(heldBy: ghosttyProcessID),
+            otherSessionNames: otherSessionNames
+        )
+        switch decision {
         case .ask(let terminalID): return .ghostty(terminalID: terminalID)
         case .decline(let refusal): return .noTab(refusal.attempt)
         }

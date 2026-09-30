@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Packages the app bundle into the file a release is made of: one zip, one checksum.
+# Packages the app bundle into the files a release is made of: a zip and a disk image, each
+# with its checksum.
 #
 # Separate from `build-app.sh` because of one difference that matters. That script signs with
 # whatever local certificate it finds, and on this machine that is a self-signed root nobody
@@ -35,6 +36,17 @@ rm -f "$zip_path" "$zip_path.sha256"
 ditto -c -k --keepParent "$app_path" "$zip_path"
 (cd "$dist_path" && shasum -a 256 "AgentWatch-$version.zip" > "AgentWatch-$version.zip.sha256")
 
+# The image is for the first install: the app beside a link to Applications, so installing is
+# one drag. The update keeps downloading the zip — mounting a volume to replace a bundle buys
+# nothing. The staging folder stays in $TMPDIR, which macOS clears by itself.
+dmg_path="$dist_path/AgentWatch-$version.dmg"
+rm -f "$dmg_path" "$dmg_path.sha256"
+dmg_root="$(mktemp -d)"
+ditto "$app_path" "$dmg_root/AgentWatch.app"
+ln -s /Applications "$dmg_root/Applications"
+hdiutil create -quiet -volname "Agent Watch" -srcfolder "$dmg_root" -format UDZO "$dmg_path"
+(cd "$dist_path" && shasum -a 256 "AgentWatch-$version.dmg" > "AgentWatch-$version.dmg.sha256")
+
 # What was actually produced, rather than what was asked for. `codesign --verify` fails the
 # script; the Gatekeeper verdict is printed and does not, because an ad-hoc release is
 # rejected by design and that is the fact the release notes have to carry.
@@ -44,3 +56,5 @@ spctl --assess --type execute --verbose=4 "$app_path" 2>&1 || true
 echo "--- Release artifacts"
 echo "$zip_path"
 echo "$zip_path.sha256"
+echo "$dmg_path"
+echo "$dmg_path.sha256"

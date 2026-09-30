@@ -186,7 +186,7 @@ func widgetContextText(
 ///
 /// The number used to be a cadence — a read every N seconds, whatever was happening. Reads
 /// follow hooks now, and N caps how often they may happen rather than setting when they do.
-func transcriptIntervalMenuTitle(interval: TimeInterval?) -> String {
+func transcriptIntervalTitle(interval: TimeInterval?) -> String {
     guard let interval else {
         return "Off"
     }
@@ -196,7 +196,7 @@ func transcriptIntervalMenuTitle(interval: TimeInterval?) -> String {
 /// The user asked for failures to be visible rather than absorbed, and a setting that only
 /// shows its interval cannot answer "is it working". This line does: off, idle, reading, or
 /// reading with something to report.
-func transcriptMenuSummary(interval: TimeInterval?, isReading: Bool, faultedSessionCount: Int) -> String {
+func transcriptReadingSummary(interval: TimeInterval?, isReading: Bool, faultedSessionCount: Int) -> String {
     guard interval != nil else {
         // What it costs, not just that it is off. No hook reports a tool call finishing —
         // `PostToolUse` is not registered, because it charges a process launch per call — so
@@ -266,7 +266,10 @@ func monitoringFaultSummary(for fault: MonitoringFault) -> String {
 /// told otherwise. `NameStyle.title` turns the stand-in off and accepts the empty row it
 /// brings back: the control says `Name only`, and a person who wants the project in the row
 /// has a part for it. See ADR-0011.
-func rowName(for snapshot: SessionSnapshot, layout: RowLayout) -> String? {
+///
+/// - Parameter marked: whether the stand-in ends in `noNameMark`. Off for what VoiceOver
+///   reads, which would otherwise spell out the glyph.
+func rowName(for snapshot: SessionSnapshot, layout: RowLayout, marked: Bool = true) -> String? {
     guard layout.shows(.name) else {
         return nil
     }
@@ -276,7 +279,7 @@ func rowName(for snapshot: SessionSnapshot, layout: RowLayout) -> String? {
     guard layout.nameStyle == .fallback else {
         return nil
     }
-    return snapshot.projectName?.nonEmpty.map { "\(noNameYet) in \($0)" }
+    return snapshot.projectName?.nonEmpty.map { "\(noNameYet) in \($0)" + (marked ? " \(noNameMark)" : "") }
 }
 
 /// What one text part of a row says, or nothing when the session has nothing to say there.
@@ -318,6 +321,33 @@ func rowPartText(_ part: RowPart, for snapshot: SessionSnapshot, layout: RowLayo
 /// Stands where a name would be, and is not one. In brackets because nothing an agent
 /// writes arrives in brackets, so the row needs no second reading.
 let noNameYet = "[still no name]"
+
+/// Ends the stand-in in a row to say its hover card explains it. Why a running session has
+/// no name cannot be guessed: it was reported as a bug by somebody whose prompts were too
+/// short for Claude Code to name a session after.
+///
+/// Text rather than a symbol view, so the width the row measures and cuts already includes
+/// it; last, because a row too narrow for its name is cut in the middle and keeps the end.
+/// The menu shows the stand-in without it: a menu has no card to point at.
+let noNameMark = "ⓘ"
+
+/// The first line of the card when the session has no name to put there.
+///
+/// Claude's rule is Claude Code's own and moves when it does: a name is asked of a model only
+/// after a prompt of at least ten characters, and a shorter one waits for the next. Measured on
+/// 2.1.284; the rows in `docs/measurements.md` are what gets re-checked when Claude Code
+/// updates. Codex has no rule anybody here has found, so its line claims none.
+func noNameText(for snapshot: SessionSnapshot) -> String {
+    if snapshot.discoveredProcess != nil {
+        return "No name yet — found by its process; the name comes with the session's first event"
+    }
+    return switch snapshot.source {
+    case .claude:
+        "No name yet — Claude Code names a session after a prompt of 10 or more characters; /rename names it now"
+    case .codex:
+        "No name yet — Codex has not named this thread"
+    }
+}
 
 /// Everything known about a session, as the lines of its hover card.
 ///
@@ -375,8 +405,10 @@ func hoverCardText(
     }
 
     // The setting says "stop showing the topic", and a card that showed it anyway would
-    // keep exactly the promise the rows had just stopped keeping.
-    let name = layout.shows(.name) ? snapshot.title?.nonEmpty : nil
+    // keep exactly the promise the rows had just stopped keeping. Nor then does it say why
+    // there is none — but `Name only` does, since its row draws nothing and this is the one
+    // place left to find out.
+    let name = layout.shows(.name) ? snapshot.title?.nonEmpty ?? noNameText(for: snapshot) : nil
 
     let focus = focusHint(reach, runsWithoutAWindow: snapshot.hostKind == .background)
 
@@ -419,16 +451,14 @@ func dismissHint(_ dismissal: RowDismissal, now: Date) -> String? {
 ///
 /// The sibling of `dismissHint`, and for the same reason it gives: a control that works needs
 /// no sentence. A click raises the session's application, which is what one click teaches
-/// anyway. The line that used to say so also named the window and the tab to look at, and
-/// both repeated what the card already carried — the project has a line of its own, and the
-/// session's name is the card's first line.
+/// anyway.
 ///
-/// What is left are the cases where a click does something else: there is nothing to
-/// raise, there is no window at all and the click opens a terminal tab instead, or the
-/// terminal was closed and the click ends the agent it left behind.
+/// What is said are the cases where a click does something else: there is nothing to raise,
+/// there is no window at all and the click opens a terminal tab instead, or the terminal was
+/// closed and the click asks whether to end the agent it left behind.
 func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
-    if case let .closedTerminal(devicePath) = reach {
-        return closedTerminalHint(devicePath: devicePath)
+    if case let .closedTerminal(ending) = reach {
+        return closedTerminalHint(ending)
     }
     // Nobody asked where the session is, or an application holds it — and an application that
     // can be brought forward is the ordinary case, which says nothing.
@@ -444,21 +474,29 @@ func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
         : "No window to bring forward"
 }
 
-/// What a click on a row whose terminal was closed does, said before it is done — the one
-/// click in the widget that ends something.
+/// What a click on a row whose terminal was closed offers, said before it is made — the one
+/// click in the widget that can end something, and it asks first.
 ///
 /// The command is on the card because the card cannot be selected: it takes no mouse events,
 /// so a command a person wants to run somewhere else has to be readable, not copyable.
-func closedTerminalHint(devicePath: String?) -> String {
-    guard let devicePath else {
+func closedTerminalHint(_ ending: ClosedTerminalEnding?) -> String {
+    switch ending {
+    case nil:
         return "Nothing here can end it: none of the agent's descriptors names its terminal"
+    case let .discardOutput(devicePath):
+        return """
+            A click asks to end it: the agent is waiting for its closed terminal to take its last output, \
+            and discarding that output lets it exit.
+            By hand:
+            \(ClosedTerminal.releaseCommand(devicePath: devicePath))
+            """
+    case let .hangUp(processIDs):
+        return """
+            A click asks to end it and its shell: Ghostty closed the tab but kept the terminal, and both run on there.
+            By hand:
+            \(ClosedTerminal.hangUpCommand(processIDs: processIDs))
+            """
     }
-    return """
-        Click ends it: the agent is waiting for its closed terminal to take its last output, \
-        and discarding that output lets it exit.
-        By hand:
-        \(ClosedTerminal.releaseCommand(devicePath: devicePath))
-        """
 }
 
 /// Whose thread a row is, when it is not a person's.
@@ -573,10 +611,7 @@ extension SessionPhase {
         case .failed:
             "A tool or the agent itself ended with an error."
         case .terminalClosed:
-            """
-            The terminal the session ran in was closed, and the agent did not exit: it hangs \
-            waiting for the terminal to take its last output. A click on the row ends it.
-            """
+            "The terminal the session ran in was closed, and the agent did not exit. A click on the row asks whether to end it."
         case .disconnected:
             """
             Nothing has arrived for a long time and nothing can confirm what the session is \

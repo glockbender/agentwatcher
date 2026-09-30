@@ -22,6 +22,8 @@ final class MenuBarIconView: NSView {
 
     private var cells: [MenuBarIconCell] = []
     private var style = MenuBarIconStyle.counts
+    /// The sphere's movements as last drawn, so a theme that changes only them still redraws.
+    private var sphereMotion = ThemeInUse.look.sphereMotion
     private var drawing: MenuBarIconDrawing?
     /// Kept rather than worked out from the last drawing: by the time a drawing is replaced,
     /// the style it was drawn in may already be the new one.
@@ -44,18 +46,22 @@ final class MenuBarIconView: NSView {
     /// system's, the deployment floor is older than the machine they were measured on, and an
     /// icon that says less beats an icon that is not there.
     @discardableResult
-    func show(_ cells: [MenuBarIconCell], as style: MenuBarIconStyle = .counts) -> Bool {
-        guard cells != self.cells || style != self.style else {
+    func show(
+        _ cells: [MenuBarIconCell], as style: MenuBarIconStyle = .counts,
+        motion: WidgetTheme.Sphere = ThemeInUse.look.sphereMotion
+    ) -> Bool {
+        guard cells != self.cells || style != self.style || motion != sphereMotion else {
             return drawing != nil
         }
         let counted = !self.cells.isEmpty && cells.map(\.count) != self.cells.map(\.count)
         self.cells = cells
         self.style = style
+        sphereMotion = motion
         guard render() else {
             return false
         }
-        if counted && style == .sphere {
-            cellLayers.forEach(swell)
+        if counted && style == .sphere, let seconds = drawing?.swellSeconds {
+            cellLayers.forEach { swell($0, over: seconds) }
         }
         return true
     }
@@ -116,7 +122,7 @@ final class MenuBarIconView: NSView {
         let drawn: MenuBarIconDrawing? =
             switch style {
             case .counts: MenuBarIconRenderer.draw(cells, dark: isDark)
-            case .sphere: MenuBarSphereRenderer.draw(cells, dark: isDark, scale: scale)
+            case .sphere: MenuBarSphereRenderer.draw(cells, dark: isDark, scale: scale, motion: sphereMotion)
             }
         guard let drawing = drawn else {
             return false
@@ -130,13 +136,16 @@ final class MenuBarIconView: NSView {
             cell.contents = part.image.cgImage(forProposedRect: nil, context: nil, hints: nil)
             layer?.addSublayer(cell)
             if part.breathDepth > 0 {
-                breathe(cell, downTo: Float(1 - part.breathDepth))
+                breathe(cell, downTo: Float(1 - part.breathDepth), period: part.cycle)
+            }
+            if let fadeImage = part.fadeImage {
+                fade(cell, to: fadeImage, period: part.cycle, scale: scale)
             }
             if let glow = part.glow {
-                halo(cell, colour: glow, breathing: part.glowBreathes, in: part.frame.size)
+                halo(cell, colour: glow, breathing: part.glowBreathes, period: part.glowCycle, in: part.frame.size)
             }
             if part.sways {
-                sway(cell)
+                sway(cell, degrees: part.swayDegrees, period: part.swayCycle)
             }
             return cell
         }
@@ -251,30 +260,41 @@ final class MenuBarIconView: NSView {
 
     private static let breathKey = "breath"
 
-    private func breathe(_ target: CALayer, downTo dimmest: Float) {
+    /// Anchored to whole breaths on the shared clock (`onTheClock`), so a cell rebuilt halfway
+    /// through one — which happens on every count that moves — carries on where the old one
+    /// was instead of jumping back to full. Without this the icon twitches at every event.
+    private func breathe(_ target: CALayer, downTo dimmest: Float, period: TimeInterval) {
         let animation = CABasicAnimation(keyPath: "opacity")
         animation.fromValue = 1
         animation.toValue = dimmest
-        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        animation.duration = MenuBarIconMetrics.breathSeconds / 2
-        animation.autoreverses = true
-        animation.repeatCount = .infinity
-        // Anchored to whole breaths on the shared clock, so a cell rebuilt halfway through one
-        // — which happens on every count that moves — carries on where the old one was instead
-        // of jumping back to full. Without this the icon twitches at every event.
-        let clock = CACurrentMediaTime()
-        animation.beginTime = clock - clock.truncatingRemainder(dividingBy: MenuBarIconMetrics.breathSeconds)
-        target.add(animation, forKey: Self.breathKey)
+        target.add(onTheClock(animation, period: period), forKey: Self.breathKey)
+    }
+
+    private static let fadeKey = "fade"
+
+    /// The same cell in its second colour, laid over the first and faded in and out: a cell
+    /// is a bitmap, and a bitmap's colours cannot be animated, only its opacity.
+    private func fade(_ target: CALayer, to image: NSImage, period: TimeInterval, scale: CGFloat) {
+        let over = CALayer()
+        over.contentsScale = scale
+        over.contents = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        over.frame = CGRect(origin: .zero, size: image.size)
+        over.opacity = 0
+        target.addSublayer(over)
+        let animation = CABasicAnimation(keyPath: "opacity")
+        animation.fromValue = 0
+        animation.toValue = 1
+        over.add(onTheClock(animation, period: period), forKey: Self.fadeKey)
     }
 
     private static let swayKey = "sway"
     private static let swellKey = "swell"
 
-    private func halo(_ target: CALayer, colour: NSColor, breathing: Bool, in size: CGSize) {
+    private func halo(_ target: CALayer, colour: NSColor, breathing: Bool, period: TimeInterval, in size: CGSize) {
         target.shadowColor = colour.cgColor
         target.shadowOffset = .zero
-        target.shadowRadius = WidgetTheme.motion.glowRadius
-        target.shadowOpacity = Float(WidgetTheme.motion.glowOpacity)
+        target.shadowRadius = sphereMotion.haloRadius
+        target.shadowOpacity = Float(sphereMotion.haloOpacity)
         let side = MenuBarSphereMetrics.diameter
         target.shadowPath = CGPath(
             ellipseIn: CGRect(
@@ -285,28 +305,30 @@ final class MenuBarIconView: NSView {
             return
         }
         let animation = CABasicAnimation(keyPath: "shadowOpacity")
-        animation.fromValue = WidgetTheme.motion.glowBreathLow
-        animation.toValue = WidgetTheme.motion.glowBreathHigh
-        target.add(onTheClock(animation, period: WidgetTheme.motion.glowBreathSeconds), forKey: Self.breathKey)
+        // The halo breathes and the sphere itself never fades: a glow that swells and settles,
+        // not a lamp that blinks.
+        animation.fromValue = sphereMotion.haloBreathLow
+        animation.toValue = sphereMotion.haloBreathHigh
+        target.add(onTheClock(animation, period: period), forKey: Self.breathKey)
     }
 
-    private func sway(_ target: CALayer) {
-        let reach = WidgetTheme.motion.swayDegrees * .pi / 180
+    private func sway(_ target: CALayer, degrees: CGFloat, period: TimeInterval) {
+        let reach = degrees * .pi / 180
         let animation = CABasicAnimation(keyPath: "transform.rotation.z")
         animation.fromValue = -reach
         animation.toValue = reach
-        target.add(onTheClock(animation, period: WidgetTheme.motion.swaySeconds), forKey: Self.swayKey)
+        target.add(onTheClock(animation, period: period), forKey: Self.swayKey)
     }
 
     /// Once, when a count changes: a little larger and brighter, then back.
-    private func swell(_ target: CALayer) {
+    private func swell(_ target: CALayer, over seconds: TimeInterval) {
         let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-        scale.values = [1, WidgetTheme.motion.swellScale, 1]
+        scale.values = [1, sphereMotion.swellScale, 1]
         let brightness = CAKeyframeAnimation(keyPath: "shadowRadius")
         brightness.values = [target.shadowRadius, target.shadowRadius * 2, target.shadowRadius]
         let group = CAAnimationGroup()
         group.animations = [scale, brightness]
-        group.duration = WidgetTheme.motion.swellSeconds
+        group.duration = seconds
         group.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         target.add(group, forKey: Self.swellKey)
     }
@@ -326,6 +348,23 @@ final class MenuBarIconView: NSView {
     /// Which cells are breathing, for a test that cannot see the screen.
     var breathingCells: [Int] {
         cellLayers.enumerated().compactMap { $0.element.animation(forKey: Self.breathKey) == nil ? nil : $0.offset }
+    }
+
+    /// Which cells fade to a second colour, for a test that cannot see the screen.
+    var fadingCells: [Int] {
+        cellLayers.enumerated().compactMap { index, layer in
+            layer.sublayers?.contains { $0.animation(forKey: Self.fadeKey) != nil } == true ? index : nil
+        }
+    }
+
+    /// Which cells sway, for the test that the theme can stop it.
+    var swayingCells: [Int] {
+        cellLayers.enumerated().compactMap { $0.element.animation(forKey: Self.swayKey) == nil ? nil : $0.offset }
+    }
+
+    /// How long each breath lasts, one full cycle, for the test that the theme sets it.
+    var breathPeriods: [CFTimeInterval] {
+        cellLayers.compactMap { $0.animation(forKey: Self.breathKey).map { 2 * $0.duration } }
     }
 
     /// Which cells are swelling, for the test that a changed count swells the sphere.

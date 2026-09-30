@@ -63,12 +63,12 @@ final class PreferenceSeedingTests: XCTestCase {
     func testASettingChosenBeforeAnUpdateSurvivesTheNextLaunchsSeeding() throws {
         let (preferences, owners) = try makeStores()
         ThemeStore(preferences: preferences, folder: nil).select(ThemeMode.light)
-        WidgetBackgroundStore(preferences: preferences).selectOpacity(0.5)
+        WidgetSettingsStore(preferences: preferences).setLocksPosition(true)
 
         seed(owners, into: preferences)
 
         XCTAssertEqual(ThemeStore(preferences: preferences, folder: nil).mode, .light)
-        XCTAssertEqual(WidgetBackgroundStore(preferences: preferences).opacity, 0.5)
+        XCTAssertTrue(WidgetSettingsStore(preferences: preferences).locksPosition)
         XCTAssertEqual(
             preferences.string(forKey: "theme"), WidgetTheme.standard.name,
             "and what it never chose is written out as the default"
@@ -119,7 +119,6 @@ final class PreferenceSeedingTests: XCTestCase {
         return (
             preferences,
             [
-                WidgetBackgroundStore(preferences: preferences),
                 WidgetSettingsStore(preferences: preferences),
                 HUDFrameStore(preferences: preferences),
                 ThemeStore(preferences: preferences, folder: nil),

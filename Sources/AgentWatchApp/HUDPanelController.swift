@@ -12,8 +12,10 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// A single deadline, including while all sessions wait or rest. No idle polling.
     private(set) var nextDismissRefreshAt: Date?
     private let reach: (SessionSnapshot) -> SessionReach
-    private let focus: (SessionSnapshot) -> Void
+    private let focus: (SessionSnapshot) -> SessionClick
     private let remove: (SessionSnapshot) -> Void
+    /// The yes to the question a broken session's click puts, by session.
+    private let endAgent: (String) -> Void
     private var background: WidgetBackground
     private var lampScheme: LampScheme
     private var backgroundOpacity: CGFloat
@@ -48,8 +50,9 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
 
     init(
         reach: @escaping (SessionSnapshot) -> SessionReach,
-        focus: @escaping (SessionSnapshot) -> Void,
+        focus: @escaping (SessionSnapshot) -> SessionClick,
         remove: @escaping (SessionSnapshot) -> Void,
+        endAgent: @escaping (String) -> Void = { _ in },
         background: WidgetBackground,
         lampScheme: LampScheme,
         backgroundOpacity: CGFloat,
@@ -61,6 +64,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         self.reach = reach
         self.focus = focus
         self.remove = remove
+        self.endAgent = endAgent
         self.background = background
         self.lampScheme = lampScheme
         self.backgroundOpacity = backgroundOpacity
@@ -160,6 +164,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
 
         if window.isVisible {
             window.orderOut(nil)
+            container.hideDialog(animated: false)
             endHover()
             freshnessTimer?.invalidate()
             freshnessTimer = nil
@@ -178,6 +183,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         }
         self.state = state
         refreshContent()
+        closeDialogIfMoot()
     }
 
     func highlight() {
@@ -185,28 +191,21 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         (window as? HUDPanel)?.highlight()
     }
 
-    func setBackground(_ background: WidgetBackground) {
+    /// Everything a theme decides about the widget at once, so a new theme rebuilds the list
+    /// once rather than once for each of them. The lamps are rebuilt rather than repainted,
+    /// because a `SessionLampView` reads its look once at construction.
+    func setAppearance(background: WidgetBackground, lampScheme: LampScheme, opacity: CGFloat) {
         self.background = background
-        refreshContent()
-    }
-
-    /// The lamps are rebuilt rather than repainted, because a `SessionLampView` reads its
-    /// look once at construction — and `refreshContent()` builds the list again anyway.
-    func setLampScheme(_ scheme: LampScheme) {
-        lampScheme = scheme
-        refreshContent()
-    }
-
-    func setBackgroundOpacity(_ opacity: CGFloat) {
+        self.lampScheme = lampScheme
         backgroundOpacity = opacity
         refreshContent()
     }
 
     /// Draws the widget at a new size, now.
     ///
-    /// Everything on screen is rebuilt: a row reads its fonts and its height once, when it is
-    /// built, so a scale that only changed the next row to arrive would leave a person
-    /// dragging the slider and watching nothing happen.
+    /// Everything on screen is rebuilt, an open question included: a row reads its fonts and
+    /// its height once, when it is built, so a scale that only changed the next row to arrive
+    /// would leave a person choosing a size and watching nothing happen.
     ///
     /// The window's floor moves with it and is enforced here rather than left to the next
     /// resize. A widget already at the old minimum is below the new one the moment the scale
@@ -219,10 +218,13 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         style = WidgetStyle(scale: scale)
         hoverCard.style = style
         refreshContent()
-        // And say which window just changed. A person dragging the size slider is looking at
-        // the slider, while the thing that changes is a small window elsewhere on the screen
-        // — behind something, or one they have lost track of. The same outline the
-        // `Highlight Widget` menu line draws, rather than a second mark invented for this.
+        if let asking = container.dialog?.sessionID {
+            askToEndAgent(ofSessionWithID: asking)
+        }
+        // And say which window just changed. A person choosing a size is looking at the
+        // settings window, while the thing that changes is a small window elsewhere on the
+        // screen — behind something, or one they have lost track of. The same outline showing
+        // the widget draws, rather than a second mark invented for this.
         //
         // Here rather than beside the menu action, because the guard above is what makes it
         // honest: the controller is born with the size already saved, so nothing is lit at
@@ -234,7 +236,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     ///
     /// Here rather than in `setScale`, so it covers the two other ways a widget can find
     /// itself under its own floor: a launch reading a scale already saved, and
-    /// `Reset Widget Size`, which writes the size a fresh install has whatever scale is in
+    /// `Reset Size`, which writes the size a fresh install has whatever scale is in
     /// force. `minSize` alone does not do it — macOS does not grow a window to meet a minimum
     /// it has just been handed — so the rows would be laid out inside a window too short to
     /// show them.
@@ -259,6 +261,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     }
 
     func shutdown() {
+        container.hideDialog(animated: false)
         endHover()
         freshnessTimer?.invalidate()
         freshnessTimer = nil
@@ -341,7 +344,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 usageLimits: state.usageLimits,
                 now: moment,
                 availableWidth: width,
-                focus: focus,
+                focus: { [weak self] snapshot in self?.rowClicked(snapshot) },
                 remove: remove,
                 background: background,
                 lampScheme: lampScheme,
@@ -358,6 +361,52 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         )
     }
 
+    /// A click on a row, which a broken session answers with a question instead of a window.
+    func rowClicked(_ snapshot: SessionSnapshot) {
+        if case .asksToEndAgent = focus(snapshot) {
+            askToEndAgent(ofSessionWithID: snapshot.id)
+        }
+    }
+
+    private func askToEndAgent(ofSessionWithID id: String) {
+        // Read from what is on screen now: the click has just marked the row, and the widget
+        // was redrawn for it before the answer came back.
+        guard let session = state.sessions.first(where: { $0.id == id }), session.phase == .terminalClosed else {
+            return
+        }
+        endHover()
+        container.showDialog(
+            EndAgentDialog(
+                sessionID: id,
+                sessionName: EndAgentQuestion.name(of: session),
+                style: style,
+                onCancel: { [weak self] in
+                    self?.container.hideDialog()
+                },
+                onEnd: { [weak self] in
+                    self?.container.hideDialog()
+                    self?.endAgent(id)
+                }
+            )
+        )
+    }
+
+    /// The open dialog, for a test: its question and its two buttons.
+    var visibleDialog: EndAgentDialog? {
+        container.dialog
+    }
+
+    /// A question that no longer holds closes without an answer (`EndAgentQuestion.holds`).
+    private func closeDialogIfMoot() {
+        guard let dialog = container.dialog else {
+            return
+        }
+        let session = state.sessions.first { $0.id == dialog.sessionID }
+        if !EndAgentQuestion.holds(for: session, reach: reach) {
+            container.hideDialog()
+        }
+    }
+
     /// Every row the widget is showing, in order. The one way a test can see what the list
     /// did with a report rather than what it was told.
     var visibleRows: [HUDSessionRowView] {
@@ -368,6 +417,11 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// view it was opened from would vanish mid-read on exactly the busy session a reader is
     /// most likely to be inspecting.
     func hoverChanged(_ row: HUDSessionRowView, isInside: Bool) {
+        // The rows' own tracking goes on under an open dialog, and a card over it would read
+        // as part of the question.
+        guard container.dialog == nil else {
+            return
+        }
         let sessionID = row.snapshot.id
         apply(isInside ? hover.pointerEntered(sessionID: sessionID) : hover.pointerLeft(sessionID: sessionID))
     }
@@ -657,10 +711,10 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         guard let panel = window else {
             return
         }
-        // Whichever way it goes back, say where it went. Unlike the size slider this needs no
-        // guard against a move that moves nothing: both resets are a menu line somebody chose
-        // to press, and a person pressing `Reset Widget Position` is asking where the widget
-        // is at least as much as they are asking for it to be moved. The middle of the main
+        // Whichever way it goes back, say where it went. Unlike a new size this needs no guard
+        // against a move that moves nothing: both resets are a button somebody chose to press,
+        // and a person pressing `Reset Position` is asking where the widget is at least as much
+        // as they are asking for it to be moved. The middle of the main
         // screen is still a place they have to find.
         defer { highlight() }
         guard let visibleFrame = NSScreen.screens.first?.visibleFrame else {
@@ -684,7 +738,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         }
         panel.setContentSize(frameStore.size)
         refreshContent()
-        // And the same answer the size slider gives, for the same reason: the window that
+        // And the same answer a new size gives, for the same reason: the window that
         // changed is somewhere else on the screen while the person is looking at a menu.
         highlight()
     }

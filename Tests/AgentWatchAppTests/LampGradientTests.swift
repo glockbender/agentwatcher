@@ -54,20 +54,6 @@ final class LampGradientTests: XCTestCase {
         }
     }
 
-    func testAnOlderSchemeKeepsItsOriginalAnimationSpeed() throws {
-        let preferences = try isolatedPreferences()
-        preferences.set("urgent", forKey: "lampMotion.executing")
-        preferences.set("#FF0000", forKey: "lampColor.executing")
-        let scheme = LampSchemeStore(preferences: preferences).scheme
-        let look = SessionLamp.appearance(for: testSession(phase: .executing, lastObservedAt: Date()), scheme: scheme)
-        let lamp = SessionLampView(appearance: look, diameter: 12)
-        let animation = try XCTUnwrap(lamp.layer?.animation(forKey: "lamp") as? CABasicAnimation)
-        XCTAssertEqual(look.color.srgbHex, "#FF0000")
-        XCTAssertEqual(animation.keyPath, "opacity")
-        XCTAssertEqual(animation.duration, 0.55)
-        XCTAssertEqual((animation.toValue as? NSNumber)?.floatValue, 0.55)
-    }
-
     func testDimUsesTheChosenFullCycleForEveryShape() throws {
         for phase: SessionPhase in [.executing, .disconnected, .rateLimited] {
             let scheme = LampScheme(styles: [
@@ -84,30 +70,16 @@ final class LampGradientTests: XCTestCase {
         }
     }
 
-    func testLegacyModesMigrateWhenTheOldSettingsAreRead() throws {
-        for (oldMotion, expectedCycle) in [("pulse", 2.8), ("urgent", 1.1), ("gradient", 7.0)] {
-            let preferences = try isolatedPreferences()
-            preferences.set(oldMotion, forKey: "lampMotion.executing")
-            preferences.set(7, forKey: "lampGradientCycle.executing")
-            preferences.set("#ABCDEF", forKey: "lampGradientColor.executing")
-            _ = LampSchemeStore(preferences: preferences)
-            let reopened = LampSchemeStore(preferences: preferences)
-            XCTAssertEqual(reopened.scheme.style(for: .executing).motion, oldMotion == "gradient" ? .gradient : .dim)
-            XCTAssertEqual(reopened.scheme.style(for: .executing).animationCycle, expectedCycle)
-            XCTAssertEqual(reopened.scheme.style(for: .executing).gradientColor.srgbHex, "#ABCDEF")
-        }
-    }
-
-    func testInvalidSettingsCannotProduceAnInvalidAnimationPeriod() throws {
-        let preferences = try isolatedPreferences()
-        let store = LampSchemeStore(preferences: preferences)
-        preferences.set("not a color", forKey: "lampGradientColor.executing")
-        preferences.set("fast", forKey: "lampAnimationCycle.executing")
-        XCTAssertEqual(store.scheme.style(for: .executing).gradientColor.srgbHex, "#00A900")
-        XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, 2.5)
-        for (stored, expected) in [(-1.0, 0.5), (0, 0.5), (50, 10)] {
-            preferences.set(stored, forKey: "lampAnimationCycle.executing")
-            XCTAssertEqual(store.scheme.style(for: .executing).animationCycle, expected)
+    /// A theme file is meant to be corrected by hand, so an unreadable colour or a cycle out
+    /// of range is a real input: the phase's own value answers the first, the range the second.
+    func testAThemesUnreadableLampCannotProduceAnInvalidAnimationPeriod() {
+        for (stored, expected) in [(-1.0, 0.5), (0, 0.5), (50, 10), (.nan, 2.5)] {
+            var look = WidgetTheme.standard.dark
+            look.lamps[SessionPhase.executing.rawValue] = WidgetTheme.Lamp(
+                color: "#FF0000", motion: "dim", fadeTo: "not a color", cycle: stored)
+            let style = look.lampScheme.style(for: .executing)
+            XCTAssertEqual(style.animationCycle, expected, "\(stored)")
+            XCTAssertEqual(style.gradientColor.srgbHex, "#00A900")
         }
     }
 }

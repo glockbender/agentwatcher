@@ -129,6 +129,16 @@ final class RowTemplateDrawingTests: XCTestCase {
         XCTAssertEqual(row.accessibilityLabel(), "Fix the row")
     }
 
+    /// The mark after the stand-in is for the eye: it says the card explains the missing name.
+    /// Read aloud it would be spelled out as a letter in a circle.
+    func testTheMarkAfterAMissingNameIsNotReadAloud() {
+        let session = testSession(title: nil, projectName: "agent-watch", lastObservedAt: now)
+
+        let row = makeRow(session, layout: .standard)
+
+        XCTAssertEqual(row.accessibilityLabel(), "[still no name] in agent-watch")
+    }
+
     /// And a template with no name in it leaves the bare fact of a session, which is all the
     /// widget itself is showing.
     func testATemplateWithoutTheNameLeavesTheRowWithTheBareFactOfASession() {

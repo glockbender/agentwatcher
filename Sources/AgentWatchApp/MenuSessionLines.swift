@@ -6,11 +6,14 @@ struct MenuSessionLine: Equatable {
     /// click is answered from the session as it is then, the rule the widget's rows follow.
     let sessionID: String
     let attention: SessionAttention
+    /// Kept for the mark, which a theme may draw as the session's own lamp.
+    let phase: SessionPhase
     let title: String
     /// `false` only when a click could do nothing at all — and the title then says why.
     let isEnabled: Bool
-    /// Whether the displayed wording announced that choosing this line ends the agent.
-    let endingAgentWasAnnounced: Bool
+    /// A broken session whose click asks whether to end its agent, which the menu asks in
+    /// place of its lines.
+    var leadsToQuestion = false
 }
 
 /// The sessions the menu lists, and what each line says, in the order they are handed over.
@@ -35,26 +38,26 @@ func menuSessionLines(
         let name = menuSessionName(for: snapshot)
         guard snapshot.phase == .terminalClosed else {
             return MenuSessionLine(
-                sessionID: snapshot.id, attention: attention, title: name, isEnabled: true,
-                endingAgentWasAnnounced: false)
+                sessionID: snapshot.id, attention: attention, phase: snapshot.phase, title: name, isEnabled: true)
         }
-        // The one click in the app that ends something. The widget's card says so before it
-        // is made; a menu line has no card, so the line says it itself.
-        guard case .closedTerminal(devicePath: .some) = reach(snapshot) else {
+        // The one click in the app that can end something, and it asks first. The ellipsis is
+        // the menu's own way of saying a question follows.
+        guard case .closedTerminal(.some) = reach(snapshot) else {
             return MenuSessionLine(
                 sessionID: snapshot.id,
                 attention: attention,
+                phase: snapshot.phase,
                 title: "\(name) — terminal closed, nothing here can end it",
-                isEnabled: false,
-                endingAgentWasAnnounced: false
+                isEnabled: false
             )
         }
         return MenuSessionLine(
             sessionID: snapshot.id,
             attention: attention,
-            title: "\(name) — terminal closed, click ends the agent",
+            phase: snapshot.phase,
+            title: "\(name) — terminal closed; end its agent…",
             isEnabled: true,
-            endingAgentWasAnnounced: true
+            leadsToQuestion: true
         )
     }
 }

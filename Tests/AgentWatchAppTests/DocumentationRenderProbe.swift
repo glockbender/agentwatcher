@@ -40,7 +40,7 @@ final class DocumentationRenderProbe: XCTestCase {
                 models: sorted.map { HUDRowModel(snapshot: $0, now: now, layout: .standard) }, usageLimits: [],
                 now: now, availableWidth: width, focus: { _ in }, remove: { _ in },
                 background: .defaultBackground, lampScheme: LampScheme(),
-                backgroundOpacity: WidgetBackgroundStore.defaultOpacity, style: style,
+                backgroundOpacity: CGFloat(WidgetTheme.defaultOpacity), style: style,
                 restoredScrollOffset: nil, onScroll: { _ in })
             let height = HUDSessionListView.selfSizedHeight(
                 sessionCount: cast.count, usageLimits: [],

@@ -47,7 +47,7 @@ final class WidgetAppearanceTests: XCTestCase {
             XCTAssertEqual(
                 list.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]),
                 expected,
-                "\(background.storedName) under \(system.rawValue)"
+                "\(background.color) under \(system.rawValue)"
             )
         }
     }

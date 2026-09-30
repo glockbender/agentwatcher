@@ -56,11 +56,23 @@ final class ToolingSetupTests: XCTestCase {
         XCTAssertEqual(window.frame.origin, moved)
     }
 
+    /// The sender's path is an internal detail until the entries name this very copy of the
+    /// app, and then it is the one thing about to break: shown in that case only.
+    func testTheSenderIsShownOnlyWhenTheHooksNameThisCopy() throws {
+        let linked = ToolingWindowController(facts: { self.facts() }, act: { _ in })
+        let tied = ToolingWindowController(facts: { self.facts(senderIsTiedToThisBuild: true) }, act: { _ in })
+
+        XCTAssertFalse(texts(in: try XCTUnwrap(linked.window?.contentView)).contains("Sender"))
+        let shown = texts(in: try XCTUnwrap(tied.window?.contentView))
+        XCTAssertTrue(shown.contains("Sender"))
+        XCTAssertTrue(shown.contains { $0.contains("moved or deleted") }, "and says what that costs")
+    }
+
     /// The guide prints the combination only while it works, as the menu does.
     func testTheGuideNamesTheShortcutOnlyWhileItWorks() {
         XCTAssertEqual(
             setupWidgetToggleText(shortcut: "⌃⌥K"),
-            "⌃⌥K shows or hides the widget (you can change this in Widget Settings)."
+            "⌃⌥K shows or hides the widget (you can change it in Settings → General)."
         )
         let without = setupWidgetToggleText(shortcut: nil)
         XCTAssertFalse(without.contains("⌥⌘W"), without)
@@ -149,14 +161,22 @@ final class ToolingSetupTests: XCTestCase {
         try draw(content, name: "setup-ready", directory: directory)
     }
 
-    private func facts(hooks: ToolingInstallationState = .installed) -> ToolingWindowFacts {
+    private func facts(
+        hooks: ToolingInstallationState = .installed,
+        senderIsTiedToThisBuild: Bool = false
+    ) -> ToolingWindowFacts {
         ToolingWindowFacts(
             hookState: { _ in hooks }, statusLineState: .notSet,
             hooksPath: { $0 == .claude ? "~/.claude/skills/agent-watch/hooks/hooks.json" : "~/.codex/hooks.json" },
-            statusLinePath: "~/.claude/settings.json", senderPath: "AgentWatchSend", senderIsTiedToThisBuild: false,
+            statusLinePath: "~/.claude/settings.json", senderPath: "AgentWatchSend",
+            senderIsTiedToThisBuild: senderIsTiedToThisBuild,
             idePlugins: [], stagedPlugin: nil, idePluginDirectoryPath: "",
             agentPaths: [.claude: "~/.local/bin/claude", .codex: "/opt/homebrew/bin/codex"],
             receivedSources: hooks == .installed ? [.claude, .codex] : [])
+    }
+
+    private func texts(in view: NSView) -> [String] {
+        ((view as? NSTextField).map { [$0.stringValue] } ?? []) + view.subviews.flatMap { texts(in: $0) }
     }
 
     private func buttons(in view: NSView) -> [NSButton] {

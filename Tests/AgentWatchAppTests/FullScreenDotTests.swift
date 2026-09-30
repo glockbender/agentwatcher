@@ -10,7 +10,7 @@ final class FullScreenDotTests: XCTestCase {
     func testEachStateHoldsItsShareAndFadesIntoTheNext() {
         let frames = FullScreenDot.cycle([(.orange, 1), (.blue, 3)])
 
-        XCTAssertEqual(frames.map(\.time), [0, 0.175, 0.25, 0.775, 1], accuracy: 0.0001)
+        assertEqual(frames.map(\.time), [0, 0.175, 0.25, 0.775, 1], accuracy: 0.0001)
         XCTAssertEqual(frames.map(\.color), [.orange, .orange, .blue, .blue, .orange])
     }
 
@@ -29,7 +29,7 @@ final class FullScreenDotTests: XCTestCase {
     }
 }
 
-private func XCTAssertEqual(
+private func assertEqual(
     _ values: [Double], _ expected: [Double], accuracy: Double, file: StaticString = #filePath, line: UInt = #line
 ) {
     XCTAssertEqual(values.count, expected.count, file: file, line: line)

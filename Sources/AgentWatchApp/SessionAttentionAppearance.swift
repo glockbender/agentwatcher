@@ -23,8 +23,8 @@ extension SessionAttention {
     }
 
     /// The accent drawn behind the mark, from the theme in use.
-    var accent: NSColor {
-        WidgetTheme.active.accent(for: self == .closed ? .quiet : self)
+    @MainActor var accent: NSColor {
+        ThemeInUse.look.accent(for: self == .closed ? .quiet : self, phases: ThemeInUse.phases)
     }
 
     /// The state's name where a person chooses it, and what a screen reader says for its mark.

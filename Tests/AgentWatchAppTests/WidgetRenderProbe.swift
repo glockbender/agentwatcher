@@ -75,6 +75,38 @@ final class WidgetRenderProbe: XCTestCase {
                 in: directory
             )
         }
+        // The question a broken session's click puts, over the whole widget. The smallest widget
+        // is where the one-line layout has to take over, at every end of the size range.
+        try draw(widgetAskingToEndAnAgent(width: 420), named: "ask-end", in: directory)
+        for scale: CGFloat in [0.5, 1, 2] {
+            let style = WidgetStyle(scale: scale)
+            try draw(
+                widgetAskingToEndAnAgent(size: style.minimumWindowSize, style: style),
+                named: "ask-end-smallest-\(Int(scale * 100))",
+                in: directory
+            )
+        }
+        try draw(
+            widgetAskingToEndAnAgent(size: NSSize(width: 200, height: 200)), named: "ask-end-tall-narrow", in: directory
+        )
+        // One pixel per point, the external screen the soft text was reported from — at the
+        // odd width that put the card between two pixels.
+        try draw(
+            widgetAskingToEndAnAgent(size: NSSize(width: 331, height: 173)), named: "ask-end-1x", pixelsPerPoint: 1,
+            in: directory)
+        // The same question in the menu, where the session lines were, and the line that
+        // leads to it. Drawn on the menu's own material; a real menu is also translucent.
+        try draw(
+            menuPiece(
+                MenuEndAgentQuestionView(
+                    sessionID: "claude:session-1", sessionName: "Документация проекта", onCancel: {}, onEnd: {})),
+            named: "menu-question", in: directory)
+        try draw(
+            menuPiece(
+                MenuBrokenSessionLineView(
+                    title: "Документация проекта — terminal closed; end its agent…",
+                    image: StatusMenu.mark(for: .needsPerson))),
+            named: "menu-broken-line", in: directory)
         try draw(highlightedWidget(.left), named: "edge-left", in: directory)
         try draw(highlightedWidget(.bottomRight), named: "edge-corner", in: directory)
         try draw(listView(width: 190), named: "narrow", in: directory)
@@ -106,8 +138,22 @@ final class WidgetRenderProbe: XCTestCase {
         // Through the reducer, as the app marks it: what was running goes with the terminal.
         let abandoned = SessionReducer.reduce(sessions()[0], event: .terminalClosed)
         try draw(
-            hoverCard(for: abandoned, reach: .closedTerminal(devicePath: "/dev/ttys012")),
+            hoverCard(for: abandoned, reach: .closedTerminal(.discardOutput(devicePath: "/dev/ttys012"))),
             named: "card-terminal-closed",
+            in: directory
+        )
+        // The same row when Ghostty closed the tab and kept the terminal: a shorter command,
+        // and the one sentence that says which way the terminal went.
+        try draw(
+            hoverCard(for: abandoned, reach: .closedTerminal(.hangUp(processIDs: [52671, 52482, 52480]))),
+            named: "card-tab-kept",
+            in: directory
+        )
+        // The card for a running session with no name: the line that says why stands where the
+        // name would, and it is the longest first line a card has.
+        try draw(
+            hoverCard(for: sessions().first { $0.title == nil && $0.discoveredProcess == nil }),
+            named: "card-no-name",
             in: directory
         )
         try draw(dismissStates(style: WidgetStyle(scale: 0.5)), named: "dismiss-50", in: directory)
@@ -485,6 +531,39 @@ final class WidgetRenderProbe: XCTestCase {
         return list
     }
 
+    /// Built the way the widget builds it: the list, and the dialog over it at full strength —
+    /// the end of its fade.
+    private func widgetAskingToEndAnAgent(
+        width: CGFloat = 420, size: NSSize? = nil, style: WidgetStyle = .standard
+    ) -> NSView {
+        let container = HUDContentContainer()
+        let list = listView(width: size?.width ?? width, style: style)
+        container.setBody(list)
+        let dialog = EndAgentDialog(
+            sessionID: "claude:session-1",
+            sessionName: "Документация проекта",
+            style: style,
+            onCancel: {},
+            onEnd: {}
+        )
+        container.showDialog(dialog)
+        dialog.alphaValue = 1
+        place(container, size: size ?? NSSize(width: width, height: list.frame.height))
+        container.layoutSubtreeIfNeeded()
+        return container
+    }
+
+    /// A menu's line on the material a menu is drawn with.
+    private func menuPiece(_ line: NSView) -> NSView {
+        let backdrop = NSVisualEffectView(frame: line.frame)
+        backdrop.material = .menu
+        backdrop.state = .active
+        line.frame.origin = .zero
+        backdrop.addSubview(line)
+        place(backdrop, size: line.frame.size)
+        return backdrop
+    }
+
     /// The widget with one border strip lit, which is what replaces a resize cursor the
     /// widget cannot have: a cursor appears only over the window holding keyboard focus, and
     /// this one refuses focus so that clicking it never interrupts typing elsewhere.
@@ -543,11 +622,24 @@ final class WidgetRenderProbe: XCTestCase {
 
     // MARK: - Drawing
 
-    private func draw(_ view: NSView, sized size: NSSize? = nil, named name: String, in directory: String) throws {
+    private func draw(
+        _ view: NSView, sized size: NSSize? = nil, named name: String, pixelsPerPoint: CGFloat? = nil,
+        in directory: String
+    ) throws {
         if let size {
             place(view, size: size)
         }
-        let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        let rep = try XCTUnwrap(
+            pixelsPerPoint.flatMap { scale in
+                NSBitmapImageRep(
+                    bitmapDataPlanes: nil, pixelsWide: Int(view.bounds.width * scale),
+                    pixelsHigh: Int(view.bounds.height * scale), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                    isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+                ).map { rep in
+                    rep.size = view.bounds.size
+                    return rep
+                }
+            } ?? view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: rep)
         let url = URL(fileURLWithPath: directory).appendingPathComponent("\(name).png")
         try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)

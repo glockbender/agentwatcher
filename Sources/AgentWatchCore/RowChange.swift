@@ -17,6 +17,9 @@ public struct RowChange: Equatable, Sendable {
         /// And then it ended without ever doing it. The row it never had must not arrive as
         /// a tombstone instead.
         case endedWithoutWorking
+        /// The end of a session whose row a person took away — after it was asked to end,
+        /// often. It does not bring the row back as a closed one to be dismissed again.
+        case endedAfterItsRowWasDismissed
     }
 
     /// A row that left the widget as this event landed, and why.

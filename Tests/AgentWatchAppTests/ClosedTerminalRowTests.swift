@@ -79,10 +79,11 @@ final class ClosedTerminalRowTests: XCTestCase {
     func testTheCardSaysAClickEndsItAndHowToDoItByHand() {
         let row = testSession(phase: .terminalClosed, clientKind: .cli, lastObservedAt: now)
 
-        let card = hoverCardText(for: row, now: now, layout: .standard, reach: .closedTerminal(devicePath: device))
+        let card = hoverCardText(
+            for: row, now: now, layout: .standard, reach: .closedTerminal(.discardOutput(devicePath: device)))
 
         XCTAssertTrue(card.contains("terminal closed"), card)
-        XCTAssertTrue(card.contains("Click ends it"), card)
+        XCTAssertTrue(card.contains("A click asks to end it"), card)
         XCTAssertTrue(card.contains(ClosedTerminal.releaseCommand(devicePath: device)), card)
     }
 
@@ -91,9 +92,9 @@ final class ClosedTerminalRowTests: XCTestCase {
     func testWithNoDeviceTheCardPromisesNothing() {
         let row = testSession(phase: .terminalClosed, clientKind: .cli, lastObservedAt: now)
 
-        let card = hoverCardText(for: row, now: now, layout: .standard, reach: .closedTerminal(devicePath: nil))
+        let card = hoverCardText(for: row, now: now, layout: .standard, reach: .closedTerminal(nil))
 
-        XCTAssertFalse(card.contains("Click ends it"), card)
+        XCTAssertFalse(card.contains("A click asks to end it"), card)
         XCTAssertFalse(card.contains("perl"), card)
     }
 
@@ -133,7 +134,9 @@ final class ClosedTerminalRowTests: XCTestCase {
 
     // MARK: - The click
 
-    func testAClickEndsTheAgentThroughItsTerminalAndRaisesNothing() throws {
+    /// A click on a broken session ends nothing by itself: it asks, and names the way the
+    /// agent would be ended. The yes is what ends it.
+    func testAClickOnAMarkedRowAsksAndOnlyTheYesEndsTheAgent() throws {
         var released: [String] = []
         let supervisor = makeSupervisor(terminalState: { _ in .lost }, released: { released.append($0) })
         supervisor.start()
@@ -143,16 +146,19 @@ final class ClosedTerminalRowTests: XCTestCase {
         supervisor.discoverAgentProcesses()
         let row = try XCTUnwrap(supervisor.sessions.first)
         XCTAssertEqual(row.phase, .terminalClosed)
-        XCTAssertEqual(supervisor.reach(for: row), .closedTerminal(devicePath: device))
+        XCTAssertEqual(supervisor.reach(for: row), .closedTerminal(.discardOutput(devicePath: device)))
 
-        XCTAssertFalse(supervisor.focus(row), "there is no window to raise")
+        XCTAssertEqual(supervisor.focus(row), .asksToEndAgent(.discardOutput(devicePath: device)))
+        XCTAssertEqual(released, [], "the click only asks")
+
+        supervisor.endAgent(ofSessionWithID: row.id)
 
         XCTAssertEqual(released, [device])
     }
 
-    /// A click that ends a process has to have been announced first. A row still drawn as an
-    /// ordinary session showed no card saying so, so its click only finds out and marks it.
-    func testTheFirstClickOnARowNotMarkedYetOnlyMarksIt() throws {
+    /// The first click on a row still drawn as an ordinary session finds out, marks it and
+    /// asks at once: a second click to reach the question was the complaint.
+    func testTheFirstClickOnARowNotMarkedYetMarksItAndAsks() throws {
         var state = AgentProcessLocator.TerminalState.attached
         var released: [String] = []
         let supervisor = makeSupervisor(terminalState: { _ in state }, released: { released.append($0) })
@@ -162,33 +168,135 @@ final class ClosedTerminalRowTests: XCTestCase {
             testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
         state = .lost
 
-        XCTAssertFalse(supervisor.focus(try XCTUnwrap(supervisor.sessions.first)), "the IDE is not raised either")
+        XCTAssertEqual(
+            supervisor.focus(try XCTUnwrap(supervisor.sessions.first)),
+            .asksToEndAgent(.discardOutput(devicePath: device)),
+            "the IDE is not raised either"
+        )
 
         XCTAssertEqual(try XCTUnwrap(supervisor.sessions.first).phase, .terminalClosed)
         XCTAssertEqual(released, [])
     }
 
-    /// Asked again at the click rather than trusted from the scan: by then the process may
+    /// Nothing is asked that a yes could not carry out.
+    func testWithNoWayToEndTheAgentTheClickAsksNothing() throws {
+        let supervisor = makeSupervisor(terminalState: { _ in .neverHad })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        let marked = try XCTUnwrap(
+            supervisor.sessions.first.map { snapshot -> SessionSnapshot in
+                var closed = snapshot
+                closed.phase = .terminalClosed
+                return closed
+            })
+
+        XCTAssertEqual(supervisor.focus(marked), .nothingRaised)
+    }
+
+    /// Asked again at the answer rather than trusted from the click: by then the process may
     /// be gone and its terminal handed to somebody's new tab.
-    func testAClickFlushesNothingOnceTheProcessNoLongerLostItsTerminal() throws {
+    func testAYesFlushesNothingOnceTheProcessNoLongerLostItsTerminal() throws {
         var state = AgentProcessLocator.TerminalState.lost
         var released: [String] = []
-        let supervisor = makeSupervisor(terminalState: { _ in state }, released: { released.append($0) })
+        var hungUp: [[Int32]] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in state }, released: { released.append($0) }, hungUp: { hungUp.append($0) })
         supervisor.start()
         defer { supervisor.stop() }
         supervisor.ingest(
             testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
         supervisor.discoverAgentProcesses()
         let row = try XCTUnwrap(supervisor.sessions.first)
-        XCTAssertEqual(row.phase, .terminalClosed)
-
-        state = .attached
         supervisor.focus(row)
 
+        state = .attached
+        supervisor.endAgent(ofSessionWithID: row.id)
+
         XCTAssertEqual(released, [])
+        XCTAssertEqual(hungUp, [], "a terminal the agent has again is not a tab Ghostty closed")
     }
 
-    func testAMenuClickDoesNotEndAnAgentUnlessTheDisplayedLineAnnouncedIt() throws {
+    /// The row goes once its agent has — and not at the answer: a row taken away at once
+    /// would hide an agent the ending did not end. The agent's own last hook, arriving after
+    /// the row went, brings nothing back.
+    func testAYesTakesTheRowAwayOnceTheAgentHasEnded() throws {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        child.arguments = ["30"]
+        try child.run()
+        defer { child.terminate() }
+        var notes: [String] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .lost },
+            released: { _ in child.terminate() },
+            notes: { notes.append($0) }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(
+                event: "SessionStart", sessionID: "devx", agentProcessID: child.processIdentifier, clientKind: .cli))
+        supervisor.discoverAgentProcesses()
+        let row = try XCTUnwrap(supervisor.sessions.first)
+        XCTAssertEqual(row.phase, .terminalClosed)
+
+        supervisor.endAgent(ofSessionWithID: row.id)
+        let deadline = Date().addingTimeInterval(5)
+        while !supervisor.sessions.isEmpty, Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+
+        XCTAssertEqual(supervisor.sessions, [], "\(notes)")
+        XCTAssertTrue(notes.contains { $0.contains("ended as asked; session removed") }, "\(notes)")
+
+        supervisor.ingest(testRequest(event: "SessionEnd", sessionID: "devx"))
+
+        XCTAssertEqual(supervisor.sessions, [], "the late end came back as a closed row")
+    }
+
+    /// An ending that went out and did not end the agent leaves the row as it was, and the
+    /// next click asks again.
+    func testAnAgentTheYesDidNotEndKeepsItsRow() throws {
+        var released: [String] = []
+        let supervisor = makeSupervisor(terminalState: { _ in .lost }, released: { released.append($0) })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.discoverAgentProcesses()
+        let row = try XCTUnwrap(supervisor.sessions.first)
+
+        supervisor.endAgent(ofSessionWithID: row.id)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        XCTAssertEqual(released, [device])
+        XCTAssertEqual(try XCTUnwrap(supervisor.sessions.first).phase, .terminalClosed)
+        XCTAssertEqual(
+            supervisor.focus(try XCTUnwrap(supervisor.sessions.first)),
+            .asksToEndAgent(.discardOutput(devicePath: device)))
+    }
+
+    /// The same last hook, arriving before the agent's exit is seen: the row it closes is
+    /// taken away too, instead of standing as a finished session.
+    func testAnEndReportedBeforeTheExitAlsoTakesTheRowAway() throws {
+        let supervisor = makeSupervisor(terminalState: { _ in .lost })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.discoverAgentProcesses()
+        supervisor.endAgent(ofSessionWithID: try XCTUnwrap(supervisor.sessions.first).id)
+
+        supervisor.ingest(testRequest(event: "SessionEnd", sessionID: "devx"))
+
+        XCTAssertEqual(supervisor.sessions, [])
+    }
+
+    /// A menu line ends nothing either: its click asks, like the row's, whatever the line said
+    /// when the menu opened.
+    func testAMenuClickAsksAndEndsNothing() throws {
         var state = AgentProcessLocator.TerminalState.attached
         var released: [String] = []
         var notes: [String] = []
@@ -198,40 +306,271 @@ final class ClosedTerminalRowTests: XCTestCase {
         defer { supervisor.stop() }
         supervisor.ingest(
             testRequest(event: "UserPromptSubmit", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
-        let ordinary = try XCTUnwrap(
+        let line = try XCTUnwrap(
             menuSessionLines(
                 for: supervisor.sessions, listing: Set(SessionAttention.counted), reach: supervisor.reach(for:)
             ).first)
 
         state = .lost
-        supervisor.discoverAgentProcesses()
+        XCTAssertEqual(supervisor.focusSession(id: line.sessionID), .asksToEndAgent(.discardOutput(devicePath: device)))
         XCTAssertEqual(try XCTUnwrap(supervisor.sessions.first).phase, .terminalClosed)
-        supervisor.focusSession(id: ordinary.sessionID, endingAgentWasAnnounced: ordinary.endingAgentWasAnnounced)
-        XCTAssertEqual(released, [], "a change since the menu opened must not turn focus into terminal release")
-
-        let announced = try XCTUnwrap(
-            menuSessionLines(
-                for: supervisor.sessions, listing: Set(SessionAttention.counted), reach: supervisor.reach(for:)
-            ).first)
-        XCTAssertTrue(announced.title.contains("click ends the agent"))
-        supervisor.focusSession(id: announced.sessionID, endingAgentWasAnnounced: announced.endingAgentWasAnnounced)
-        XCTAssertEqual(released, [device])
+        XCTAssertEqual(released, [])
 
         supervisor.ingest(testRequest(event: "SessionEnd", sessionID: "devx"))
-        supervisor.focusSession(id: announced.sessionID, endingAgentWasAnnounced: true)
-        XCTAssertEqual(released, [device], "an old announced action must still check the current session")
+        XCTAssertEqual(supervisor.focusSession(id: line.sessionID), .nothingRaised)
         XCTAssertTrue(notes.contains { $0.contains("ended while the menu was open") }, "said, not swallowed: \(notes)")
-        supervisor.focusSession(id: "gone", endingAgentWasAnnounced: true)
-        XCTAssertEqual(released, [device])
+        XCTAssertEqual(supervisor.focusSession(id: "gone"), .nothingRaised)
+        XCTAssertEqual(released, [])
+    }
+
+    // MARK: - A tab Ghostty closed and kept
+    //
+    // A person closes a Ghostty tab, Ghostty keeps the terminal behind it with the agent
+    // running, and a click must not bring forward whichever Ghostty window is in front.
+
+    /// The shell the agent was typed into and the `login` above it, as the kernel's walk up
+    /// the agent's terminal would find them.
+    private let shell: Int32 = 52482
+    private let login: Int32 = 52480
+    private let tabGone = SessionHostRegistry.FocusOutcome(
+        raised: false, tab: .gone("Ghostty holds 5 terminals and shows 4, none named after this session"))
+
+    func testAClickThatFindsItsTabGoneMarksTheRowAndAsks() throws {
+        var hungUp: [[Int32]] = []
+        var notes: [String] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached },
+            notes: { notes.append($0) },
+            hungUp: { hungUp.append($0) },
+            focusHost: { [tabGone] _, _ in tabGone }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+
+        XCTAssertEqual(
+            supervisor.focus(try XCTUnwrap(supervisor.sessions.first)),
+            .asksToEndAgent(.hangUp(processIDs: [agent, shell, login])),
+            "no window comes forward"
+        )
+
+        XCTAssertEqual(try XCTUnwrap(supervisor.sessions.first).phase, .terminalClosed)
+        XCTAssertEqual(hungUp, [], "the click only asks")
+        XCTAssertTrue(notes.contains { $0.contains("Ghostty holds 5 terminals and shows 4") }, "\(notes)")
+    }
+
+    /// The card is drawn on hover, and a hover sends Ghostty nothing: which ending applies is
+    /// read from the kernel, where the agent still has its terminal.
+    func testTheCardOfARowWhoseTabIsGoneOffersAHangUp() throws {
+        let supervisor = makeSupervisor(terminalState: { _ in .attached }, focusHost: { [tabGone] _, _ in tabGone })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+        let row = try XCTUnwrap(supervisor.sessions.first)
+
+        let reach = supervisor.reach(for: row)
+        let card = hoverCardText(for: row, now: now, layout: .standard, reach: reach)
+
+        XCTAssertEqual(reach, .closedTerminal(.hangUp(processIDs: [agent, shell, login])))
+        XCTAssertTrue(card.contains("A click asks to end it and its shell"), card)
+        XCTAssertTrue(card.contains("kill -HUP \(agent) \(shell) \(login)"), card)
+    }
+
+    func testAYesHangsUpTheAgentWhileItsTabIsStillGone() throws {
+        var hungUp: [[Int32]] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached },
+            agentProcessStartedAt: { [now] _ in now.addingTimeInterval(-60) },
+            hungUp: { hungUp.append($0) },
+            focusHost: { [tabGone] _, _ in tabGone },
+            tabIsGone: { _, _ in true }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+        XCTAssertEqual(hungUp, [], "a second click asks again, and still ends nothing")
+
+        supervisor.endAgent(ofSessionWithID: try XCTUnwrap(supervisor.sessions.first).id)
+
+        XCTAssertEqual(hungUp, [[agent, shell, login]], "the agent first, then what its closed tab ran it in")
+    }
+
+    /// Asked again at the answer: the tab may be back, or Ghostty may have let the terminal
+    /// go and the count with it.
+    func testAYesSendsNothingOnceTheTabIsNoLongerMissing() throws {
+        var hungUp: [[Int32]] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached },
+            agentProcessStartedAt: { [now] _ in now.addingTimeInterval(-60) },
+            hungUp: { hungUp.append($0) },
+            focusHost: { [tabGone] _, _ in tabGone },
+            tabIsGone: { _, _ in false }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+
+        supervisor.endAgent(ofSessionWithID: try XCTUnwrap(supervisor.sessions.first).id)
+
+        XCTAssertEqual(hungUp, [])
+    }
+
+    /// A process that started after the row last heard from its agent is somebody else under
+    /// a number handed out again, and a hang-up would end a stranger.
+    func testAYesSendsNothingToAProcessNewerThanTheRow() throws {
+        var hungUp: [[Int32]] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached },
+            agentProcessStartedAt: { [now] _ in now.addingTimeInterval(60) },
+            hungUp: { hungUp.append($0) },
+            focusHost: { [tabGone] _, _ in tabGone },
+            tabIsGone: { _, _ in true }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+
+        supervisor.endAgent(ofSessionWithID: try XCTUnwrap(supervisor.sessions.first).id)
+
+        XCTAssertEqual(hungUp, [])
     }
 
     // MARK: - Scaffolding
 
+    /// Nothing here reaches a real host: the process running the tests may be in a Ghostty
+    /// tab, and the registry would ask that Ghostty.
+    // MARK: - The hang-up itself
+
+    /// The one check between a chain and a real `kill`: `kill` reads zero as the caller's
+    /// whole group of processes, a negative number as a group or every process of the user,
+    /// and one as `launchd`.
+    func testAHangUpIsRefusedForNumbersThatAreNotOneProcess() {
+        let own: Int32 = 4_242
+        for refused: [Int32] in [[], [0], [1], [-1], [52671, -1], [own], [52671, own]] {
+            XCTAssertFalse(ClosedTerminal.mayHangUp(refused, ownProcessID: own), "\(refused)")
+        }
+        XCTAssertTrue(ClosedTerminal.mayHangUp([52671, 52482, 52480], ownProcessID: own))
+    }
+
+    // MARK: - What the answer re-checks
+
+    /// A number the kernel handed to another process since the row was marked is not shown
+    /// as the agent's: the card would print it for a person to `kill -HUP` by hand.
+    func testTheCardOffersNoHangUpOnceItsNumberIsAnotherProcesss() throws {
+        var startedAt = Date.distantPast
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached }, agentProcessStartedAt: { _ in startedAt },
+            focusHost: { [tabGone] _, _ in tabGone })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first))
+
+        startedAt = now.addingTimeInterval(60)
+
+        XCTAssertEqual(supervisor.reach(for: try XCTUnwrap(supervisor.sessions.first)), .closedTerminal(nil))
+    }
+
+    /// An agent that no longer has a terminal to hang up is not asked about: a yes could do
+    /// nothing.
+    func testAnAgentWithNoTerminalLeftIsNotAskedAbout() throws {
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached }, chain: { _ in [] }, focusHost: { [tabGone] _, _ in tabGone })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+
+        XCTAssertEqual(supervisor.focus(try XCTUnwrap(supervisor.sessions.first)), .nothingRaised)
+        XCTAssertEqual(supervisor.reach(for: try XCTUnwrap(supervisor.sessions.first)), .closedTerminal(nil))
+    }
+
+    /// An ending that did not go out leaves the row as an ordinary broken one: when its session
+    /// closes later, it closes like any other, rather than going as if it had been asked to.
+    func testAnEndingThatDidNotGoOutLeavesTheRowToCloseLikeAnyOther() throws {
+        var notes: [String] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .lost }, releaseSucceeds: false, notes: { notes.append($0) })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.discoverAgentProcesses()
+        let row = try XCTUnwrap(supervisor.sessions.first)
+
+        supervisor.endAgent(ofSessionWithID: row.id)
+        supervisor.ingest(testRequest(event: "SessionEnd", sessionID: "devx"))
+
+        XCTAssertTrue(notes.contains { $0.contains("could not discard the output") }, "\(notes)")
+        XCTAssertEqual(supervisor.sessions.map(\.phase), [.sessionClosed])
+    }
+
+    /// The answer comes after the question, and the session may have moved on: gone, or back in
+    /// its terminal. Either way nothing is ended, and the note says why.
+    func testAYesToAQuestionThatNoLongerHoldsEndsNothing() throws {
+        var state = AgentProcessLocator.TerminalState.lost
+        var released: [String] = []
+        var notes: [String] = []
+        let supervisor = makeSupervisor(
+            terminalState: { _ in state }, released: { released.append($0) }, notes: { notes.append($0) })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent, clientKind: .cli))
+        supervisor.discoverAgentProcesses()
+        let row = try XCTUnwrap(supervisor.sessions.first)
+        XCTAssertEqual(row.phase, .terminalClosed)
+
+        state = .attached
+        supervisor.ingest(testRequest(event: "UserPromptSubmit", sessionID: "devx"))
+        supervisor.endAgent(ofSessionWithID: row.id)
+        supervisor.remove(try XCTUnwrap(supervisor.sessions.first))
+        supervisor.endAgent(ofSessionWithID: row.id)
+
+        XCTAssertEqual(released, [])
+        XCTAssertTrue(notes.contains { $0.contains("no longer without its terminal; nothing was done") }, "\(notes)")
+        XCTAssertTrue(notes.contains { $0.contains("the session was gone before the answer") }, "\(notes)")
+    }
+
+    /// The case reported on the owner's machine: a row dismissed by hand, and its agent's last
+    /// hook arriving afterwards. It brings no closed row back.
+    func testTheEndOfASessionDismissedByHandBringsNoRowBack() throws {
+        let supervisor = makeSupervisor(terminalState: { _ in .neverHad })
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(testRequest(event: "SessionStart", sessionID: "devx", agentProcessID: agent))
+        supervisor.remove(try XCTUnwrap(supervisor.sessions.first))
+
+        supervisor.ingest(testRequest(event: "SessionEnd", sessionID: "devx"))
+
+        XCTAssertEqual(supervisor.sessions, [])
+    }
+
     private func makeSupervisor(
         processes: [DiscoveredAgentProcess] = [],
         terminalState: @escaping (Int32) -> AgentProcessLocator.TerminalState?,
+        agentProcessStartedAt: @escaping (Int32) -> Date? = { _ in .distantPast },
         released: @escaping (String) -> Void = { _ in },
-        notes: @escaping (String) -> Void = { _ in }
+        releaseSucceeds: Bool = true,
+        notes: @escaping (String) -> Void = { _ in },
+        hungUp: @escaping ([Int32]) -> Void = { _ in },
+        hangUpSucceeds: Bool = true,
+        chain: ((Int32) -> [Int32])? = nil,
+        focusHost: @escaping (SessionSnapshot, [String]) -> SessionHostRegistry.FocusOutcome = { _, _ in
+            SessionHostRegistry.FocusOutcome(raised: false, tab: .unaddressable)
+        },
+        tabIsGone: @escaping (SessionSnapshot, [String]) -> Bool = { _, _ in false }
     ) -> SessionSupervisor {
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         return SessionSupervisor(
@@ -241,13 +580,20 @@ final class ClosedTerminalRowTests: XCTestCase {
             history: SessionHistoryStore(directoryURL: scratch.appendingPathComponent("history")),
             now: { [now] in now },
             liveAgentProcesses: { processes },
-            agentProcessStartedAt: { _ in nil },
+            agentProcessStartedAt: agentProcessStartedAt,
             terminalState: terminalState,
             terminalDevicePath: { [device] _ in device },
             releaseTerminal: { path in
                 released(path)
-                return true
+                return releaseSucceeds
             },
+            terminalProcessChain: chain ?? { [shell, login] processID in [processID, shell, login] },
+            hangUp: { processIDs in
+                hungUp(processIDs)
+                return hangUpSucceeds
+            },
+            focusHost: focusHost,
+            tabIsGoneWithTerminalKept: tabIsGone,
             onChange: { _, _ in },
             onNotableEvent: notes
         )

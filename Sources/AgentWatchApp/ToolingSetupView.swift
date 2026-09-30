@@ -9,9 +9,9 @@ func agentInstallationText(_ path: String?) -> String {
 /// guide that printed a dead one would promise what the menu, for the same reason, will not.
 func setupWidgetToggleText(shortcut: String?) -> String {
     guard let shortcut else {
-        return "Show Widget in the menu bar shows or hides the widget. A shortcut can be set in Widget Settings."
+        return "Show Widget in the menu bar brings the widget back. A shortcut can be set in Settings → General."
     }
-    return "\(shortcut) shows or hides the widget (you can change this in Widget Settings)."
+    return "\(shortcut) shows or hides the widget (you can change it in Settings → General)."
 }
 
 enum SetupAction {
@@ -171,7 +171,7 @@ final class ToolingSetupView: NSStackView {
     private func connectionBadge(_ state: ToolingInstallationState) -> String {
         switch state {
         case .installed: "✓ Connection installed"
-        case .unheard: "◷ Connection installed · waiting for a signal"
+        case .unheard: "◑ Connection installed · waiting for the first event"
         case .absent: "○ Not connected yet"
         case .incomplete, .stale: "! Connection needs repair"
         case .unreadable: "! Configuration cannot be read"

@@ -16,7 +16,7 @@ struct SessionOrderDemo {
     private(set) var step = 0
 
     /// How far the demo's clock moves each step. Also what the window waits between steps.
-    static var stepInterval: TimeInterval { WidgetTheme.motion.demoStepSeconds }
+    @MainActor static var stepInterval: TimeInterval { ThemeInUse.timing.widget.orderExampleStep }
 
     /// Who changes, and into what — eight steps that bring every session back where it began.
     static let script: [(index: Int, phase: SessionPhase)] = [
@@ -31,7 +31,7 @@ struct SessionOrderDemo {
     ]
 
     /// Whether the window plays the list for this order. Only where rows move by themselves:
-    /// in the arrival order nothing does, and the blocks are shown as their builder instead.
+    /// in the arrival order nothing does.
     static func plays(_ order: SessionOrder) -> Bool {
         switch order {
         case .recentActivity, .attention: true
@@ -46,7 +46,7 @@ struct SessionOrderDemo {
 
     /// The next step, and the clock moves on with it: the session that changed is the one
     /// heard from last.
-    mutating func advance() {
+    @MainActor mutating func advance() {
         let (index, phase) = Self.script[step % Self.script.count]
         now += Self.stepInterval
         sessions[index].phase = phase

@@ -3,48 +3,33 @@ import AppKit
 
 /// What the status item's menu reads and asks for, and nothing about how it is drawn.
 ///
-/// A protocol so that a test can stand in for the application: the menu used to be built
-/// inside `AppDelegate`, which cannot be made in a test without reading the real state
-/// directory, and so nothing checked a line of it.
+/// A protocol so that a test can stand in for the application, which cannot be made in a test
+/// without reading the real state directory.
 @MainActor
 protocol StatusMenuHost: AnyObject {
     /// The same counts the icon shows. Read when the menu opens.
     var attentionCounts: SessionAttentionCounts { get }
     var isWidgetVisible: Bool { get }
-    var isEventDebugVisible: Bool { get }
-    var checksForUpdatesOnLaunch: Bool { get set }
-    var isReadingTranscripts: Bool { get }
-    var transcriptFaultedSessionCount: Int { get }
     /// Every session the widget has, in the widget's order.
     var sessions: [SessionSnapshot] { get }
     func reach(for snapshot: SessionSnapshot) -> SessionReach
-    /// A click on a session's line, which is a click on its row in the widget.
-    func focusSession(id: String, endingAgentWasAnnounced: Bool)
+    /// A click on a session's line, which is a click on its row in the widget. A broken
+    /// session's answers with the question, which the menu then puts in place of its lines.
+    @discardableResult
+    func focusSession(id: String) -> SessionClick
+    /// The yes to that question.
+    func endAgent(ofSessionWithID id: String)
     /// Called before anything is refreshed, so what the menu then reads is current.
     func menuWillOpen()
     /// Puts the registered combination on the widget line, or takes it off.
     func showShortcut(on item: NSMenuItem)
     func toggleWidget()
     func showWidgetSettings()
-    func showTooling()
-    func toggleEventDebug()
-    func checkForUpdates()
-    func resetWidgetPosition()
-    func resetWidgetSize()
     func quit()
-    #if AGENT_WATCH_DEBUG_CAPTURE
-        /// When the current recording stops, or `nil` when none is running.
-        var rawCaptureExpiry: Date? { get }
-        var recordedPayloadBytes: Int { get }
-        func toggleRawHookCapture()
-        func deleteRawHookRecordings()
-    #endif
 }
 
-/// The status item's menu: its lines, and keeping them true each time it opens.
-///
-/// Settings are written straight to the store, whose `onChange` carries the follow-up; the
-/// rest goes to the host.
+/// The status item's menu: its lines, and keeping them true each time it opens. What it asks
+/// for goes to the host.
 @MainActor
 final class StatusMenu: NSObject, NSMenuDelegate {
     let menu = NSMenu()
@@ -61,6 +46,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     private(set) var widgetItem: NSMenuItem?
     /// At most this many sessions are listed; the rest are counted on one line.
     static let listedSessionLimit = 8
+    /// The broken session whose question stands where the session lines were, while the menu
+    /// is open. A menu cannot draw over its own lines, so the lines give way to it.
+    private(set) var askingAbout: String?
+    /// The session lines' marks, which a theme can colour and move.
+    let marks = MenuMarkAnimator()
 
     init(settings: WidgetSettingsStore, host: StatusMenuHost) {
         self.settings = settings
@@ -97,22 +87,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    private func line(_ title: String, _ action: Selector, toolTip: String? = nil) -> NSMenuItem {
+    private func line(_ title: String, _ action: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
-        item.toolTip = toolTip
         return item
-    }
-
-    static func title(for retention: ClosedSessionRetention) -> String {
-        switch retention {
-        case .manual:
-            "Keep until dismissed"
-        case let .after(seconds):
-            seconds < 120
-                ? "Remove after \(Int(seconds)) seconds"
-                : "Remove after \(Int(seconds / 60)) minutes"
-        }
     }
 
     // MARK: - Keeping the lines true
@@ -120,6 +98,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         host?.menuWillOpen()
         refresh()
+        marks.start()
+    }
+
+    /// Closing the menu with the question open — Escape, a click elsewhere — is a no.
+    func menuDidClose(_ menu: NSMenu) {
+        askingAbout = nil
+        marks.stop()
     }
 
     /// Every title and checkmark, read again from what they describe.
@@ -146,9 +131,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         summaryItem?.title = MenuBarSummaryText.line(for: host.attentionCounts)
     }
 
-    /// The listed sessions and the lines that choose them, read again from the setting. Called
-    /// straight after a choice as well as on opening: the menu is still open then, and the
-    /// lines at its top show the effect while the pointer is still in the submenu.
+    /// The listed sessions, read again from the setting and the sessions. Called on opening,
+    /// and while the menu is open when its lines have to change under the pointer: the
+    /// question of a broken session puts itself in their place, and Cancel puts them back.
     func refreshSessions() {
         if let host {
             showSessionLines(host: host)
@@ -162,6 +147,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             menu.removeItem(item)
         }
         sessionLineItems = []
+        marks.show([])
         guard settings.listsSessionsInMenu else {
             return
         }
@@ -171,6 +157,18 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             reach: host.reach(for:)
         )
         let first = summaryItem.map { menu.index(of: $0) + 1 } ?? 0
+        // Asked again on every rebuild, as the widget does.
+        if let askingAbout, let session = host.sessions.first(where: { $0.id == askingAbout }),
+            EndAgentQuestion.holds(for: session, reach: host.reach(for:))
+        {
+            let item = questionItem(for: session)
+            menu.insertItem(item, at: first)
+            sessionLineItems = [item]
+            return
+        }
+        askingAbout = nil
+        let look = ThemeInUse.look
+        var marked: [(item: NSMenuItem, attention: SessionAttention, style: LampStyle)] = []
         sessionLineItems = lines.prefix(Self.listedSessionLimit).enumerated().map { offset, line in
             // A line with nothing to do has no action, which is how a menu that enables its
             // own items knows to grey it: `isEnabled` alone is overwritten when it opens.
@@ -181,10 +179,22 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             )
             item.target = self
             item.representedObject = line
-            item.image = Self.mark(for: line.attention)
+            let style = look.menuMarkStyle(for: line.phase, phases: ThemeInUse.phases)
+            item.image = MenuMarkAnimator.mark(for: line.attention, colour: style.color)
+            if line.leadsToQuestion {
+                // Still: the line draws itself, and its picture is taken once.
+                let view = MenuBrokenSessionLineView(title: line.title, image: item.image)
+                view.onChoose = { [weak self] in
+                    self?.chooseBrokenLine(line)
+                }
+                item.view = view
+            } else {
+                marked.append((item, line.attention, style))
+            }
             menu.insertItem(item, at: first + offset)
             return item
         }
+        marks.show(marked)
         let unlisted = lines.count - Self.listedSessionLimit
         if unlisted > 0 {
             let more = NSMenuItem(title: "\(unlisted) more in the widget", action: nil, keyEquivalent: "")
@@ -193,28 +203,58 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    /// The mark the state has in the menu bar, in its colour. The shape tells the states apart
-    /// on its own, so the colour only speeds the reading (ADR-0003).
-    ///
-    /// Two palette colours, the mark first. Given only the accent, the palette paints every
-    /// layer with it — drawn offscreen, all four came out as plain discs of four colours, which
-    /// is the one thing ADR-0003 rules out. The menu bar cuts the mark out of the disc instead;
-    /// a menu has a background of its own, so a white mark reads the same on a light and a dark
-    /// one.
+    /// The mark the state has in the menu bar, in the state's colour (`MenuMarkAnimator.mark`).
     static func mark(for attention: SessionAttention) -> NSImage? {
-        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [.white, attention.accent]))
-        return NSImage(systemSymbolName: attention.symbolName, accessibilityDescription: attention.name)?
-            .withSymbolConfiguration(configuration)
+        MenuMarkAnimator.mark(for: attention, colour: attention.accent)
+    }
+
+    /// The question, as tall as it needs to be at the menu's width, with the rest of the
+    /// menu around it.
+    private func questionItem(for session: SessionSnapshot) -> NSMenuItem {
+        let item = NSMenuItem(title: "Broken session", action: nil, keyEquivalent: "")
+        let id = session.id
+        item.view = MenuEndAgentQuestionView(
+            sessionID: id,
+            sessionName: EndAgentQuestion.name(of: session),
+            onCancel: { [weak self] in
+                self?.askingAbout = nil
+                self?.refreshSessions()
+            },
+            onEnd: { [weak self] in
+                self?.askingAbout = nil
+                self?.host?.endAgent(ofSessionWithID: id)
+                // Closed rather than kept: the lines are read once per opening, and an open
+                // menu would go on listing the session the answer just ended.
+                self?.menu.cancelTracking()
+            }
+        )
+        return item
+    }
+
+    /// A broken session's line, which stays open for the question its click leads to.
+    func chooseBrokenLine(_ line: MenuSessionLine) {
+        guard case .asksToEndAgent = host?.focusSession(id: line.sessionID) else {
+            refreshSessions()
+            return
+        }
+        askingAbout = line.sessionID
+        refreshSessions()
     }
 
     // MARK: - Actions
 
+    /// An ordinary line, whose click closes the menu. The one broken session that can only be
+    /// found by a click — a tab Ghostty closed and kept — is found here, after the menu has
+    /// gone: its row is marked, and the next opening of the menu shows its line, which asks.
     @objc private func focusSession(_ sender: NSMenuItem) {
         guard let line = sender.representedObject as? MenuSessionLine else {
             return
         }
-        host?.focusSession(id: line.sessionID, endingAgentWasAnnounced: line.endingAgentWasAnnounced)
+        if line.leadsToQuestion {
+            chooseBrokenLine(line)
+            return
+        }
+        host?.focusSession(id: line.sessionID)
     }
 
     @objc private func toggleWidget() {

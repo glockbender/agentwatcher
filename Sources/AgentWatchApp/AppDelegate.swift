@@ -17,10 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// own configuration files. Read at four moments, shown on every redraw.
     private var widgetComplaint: String?
     private let singleInstanceCoordinator: SingleInstanceCoordinator
-    private let backgroundStore: WidgetBackgroundStore
     private let settings: WidgetSettingsStore
     private let frameStore: HUDFrameStore
-    private let lampSchemes: LampSchemeStore
     private let themes: ThemeStore
     private let rowLayouts: RowLayoutStore
     private let preferences: PreferenceFile
@@ -90,14 +88,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.supervisor.reach(for: snapshot) ?? .nowhere
             },
             focus: { [weak self] snapshot in
-                self?.supervisor.focus(snapshot)
+                self?.supervisor.focus(snapshot) ?? .nothingRaised
             },
             remove: { [weak self] snapshot in
                 self?.supervisor.remove(snapshot)
             },
-            background: themes.widgetBackground(on: backgroundStore.material),
+            endAgent: { [weak self] sessionID in
+                self?.supervisor.endAgent(ofSessionWithID: sessionID)
+            },
+            background: themes.textBackground,
             lampScheme: themes.look.lampScheme,
-            backgroundOpacity: backgroundStore.opacity,
+            backgroundOpacity: themes.look.widgetOpacity,
             style: WidgetStyle(scale: settings.scale),
             frameStore: frameStore,
             settings: settings,
@@ -113,8 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return controller
     }()
-    private lazy var settingsWindow: WidgetSettingsWindowController = WidgetSettingsWindowController(
-        backgroundStore: backgroundStore,
+    private lazy var settingsWindow: SettingsWindowController = SettingsWindowController(
         themes: themes,
         settings: settings,
         rowLayouts: rowLayouts,
@@ -122,8 +122,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         host: self,
         version: updater.ownVersion
     )
-    private var appearanceObservation: NSKeyValueObservation?
     private lazy var fullScreenDot = FullScreenDot()
+    private var appearanceObservation: NSKeyValueObservation?
+    private lazy var themeChange = CoalescedWork { [weak self] in
+        self?.applyTheme()
+    }
+    #if DEBUG
+        private var themeDragProbe: ThemeDragProbe?
+    #endif
     private let debugLog = EventDebugLog()
     private lazy var debugController = EventDebugWindowController(initialEntries: debugLog.recentEntries())
     private lazy var ingress = HookIngressController(
@@ -149,10 +155,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.singleInstanceCoordinator = singleInstanceCoordinator
         self.preferences = preferences
         self.updater = AppUpdater(preferences: preferences)
-        backgroundStore = WidgetBackgroundStore(preferences: preferences)
         settings = WidgetSettingsStore(preferences: preferences)
         frameStore = HUDFrameStore(preferences: preferences)
-        lampSchemes = LampSchemeStore(preferences: preferences)
         themes = ThemeStore(
             preferences: preferences,
             folder: AgentWatchPaths.supportDirectory()?.appendingPathComponent("Themes", isDirectory: true)
@@ -166,9 +170,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
-        backgroundStore.onChange = { [weak self] setting in
-            self?.settingChanged(setting)
-        }
         themes.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
@@ -179,23 +180,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        themes.adoptIfNeeded(lampScheme: lampSchemes.scheme, background: backgroundStore.selected)
         rowLayouts.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }
         // Before anything reads a setting: a fresh install gets the whole configuration
         // written out, and a version that adds one fills in that key alone.
         let owners: [PreferenceDefaults] = [
-            backgroundStore, settings, frameStore, themes, rowLayouts, updater,
+            settings, frameStore, themes, rowLayouts, updater,
         ]
         var everyDefault: [String: JSONValue] = [:]
         for owner in owners {
             everyDefault.merge(owner.defaultValues) { existing, _ in existing }
         }
         preferences.seed(everyDefault)
-        WidgetMaterial.current = backgroundStore.material
-        WidgetTheme.active = themes.look
-        WidgetTheme.motion = themes.theme.motion
+        ThemeInUse.look = themes.look
+        ThemeInUse.timing = themes.theme.timing.clamped
         // Said out loud, because the alternative is a person's settings apparently reset for
         // no reason. The seeding above is the write that moves the old file aside.
         if let kept = preferences.unreadableFileKeptAt {
@@ -221,6 +220,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyShortcut()
         updater.checkAfterLaunch()
         #if DEBUG
+            // The probes write settings as they draw — the mode, the order, the row — so they
+            // run on a copy of the state only, never on a person's own.
+            let probes = [
+                "AGENT_WATCH_SETTINGS_SNAPSHOT", "AGENT_WATCH_WIDGET_SNAPSHOT", "AGENT_WATCH_THEME_DRAG_PROBE",
+            ]
+            let environment = ProcessInfo.processInfo.environment
+            if probes.contains(where: { environment[$0] != nil }), environment["AGENT_WATCH_SUPPORT_DIR"] == nil {
+                FileHandle.standardError.write(Data("a probe runs only with AGENT_WATCH_SUPPORT_DIR set\n".utf8))
+                NSApplication.shared.terminate(nil)
+                return
+            }
             if let directory = ProcessInfo.processInfo.environment["AGENT_WATCH_SETTINGS_SNAPSHOT"] {
                 settingsWindow.snapshot(into: URL(fileURLWithPath: directory)) {
                     NSApplication.shared.terminate(nil)
@@ -228,6 +238,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if let directory = ProcessInfo.processInfo.environment["AGENT_WATCH_WIDGET_SNAPSHOT"] {
                 snapshotWidget(into: URL(fileURLWithPath: directory))
+            }
+            if let file = ProcessInfo.processInfo.environment["AGENT_WATCH_THEME_DRAG_PROBE"] {
+                themeDragProbe = ThemeDragProbe(window: settingsWindow, file: URL(fileURLWithPath: file))
+                themeDragProbe?.start()
             }
         #endif
     }
@@ -335,12 +349,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// moves nothing on the bar.
     private func updateMenuBarIcon(sessions: [SessionSnapshot]) {
         let counts = SessionAttentionCounts(sessions: sessions)
-        guard counts != menuBarCounts else {
+        let phases = sessions.reduce(into: [SessionPhase: Int]()) { $0[$1.phase, default: 0] += 1 }
+        let phasesMatter = ThemeInUse.look.isRedrawn(forPhases: phases, after: ThemeInUse.phases)
+        ThemeInUse.phases = phases
+        guard counts != menuBarCounts || phasesMatter else {
             return
         }
         menuBarCounts = counts
-        menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
         fullScreenDot.show(counts, enabled: settings.showsFullScreenDot)
+        menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
         updateStatusItemWording()
         statusMenu?.refreshSummary()
     }
@@ -386,12 +403,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateMenuBarIcon(sessions: shown)
     }
 
-    /// Who has to be told when a setting changes, written once.
-    ///
-    /// Nothing here is new — each line used to sit in the menu action that made the write.
-    /// The problem was that the list was knowledge every writer had to carry, and a writer
-    /// who forgot one produced a setting that appeared not to work and then fixed itself
-    /// minutes later. That has already happened once, to the topic toggle.
+    /// Who has to be told when a setting changes, written once rather than by every writer:
+    /// a writer that forgot one would leave a setting that appears not to work and then fixes
+    /// itself minutes later.
     private func settingChanged(_ setting: WidgetSetting) {
         switch setting {
         case .interactionLocks:
@@ -406,27 +420,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .transcriptPollInterval:
             supervisor.transcriptSettingsChanged()
             statusMenu?.refresh()
-        case .background:
-            WidgetMaterial.current = backgroundStore.material
-            hudController.setBackground(themes.widgetBackground(on: backgroundStore.material))
         case .theme:
-            WidgetTheme.active = themes.look
-            WidgetTheme.motion = themes.theme.motion
-            hudController.setLampScheme(themes.look.lampScheme)
-            hudController.setBackground(themes.widgetBackground(on: backgroundStore.material))
-            menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
-            fullScreenDot.refresh()
-            settingsWindow.refresh()
-        case .backgroundOpacity:
-            // Read back rather than carrying the value in the notification: the store clamps
-            // to a non-zero floor, and a control that passed its own raw value would let the
-            // live widget reach full invisibility while the saved setting did not — so the
-            // widget would reappear on the next launch.
-            hudController.setBackgroundOpacity(backgroundStore.opacity)
+            // Once per turn of the run loop, however many changes arrive in it (`CoalescedWork`).
+            themeChange.request()
         case .scale:
-            // Read back for the reason the opacity gives above: the store clamps, and a
-            // control that passed its own raw value would draw the widget at a size the saved
-            // setting does not hold — so the next launch would show a different widget.
+            // Read back from the store, which clamps: a control that passed its own raw value
+            // would draw the widget at a size the saved setting does not hold, and the next
+            // launch would show a different widget.
             hudController.setScale(settings.scale)
         case .toggleShortcut:
             applyShortcut()
@@ -443,6 +443,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The theme in use, drawn everywhere it shows.
+    ///
+    /// Read back from the theme rather than carried in the notification: the look clamps
+    /// opacity to a non-zero floor, and a control that passed its own raw value would let the
+    /// live widget reach full invisibility while the saved theme did not.
+    private func applyTheme() {
+        let look = themes.look
+        ThemeInUse.look = look
+        ThemeInUse.timing = themes.theme.timing.clamped
+        hudController.setAppearance(
+            background: themes.textBackground, lampScheme: look.lampScheme, opacity: look.widgetOpacity)
+        // Not the menu's lines: it reads them, marks included, each time it opens, and
+        // building them asks the process tree about every broken session.
+        menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
+        fullScreenDot.refresh()
+        settingsWindow.refresh()
+    }
+
     /// Registers the combination and writes down what came of it.
     ///
     /// Said out loud because the failure is otherwise invisible: the menu deliberately prints
@@ -454,11 +472,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     #if DEBUG
-        /// The widget over the real desktop, on a dark, a light and a saturated background, each
-        /// at full and at half opacity — the cases where glass is hardest to read.
+        /// The widget over the real desktop, on glass in both modes from nearly clear to full
+        /// colour, and on clear glass — the cases where glass is hardest to read.
         private func snapshotWidget(into directory: URL) {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            hudController.show()
             let cases: [(ThemeMode, CGFloat, WidgetMaterial)] = [
                 (.dark, 0.05, .glass), (.dark, 0.5, .glass), (.dark, 1, .glass),
                 (.light, 0.05, .glass), (.light, 1, .glass), (.dark, 1, .clearGlass),
@@ -469,9 +486,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
                 let (mode, opacity, material) = cases[index]
-                backgroundStore.selectMaterial(material)
                 themes.select(mode)
-                backgroundStore.selectOpacity(opacity)
+                // Now rather than on the next turn, which would put the theme's own material
+                // back over the one this picture is of.
+                themeChange.runIfPending()
+                ThemeInUse.look.widgetMaterial = material
+                let look = themes.look
+                hudController.setAppearance(
+                    background: material.drawn.textBackground(for: look, dark: themes.isDark),
+                    lampScheme: look.lampScheme, opacity: opacity)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
                     if let window = hudController.window, let screen = NSScreen.screens.first {
                         let frame = window.frame.insetBy(dx: -24, dy: -24)
@@ -499,7 +522,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-extension AppDelegate: StatusMenuHost {
+extension AppDelegate: StatusMenuHost, SettingsHost {
     var attentionCounts: SessionAttentionCounts {
         menuBarCounts
     }
@@ -535,8 +558,12 @@ extension AppDelegate: StatusMenuHost {
 
     /// Looked up at the click, not taken from when the menu opened: the session may have moved
     /// on, or gone, while the menu stood open.
-    func focusSession(id: String, endingAgentWasAnnounced: Bool) {
-        supervisor.focusSession(id: id, endingAgentWasAnnounced: endingAgentWasAnnounced)
+    func focusSession(id: String) -> SessionClick {
+        supervisor.focusSession(id: id)
+    }
+
+    func endAgent(ofSessionWithID id: String) {
+        supervisor.endAgent(ofSessionWithID: id)
     }
 
     func menuWillOpen() {
@@ -553,13 +580,15 @@ extension AppDelegate: StatusMenuHost {
         shortcuts.showShortcut(on: item)
     }
 
-    /// Showing the widget also flashes it, so it is found wherever it sits.
+    /// Showing the widget also flashes it, so it is found wherever it sits. The menu and the
+    /// shortcut both come here, and the settings window's switch follows either.
     func toggleWidget() {
         hudController.toggle()
         settings.setShowsWidget(isWidgetVisible)
         if isWidgetVisible {
             hudController.highlight()
         }
+        settingsWindow.refresh()
     }
 
     func showWidgetSettings() {

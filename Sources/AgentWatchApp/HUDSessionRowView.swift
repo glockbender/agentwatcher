@@ -163,7 +163,7 @@ final class HUDSessionRowView: NSStackView {
         // leaves room for. It used to be taken from the part that gives way, which is the
         // same string until somebody moves that job elsewhere — and then the row announced
         // itself as `feature/probe` with the name drawn right beside it.
-        accessibleName = rowName(for: snapshot, layout: layout)?.nonEmpty
+        accessibleName = rowName(for: snapshot, layout: layout, marked: false)?.nonEmpty
         super.init(frame: .zero)
 
         var views: [NSView] = []
@@ -622,8 +622,8 @@ final class HUDSessionRowView: NSStackView {
         }
         return switch SessionFreshnessEvaluator.evaluate(snapshot, now: now) {
         case .current: background.secondaryForegroundColor
-        case .quiet: WidgetTheme.active.color(.timerQuiet)
-        case .noRecentActivity: WidgetTheme.active.color(.timerStale)
+        case .quiet: ThemeInUse.look.color(.timerQuiet)
+        case .noRecentActivity: ThemeInUse.look.color(.timerStale)
         }
     }
 

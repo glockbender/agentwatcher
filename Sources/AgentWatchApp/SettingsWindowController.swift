@@ -10,23 +10,20 @@ import SwiftUI
 /// source of truth — every control writes straight to one and the window reads it back.
 ///
 /// The sidebar carries the system's translucent material and the forms sit on the window's own
-/// background, as in System Settings. Real Liquid Glass needs the macOS 26 SDK, which this
-/// project does not build with yet.
+/// background, as in System Settings; built with the macOS 26 SDK, the sidebar is glass.
 @MainActor
-final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     let model: SettingsModel
 
     init(
-        backgroundStore: WidgetBackgroundStore,
         themes: ThemeStore,
         settings: WidgetSettingsStore,
         rowLayouts: RowLayoutStore,
         shortcuts: WidgetShortcutController,
-        host: StatusMenuHost,
+        host: SettingsHost,
         version: String?
     ) {
         model = SettingsModel(
-            backgroundStore: backgroundStore,
             themes: themes,
             settings: settings,
             rowLayouts: rowLayouts,
@@ -45,7 +42,6 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 680, height: 460)
-        window.contentView = NSHostingView(rootView: SettingsView(model: model))
         window.center()
         super.init(window: window)
         window.delegate = self
@@ -66,7 +62,9 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// Opens the window, or brings it forward. Not a toggle: a settings window is closed with its
     /// own close button.
     func present() {
+        model.themes.reload()
         model.refresh()
+        buildPages()
         showWindow(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         model.isShown = true
@@ -77,9 +75,36 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         model.refresh()
     }
 
+    /// The pages, unless the window already holds them.
+    func buildPages() {
+        if !hasPages {
+            window?.contentView = NSHostingView(rootView: SettingsView(model: model))
+        }
+    }
+
+    var hasPages: Bool {
+        window?.contentView is NSHostingView<SettingsView>
+    }
+
+    /// Lets go of the pages when the window closes, and builds them again when it opens.
+    ///
+    /// A closed window keeps its views, and these are a whole SwiftUI form with live examples
+    /// in it: measured on a copy with 19 sessions, the theme editor held about 29 MB of heap
+    /// after the window closed, and its examples kept their timers running
+    /// (`docs/measurements.md`). Where the window was is the model's,
+    /// so the page and the back and forward history survive.
     func windowWillClose(_ notification: Notification) {
         model.isShown = false
         model.stopRecordingShortcut()
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard self?.window?.isVisible == false else { return }
+                self?.window?.contentView = NSView()
+                // And the pages they were in: malloc keeps freed pages for the next allocation,
+                // and without this the memory the window used stays counted against the app.
+                malloc_zone_pressure_relief(nil, 0)
+            }
+        }
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -153,211 +178,6 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
             try? png.write(to: url)
         }
     #endif
-}
-
-/// What the panes read and write: the stores themselves, and one counter that tells SwiftUI a
-/// store has changed. The stores are not observable, so every write goes through `update`.
-@MainActor
-final class SettingsModel: ObservableObject {
-    let backgroundStore: WidgetBackgroundStore
-    let themes: ThemeStore
-    let settings: WidgetSettingsStore
-    let rowLayouts: RowLayoutStore
-    let shortcuts: WidgetShortcutController
-    let version: String?
-    private weak var host: StatusMenuHost?
-
-    @Published private(set) var revision = 0
-    @Published var isShown = false
-    @Published private(set) var page: SettingsPage = .widget
-    private var back: [SettingsPage] = []
-    private var forward: [SettingsPage] = []
-
-    var canGoBack: Bool { !back.isEmpty }
-    var canGoForward: Bool { !forward.isEmpty }
-
-    /// Where the window goes next, remembered as System Settings does: back and forward walk
-    /// the pages in the order they were opened.
-    func go(_ page: SettingsPage) {
-        guard page != self.page else { return }
-        back.append(self.page)
-        forward.removeAll()
-        self.page = page
-    }
-
-    func goBack() {
-        guard let previous = back.popLast() else { return }
-        forward.append(page)
-        page = previous
-    }
-
-    func goForward() {
-        guard let next = forward.popLast() else { return }
-        back.append(page)
-        page = next
-    }
-    /// What the last key press was refused for, shown in place of the status until something
-    /// else happens.
-    @Published var shortcutRefusal: String?
-    weak var shortcutRecorder: ShortcutRecorderButton?
-
-    init(
-        backgroundStore: WidgetBackgroundStore,
-        themes: ThemeStore,
-        settings: WidgetSettingsStore,
-        rowLayouts: RowLayoutStore,
-        shortcuts: WidgetShortcutController,
-        host: StatusMenuHost,
-        version: String?
-    ) {
-        self.backgroundStore = backgroundStore
-        self.themes = themes
-        self.settings = settings
-        self.rowLayouts = rowLayouts
-        self.shortcuts = shortcuts
-        self.host = host
-        self.version = version
-    }
-
-    func refresh() {
-        revision += 1
-    }
-
-    func update(_ write: () -> Void) {
-        write()
-        refresh()
-    }
-
-    var layout: RowLayout {
-        rowLayouts.layout
-    }
-
-    func setLayout(_ layout: RowLayout) {
-        update { rowLayouts.setLayout(layout) }
-    }
-
-    var checksForUpdatesOnLaunch: Bool {
-        get { host?.checksForUpdatesOnLaunch ?? false }
-        set { update { host?.checksForUpdatesOnLaunch = newValue } }
-    }
-
-    var transcriptSummary: String {
-        transcriptMenuSummary(
-            interval: settings.transcriptPollInterval,
-            isReading: host?.isReadingTranscripts ?? false,
-            faultedSessionCount: host?.transcriptFaultedSessionCount ?? 0
-        )
-    }
-
-    func checkForUpdates() {
-        host?.checkForUpdates()
-    }
-
-    func resetWidgetPosition() {
-        host?.resetWidgetPosition()
-    }
-
-    func resetWidgetSize() {
-        host?.resetWidgetSize()
-    }
-
-    var isWidgetVisible: Bool {
-        get { host?.isWidgetVisible ?? false }
-        set {
-            guard newValue != isWidgetVisible else { return }
-            update { host?.toggleWidget() }
-        }
-    }
-
-    func showThemeFolder() {
-        guard let folder = themes.folder else { return }
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(folder)
-    }
-
-    func showTooling() {
-        host?.showTooling()
-    }
-
-    var isEventLogVisible: Bool {
-        host?.isEventDebugVisible ?? false
-    }
-
-    func toggleEventLog() {
-        update { host?.toggleEventDebug() }
-    }
-
-    #if AGENT_WATCH_DEBUG_CAPTURE
-        var rawCaptureExpiry: Date? {
-            host?.rawCaptureExpiry
-        }
-
-        var recordedPayloadBytes: Int {
-            host?.recordedPayloadBytes ?? 0
-        }
-
-        func toggleRawHookCapture() {
-            update { host?.toggleRawHookCapture() }
-        }
-
-        func deleteRawHookRecordings() {
-            update { host?.deleteRawHookRecordings() }
-        }
-    #endif
-
-    // MARK: - The shortcut
-
-    func startRecordingShortcut() {
-        guard let recorder = shortcutRecorder else {
-            return
-        }
-        shortcutRefusal = nil
-        recorder.startRecording()
-        // The old combination is still registered while the new one is chosen, and pressing it
-        // here would hide the widget out from under the person choosing.
-        shortcuts.isMuted = true
-        refresh()
-    }
-
-    func stopRecordingShortcut() {
-        guard let recorder = shortcutRecorder, recorder.isRecording else {
-            return
-        }
-        recorder.stopRecording()
-        shortcutRecorded(.cancelled)
-    }
-
-    func clearShortcut() {
-        shortcutRefusal = nil
-        shortcutRecorder?.stopRecording()
-        shortcuts.isMuted = false
-        update { settings.setToggleShortcut(nil) }
-    }
-
-    func shortcutRecorded(_ recording: ShortcutRecording) {
-        switch recording {
-        case let .recorded(shortcut):
-            shortcutRefusal = nil
-            settings.setToggleShortcut(shortcut)
-        case .cleared:
-            shortcutRefusal = nil
-            settings.setToggleShortcut(nil)
-        case .cancelled:
-            shortcutRefusal = nil
-        case .refused:
-            shortcutRefusal = shortcutAcceptedKeys
-        }
-        shortcuts.isMuted = shortcutRecorder?.isRecording ?? false
-        refresh()
-    }
-
-    var isRecordingShortcut: Bool {
-        shortcutRecorder?.isRecording ?? false
-    }
-
-    var shortcutStatus: String {
-        shortcutRefusal ?? shortcutStatusLine(shortcuts.status)
-    }
 }
 
 #if DEBUG

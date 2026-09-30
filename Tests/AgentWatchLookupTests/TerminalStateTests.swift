@@ -24,6 +24,83 @@ final class TerminalStateTests: XCTestCase {
         XCTAssertEqual(AgentProcessLocator.terminalState(controlsATerminal: false, terminalDevice: -1), .neverHad)
     }
 
+    /// The chain under the tab Ghostty 1.3.1 closed and kept on 2026-09-29: `claude` 52671,
+    /// the `zsh` it was typed into, the `login` Ghostty started, all on `ttys024`, and Ghostty
+    /// itself, with no terminal. A hang-up reaches the three and not Ghostty.
+    func testAHangUpReachesTheAgentItsShellAndLoginButNotTheTerminalApplication() {
+        let ttys024: dev_t = 268_435_480
+        let records: [Int32: AgentProcessLocator.TerminalProcess] = [
+            52671: .init(parentProcessID: 52482, terminalDevice: ttys024),
+            52482: .init(parentProcessID: 52480, terminalDevice: ttys024),
+            52480: .init(parentProcessID: 691, terminalDevice: ttys024),
+            691: .init(parentProcessID: 1, terminalDevice: nil),
+        ]
+
+        XCTAssertEqual(
+            AgentProcessLocator.terminalProcessChain(from: 52671) { records[$0] },
+            [52671, 52482, 52480]
+        )
+    }
+
+    /// A parent on another terminal is somebody else's session, however it came to start this
+    /// one, and a hang-up of this terminal would never reach it.
+    func testTheChainStopsAtAParentOnAnotherTerminal() {
+        let records: [Int32: AgentProcessLocator.TerminalProcess] = [
+            300: .init(parentProcessID: 200, terminalDevice: 24),
+            200: .init(parentProcessID: 100, terminalDevice: 4),
+        ]
+
+        XCTAssertEqual(AgentProcessLocator.terminalProcessChain(from: 300) { records[$0] }, [300])
+    }
+
+    /// The records are read one at a time while processes come and go, so a number handed
+    /// out again mid-walk can point back at a process already in the chain.
+    func testTheWalkEndsWhereTheRecordsLoop() {
+        let records: [Int32: AgentProcessLocator.TerminalProcess] = [
+            300: .init(parentProcessID: 200, terminalDevice: 24),
+            200: .init(parentProcessID: 300, terminalDevice: 24),
+        ]
+
+        XCTAssertEqual(AgentProcessLocator.terminalProcessChain(from: 300) { records[$0] }, [300, 200])
+    }
+
+    func testTheWalkStopsAtSixteenProcesses() {
+        let records = Dictionary(
+            uniqueKeysWithValues: (100...140).map {
+                (Int32($0), AgentProcessLocator.TerminalProcess(parentProcessID: Int32($0 + 1), terminalDevice: 24))
+            })
+
+        XCTAssertEqual(AgentProcessLocator.terminalProcessChain(from: 100) { records[$0] }.count, 16)
+    }
+
+    /// Ghostty's terminals counted as the kernel sees them, from the processes measured on
+    /// 2026-09-29: its `login` children, one per terminal. Two children on one terminal are one
+    /// terminal, a child without one counts nothing, and another application's child is not
+    /// Ghostty's.
+    func testGhosttysTerminalsAreItsChildrensTerminals() {
+        let ghostty: Int32 = 691
+        let records: [Int32: AgentProcessLocator.TerminalProcess] = [
+            52480: .init(parentProcessID: ghostty, terminalDevice: 24),
+            52490: .init(parentProcessID: ghostty, terminalDevice: 25),
+            52491: .init(parentProcessID: ghostty, terminalDevice: 25),
+            52500: .init(parentProcessID: ghostty, terminalDevice: 26),
+            52510: .init(parentProcessID: ghostty, terminalDevice: nil),
+            52520: .init(parentProcessID: 900, terminalDevice: 27),
+        ]
+
+        XCTAssertEqual(
+            AgentProcessLocator.terminalCount(heldBy: ghostty, among: Array(records.keys)) { records[$0] }, 3)
+    }
+
+    func testAProcessWithNoTerminalHasNoChainToHangUp() {
+        let records: [Int32: AgentProcessLocator.TerminalProcess] = [
+            300: .init(parentProcessID: 200, terminalDevice: nil)
+        ]
+
+        XCTAssertEqual(AgentProcessLocator.terminalProcessChain(from: 300) { records[$0] }, [])
+        XCTAssertEqual(AgentProcessLocator.terminalProcessChain(from: 400) { records[$0] }, [])
+    }
+
     /// A process can write to a terminal that was never its controlling one — which is what
     /// a child started with a pty for its output is — and that is still no terminal it lost.
     func testTheTerminalAProcessWritesToIsReadFromItsOwnDescriptors() throws {

@@ -5,9 +5,10 @@
 
 **See which Claude Code or Codex session needs you — without switching between terminals.**
 
-Agent Watch is a small menu bar app for **Apple Silicon Macs running macOS 14+**.
-Its floating widget shows your sessions together. Click a row to return to the session;
-hover for details. `⌥⌘W` shows or hides the widget; Widget Settings lets you change the shortcut.
+Agent Watch is a small menu bar app for **Apple Silicon Macs running macOS 14+**. Its floating
+widget shows your sessions together; on macOS 26 the widget can use Liquid Glass, Apple's
+see-through material. Click a row to return to the session; hover for details. `⌥⌘W` shows or
+hides the widget; **Settings… → General** changes the shortcut.
 
 <img src="docs/images/widget.png" alt="Five sessions in a compact blue Agent Watch widget" width="339">
 
@@ -29,8 +30,8 @@ with the optional plugin below.
 
 ## Install and connect
 
-1. Download `AgentWatch-<version>.zip` from [Releases](https://github.com/glockbender/agentwatcher/releases)
-   and unzip the app into `/Applications`.
+1. Download `AgentWatch-<version>.dmg` from [Releases](https://github.com/glockbender/agentwatcher/releases),
+   open it and drag Agent Watch to the Applications folder beside it.
 2. Alpha builds have an ad-hoc signature. After downloading from this project's release,
    remove the quarantine flag so macOS can open the app:
 
@@ -47,8 +48,8 @@ with the optional plugin below.
 Nothing is written to an agent's configuration until you press an installation button.
 Claude's optional status line (**Connect Status Line** in the guide) adds context and account
 usage; your existing status-line command is kept. You can connect just one agent, and add the
-other later: **Settings → Tooling… → Set Up Again…** repeats the guide without deleting sessions,
-changing appearance or removing integrations.
+other later: **Settings… → Tooling → Open Tooling…**, then **Set Up Again…**, repeats the guide
+without deleting sessions, changing appearance or removing integrations.
 
 Tooling also shows whether each agent's program was found, separately from whether it is
 connected. “Not found” only means that the executable is not in the usual locations; you can
@@ -63,15 +64,25 @@ still connect an agent installed elsewhere.
 
 ## Settings
 
-The menu bar menu lists your sessions at the top and shows or hides the widget; everything that
-configures the app is under **Settings**.
+The menu bar menu lists your sessions and shows the widget when it is hidden. Everything else is
+in one window: **Settings…** in the menu, or ⌘, while the menu is open.
 
-- **Widget Settings…** — what a row shows, how rows are ordered (**Arrival**, **Recent activity**,
-  **By state** or **By blocks**), the lamp for each state, the background and the shortcut.
-- **Menu Bar Icon** — a sphere coloured by the states it shows, or a count for each state.
-- **Sessions in Menu** — which states the menu lists.
-- **Updates** — the app checks GitHub for a newer release at launch and installs one when you ask.
-  **Check on Launch** turns the launch check off.
+- **Widget** — what a row shows and how rows are ordered (**Arrival**, **Recent activity**,
+  **By state** or **By blocks**).
+- **Appearance** — the theme, its mode (light, dark or following the system) and the widget's
+  size. A theme holds every colour
+  and animation: the widget's background, material and opacity, the lamp for each state, the
+  menu bar icon and the marks in the menu. **Edit Theme** changes it with live examples beside
+  each setting, and its **Timing** page sets how long things take and how far they fade; the
+  built-in theme is copied on the first change. **Your Themes** lists your own
+  themes to edit, export or delete, and **Import…** adds one somebody shared.
+- **Menu Bar** — a sphere coloured by the states it shows or a count for each state, which
+  states the menu lists, and a dot in a corner of a full-screen display, where the menu bar is
+  hidden. The dot steps aside while the menu bar slides down.
+- **General** — showing the widget (kept as it was at the next launch; hidden on a fresh
+  install), its locks and resets, its shortcut, how long closed sessions
+  stay, reading transcripts, and updates.
+- **Tooling** and **Diagnostics** — the agents' integrations, and the event log.
 
 ## JetBrains IDE plugin
 
@@ -83,19 +94,16 @@ It needs the Agent Watch macOS app and does nothing on its own.
    The plugin has its own version number.
 2. In the IDE: **Settings → Plugins → gear → Install Plugin from Disk**. Select the ZIP.
    Restart if the IDE asks you to.
-3. With the IDE running, open **Settings → Tooling…** and press **Check** beside it.
+3. With the IDE running, open **Settings… → Tooling → Open Tooling…** and press **Check** beside it.
 4. Start an agent in that IDE's terminal and click its widget row to check the jump.
 
 Marketplace publication is still part of the [release plan](docs/release-plan.md).
 The app does not download the plugin for you yet, so install the ZIP from disk as above.
 
-## If no session appears
+## If something looks wrong
 
-- **Installed, waiting for a signal:** reload Claude's plugin or accept Codex's hook trust prompts,
-  then send a request. Installation alone does not prove delivery.
-- **Connection needs repair:** open Tooling and use its repair action. Unreadable configuration is
-  left alone, with an explanation of what needs attention.
-- Use **Remove** or **Disconnect** in Tooling to undo an integration.
+If a session does not appear or has no name, see [Troubleshooting](TROUBLESHOOTING.md).
+Use **Remove** or **Disconnect** in Tooling to undo an integration.
 
 ## Local by default
 
@@ -108,7 +116,9 @@ See [agent integration](docs/agent-integration.md) for the files it writes and
 
 ## Build from source
 
-Requires Swift 6, the macOS 26 SDK (Xcode 26 or its Command Line Tools) and [Task](https://taskfile.dev/).
+Requires Xcode 16 or newer (it includes Swift 6) and [Task](https://taskfile.dev/). Liquid Glass
+needs Xcode 26 and its macOS 26 SDK; with an older Xcode the app still builds, and the widget is
+frosted instead of glass.
 
 ```sh
 task verify   # formatting, tests, debug/release builds and app bundle

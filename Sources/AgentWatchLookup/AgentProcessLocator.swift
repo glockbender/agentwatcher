@@ -196,12 +196,22 @@ public enum AgentProcessLocator {
     /// Whether a process still has the terminal it was started in, or `nil` when there is
     /// no such process.
     public static func terminalState(of processID: Int32) -> TerminalState? {
-        guard let process = kernelRecord(of: processID) else {
-            return nil
-        }
-        return terminalState(
+        kernelRecord(of: processID).map(terminalState(of:))
+    }
+
+    private static func terminalState(of process: kinfo_proc) -> TerminalState {
+        terminalState(
             controlsATerminal: process.kp_proc.p_flag & P_CONTROLT != 0,
             terminalDevice: process.kp_eproc.e_tdev
+        )
+    }
+
+    /// A process as the chain and the count need it: whose child it is, and the terminal it
+    /// still has, if any.
+    private static func terminalProcess(of process: kinfo_proc) -> TerminalProcess {
+        TerminalProcess(
+            parentProcessID: process.kp_eproc.e_ppid,
+            terminalDevice: terminalState(of: process) == .attached ? process.kp_eproc.e_tdev : nil
         )
     }
 
@@ -220,6 +230,68 @@ public enum AgentProcessLocator {
 
     /// `NODEV` from `<sys/param.h>`, which Swift does not import: the macro is a cast.
     private static let noDevice: dev_t = -1
+
+    /// How many terminals an application holds with something running in them: the distinct
+    /// controlling terminals of its own child processes.
+    ///
+    /// Ghostty starts every terminal's shell as its own child, so this counts its terminals
+    /// from the kernel's side — including one it no longer lists, which is the point of
+    /// asking. A terminal whose shell has exited is not counted, and can only make the count
+    /// smaller than the list.
+    public static func terminalCount(heldBy applicationProcessID: Int32) -> Int {
+        terminalCount(heldBy: applicationProcessID, among: AgentProcessScanner.allProcessIDs()) {
+            kernelRecord(of: $0).map(terminalProcess(of:))
+        }
+    }
+
+    /// The same count over records somebody else read, so it can be checked against the
+    /// processes measured under Ghostty without Ghostty running.
+    static func terminalCount(
+        heldBy applicationProcessID: Int32, among processIDs: [Int32], record: (Int32) -> TerminalProcess?
+    ) -> Int {
+        let devices = processIDs.compactMap { processID -> dev_t? in
+            guard let process = record(processID), process.parentProcessID == applicationProcessID else {
+                return nil
+            }
+            return process.terminalDevice
+        }
+        return Set(devices).count
+    }
+
+    /// The processes a hang-up of this process's terminal would reach: the process itself,
+    /// then each parent that has the same controlling terminal — the shell it was typed into
+    /// and the `login` that started the shell. The walk stops at the first parent without
+    /// that terminal, which in a terminal application is the application itself. Empty when
+    /// the process has no terminal.
+    public static func terminalProcessChain(from processID: Int32) -> [Int32] {
+        terminalProcessChain(from: processID) { kernelRecord(of: $0).map(terminalProcess(of:)) }
+    }
+
+    /// One process as the chain and the count need it: whose child it is, and its terminal if
+    /// it has one.
+    struct TerminalProcess: Equatable {
+        let parentProcessID: Int32
+        let terminalDevice: dev_t?
+    }
+
+    /// The same walk over records somebody else read, so the rule can be checked against the
+    /// chain measured under a closed Ghostty tab without such a tab being open.
+    static func terminalProcessChain(from processID: Int32, record: (Int32) -> TerminalProcess?) -> [Int32] {
+        guard let first = record(processID), let device = first.terminalDevice else {
+            return []
+        }
+        var chain = [processID]
+        var parentID = first.parentProcessID
+        // Bounded, because the records are read one at a time while processes come and go,
+        // and a number handed out again mid-walk could close a loop.
+        while parentID > 1, !chain.contains(parentID), chain.count < 16,
+            let parent = record(parentID), parent.terminalDevice == device
+        {
+            chain.append(parentID)
+            parentID = parent.parentProcessID
+        }
+        return chain
+    }
 
     /// The terminal device a process reads and writes through, from its own standard
     /// descriptors, or `nil` when none of them is one.
