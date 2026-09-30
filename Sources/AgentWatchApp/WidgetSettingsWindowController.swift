@@ -63,6 +63,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// Opens the window, or brings it forward. Not a toggle: a settings window is closed with its
     /// own close button.
     func present() {
+        model.themes.reload()
         model.refresh()
         buildPages()
         showWindow(nil)
@@ -192,7 +193,15 @@ final class SettingsModel: ObservableObject {
 
     @Published private(set) var revision = 0
     @Published var isShown = false
-    @Published private(set) var page: SettingsPage = .widget
+    /// A page that shows themes reads their folder again, so a file dropped in or corrected
+    /// there is listed, and the editor changes what the file now holds.
+    @Published private(set) var page: SettingsPage = .widget {
+        didSet {
+            if page.parent == .appearance {
+                themes.reload()
+            }
+        }
+    }
     private var back: [SettingsPage] = []
     private var forward: [SettingsPage] = []
 
@@ -345,7 +354,15 @@ final class SettingsModel: ObservableObject {
     }
 
     /// Changes something about the theme in use that is not one of its looks: its name.
+    ///
+    /// A change that changes nothing is not a change: it leaves the built-in theme uncopied,
+    /// where the copy would have been put in use and then refused its old name.
     func changeTheme(_ change: (inout WidgetTheme) -> Void) {
+        var changed = themes.theme
+        change(&changed)
+        guard changed != themes.theme else {
+            return
+        }
         do {
             var theme = try themes.editable()
             let name = theme.name

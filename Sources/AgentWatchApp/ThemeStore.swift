@@ -104,8 +104,15 @@ final class ThemeStore: PreferenceDefaults {
         onChange?(.theme)
     }
 
-    /// Reads the folder again: a theme dropped in, edited or removed is picked up.
+    /// Reads the folder again: a theme dropped in, edited or removed is picked up. Says so to
+    /// `onChange` when the theme in use reads differently now, so the widget shows the edit.
     func reload() {
+        let inUse = theme
+        defer {
+            if theme != inUse {
+                onChange?(.theme)
+            }
+        }
         problems = []
         files = [:]
         var found: [WidgetTheme] = [.standard]

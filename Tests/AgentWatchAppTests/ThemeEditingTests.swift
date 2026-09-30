@@ -111,6 +111,73 @@ final class ThemeEditingTests: XCTestCase {
         XCTAssertEqual(hosting.frame.width, 570, "the editor needs \(hosting.frame.width) points")
     }
 
+    /// A change that changes nothing — Return in the name field, the colour a well already
+    /// shows — leaves the built-in theme uncopied and says nothing is wrong.
+    func testAChangeThatChangesNothingCopiesNothing() throws {
+        let (model, themes) = try makeModel()
+
+        model.changeTheme { $0.name = WidgetTheme.standard.name }
+        model.editTheme { $0.setBackground(NSColor(sRGB: $0.background)) }
+
+        XCTAssertEqual(themes.theme, .standard)
+        XCTAssertEqual(themes.themes, [.standard])
+        XCTAssertNil(model.themeProblem)
+    }
+
+    /// Into both looks, a change to one thing about a state's mark keeps what else each look
+    /// has: the light look's fade is not the dark look's.
+    func testAChangeToBothLooksKeepsWhatEachLookHasOfItsOwn() throws {
+        let (model, themes) = try makeModel()
+        model.themeScope = .light
+        model.editTheme {
+            $0.setMarkMotion(.gradient, fadeTo: NSColor(sRGB: "#112233"), cycle: 3, for: .working)
+            $0.changeLampStyle(for: .executing) { $0.gradientColor = NSColor(sRGB: "#445566") }
+        }
+        model.themeScope = .both
+
+        model.editTheme {
+            $0.changeMarkStyle(for: .working) { $0.animationCycle = 6 }
+            $0.changeLampStyle(for: .executing) { $0.animationCycle = 7 }
+        }
+
+        let light = themes.theme.light
+        let dark = themes.theme.dark
+        XCTAssertEqual(light.markStyle(for: .working).animationCycle, 6)
+        XCTAssertEqual(dark.markStyle(for: .working).animationCycle, 6)
+        XCTAssertEqual(light.markStyle(for: .working).gradientColor.srgbHex, "#112233")
+        XCTAssertEqual(light.markStyle(for: .working).motion, .gradient)
+        XCTAssertEqual(dark.markStyle(for: .working).motion, WidgetTheme.standard.dark.markStyle(for: .working).motion)
+        XCTAssertEqual(light.lampScheme.style(for: .executing).gradientColor.srgbHex, "#445566")
+        XCTAssertEqual(
+            dark.lampScheme.style(for: .executing).gradientColor.srgbHex,
+            WidgetTheme.standard.dark.lampScheme.style(for: .executing).gradientColor.srgbHex)
+    }
+
+    /// A file dropped into the folder, or a theme in use corrected there, is read when a page
+    /// that shows themes opens — and the widget is told when the theme in use changed.
+    func testAPageThatShowsThemesReadsTheFolderAgain() throws {
+        let (model, themes) = try makeModel()
+        try themes.create(named: "Mine")
+        let folder = try XCTUnwrap(themes.folder)
+        var told = 0
+        themes.onChange = { _ in told += 1 }
+        try Data(##"{"name": "Dropped", "dark": {"background": "#112233"}}"##.utf8)
+            .write(to: folder.appendingPathComponent("Dropped.json"))
+        try Data(##"{"name": "Mine", "dark": {"background": "#445566"}}"##.utf8)
+            .write(to: folder.appendingPathComponent("Mine.json"))
+        XCTAssertFalse(themes.themes.map(\.name).contains("Dropped"), "not read before a page asks")
+
+        model.go(.themes)
+
+        XCTAssertTrue(themes.themes.map(\.name).contains("Dropped"))
+        XCTAssertEqual(themes.theme.dark.background, "#445566")
+        XCTAssertEqual(told, 1)
+
+        model.go(.general)
+        model.go(.appearance)
+        XCTAssertEqual(told, 1, "read again, and nothing in use changed")
+    }
+
     private func makeModel() throws -> (SettingsModel, ThemeStore) {
         let preferences = try isolatedPreferences()
         let folder = FileManager.default.temporaryDirectory

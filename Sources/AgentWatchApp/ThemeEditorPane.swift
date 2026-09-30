@@ -206,11 +206,7 @@ private struct LampRow: View {
         Binding(
             get: { current },
             set: { value in
-                model.editTheme { look in
-                    var style = look.lampScheme.style(for: phase)
-                    write(&style, value)
-                    look.setLampStyle(style, for: phase)
-                }
+                model.editTheme { $0.changeLampStyle(for: phase) { write(&$0, value) } }
             }
         )
     }
@@ -348,7 +344,7 @@ private struct StateMotionRow: View {
                 "",
                 selection: Binding(
                     get: { Color(nsColor: style.gradientColor) },
-                    set: { chosen in write(style) { $0.gradientColor = NSColor(chosen) } }
+                    set: { chosen in write { $0.gradientColor = NSColor(chosen) } }
                 )
             )
             .labelsHidden()
@@ -359,16 +355,11 @@ private struct StateMotionRow: View {
     }
 
     private func binding<Value>(_ style: LampStyle, _ path: WritableKeyPath<LampStyle, Value>) -> Binding<Value> {
-        Binding(get: { style[keyPath: path] }, set: { value in write(style) { $0[keyPath: path] = value } })
+        Binding(get: { style[keyPath: path] }, set: { value in write { $0[keyPath: path] = value } })
     }
 
-    private func write(_ style: LampStyle, _ change: (inout LampStyle) -> Void) {
-        var changed = style
-        change(&changed)
-        model.editTheme {
-            $0.setMarkMotion(
-                changed.motion, fadeTo: changed.gradientColor, cycle: changed.animationCycle, for: attention)
-        }
+    private func write(_ change: (inout LampStyle) -> Void) {
+        model.editTheme { $0.changeMarkStyle(for: attention, change) }
     }
 }
 

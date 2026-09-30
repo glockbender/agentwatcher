@@ -432,6 +432,14 @@ extension WidgetTheme.Look {
             cycle: cycle.clamped(to: LampStyle.animationCycleRange, or: WidgetTheme.markCycle))
     }
 
+    /// Changes one thing about the state's mark and keeps the rest as this look has it — which
+    /// matters when a change goes into both looks and they differ.
+    mutating func changeMarkStyle(for attention: SessionAttention, _ change: (inout LampStyle) -> Void) {
+        var style = markStyle(for: attention)
+        change(&style)
+        setMarkMotion(style.motion, fadeTo: style.gradientColor, cycle: style.animationCycle, for: attention)
+    }
+
     var menuColors: WidgetTheme.MenuColors {
         get { WidgetTheme.MenuColors(rawValue: menu.colors) ?? .state }
         set { menu.colors = newValue.rawValue }
@@ -499,6 +507,13 @@ extension WidgetTheme.Look {
             )
         }
         return LampScheme(styles: styles)
+    }
+
+    /// Changes one thing about the phase's lamp and keeps the rest as this look has it.
+    mutating func changeLampStyle(for phase: SessionPhase, _ change: (inout LampStyle) -> Void) {
+        var style = lampScheme.style(for: phase)
+        change(&style)
+        setLampStyle(style, for: phase)
     }
 
     mutating func setLampStyle(_ style: LampStyle, for phase: SessionPhase) {

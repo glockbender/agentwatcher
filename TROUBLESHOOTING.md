@@ -66,8 +66,9 @@ A file whose theme is called `Default` is listed as `Default (file)`, because th
 keeps that name.
 
 **What to do:** **Settings → Appearance** names the file and what was wrong. Fix it in the Themes
-folder (**Your Themes → Show Theme Folder**), or export the theme again from where it came from and
-use **Import…**.
+folder (**Your Themes → Show Theme Folder**), or ask whoever shared the theme to export it again,
+and use **Import…**. The folder is read again each time the settings window opens and each time it
+shows Appearance, Edit Theme or Your Themes.
 
 **Checked on:** macOS 15.3.1.
 
