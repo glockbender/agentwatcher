@@ -59,19 +59,31 @@ enum ClosedTerminal {
     }
 
     /// Sends the processes of a closed tab the hang-up it never did — the agent first, then
-    /// the shell and `login` above it — and answers whether every signal went out.
+    /// the shell and `login` above it — and answers whether it reached them.
     ///
     /// `SIGHUP` rather than `SIGTERM` because it is what closing a terminal sends, and the
     /// whole chain because closing a tab ends its shell too: left running, the shell keeps
     /// Ghostty holding a terminal it does not show, which is half of how the next closed tab
-    /// is recognised. Claude Code 2.1.284 answers `SIGHUP` with its ordinary shutdown: read in
-    /// its code, and seen on the case reported on 2026-09-29, where the shell, `login` and the
-    /// hidden terminal went with it (`docs/measurements.md`).
+    /// is recognised. Claude Code answers `SIGHUP` with its ordinary shutdown
+    /// (`docs/measurements.md`).
     static func hangUp(processIDs: [Int32]) -> Bool {
-        guard !processIDs.isEmpty, processIDs.allSatisfy({ $0 > 1 && $0 != getpid() }) else {
+        guard mayHangUp(processIDs, ownProcessID: getpid()) else {
             return false
         }
-        return processIDs.map { kill($0, SIGHUP) == 0 }.allSatisfy { $0 }
+        var reached = true
+        for (index, processID) in processIDs.enumerated() where kill(processID, SIGHUP) != 0 {
+            // A shell or `login` that has already gone was reached by the agent's own exit.
+            if index == 0 || errno != ESRCH {
+                reached = false
+            }
+        }
+        return reached
+    }
+
+    /// Never zero, one or a negative number, which `kill` reads as a whole group of processes
+    /// or all of them, and never this app.
+    static func mayHangUp(_ processIDs: [Int32], ownProcessID: Int32) -> Bool {
+        !processIDs.isEmpty && processIDs.allSatisfy { $0 > 1 && $0 != ownProcessID }
     }
 }
 

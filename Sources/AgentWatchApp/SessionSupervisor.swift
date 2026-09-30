@@ -300,7 +300,15 @@ final class SessionSupervisor {
             return terminalDevicePath(agentProcessID).map { .discardOutput(devicePath: $0) }
         case .attached:
             // Only a click that found the tab gone marks a row whose agent still has its
-            // terminal, so this is the Ghostty case.
+            // terminal, so this is the Ghostty case. The numbers are shown for a person to
+            // run by hand, so they are shown only while they are still this agent's.
+            guard
+                SessionHostRegistry.isStillTheAgent(
+                    agentProcessID: agentProcessID, lastObservedAt: snapshot.lastObservedAt,
+                    processStartedAt: agentProcessStartedAt)
+            else {
+                return nil
+            }
             let chain = terminalProcessChain(agentProcessID)
             return chain.isEmpty ? nil : .hangUp(processIDs: chain)
         case .neverHad, nil:

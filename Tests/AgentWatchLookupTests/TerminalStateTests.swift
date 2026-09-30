@@ -53,6 +53,45 @@ final class TerminalStateTests: XCTestCase {
         XCTAssertEqual(AgentProcessLocator.terminalProcessChain(from: 300) { records[$0] }, [300])
     }
 
+    /// The records are read one at a time while processes come and go, so a number handed
+    /// out again mid-walk can point back at a process already in the chain.
+    func testTheWalkEndsWhereTheRecordsLoop() {
+        let records: [Int32: AgentProcessLocator.TerminalProcess] = [
+            300: .init(parentProcessID: 200, terminalDevice: 24),
+            200: .init(parentProcessID: 300, terminalDevice: 24),
+        ]
+
+        XCTAssertEqual(AgentProcessLocator.terminalProcessChain(from: 300) { records[$0] }, [300, 200])
+    }
+
+    func testTheWalkStopsAtSixteenProcesses() {
+        let records = Dictionary(
+            uniqueKeysWithValues: (100...140).map {
+                (Int32($0), AgentProcessLocator.TerminalProcess(parentProcessID: Int32($0 + 1), terminalDevice: 24))
+            })
+
+        XCTAssertEqual(AgentProcessLocator.terminalProcessChain(from: 100) { records[$0] }.count, 16)
+    }
+
+    /// Ghostty's terminals counted as the kernel sees them, from the processes measured on
+    /// 2026-09-29: its `login` children, one per terminal. Two children on one terminal are one
+    /// terminal, a child without one counts nothing, and another application's child is not
+    /// Ghostty's.
+    func testGhosttysTerminalsAreItsChildrensTerminals() {
+        let ghostty: Int32 = 691
+        let records: [Int32: AgentProcessLocator.TerminalProcess] = [
+            52480: .init(parentProcessID: ghostty, terminalDevice: 24),
+            52490: .init(parentProcessID: ghostty, terminalDevice: 25),
+            52491: .init(parentProcessID: ghostty, terminalDevice: 25),
+            52500: .init(parentProcessID: ghostty, terminalDevice: 26),
+            52510: .init(parentProcessID: ghostty, terminalDevice: nil),
+            52520: .init(parentProcessID: 900, terminalDevice: 27),
+        ]
+
+        XCTAssertEqual(
+            AgentProcessLocator.terminalCount(heldBy: ghostty, among: Array(records.keys)) { records[$0] }, 3)
+    }
+
     func testAProcessWithNoTerminalHasNoChainToHangUp() {
         let records: [Int32: AgentProcessLocator.TerminalProcess] = [
             300: .init(parentProcessID: 200, terminalDevice: nil)

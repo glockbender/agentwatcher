@@ -114,6 +114,18 @@ final class GhosttyFocusTests: XCTestCase {
         XCTAssertEqual(decision, .decline(.noTabMatches))
     }
 
+    /// A blank name of another session proves nothing either: every title ends with an empty
+    /// string, and taken as a name it would make every missing tab a gone one.
+    func testABlankNameOfAnotherSessionProvesNothing() {
+        let untitled = listedAfterTheClose.map { GhosttyTerminal(id: $0.id, name: "claude") }
+
+        let decision = GhosttyFocus.decision(
+            among: untitled, sessionName: "Документация проекта", heldTerminalCount: 5,
+            otherSessionNames: ["", "   "])
+
+        XCTAssertEqual(decision, .decline(.noTabMatches))
+    }
+
     /// Found tabs are focused whatever the count says: a terminal kept by an earlier close
     /// must not stop every other session from being reached.
     func testAFoundTabIsFocusedWhateverGhosttyHolds() {

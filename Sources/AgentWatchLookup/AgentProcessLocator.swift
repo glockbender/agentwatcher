@@ -196,12 +196,22 @@ public enum AgentProcessLocator {
     /// Whether a process still has the terminal it was started in, or `nil` when there is
     /// no such process.
     public static func terminalState(of processID: Int32) -> TerminalState? {
-        guard let process = kernelRecord(of: processID) else {
-            return nil
-        }
-        return terminalState(
+        kernelRecord(of: processID).map(terminalState(of:))
+    }
+
+    private static func terminalState(of process: kinfo_proc) -> TerminalState {
+        terminalState(
             controlsATerminal: process.kp_proc.p_flag & P_CONTROLT != 0,
             terminalDevice: process.kp_eproc.e_tdev
+        )
+    }
+
+    /// A process as the chain and the count need it: whose child it is, and the terminal it
+    /// still has, if any.
+    private static func terminalProcess(of process: kinfo_proc) -> TerminalProcess {
+        TerminalProcess(
+            parentProcessID: process.kp_eproc.e_ppid,
+            terminalDevice: terminalState(of: process) == .attached ? process.kp_eproc.e_tdev : nil
         )
     }
 
@@ -229,18 +239,21 @@ public enum AgentProcessLocator {
     /// asking. A terminal whose shell has exited is not counted, and can only make the count
     /// smaller than the list.
     public static func terminalCount(heldBy applicationProcessID: Int32) -> Int {
-        let devices = AgentProcessScanner.allProcessIDs().compactMap { processID -> dev_t? in
-            guard
-                let process = kernelRecord(of: processID),
-                process.kp_eproc.e_ppid == applicationProcessID,
-                terminalState(
-                    controlsATerminal: process.kp_proc.p_flag & P_CONTROLT != 0,
-                    terminalDevice: process.kp_eproc.e_tdev
-                ) == .attached
-            else {
+        terminalCount(heldBy: applicationProcessID, among: AgentProcessScanner.allProcessIDs()) {
+            kernelRecord(of: $0).map(terminalProcess(of:))
+        }
+    }
+
+    /// The same count over records somebody else read, so it can be checked against the
+    /// processes measured under Ghostty without Ghostty running.
+    static func terminalCount(
+        heldBy applicationProcessID: Int32, among processIDs: [Int32], record: (Int32) -> TerminalProcess?
+    ) -> Int {
+        let devices = processIDs.compactMap { processID -> dev_t? in
+            guard let process = record(processID), process.parentProcessID == applicationProcessID else {
                 return nil
             }
-            return process.kp_eproc.e_tdev
+            return process.terminalDevice
         }
         return Set(devices).count
     }
@@ -251,22 +264,11 @@ public enum AgentProcessLocator {
     /// that terminal, which in a terminal application is the application itself. Empty when
     /// the process has no terminal.
     public static func terminalProcessChain(from processID: Int32) -> [Int32] {
-        terminalProcessChain(from: processID) { processID in
-            kernelRecord(of: processID).map { process in
-                let attached =
-                    terminalState(
-                        controlsATerminal: process.kp_proc.p_flag & P_CONTROLT != 0,
-                        terminalDevice: process.kp_eproc.e_tdev
-                    ) == .attached
-                return TerminalProcess(
-                    parentProcessID: process.kp_eproc.e_ppid,
-                    terminalDevice: attached ? process.kp_eproc.e_tdev : nil
-                )
-            }
-        }
+        terminalProcessChain(from: processID) { kernelRecord(of: $0).map(terminalProcess(of:)) }
     }
 
-    /// One process as the chain needs it: whose child it is, and its terminal if it has one.
+    /// One process as the chain and the count need it: whose child it is, and its terminal if
+    /// it has one.
     struct TerminalProcess: Equatable {
         let parentProcessID: Int32
         let terminalDevice: dev_t?
