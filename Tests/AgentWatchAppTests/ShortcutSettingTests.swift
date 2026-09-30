@@ -144,14 +144,14 @@ final class ShortcutSettingTests: XCTestCase {
     /// The settings window on its General page, built but not shown.
     private func makeWindow(
         answer: ShortcutRegistrationOutcome = .registered
-    ) throws -> (WidgetSettingsWindowController, WidgetSettingsStore, WidgetShortcutController) {
+    ) throws -> (SettingsWindowController, WidgetSettingsStore, WidgetShortcutController) {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
         let shortcuts = FakeShortcutRegistrar.controller(for: settings, answer: answer)
         shortcuts.apply()
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         addTeardownBlock { _ = host }
-        let window = WidgetSettingsWindowController(
+        let window = SettingsWindowController(
             themes: ThemeStore(preferences: preferences, folder: nil), settings: settings,
             rowLayouts: RowLayoutStore(preferences: preferences), shortcuts: shortcuts, host: host, version: nil)
         window.model.go(.general)
@@ -160,7 +160,7 @@ final class ShortcutSettingTests: XCTestCase {
         return (window, settings, shortcuts)
     }
 
-    private func recorder(in window: WidgetSettingsWindowController) throws -> ShortcutRecorderButton {
+    private func recorder(in window: SettingsWindowController) throws -> ShortcutRecorderButton {
         func find(in view: NSView) -> ShortcutRecorderButton? {
             (view as? ShortcutRecorderButton) ?? view.subviews.lazy.compactMap(find).first
         }

@@ -11,9 +11,9 @@ final class SettingsWindowTests: XCTestCase {
     func testTheSettingsWindowLetsGoOfItsPagesWhenItCloses() throws {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         addTeardownBlock { _ = host }
-        let controller = WidgetSettingsWindowController(
+        let controller = SettingsWindowController(
             themes: ThemeStore(preferences: preferences, folder: nil), settings: settings,
             rowLayouts: RowLayoutStore(preferences: preferences),
             shortcuts: FakeShortcutRegistrar.controller(for: settings), host: host, version: nil)
@@ -51,7 +51,7 @@ final class SettingsWindowTests: XCTestCase {
     private func makeModel() throws -> (SettingsModel, WidgetShortcutController) {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         addTeardownBlock { _ = host }
         let shortcuts = FakeShortcutRegistrar.controller(for: settings)
         let model = SettingsModel(

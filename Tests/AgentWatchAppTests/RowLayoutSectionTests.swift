@@ -125,7 +125,7 @@ final class RowLayoutSectionTests: XCTestCase {
     private func makeModel() throws -> SettingsModel {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         addTeardownBlock { _ = host }
         return SettingsModel(
             themes: ThemeStore(preferences: preferences, folder: nil), settings: settings,

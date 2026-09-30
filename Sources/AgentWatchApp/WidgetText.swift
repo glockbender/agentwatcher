@@ -186,7 +186,7 @@ func widgetContextText(
 ///
 /// The number used to be a cadence — a read every N seconds, whatever was happening. Reads
 /// follow hooks now, and N caps how often they may happen rather than setting when they do.
-func transcriptIntervalMenuTitle(interval: TimeInterval?) -> String {
+func transcriptIntervalTitle(interval: TimeInterval?) -> String {
     guard let interval else {
         return "Off"
     }
@@ -196,7 +196,7 @@ func transcriptIntervalMenuTitle(interval: TimeInterval?) -> String {
 /// The user asked for failures to be visible rather than absorbed, and a setting that only
 /// shows its interval cannot answer "is it working". This line does: off, idle, reading, or
 /// reading with something to report.
-func transcriptMenuSummary(interval: TimeInterval?, isReading: Bool, faultedSessionCount: Int) -> String {
+func transcriptReadingSummary(interval: TimeInterval?, isReading: Bool, faultedSessionCount: Int) -> String {
     guard interval != nil else {
         // What it costs, not just that it is off. No hook reports a tool call finishing —
         // `PostToolUse` is not registered, because it charges a process launch per call — so

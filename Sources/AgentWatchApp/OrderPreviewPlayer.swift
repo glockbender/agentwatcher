@@ -47,7 +47,7 @@ extension SessionBlock {
 /// pace, one change every two seconds, with the rows sliding to their new places. Real rows,
 /// built the way the widget builds them.
 @MainActor
-final class SessionOrderTab: NSObject {
+final class OrderPreviewPlayer: NSObject {
     private let settings: WidgetSettingsStore
     private let look: () -> WidgetTheme.Look
     private let background: () -> WidgetBackground

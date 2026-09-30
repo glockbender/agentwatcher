@@ -82,8 +82,8 @@ struct OrderPreview: NSViewRepresentable {
         }
     }
 
-    func makeCoordinator() -> SessionOrderTab {
-        SessionOrderTab(
+    func makeCoordinator() -> OrderPreviewPlayer {
+        OrderPreviewPlayer(
             settings: model.settings,
             look: { [themes = model.themes] in themes.look },
             background: { [themes = model.themes] in themes.textBackground },
@@ -109,7 +109,7 @@ struct OrderPreview: NSViewRepresentable {
         context.coordinator.setShown(model.isShown)
     }
 
-    static func dismantleNSView(_ holder: NSView, coordinator: SessionOrderTab) {
+    static func dismantleNSView(_ holder: NSView, coordinator: OrderPreviewPlayer) {
         coordinator.setShown(false)
     }
 }

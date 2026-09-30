@@ -140,7 +140,7 @@ final class ThemeMotionTests: XCTestCase {
     /// closes.
     func testTheMenusMarksMoveOnlyWhileItIsOpenAndOnlyWhenAsked() throws {
         let settings = WidgetSettingsStore(preferences: try isolatedPreferences())
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         addTeardownBlock { _ = host }
         let menu = StatusMenu(settings: settings, host: host)
         host.sessions = [testSession(index: 0, title: "Waiting", phase: .waitingForUser, lastObservedAt: .now)]

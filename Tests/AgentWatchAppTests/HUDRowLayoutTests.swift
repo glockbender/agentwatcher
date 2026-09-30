@@ -202,10 +202,10 @@ final class HUDRowLayoutTests: XCTestCase {
     /// each of the four answers has to be a different sentence.
     func testTheTranscriptMenuSaysWhichOfTheFourStatesItIsIn() {
         let summaries = [
-            transcriptMenuSummary(interval: nil, isReading: false, faultedSessionCount: 0),
-            transcriptMenuSummary(interval: 5, isReading: false, faultedSessionCount: 0),
-            transcriptMenuSummary(interval: 5, isReading: true, faultedSessionCount: 0),
-            transcriptMenuSummary(interval: 5, isReading: true, faultedSessionCount: 2),
+            transcriptReadingSummary(interval: nil, isReading: false, faultedSessionCount: 0),
+            transcriptReadingSummary(interval: 5, isReading: false, faultedSessionCount: 0),
+            transcriptReadingSummary(interval: 5, isReading: true, faultedSessionCount: 0),
+            transcriptReadingSummary(interval: 5, isReading: true, faultedSessionCount: 2),
         ]
 
         XCTAssertEqual(Set(summaries).count, 4, "four states, four answers")
@@ -302,8 +302,8 @@ final class HUDRowLayoutTests: XCTestCase {
     /// The number stopped meaning "how often" when reads began following hooks: it is now a
     /// ceiling on the rate, and a menu that still promised a metronome would be wrong.
     func testTheIntervalMenuPromisesACeilingRatherThanACadence() {
-        XCTAssertEqual(transcriptIntervalMenuTitle(interval: nil), "Off")
-        XCTAssertEqual(transcriptIntervalMenuTitle(interval: 5), "At most every 5 seconds")
+        XCTAssertEqual(transcriptIntervalTitle(interval: nil), "Off")
+        XCTAssertEqual(transcriptIntervalTitle(interval: 5), "At most every 5 seconds")
     }
 
     /// A transcript reports token counts and never says what they are a fraction of, so the

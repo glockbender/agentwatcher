@@ -114,7 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return controller
     }()
-    private lazy var settingsWindow: WidgetSettingsWindowController = WidgetSettingsWindowController(
+    private lazy var settingsWindow: SettingsWindowController = SettingsWindowController(
         themes: themes,
         settings: settings,
         rowLayouts: rowLayouts,

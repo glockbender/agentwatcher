@@ -163,7 +163,7 @@ final class SettingsModel: ObservableObject {
     }
 
     var transcriptSummary: String {
-        transcriptMenuSummary(
+        transcriptReadingSummary(
             interval: settings.transcriptPollInterval,
             isReading: host?.isReadingTranscripts ?? false,
             faultedSessionCount: host?.transcriptFaultedSessionCount ?? 0

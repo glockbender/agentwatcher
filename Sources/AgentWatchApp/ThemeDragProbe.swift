@@ -14,13 +14,13 @@
     /// The window opens on screen and takes the focus for about twenty seconds.
     @MainActor
     final class ThemeDragProbe {
-        private let window: WidgetSettingsWindowController
+        private let window: SettingsWindowController
         private let file: URL
         private var lines: [String] = []
         private var step = 0
         private var timer: Timer?
 
-        init(window: WidgetSettingsWindowController, file: URL) {
+        init(window: SettingsWindowController, file: URL) {
             self.window = window
             self.file = file
         }

@@ -376,7 +376,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         }
         endHover()
         container.showDialog(
-            HUDEndAgentDialog(
+            EndAgentDialog(
                 sessionID: id,
                 sessionName: EndAgentQuestion.name(of: session),
                 style: style,
@@ -392,7 +392,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     }
 
     /// The open dialog, for a test: its question and its two buttons.
-    var visibleDialog: HUDEndAgentDialog? {
+    var visibleDialog: EndAgentDialog? {
         container.dialog
     }
 

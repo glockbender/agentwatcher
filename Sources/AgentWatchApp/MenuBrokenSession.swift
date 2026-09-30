@@ -145,13 +145,13 @@ final class MenuBrokenSessionLineView: NSView {
 /// release is handed to the button it lands on.
 @MainActor
 final class MenuEndAgentQuestionView: NSView {
-    let dialog: HUDEndAgentDialog
-    private var pressed: HUDDialogButton?
+    let dialog: EndAgentDialog
+    private var pressed: EndAgentDialogButton?
 
     static let width: CGFloat = 300
 
     init(sessionID: String, sessionName: String?, onCancel: @escaping () -> Void, onEnd: @escaping () -> Void) {
-        dialog = HUDEndAgentDialog(
+        dialog = EndAgentDialog(
             sessionID: sessionID, sessionName: sessionName, style: .standard, onCancel: onCancel, onEnd: onEnd)
         let height = dialog.heightShowingEverything(atWidth: Self.width)
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: height))
@@ -187,7 +187,7 @@ final class MenuEndAgentQuestionView: NSView {
         released.performClick(nil)
     }
 
-    private func button(at event: NSEvent) -> HUDDialogButton? {
+    private func button(at event: NSEvent) -> EndAgentDialogButton? {
         let point = dialog.convert(event.locationInWindow, from: nil)
         return [dialog.cancelButton, dialog.endButton].first { button in
             button.convert(button.bounds, to: dialog).contains(point)

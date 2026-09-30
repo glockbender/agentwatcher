@@ -221,7 +221,7 @@ final class ThemeEditingTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let themes = ThemeStore(preferences: preferences, folder: folder) { try FileManager.default.removeItem(at: $0) }
         let settings = WidgetSettingsStore(preferences: preferences)
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         addTeardownBlock { _ = host }
         let model = SettingsModel(
             themes: themes, settings: settings, rowLayouts: RowLayoutStore(preferences: preferences),

@@ -201,8 +201,8 @@ final class EndAgentDialogTests: XCTestCase {
 
         XCTAssertFalse(dialog.isCompact)
         XCTAssertEqual(visibleParts(of: dialog).count, 4, "a heading, a sentence and two buttons")
-        XCTAssertTrue(HUDEndAgentDialog.explanation(naming: "Документация проекта").contains("“Документация проекта”"))
-        XCTAssertTrue(HUDEndAgentDialog.explanation(naming: nil).hasPrefix("This session"))
+        XCTAssertTrue(EndAgentDialog.explanation(naming: "Документация проекта").contains("“Документация проекта”"))
+        XCTAssertTrue(EndAgentDialog.explanation(naming: nil).hasPrefix("This session"))
     }
 
     // MARK: - Scaffolding
@@ -236,8 +236,8 @@ final class EndAgentDialogTests: XCTestCase {
         return (controller, broken)
     }
 
-    private func laidOutDialog(size: NSSize, style: WidgetStyle = .standard) throws -> HUDEndAgentDialog {
-        let dialog = HUDEndAgentDialog(
+    private func laidOutDialog(size: NSSize, style: WidgetStyle = .standard) throws -> EndAgentDialog {
+        let dialog = EndAgentDialog(
             sessionID: "claude:session-0", sessionName: "Документация проекта", style: style,
             onCancel: {}, onEnd: {})
         let window = NSWindow(
@@ -248,7 +248,7 @@ final class EndAgentDialogTests: XCTestCase {
     }
 
     /// The frame of every label and button showing, in the dialog's own coordinates.
-    private func visibleParts(of dialog: HUDEndAgentDialog) -> [NSRect] {
+    private func visibleParts(of dialog: EndAgentDialog) -> [NSRect] {
         func leaves(_ view: NSView) -> [NSView] {
             view.subviews.filter { !$0.isHidden }.flatMap { $0 is NSTextField || $0 is NSButton ? [$0] : leaves($0) }
         }

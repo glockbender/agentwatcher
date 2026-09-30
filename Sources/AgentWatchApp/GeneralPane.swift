@@ -40,14 +40,14 @@ struct GeneralPane: View {
             Section("Closed sessions") {
                 Picker("Closed sessions", selection: retention) {
                     ForEach(WidgetSettingsStore.offeredClosedSessionRetentions, id: \.seconds) { retention in
-                        Text(StatusMenu.title(for: retention)).tag(retention.seconds)
+                        Text(retention.settingsTitle).tag(retention.seconds)
                     }
                 }
             }
             Section {
                 Picker("Read transcripts", selection: transcripts) {
                     ForEach(WidgetSettingsStore.offeredTranscriptPollIntervals, id: \.self) { interval in
-                        Text(transcriptIntervalMenuTitle(interval: interval)).tag(interval)
+                        Text(transcriptIntervalTitle(interval: interval)).tag(interval)
                     }
                 }
             } header: {
@@ -151,6 +151,19 @@ struct ShortcutField: NSViewRepresentable {
 
         @objc func start() {
             model.startRecordingShortcut()
+        }
+    }
+}
+
+extension ClosedSessionRetention {
+    var settingsTitle: String {
+        switch self {
+        case .manual:
+            "Keep until dismissed"
+        case let .after(seconds):
+            seconds < 120
+                ? "Remove after \(Int(seconds)) seconds"
+                : "Remove after \(Int(seconds / 60)) minutes"
         }
     }
 }

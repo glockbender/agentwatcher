@@ -24,7 +24,7 @@ final class SettingsRenderProbe: XCTestCase {
 
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         let themes = ThemeStore(preferences: preferences, folder: folder) { try FileManager.default.removeItem(at: $0) }
         let model = SettingsModel(
             themes: themes, settings: settings, rowLayouts: RowLayoutStore(preferences: preferences),

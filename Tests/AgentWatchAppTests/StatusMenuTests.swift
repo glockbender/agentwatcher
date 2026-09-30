@@ -329,7 +329,7 @@ final class StatusMenuTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func openMenuWithABrokenSession() throws -> (StatusMenu, FakeStatusMenuHost, WidgetSettingsStore) {
+    private func openMenuWithABrokenSession() throws -> (StatusMenu, FakeAppHost, WidgetSettingsStore) {
         let (menu, host, settings) = try makeMenu()
         let ending = ClosedTerminalEnding.discardOutput(devicePath: "/dev/ttys004")
         host.sessions = [session(0, "Session", .terminalClosed)]
@@ -347,9 +347,9 @@ final class StatusMenuTests: XCTestCase {
         try XCTUnwrap(menu.sessionLineItems.first?.view as? MenuEndAgentQuestionView)
     }
 
-    private func makeMenu() throws -> (StatusMenu, FakeStatusMenuHost, WidgetSettingsStore) {
+    private func makeMenu() throws -> (StatusMenu, FakeAppHost, WidgetSettingsStore) {
         let settings = WidgetSettingsStore(preferences: try isolatedPreferences())
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         let menu = StatusMenu(settings: settings, host: host)
         // The menu holds its host weakly, as it holds the application, so something has to
         // keep this one alive for the test that does not keep it itself.
@@ -400,7 +400,7 @@ final class KeyRecorder: NSResponder {
 }
 
 @MainActor
-final class FakeStatusMenuHost: StatusMenuHost, SettingsHost {
+final class FakeAppHost: StatusMenuHost, SettingsHost {
     var calls: [String] = []
     var attentionCounts = SessionAttentionCounts.empty
     var isWidgetVisible = false

@@ -13,7 +13,7 @@ import AppKit
 /// over the buttons, on a card as large as the widget. The smallest widget is two rows tall,
 /// and the second layout fits it at every size.
 @MainActor
-final class HUDEndAgentDialog: NSView {
+final class EndAgentDialog: NSView {
     static let fadeDuration: TimeInterval = 0.15
 
     let sessionID: String
@@ -22,8 +22,8 @@ final class HUDEndAgentDialog: NSView {
     private let heading = NSTextField(labelWithString: "Broken session")
     private let explanation: NSTextField
     private let shortQuestion = NSTextField(labelWithString: "Broken session. End it?")
-    let cancelButton: HUDDialogButton
-    let endButton: HUDDialogButton
+    let cancelButton: EndAgentDialogButton
+    let endButton: EndAgentDialogButton
 
     init(
         sessionID: String,
@@ -38,10 +38,10 @@ final class HUDEndAgentDialog: NSView {
         // One answer to a question: its buttons stay on screen while it fades, and a second
         // press on End would end the agent twice.
         let answer = OneAnswer()
-        cancelButton = HUDDialogButton(
+        cancelButton = EndAgentDialogButton(
             title: "Cancel", fill: NSColor(calibratedWhite: 1, alpha: 0.18), style: style,
             perform: { answer.give(onCancel) })
-        endButton = HUDDialogButton(title: "End", fill: .systemRed, style: style, perform: { answer.give(onEnd) })
+        endButton = EndAgentDialogButton(title: "End", fill: .systemRed, style: style, perform: { answer.give(onEnd) })
         super.init(frame: .zero)
         // Dark whatever the widget's colour: the rows under it are darkened, and the card, its
         // text and its buttons are drawn for that.
@@ -224,7 +224,7 @@ final class HUDEndAgentDialog: NSView {
 /// A button drawn in full by itself, so it looks the same in a panel that is never key:
 /// AppKit greys the colour of its own bezels in a window that is not.
 @MainActor
-final class HUDDialogButton: NSButton {
+final class EndAgentDialogButton: NSButton {
     private let fill: NSColor
     private let style: WidgetStyle
     private let perform: () -> Void
@@ -255,7 +255,7 @@ final class HUDDialogButton: NSButton {
 
     override var intrinsicContentSize: NSSize {
         let text = attributedTitle.size()
-        // Whole points, for the reason `HUDEndAgentDialog.layout` gives.
+        // Whole points, for the reason `EndAgentDialog.layout` gives.
         return NSSize(
             width: ceil(text.width) + 2 * style.points(12).rounded(),
             height: ceil(text.height) + 2 * style.points(4).rounded())

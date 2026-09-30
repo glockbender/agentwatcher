@@ -95,17 +95,6 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         return item
     }
 
-    static func title(for retention: ClosedSessionRetention) -> String {
-        switch retention {
-        case .manual:
-            "Keep until dismissed"
-        case let .after(seconds):
-            seconds < 120
-                ? "Remove after \(Int(seconds)) seconds"
-                : "Remove after \(Int(seconds / 60)) minutes"
-        }
-    }
-
     // MARK: - Keeping the lines true
 
     func menuWillOpen(_ menu: NSMenu) {

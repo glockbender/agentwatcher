@@ -100,7 +100,7 @@ final class SessionOrderPreviewTests: XCTestCase {
     func testTheResetPutsBackTheArrivalOrderAndTheFirstBlockOrder() throws {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         addTeardownBlock { _ = host }
         let model = SettingsModel(
             themes: ThemeStore(preferences: preferences, folder: nil), settings: settings,
@@ -118,11 +118,11 @@ final class SessionOrderPreviewTests: XCTestCase {
     private func makeTab(
         look: @escaping () -> WidgetTheme.Look = { WidgetTheme.standard.dark },
         background: @escaping () -> WidgetBackground = { .graphite }
-    ) throws -> (SessionOrderTab, WidgetSettingsStore, RowLayoutStore) {
+    ) throws -> (OrderPreviewPlayer, WidgetSettingsStore, RowLayoutStore) {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
         let layouts = RowLayoutStore(preferences: preferences)
-        let tab = SessionOrderTab(
+        let tab = OrderPreviewPlayer(
             settings: settings, look: look, background: background, opacity: { 1 }, rowLayouts: layouts)
         addTeardownBlock { tab.setShown(false) }
         return (tab, settings, layouts)

@@ -13,7 +13,7 @@ import SwiftUI
 /// background, as in System Settings. Real Liquid Glass needs the macOS 26 SDK, which this
 /// project does not build with yet.
 @MainActor
-final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     let model: SettingsModel
 
     init(

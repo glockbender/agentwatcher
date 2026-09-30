@@ -69,10 +69,10 @@ final class SettingsModelHistoryTests: XCTestCase {
     }
 
     /// The host is held weakly by the model, so it is returned for the test to keep alive.
-    private func makeModel() throws -> (SettingsModel, FakeStatusMenuHost) {
+    private func makeModel() throws -> (SettingsModel, FakeAppHost) {
         let preferences = try isolatedPreferences()
         let settings = WidgetSettingsStore(preferences: preferences)
-        let host = FakeStatusMenuHost()
+        let host = FakeAppHost()
         let model = SettingsModel(
             themes: ThemeStore(preferences: preferences, folder: nil),
             settings: settings,

@@ -542,7 +542,7 @@ final class WidgetRenderProbe: XCTestCase {
         let container = HUDContentContainer()
         let list = listView(width: size?.width ?? width, style: style)
         container.setBody(list)
-        let dialog = HUDEndAgentDialog(
+        let dialog = EndAgentDialog(
             sessionID: "claude:session-1",
             sessionName: "Документация проекта",
             style: style,
