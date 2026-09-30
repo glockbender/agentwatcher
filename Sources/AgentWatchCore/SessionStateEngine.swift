@@ -25,6 +25,16 @@ public struct SessionStateEngine: Sendable {
     /// behind. A day of the agents view refilling itself is tens of them. A timer to collect
     /// that would be polling for nothing, which `AGENTS.md` forbids.
     private var withheldBackgroundStarts: Set<String> = []
+    /// Rows a person took off the widget, for this launch. The next scan for live agents
+    /// would put such a row straight back, and the session's last hook often lands after it
+    /// went — an agent ended from the widget reports its own end as it exits; neither makes
+    /// a row again. One launch and no longer: seeing everything that runs is worth more than
+    /// remembering one gesture about it.
+    private var dismissedRowIDs: Set<String> = []
+    /// Rows whose agent a person asked to end. Each goes when its session closes, not at the
+    /// answer: taken away then, a row whose agent survived the ending would hide the very
+    /// process it was there to show.
+    private var rowsLeavingOnClose: Set<String> = []
 
     /// What applying the event decided about which row it belonged to, when it decided
     /// anything out of the ordinary. Reported on `RowChange` rather than read off the engine
@@ -76,6 +86,9 @@ public struct SessionStateEngine: Sendable {
     /// re-asked in order to log its own decision was told the opposite of the truth.
     private mutating func withholding(for event: EventEnvelope) -> RowChange.Withholding? {
         let own = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
+        if event.kind == .sessionEnded, snapshots[own] == nil, dismissedRowIDs.contains(own) {
+            return .endedAfterItsRowWasDismissed
+        }
         if withheldBackgroundStarts.remove(own) != nil {
             // The end of a session nobody ever saw is nothing to report: without this the
             // row it never had would arrive as a tombstone instead.
@@ -816,6 +829,45 @@ public struct SessionStateEngine: Sendable {
     public mutating func removeSession(id: String) -> SessionSnapshot? {
         rememberedWaits.removeValue(forKey: id)
         return snapshots.removeValue(forKey: id)
+    }
+
+    /// Takes a row off the widget because a person did, and remembers it: the session's end,
+    /// when it comes later, makes no row again.
+    @discardableResult
+    public mutating func dismissSession(id: String) -> SessionSnapshot? {
+        let removed = removeSession(id: id)
+        if removed != nil {
+            dismissedRowIDs.insert(id)
+        }
+        return removed
+    }
+
+    public func wasDismissed(_ id: String) -> Bool {
+        dismissedRowIDs.contains(id)
+    }
+
+    /// A person asked to end this row's agent: the row goes when its session closes.
+    public mutating func removeWhenClosed(id: String) {
+        rowsLeavingOnClose.insert(id)
+    }
+
+    /// Takes away each row whose session closed after a person asked to end its agent,
+    /// whichever way the close arrived, and answers which went. A row back at work is no
+    /// longer the one the person asked about, and is not taken away later.
+    public mutating func takeRowsEndedAsAsked() -> [SessionSnapshot] {
+        var taken: [SessionSnapshot] = []
+        for id in rowsLeavingOnClose.sorted() {
+            let row = snapshots[id]
+            if row?.phase == .terminalClosed {
+                continue
+            }
+            rowsLeavingOnClose.remove(id)
+            if let row, row.phase == .sessionClosed {
+                dismissSession(id: id)
+                taken.append(row)
+            }
+        }
+        return taken
     }
 
     /// The sessions whose remembered wait is still unanswered, and what each was waiting on.

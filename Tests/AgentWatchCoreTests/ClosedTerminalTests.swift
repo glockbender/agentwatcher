@@ -108,6 +108,72 @@ final class ClosedTerminalTests: XCTestCase {
         XCTAssertEqual(SessionPresence.dismissal(of: row, now: started), .now)
     }
 
+    // MARK: - Rows a person took away
+
+    /// The case reported on the owner's machine: a row dismissed by hand, and its agent's
+    /// last hook arriving afterwards. It brings no closed row back, and says why.
+    func testTheEndOfADismissedRowMakesNoRowAgain() throws {
+        var engine = SessionStateEngine()
+        let row = try engine.ingest(terminalEvent(.sessionStarted, at: started))
+        engine.dismissSession(id: row.id)
+
+        let change = try engine.receive(terminalEvent(.sessionEnded, at: started + 5))
+
+        XCTAssertNil(change.row)
+        XCTAssertEqual(change.withheld, .endedAfterItsRowWasDismissed)
+        XCTAssertNil(engine.snapshots[row.id])
+        XCTAssertTrue(engine.wasDismissed(row.id))
+    }
+
+    /// Only a person's dismissal counts: a row taken away for any other reason — a process row
+    /// whose agent ended — does not silence the session's end.
+    func testARowRemovedForAnotherReasonIsNotADismissal() throws {
+        var engine = SessionStateEngine()
+        let row = try engine.ingest(terminalEvent(.sessionStarted, at: started))
+        engine.removeSession(id: row.id)
+
+        let change = try engine.receive(terminalEvent(.sessionEnded, at: started + 5))
+
+        XCTAssertNil(change.withheld)
+        XCTAssertFalse(engine.wasDismissed(row.id))
+    }
+
+    /// Asked to end its agent, a row goes when its session closes — not at the answer, and not
+    /// while it is still without its terminal.
+    func testARowAskedToEndGoesWhenItsSessionCloses() throws {
+        var engine = SessionStateEngine()
+        let row = try engine.ingest(terminalEvent(.sessionStarted, at: started))
+        _ = try XCTUnwrap(engine.markTerminalClosed(forSessionWithID: row.id))
+        engine.removeWhenClosed(id: row.id)
+
+        XCTAssertEqual(engine.takeRowsEndedAsAsked(), [], "the agent has not ended yet")
+        XCTAssertNotNil(engine.snapshots[row.id])
+
+        try engine.ingest(terminalEvent(.sessionEnded, at: started + 5))
+        let taken = engine.takeRowsEndedAsAsked()
+
+        XCTAssertEqual(taken.map(\.id), [row.id])
+        XCTAssertNil(engine.snapshots[row.id])
+        XCTAssertTrue(engine.wasDismissed(row.id), "and its end arriving again makes no row")
+        XCTAssertEqual(engine.takeRowsEndedAsAsked(), [])
+    }
+
+    /// A row back at work is no longer the one a person asked about: when it closes much
+    /// later, it closes like any other.
+    func testARowBackAtWorkIsNoLongerTakenAway() throws {
+        var engine = SessionStateEngine()
+        let row = try engine.ingest(terminalEvent(.sessionStarted, at: started))
+        _ = try XCTUnwrap(engine.markTerminalClosed(forSessionWithID: row.id))
+        engine.removeWhenClosed(id: row.id)
+
+        try engine.ingest(terminalEvent(.turnStarted, at: started + 5))
+        XCTAssertEqual(engine.takeRowsEndedAsAsked(), [])
+        try engine.ingest(terminalEvent(.sessionEnded, at: started + 60))
+
+        XCTAssertEqual(engine.takeRowsEndedAsAsked(), [])
+        XCTAssertEqual(engine.snapshots[row.id]?.phase, .sessionClosed)
+    }
+
     private func terminalEvent(_ kind: EventKind, at observedAt: Date) -> EventEnvelope {
         testEvent(sessionLabel: "devx", kind: kind, observedAt: observedAt, agentProcessID: 5_929, clientKind: .cli)
     }

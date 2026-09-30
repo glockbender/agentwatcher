@@ -63,25 +63,6 @@ final class SessionSupervisor {
         history.rememberedAgentProcesses.map { ($0.processID, $0) },
         uniquingKeysWith: { first, _ in first }
     )
-    /// Rows a person has dismissed by hand, by row identifier.
-    ///
-    /// Without it the next scan would put the row straight back, and the dismiss button
-    /// would be the one control in the widget that does nothing.
-    ///
-    /// Every dismissed row, not only the ones built from a process. A row is dismissible
-    /// while it says `no signal`, while it carries a fault, or after half an hour of silence
-    /// — and its agent can be running through all three. Such a row was rebuilt by the next
-    /// scan, and once a pairing could name it (`sessionsByAgentProcess`) it came back looking
-    /// identical to the one just dismissed.
-    ///
-    /// It lasts one launch and no longer, and that is the rule rather than an oversight:
-    /// seeing everything that runs is worth more than remembering one gesture about it, so a
-    /// restart shows every running agent again.
-    private var dismissedRowIDs: Set<String> = []
-    /// Broken sessions whose agent a person asked to end, by row identifier. Each row goes
-    /// the moment its session closes, and not before: taken away at the answer, a row whose
-    /// agent survived the ending would hide the very process it was there to show.
-    private var rowsToRemoveOnClose: Set<String> = []
 
     private lazy var hostRegistry = SessionHostRegistry(
         claudeHome: claudeHome,
@@ -401,7 +382,7 @@ final class SessionSupervisor {
             return
         }
         if releaseAgent(of: snapshot) {
-            rowsToRemoveOnClose.insert(id)
+            engine.removeWhenClosed(id: id)
         }
     }
 
@@ -418,14 +399,6 @@ final class SessionSupervisor {
         var snapshot: SessionSnapshot
         do {
             event = try HookIngressProcessor.normalize(request, observedAt: now())
-            // The end of a session a person removed is not a new row. An agent ended from the
-            // widget reports its own end as it exits, and that report can land after its row
-            // went: without this it came back as a closed row to be dismissed a second time.
-            let ownRowID = SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID)
-            if event.kind == .sessionEnded, dismissedRowIDs.contains(ownRowID), engine.snapshots[ownRowID] == nil {
-                onNotableEvent("\(Self.label(sessionID: ownRowID)) · a removed session reported its end; no row for it")
-                return event
-            }
             let change = try engine.receive(event)
             // Whatever left as this event landed: its watcher goes with it, since the row it
             // watched is gone. The watcher the arriving session gets is installed by
@@ -556,9 +529,14 @@ final class SessionSupervisor {
 
     private static func withheldNote(for event: EventEnvelope, withheld: RowChange.Withholding?) -> String {
         let label = label(sessionID: SessionSnapshot.id(source: event.source, sessionLabel: event.sessionID))
-        return withheld == .endedWithoutWorking
-            ? "\(label) · background session ended without taking a turn; it never had a row"
-            : "\(label) · background session started; no row until it takes a turn"
+        switch withheld {
+        case .endedWithoutWorking:
+            return "\(label) · background session ended without taking a turn; it never had a row"
+        case .endedAfterItsRowWasDismissed:
+            return "\(label) · a removed session reported its end; no row for it"
+        case .announcedItself, nil:
+            return "\(label) · background session started; no row until it takes a turn"
+        }
     }
 
     /// Marks the row when its agent's terminal is gone, and answers with it when that
@@ -707,10 +685,9 @@ final class SessionSupervisor {
     }
 
     func remove(_ snapshot: SessionSnapshot) {
-        guard engine.removeSession(id: snapshot.id) != nil else {
+        guard engine.dismissSession(id: snapshot.id) != nil else {
             return
         }
-        dismissedRowIDs.insert(snapshot.id)
         hostRegistry.forget(snapshot)
         publish()
         onNotableEvent("\(Self.label(snapshot)) · session removed")
@@ -772,7 +749,7 @@ final class SessionSupervisor {
         sessionsByAgentProcess = sessionsByAgentProcess.filter { liveProcessLabels.contains($0.value.processLabel) }
 
         let change = engine.reconcileDiscoveredProcesses(
-            live.filter { !dismissedRowIDs.contains($0.snapshotID) }
+            live.filter { !engine.wasDismissed($0.snapshotID) }
         )
         // Every row, not only the ones this scan built: a session that spoke is the commoner
         // case, and until a restart the reported one was exactly that. After the reconcile,
@@ -1169,20 +1146,10 @@ final class SessionSupervisor {
         sessionRecords.update(sessions: snapshots)
     }
 
-    /// Takes away the row of each session that closed after a person asked to end its agent,
-    /// whichever way the close arrived: the agent's exit, or its own last hook.
+    /// The rows the engine takes away because their agent ended as asked
+    /// (`SessionStateEngine.takeRowsEndedAsAsked`), with what the app holds on them.
     private func removeRowsEndedOnRequest() {
-        for id in rowsToRemoveOnClose {
-            guard let row = engine.snapshots[id] else {
-                rowsToRemoveOnClose.remove(id)
-                continue
-            }
-            guard row.phase == .sessionClosed else {
-                continue
-            }
-            rowsToRemoveOnClose.remove(id)
-            engine.removeSession(id: id)
-            dismissedRowIDs.insert(id)
+        for row in engine.takeRowsEndedAsAsked() {
             hostRegistry.forget(row)
             onNotableEvent("\(Self.label(row)) · its agent ended as asked; session removed")
         }
