@@ -74,13 +74,15 @@ struct MenuBarIconCell: Equatable {
     /// person can do something about breathe. A cell moves only when it holds something:
     /// movement has to mean "there is something here", and a breathing zero would say the
     /// opposite with the same gesture.
+    @MainActor
     static func cells(
         for counts: SessionAttentionCounts,
         showing shown: Set<SessionAttention> = Set(SessionAttention.counted),
-        look: WidgetTheme.Look = WidgetTheme.active
+        look: WidgetTheme.Look = ThemeInUse.look,
+        phases: [SessionPhase: Int] = ThemeInUse.phases
     ) -> [MenuBarIconCell] {
         SessionAttention.counted.filter(shown.contains).map { attention in
-            let style = look.markStyle(for: attention)
+            let style = look.markStyle(for: attention, phases: phases)
             return MenuBarIconCell(
                 attention: attention,
                 symbol: attention.symbolName,

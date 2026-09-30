@@ -11,11 +11,11 @@ import XCTest
 @MainActor
 final class ThemeMotionTests: XCTestCase {
     private func use(_ change: (inout WidgetTheme.Look) -> Void) {
-        let original = WidgetTheme.active
-        addTeardownBlock { WidgetTheme.active = original }
-        var look = WidgetTheme.standard.dark
-        change(&look)
-        WidgetTheme.active = look
+        let (look, phases) = (ThemeInUse.look, ThemeInUse.phases)
+        addTeardownBlock { (ThemeInUse.look, ThemeInUse.phases) = (look, phases) }
+        var changed = WidgetTheme.standard.dark
+        change(&changed)
+        ThemeInUse.look = changed
     }
 
     private func cells(needsPerson: Int = 1, working: Int = 1, done: Int = 1, quiet: Int = 1) -> [MenuBarIconCell] {
@@ -112,11 +112,10 @@ final class ThemeMotionTests: XCTestCase {
         view.show(cells(needsPerson: 1, working: 0, done: 0, quiet: 0), as: .sphere)
         let before = view.cellContents.first.map { $0 as AnyObject }
 
-        var look = WidgetTheme.active
-        var lamp = look.lampScheme.style(for: .waitingForUser)
-        lamp.color = NSColor(sRGB: "#00FF00")
-        look.setLampStyle(lamp, for: .waitingForUser)
-        WidgetTheme.active = look
+        use {
+            $0.setFollowsLamps(true)
+            $0.changeLampStyle(for: .waitingForUser) { $0.color = NSColor(sRGB: "#00FF00") }
+        }
         view.show(cells(needsPerson: 1, working: 0, done: 0, quiet: 0), as: .sphere)
 
         XCTAssertFalse(view.cellContents.first.map { $0 as AnyObject } === before, "the sphere kept its old picture")

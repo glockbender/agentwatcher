@@ -23,7 +23,7 @@ final class MenuBarIconView: NSView {
     private var cells: [MenuBarIconCell] = []
     private var style = MenuBarIconStyle.counts
     /// The sphere's movements as last drawn, so a theme that changes only them still redraws.
-    private var sphereMotion = WidgetTheme.active.sphereMotion
+    private var sphereMotion = ThemeInUse.look.sphereMotion
     private var drawing: MenuBarIconDrawing?
     /// Kept rather than worked out from the last drawing: by the time a drawing is replaced,
     /// the style it was drawn in may already be the new one.
@@ -48,7 +48,7 @@ final class MenuBarIconView: NSView {
     @discardableResult
     func show(
         _ cells: [MenuBarIconCell], as style: MenuBarIconStyle = .counts,
-        motion: WidgetTheme.Sphere = WidgetTheme.active.sphereMotion
+        motion: WidgetTheme.Sphere = ThemeInUse.look.sphereMotion
     ) -> Bool {
         guard cells != self.cells || style != self.style || motion != sphereMotion else {
             return drawing != nil

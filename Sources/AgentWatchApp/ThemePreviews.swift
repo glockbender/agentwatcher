@@ -111,7 +111,7 @@ final class MenuBarIconPreviewView: NSView {
         SessionAttentionCounts(needsPerson: 0, working: 3, done: 3, quiet: 5),
     ]
 
-    var look = WidgetTheme.active {
+    var look = ThemeInUse.look {
         didSet { if look != oldValue { redraw() } }
     }
     private var icons: [(view: MenuBarIconView, style: MenuBarIconStyle)] = []
@@ -204,7 +204,7 @@ final class MenuLinesPreviewView: NSVisualEffectView {
         ("Background script", .idle),
     ]
 
-    var look = WidgetTheme.active {
+    var look = ThemeInUse.look {
         didSet {
             guard look != oldValue else { return }
             drawFrame()
@@ -253,7 +253,7 @@ final class MenuLinesPreviewView: NSVisualEffectView {
     private func runTimerIfMoving() {
         timer?.invalidate()
         timer = nil
-        let moving = Self.lines.contains { look.menuMarkStyle(for: $0.1).motion != .steady }
+        let moving = Self.lines.contains { look.menuMarkStyle(for: $0.1, phases: ThemeInUse.phases).motion != .steady }
         guard window != nil, moving else {
             return
         }
@@ -270,7 +270,7 @@ final class MenuLinesPreviewView: NSVisualEffectView {
         let now = CACurrentMediaTime()
         for (mark, (_, phase)) in zip(marks, Self.lines) {
             mark.image = MenuMarkAnimator.frame(
-                of: look.menuMarkStyle(for: phase), attention: phase.attention, at: now)
+                of: look.menuMarkStyle(for: phase, phases: ThemeInUse.phases), attention: phase.attention, at: now)
         }
     }
 }

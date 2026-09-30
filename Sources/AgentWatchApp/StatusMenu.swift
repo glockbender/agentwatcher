@@ -198,7 +198,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             return
         }
         askingAbout = nil
-        let look = WidgetTheme.active
+        let look = ThemeInUse.look
         var marked: [(item: NSMenuItem, attention: SessionAttention, style: LampStyle)] = []
         sessionLineItems = lines.prefix(Self.listedSessionLimit).enumerated().map { offset, line in
             // A line with nothing to do has no action, which is how a menu that enables its
@@ -210,7 +210,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             )
             item.target = self
             item.representedObject = line
-            let style = look.menuMarkStyle(for: line.phase)
+            let style = look.menuMarkStyle(for: line.phase, phases: ThemeInUse.phases)
             item.image = MenuMarkAnimator.mark(for: line.attention, colour: style.color)
             if line.leadsToQuestion {
                 // Still: the line draws itself, and its picture is taken once.

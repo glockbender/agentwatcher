@@ -286,7 +286,7 @@ private struct StateColourRow: View {
     let look: WidgetTheme.Look
 
     var body: some View {
-        let lamp = look.lamp(for: attention)
+        let lamp = look.lamp(for: attention, phases: ThemeInUse.phases)
         GridRow {
             Text(attention.name).frame(width: StateColourRow.nameWidth, alignment: .leading)
             Picker("", selection: source) {
@@ -304,7 +304,7 @@ private struct StateColourRow: View {
             ColorPicker(
                 "",
                 selection: Binding(
-                    get: { Color(nsColor: look.accent(for: attention)) },
+                    get: { Color(nsColor: look.accent(for: attention, phases: ThemeInUse.phases)) },
                     set: { chosen in model.editTheme { $0.setOwnAccent(NSColor(chosen), for: attention) } }
                 )
             )
@@ -330,7 +330,7 @@ private struct StateMotionRow: View {
     let look: WidgetTheme.Look
 
     var body: some View {
-        let style = look.markStyle(for: attention)
+        let style = look.markStyle(for: attention, phases: ThemeInUse.phases)
         GridRow {
             Text(attention.name).frame(width: StateColourRow.nameWidth, alignment: .leading)
             Picker("", selection: binding(style, \.motion)) {

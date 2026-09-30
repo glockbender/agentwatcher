@@ -109,14 +109,15 @@ func glassTint(_ colour: NSColor, opacity: CGFloat, clear: Bool = false) -> NSCo
 func makeBackdrop(
     cornerRadius: CGFloat, tint: NSColor? = nil, opacity: CGFloat = 1, material: WidgetMaterial? = nil
 ) -> Backdrop {
-    Backdrop(cornerRadius: cornerRadius, tint: tint, opacity: opacity, material: material ?? WidgetMaterial.current)
+    Backdrop(
+        cornerRadius: cornerRadius, tint: tint, opacity: opacity, material: material ?? ThemeInUse.look.widgetMaterial)
 }
 
 /// The widget's own backdrop. On glass `background` is what the text is drawn for
 /// (`WidgetMaterial.textBackground`), and the glass takes the colour of the theme in use.
 @MainActor
 func makeBackgroundView(for background: WidgetBackground, opacity: CGFloat) -> Backdrop {
-    let tint =
-        WidgetMaterial.current.drawn.needsLiquidGlass ? WidgetTheme.active.widgetBackground.color : background.color
+    let look = ThemeInUse.look
+    let tint = look.widgetMaterial.drawn.needsLiquidGlass ? look.widgetBackground.color : background.color
     return makeBackdrop(cornerRadius: WidgetStyle.windowCornerRadius, tint: tint, opacity: opacity)
 }

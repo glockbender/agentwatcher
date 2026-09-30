@@ -37,7 +37,7 @@ class HUDSessionListView: NSView {
     private let background: WidgetBackground
     private let lampScheme: LampScheme
     private let backgroundOpacity: CGFloat
-    private let material = WidgetMaterial.current
+    private let material = ThemeInUse.look.widgetMaterial
     private let style: WidgetStyle
     private let restoredScrollOffset: NSPoint?
     private let onScroll: (NSPoint) -> Void
@@ -245,7 +245,7 @@ class HUDSessionListView: NSView {
             && background == self.background
             && lampScheme == self.lampScheme
             && backgroundOpacity == self.backgroundOpacity
-            && material == WidgetMaterial.current
+            && material == ThemeInUse.look.widgetMaterial
             && style.scale == self.style.scale
     }
 

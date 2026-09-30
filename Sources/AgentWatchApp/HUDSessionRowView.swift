@@ -622,8 +622,8 @@ final class HUDSessionRowView: NSStackView {
         }
         return switch SessionFreshnessEvaluator.evaluate(snapshot, now: now) {
         case .current: background.secondaryForegroundColor
-        case .quiet: WidgetTheme.active.color(.timerQuiet)
-        case .noRecentActivity: WidgetTheme.active.color(.timerStale)
+        case .quiet: ThemeInUse.look.color(.timerQuiet)
+        case .noRecentActivity: ThemeInUse.look.color(.timerStale)
         }
     }
 

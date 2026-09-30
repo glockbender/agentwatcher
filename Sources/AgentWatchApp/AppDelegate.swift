@@ -192,8 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             everyDefault.merge(owner.defaultValues) { existing, _ in existing }
         }
         preferences.seed(everyDefault)
-        WidgetMaterial.current = themes.look.widgetMaterial
-        WidgetTheme.active = themes.look
+        ThemeInUse.look = themes.look
         // Said out loud, because the alternative is a person's settings apparently reset for
         // no reason. The seeding above is the write that moves the old file aside.
         if let kept = preferences.unreadableFileKeptAt {
@@ -346,8 +345,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateMenuBarIcon(sessions: [SessionSnapshot]) {
         let counts = SessionAttentionCounts(sessions: sessions)
         let phases = sessions.reduce(into: [SessionPhase: Int]()) { $0[$1.phase, default: 0] += 1 }
-        let phasesMatter = WidgetTheme.active.dependsOnSessionPhases && phases != WidgetTheme.sessionPhases
-        WidgetTheme.sessionPhases = phases
+        let phasesMatter = ThemeInUse.look.isRedrawn(forPhases: phases, after: ThemeInUse.phases)
+        ThemeInUse.phases = phases
         guard counts != menuBarCounts || phasesMatter else {
             return
         }
@@ -447,8 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// live widget reach full invisibility while the saved theme did not.
     private func applyTheme() {
         let look = themes.look
-        WidgetTheme.active = look
-        WidgetMaterial.current = look.widgetMaterial
+        ThemeInUse.look = look
         hudController.setAppearance(
             background: themes.textBackground, lampScheme: look.lampScheme, opacity: look.widgetOpacity)
         // Not the menu's lines: it reads them, marks included, each time it opens, and
@@ -486,7 +484,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Now rather than on the next turn, which would put the theme's own material
                 // back over the one this picture is of.
                 themeChange.runIfPending()
-                WidgetMaterial.current = material
+                ThemeInUse.look.widgetMaterial = material
                 let look = themes.look
                 hudController.setAppearance(
                     background: material.drawn.textBackground(for: look.widgetBackground, dark: themes.isDark),

@@ -65,7 +65,7 @@ enum MenuBarSphereRenderer {
     /// painted for the screen it is shown on rather than scaled to it.
     static func draw(
         _ cells: [MenuBarIconCell], dark: Bool, scale: CGFloat = 2,
-        motion: WidgetTheme.Sphere = WidgetTheme.active.sphereMotion
+        motion: WidgetTheme.Sphere = ThemeInUse.look.sphereMotion
     ) -> MenuBarIconDrawing? {
         guard !cells.isEmpty else {
             return nil

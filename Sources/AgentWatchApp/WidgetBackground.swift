@@ -146,8 +146,4 @@ enum WidgetMaterial: String, CaseIterable {
         }
         return dark ? .graphite : .pearl
     }
-
-    /// Kept here rather than handed down through every view that draws a backdrop; set from
-    /// the theme in use, and the widget is rebuilt on every change.
-    @MainActor static var current: WidgetMaterial = .glass
 }

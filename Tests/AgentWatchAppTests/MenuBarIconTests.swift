@@ -236,7 +236,7 @@ final class MenuBarIconTests: XCTestCase {
         XCTAssertEqual(cells.map(\.count), [1, 2, 3, 4])
         XCTAssertEqual(
             cells.map(\.accent.srgbHex),
-            SessionAttention.counted.map { WidgetTheme.active.accent(for: $0).srgbHex }
+            SessionAttention.counted.map { ThemeInUse.look.accent(for: $0, phases: [:]).srgbHex }
         )
         XCTAssertEqual(cells.map(\.breathDepth), [0.65, 0.45, 0, 0])
         XCTAssertEqual(cells.map(\.symbol), SessionAttention.counted.map(\.symbolName))

@@ -245,14 +245,6 @@ struct WidgetTheme: Codable, Equatable {
         Role.highlight.rawValue: "#FF9F0A",
     ]
 
-    /// The look in use, for the few drawings that cannot be handed one: the menu bar's marks,
-    /// the menu's and the counter's. Set whenever the theme or the system's appearance changes.
-    nonisolated(unsafe) static var active: Look = standard.dark
-
-    /// How many sessions are in each phase right now, for a state that takes the lamp of the
-    /// phase most of its sessions are in. Set with the menu bar's counts.
-    nonisolated(unsafe) static var sessionPhases: [SessionPhase: Int] = [:]
-
     /// Where a state's colour comes from.
     enum ColourSource: Hashable {
         /// The state's own colour.
@@ -325,9 +317,7 @@ extension WidgetTheme.Look {
     }
 
     /// The state's colour as it is drawn: its lamp's when it follows one, its own otherwise.
-    func accent(
-        for attention: SessionAttention, phases: [SessionPhase: Int] = WidgetTheme.sessionPhases
-    ) -> NSColor {
+    func accent(for attention: SessionAttention, phases: [SessionPhase: Int]) -> NSColor {
         if let phase = lamp(for: attention, phases: phases) {
             return lampScheme.style(for: phase).color
         }
@@ -372,9 +362,7 @@ extension WidgetTheme.Look {
     /// For `mostSessions`, the phase most of the state's sessions are in. A tie goes to the
     /// state's lead phase, then to the phases in their order, and a state with no sessions
     /// takes its lead phase — it shows nowhere then, but its colour in the editor has to be one.
-    func lamp(for attention: SessionAttention, phases: [SessionPhase: Int] = WidgetTheme.sessionPhases)
-        -> SessionPhase?
-    {
+    func lamp(for attention: SessionAttention, phases: [SessionPhase: Int]) -> SessionPhase? {
         switch colourSource(for: attention) {
         case .own:
             return nil
@@ -420,11 +408,17 @@ extension WidgetTheme.Look {
         SessionAttention.counted.contains { colourSource(for: $0) == .mostSessions }
     }
 
+    /// Whether sessions moving from one set of phases to another change a colour this look
+    /// draws, which is what the icon is redrawn for besides its counts.
+    func isRedrawn(forPhases phases: [SessionPhase: Int], after previous: [SessionPhase: Int]) -> Bool {
+        dependsOnSessionPhases && phases != previous
+    }
+
     /// The state's mark as the grid and the menu draw it: its colour and how it moves.
-    func markStyle(for attention: SessionAttention) -> LampStyle {
+    func markStyle(for attention: SessionAttention, phases: [SessionPhase: Int]) -> LampStyle {
         let stored = attentionMotion[attention.rawValue] ?? WidgetTheme.attentionMotion[attention.rawValue]
         return LampStyle(
-            color: accent(for: attention),
+            color: accent(for: attention, phases: phases),
             motion: stored.flatMap { SessionLampAppearance.Motion(rawValue: $0.motion) } ?? .steady,
             gradientColor: stored.flatMap { NSColor(hex: $0.fadeTo) } ?? NSColor(sRGB: "#FFFFFF"),
             animationCycle: (stored?.cycle ?? WidgetTheme.markCycle).clamped(
@@ -443,7 +437,8 @@ extension WidgetTheme.Look {
     /// Changes one thing about the state's mark and keeps the rest as this look has it — which
     /// matters when a change goes into both looks and they differ.
     mutating func changeMarkStyle(for attention: SessionAttention, _ change: (inout LampStyle) -> Void) {
-        var style = markStyle(for: attention)
+        // Without the sessions' phases: only the movement is written, never the colour.
+        var style = markStyle(for: attention, phases: [:])
         change(&style)
         setMarkMotion(style.motion, fadeTo: style.gradientColor, cycle: style.animationCycle, for: attention)
     }
@@ -460,9 +455,9 @@ extension WidgetTheme.Look {
 
     /// A menu line's mark, for a session in this phase: the colour and the movement the
     /// theme's `menu` block chooses between the state's and the session's own lamp.
-    func menuMarkStyle(for phase: SessionPhase) -> LampStyle {
+    func menuMarkStyle(for phase: SessionPhase, phases: [SessionPhase: Int]) -> LampStyle {
         let lamp = lampScheme.style(for: phase)
-        let state = markStyle(for: phase.attention)
+        let state = markStyle(for: phase.attention, phases: phases)
         var style = state
         style.color = menuColors == .lamp ? lamp.color : state.color
         switch menuMotion {

@@ -25,7 +25,7 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(sparse.light, WidgetTheme.standard.light, "an empty look is the built-in light one")
         XCTAssertTrue(sparse.dark.lampScheme.isDefault)
         XCTAssertEqual(
-            sparse.dark.accent(for: .working).srgbHex,
+            sparse.dark.accent(for: .working, phases: [:]).srgbHex,
             NSColor(hex: try XCTUnwrap(WidgetTheme.attention[SessionAttention.working.rawValue]))?.srgbHex
         )
     }
@@ -111,36 +111,50 @@ final class ThemeStoreTests: XCTestCase {
 
         XCTAssertEqual(look.widgetMaterial, .glass)
         XCTAssertEqual(look.widgetOpacity, CGFloat(WidgetTheme.defaultOpacity))
-        XCTAssertEqual(look.accent(for: .working).srgbHex, "#0A85FF", "a state keeps its own colour")
+        XCTAssertEqual(look.accent(for: .working, phases: [:]).srgbHex, "#0A85FF", "a state keeps its own colour")
         XCTAssertEqual(look.sphereMotion, WidgetTheme.Sphere())
         // The grid as it shipped: the two states a person acts on breathe, at 1.4 s.
         for attention in [SessionAttention.needsPerson, .working] {
-            XCTAssertEqual(look.markStyle(for: attention).motion, .dim, attention.rawValue)
-            XCTAssertEqual(look.markStyle(for: attention).animationCycle, 1.4, attention.rawValue)
+            XCTAssertEqual(look.markStyle(for: attention, phases: [:]).motion, .dim, attention.rawValue)
+            XCTAssertEqual(look.markStyle(for: attention, phases: [:]).animationCycle, 1.4, attention.rawValue)
         }
-        XCTAssertEqual(look.markStyle(for: .done).motion, .steady)
+        XCTAssertEqual(look.markStyle(for: .done, phases: [:]).motion, .steady)
         // And the menu's marks hold still in the state's colour.
-        let line = look.menuMarkStyle(for: .executing)
+        let line = look.menuMarkStyle(for: .executing, phases: [:])
         XCTAssertEqual(line.motion, .steady)
         XCTAssertEqual(line.color.srgbHex, "#0A85FF")
     }
 
     // MARK: - States that take a lamp's colour
 
+    /// Sessions moving between phases redraw the icon only when a state takes the lamp of most
+    /// of its sessions; otherwise its colours cannot have changed.
+    func testTheIconIsRedrawnForNewPhasesOnlyWhenAStateFollowsThem() {
+        var look = WidgetTheme.standard.dark
+        let before: [SessionPhase: Int] = [.idle: 2]
+        let after: [SessionPhase: Int] = [.disconnected: 2]
+        XCTAssertFalse(look.isRedrawn(forPhases: after, after: before))
+
+        look.setColourSource(.mostSessions, for: .quiet)
+
+        XCTAssertTrue(look.isRedrawn(forPhases: after, after: before))
+        XCTAssertFalse(look.isRedrawn(forPhases: before, after: before))
+    }
+
     /// Eleven lamps and four states: a state can take the colour of one of its own phases'
     /// lamps, and only those — waiting for you can stand for needs you, working cannot.
     func testAStateTakesItsColourOnlyFromALampOfItsOwn() throws {
         var look = WidgetTheme.standard.dark
         look.setLamp(.failed, for: .needsPerson)
-        XCTAssertEqual(look.accent(for: .needsPerson), look.lampScheme.style(for: .failed).color)
+        XCTAssertEqual(look.accent(for: .needsPerson, phases: [:]), look.lampScheme.style(for: .failed).color)
         XCTAssertEqual(look.ownAccent(for: .needsPerson).srgbHex, "#FF9F0A", "its own colour is kept for later")
 
         look.setLamp(.executing, for: .needsPerson)
-        XCTAssertNil(look.lamp(for: .needsPerson), "a lamp of another state is refused")
+        XCTAssertNil(look.lamp(for: .needsPerson, phases: [:]), "a lamp of another state is refused")
 
         // A file may say anything; a phase of another state reads as the state's own colour.
         look.attentionLamps[SessionAttention.done.rawValue] = SessionPhase.executing.rawValue
-        XCTAssertEqual(look.accent(for: .done).srgbHex, "#30D159")
+        XCTAssertEqual(look.accent(for: .done, phases: [:]).srgbHex, "#30D159")
     }
 
     /// The one switch for a person who wants everything to match: every state shown in the
@@ -152,14 +166,14 @@ final class ThemeStoreTests: XCTestCase {
         look.setFollowsLamps(true)
 
         XCTAssertTrue(look.followsLamps)
-        XCTAssertEqual(look.lamp(for: .working), .executing)
-        XCTAssertEqual(look.accent(for: .working), look.lampScheme.style(for: .executing).color)
-        XCTAssertEqual(look.menuMarkStyle(for: .failed).color, look.lampScheme.style(for: .failed).color)
+        XCTAssertEqual(look.lamp(for: .working, phases: [:]), .executing)
+        XCTAssertEqual(look.accent(for: .working, phases: [:]), look.lampScheme.style(for: .executing).color)
+        XCTAssertEqual(look.menuMarkStyle(for: .failed, phases: [:]).color, look.lampScheme.style(for: .failed).color)
 
         look.setFollowsLamps(false)
 
-        XCTAssertNil(look.lamp(for: .working))
-        XCTAssertEqual(look.accent(for: .working).srgbHex, "#0A85FF")
+        XCTAssertNil(look.lamp(for: .working, phases: [:]))
+        XCTAssertEqual(look.accent(for: .working, phases: [:]).srgbHex, "#0A85FF")
     }
 
     /// A lead lamp chosen by hand survives the switch being turned on over it.
@@ -169,7 +183,7 @@ final class ThemeStoreTests: XCTestCase {
 
         look.setFollowsLamps(true)
 
-        XCTAssertEqual(look.lamp(for: .needsPerson), .failed)
+        XCTAssertEqual(look.lamp(for: .needsPerson, phases: [:]), .failed)
     }
 
     /// The owner's case: nineteen sessions with no signal and none idle. A state told to take
@@ -215,13 +229,13 @@ final class ThemeStoreTests: XCTestCase {
     func testAMenuLineMovesLikeWhatTheThemeSays() {
         var look = WidgetTheme.standard.dark
         look.menuMotion = .lamp
-        let waiting = look.menuMarkStyle(for: .waitingForUser)
+        let waiting = look.menuMarkStyle(for: .waitingForUser, phases: [:])
         XCTAssertEqual(waiting.motion, .gradient)
         XCTAssertEqual(waiting.animationCycle, 0.5)
 
         look.menuMotion = .state
-        XCTAssertEqual(look.menuMarkStyle(for: .waitingForUser).motion, .dim)
-        XCTAssertEqual(look.menuMarkStyle(for: .waitingForUser).animationCycle, 1.4)
+        XCTAssertEqual(look.menuMarkStyle(for: .waitingForUser, phases: [:]).motion, .dim)
+        XCTAssertEqual(look.menuMarkStyle(for: .waitingForUser, phases: [:]).animationCycle, 1.4)
     }
 
     // MARK: - Making, changing and removing themes

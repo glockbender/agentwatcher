@@ -168,11 +168,11 @@ final class MenuBarIconStylesTests: XCTestCase {
     /// The colours are the theme's, not fixed ones: a theme that recolours a state recolours
     /// the sphere and its glow.
     func testTheSphereTakesTheThemesColours() throws {
-        let original = WidgetTheme.active
-        addTeardownBlock { WidgetTheme.active = original }
+        let original = ThemeInUse.look
+        addTeardownBlock { ThemeInUse.look = original }
         var look = original
         look.attention[SessionAttention.needsPerson.rawValue] = "#00FF00"
-        WidgetTheme.active = look
+        ThemeInUse.look = look
 
         let drawn = try XCTUnwrap(
             MenuBarSphereRenderer.draw(

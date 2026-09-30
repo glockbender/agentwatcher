@@ -142,11 +142,13 @@ final class ThemeEditingTests: XCTestCase {
 
         let light = themes.theme.light
         let dark = themes.theme.dark
-        XCTAssertEqual(light.markStyle(for: .working).animationCycle, 6)
-        XCTAssertEqual(dark.markStyle(for: .working).animationCycle, 6)
-        XCTAssertEqual(light.markStyle(for: .working).gradientColor.srgbHex, "#112233")
-        XCTAssertEqual(light.markStyle(for: .working).motion, .gradient)
-        XCTAssertEqual(dark.markStyle(for: .working).motion, WidgetTheme.standard.dark.markStyle(for: .working).motion)
+        XCTAssertEqual(light.markStyle(for: .working, phases: [:]).animationCycle, 6)
+        XCTAssertEqual(dark.markStyle(for: .working, phases: [:]).animationCycle, 6)
+        XCTAssertEqual(light.markStyle(for: .working, phases: [:]).gradientColor.srgbHex, "#112233")
+        XCTAssertEqual(light.markStyle(for: .working, phases: [:]).motion, .gradient)
+        XCTAssertEqual(
+            dark.markStyle(for: .working, phases: [:]).motion,
+            WidgetTheme.standard.dark.markStyle(for: .working, phases: [:]).motion)
         XCTAssertEqual(light.lampScheme.style(for: .executing).gradientColor.srgbHex, "#445566")
         XCTAssertEqual(
             dark.lampScheme.style(for: .executing).gradientColor.srgbHex,
