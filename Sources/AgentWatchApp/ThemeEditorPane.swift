@@ -17,9 +17,11 @@ struct ThemeEditorPane: View {
         Form {
             ThemeNameSection(model: model)
             Section {
-                ThemeRowsPreview(look: look, dark: model.editedLookIsDark, layout: model.layout)
-                    .frame(height: ThemeRowsPreview.height)
-                    .listRowInsets(EdgeInsets())
+                SampleRowsPreview(
+                    look: look, dark: model.editedLookIsDark, layout: model.layout, samples: SampleRowsPreview.phases
+                )
+                .frame(height: SampleRowsPreview.phasesHeight)
+                .listRowInsets(EdgeInsets())
                 ColorPicker("Background", selection: colour(look.widgetBackground.color) { $0.setBackground($1) })
                 Picker("Material", selection: material) {
                     ForEach(WidgetMaterial.allCases, id: \.self) { material in

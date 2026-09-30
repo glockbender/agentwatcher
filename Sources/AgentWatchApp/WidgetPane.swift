@@ -1,6 +1,7 @@
 import AgentWatchCore
 import AppKit
 import SwiftUI
+
 // MARK: - Widget
 
 /// The widget as it will look, and the two things that shape its list: what a row shows, and
@@ -11,9 +12,12 @@ struct WidgetPane: View {
     var body: some View {
         Form {
             Section {
-                SampleRowsView(model: model, revision: model.revision)
-                    .frame(height: SampleRowsView.height)
-                    .listRowInsets(EdgeInsets())
+                SampleRowsPreview(
+                    look: model.themes.look, dark: model.themes.isDark, layout: model.layout,
+                    samples: SampleRowsPreview.pair
+                )
+                .frame(height: SampleRowsPreview.pairHeight)
+                .listRowInsets(EdgeInsets())
             } footer: {
                 Footnote("The same session at work and finished. Only a finished row has a ×.")
             }

@@ -35,13 +35,35 @@ struct LampSwatch: NSViewRepresentable {
     }
 }
 
-/// A few rows of the widget, in three phases, on the panel the look describes.
-struct ThemeRowsPreview: NSViewRepresentable {
-    static let height: CGFloat = 86
+/// Real rows of the widget, built the way the widget builds them, on the panel a look describes.
+struct SampleRowsPreview: NSViewRepresentable {
+    /// A session to show, and when its row offers the `×`.
+    struct Sample {
+        let session: SessionSnapshot
+        let dismissal: RowDismissal
+    }
+
+    /// A session at work and a finished one: what a row shows, and the `×` a finished row has.
+    static let pair = [
+        Sample(
+            session: SampleSession.make(id: "codex:sample", phase: .executing),
+            dismissal: .notOffered(until: .distantFuture)),
+        Sample(session: SampleSession.make(id: "codex:sample-finished", phase: .completed), dismissal: .now),
+    ]
+    static let pairHeight: CGFloat = 64
+    /// A lamp of each kind a person meets most: waiting, working, done.
+    static let phases = [SessionPhase.waitingForUser, .executing, .completed].map { phase in
+        Sample(
+            session: SampleSession.make(id: "theme:\(phase.rawValue)", phase: phase),
+            dismissal: phase == .completed ? .now : .notOffered(until: .distantFuture))
+    }
+    static let phasesHeight: CGFloat = 86
+
     let look: WidgetTheme.Look
     /// Whether the look is the dark one: on glass the text follows the mode.
     let dark: Bool
     let layout: RowLayout
+    let samples: [Sample]
 
     func makeNSView(context: Context) -> NSView {
         NSView()
@@ -66,8 +88,8 @@ struct ThemeRowsPreview: NSViewRepresentable {
         stack.appearance = background.controlAppearance
         panel.content.addSubview(stack)
         stack.pinToEdges(of: holder)
-        for phase in [SessionPhase.waitingForUser, .executing, .completed] {
-            let snapshot = SampleSession.make(id: "theme:\(phase.rawValue)", phase: phase)
+        for sample in samples {
+            let snapshot = sample.session
             let row = HUDSessionRowView(
                 snapshot: snapshot,
                 now: snapshot.lastObservedAt.addingTimeInterval(4),
@@ -75,7 +97,7 @@ struct ThemeRowsPreview: NSViewRepresentable {
                 lampScheme: look.lampScheme,
                 layout: layout,
                 onFocus: {},
-                dismissal: phase == .completed ? .now : .notOffered(until: .distantFuture),
+                dismissal: sample.dismissal,
                 onRemove: {}
             )
             row.setFlexibleText(

@@ -1,6 +1,7 @@
 import AgentWatchCore
 import AppKit
 import SwiftUI
+
 // MARK: - Row
 
 /// The parts, in one list that never reorders itself: switching a part off leaves it where it
@@ -12,9 +13,12 @@ struct RowPane: View {
         let layout = model.layout
         Form {
             Section {
-                SampleRowsView(model: model, revision: model.revision)
-                    .frame(height: SampleRowsView.height)
-                    .listRowInsets(EdgeInsets())
+                SampleRowsPreview(
+                    look: model.themes.look, dark: model.themes.isDark, layout: model.layout,
+                    samples: SampleRowsPreview.pair
+                )
+                .frame(height: SampleRowsPreview.pairHeight)
+                .listRowInsets(EdgeInsets())
             }
             Section {
                 ReorderTable(items: $model.listedParts) {
@@ -179,63 +183,6 @@ enum RowPartText {
             modelStyle: part == .model ? (index == 1 ? .effort : .plain) : nil,
             contextStyle: part == .context ? contextStyles[min(max(index, 0), contextStyles.count - 1)] : nil
         )
-    }
-}
-
-/// Two real rows, built the way the widget builds them, on the widget's background.
-struct SampleRowsView: NSViewRepresentable {
-    static let height: CGFloat = 64
-    let model: SettingsModel
-    let revision: Int
-
-    func makeNSView(context: Context) -> NSView {
-        NSView()
-    }
-
-    func updateNSView(_ holder: NSView, context: Context) {
-        holder.subviews.forEach { $0.removeFromSuperview() }
-        let background = model.themes.textBackground
-        let panel = makeBackgroundView(for: background, opacity: model.themes.look.widgetOpacity)
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        holder.addSubview(panel)
-        panel.pinToEdges(of: holder)
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.edgeInsets = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        panel.content.addSubview(stack)
-        stack.pinToEdges(of: holder)
-        let layout = model.layout
-        let working = SampleSession.make(id: "codex:sample", phase: .executing)
-        stack.addArrangedSubview(
-            row(
-                working,
-                dismissal: .notOffered(until: working.lastObservedAt.addingTimeInterval(1_800)),
-                layout: layout,
-                background: background))
-        stack.addArrangedSubview(
-            row(
-                SampleSession.make(id: "codex:sample-finished", phase: .completed), dismissal: .now,
-                layout: layout, background: background))
-    }
-
-    private func row(
-        _ snapshot: SessionSnapshot, dismissal: RowDismissal, layout: RowLayout, background: WidgetBackground
-    ) -> HUDSessionRowView {
-        let row = HUDSessionRowView(
-            snapshot: snapshot,
-            now: snapshot.lastObservedAt.addingTimeInterval(4),
-            background: background,
-            lampScheme: model.themes.look.lampScheme,
-            layout: layout,
-            onFocus: {},
-            dismissal: dismissal,
-            onRemove: {}
-        )
-        row.setFlexibleText(
-            layout.flexible.flatMap { rowPartText($0, for: snapshot, layout: layout) }, display: .fullName)
-        return row
     }
 }
 

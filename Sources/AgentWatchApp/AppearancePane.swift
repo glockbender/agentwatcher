@@ -1,6 +1,7 @@
 import AgentWatchCore
 import AppKit
 import SwiftUI
+
 // MARK: - Appearance
 
 struct AppearancePane: View {
@@ -11,9 +12,11 @@ struct AppearancePane: View {
         let themes = model.themes
         Form {
             Section {
-                ThemeRowsPreview(look: themes.look, dark: themes.isDark, layout: model.layout)
-                    .frame(height: ThemeRowsPreview.height)
-                    .listRowInsets(EdgeInsets())
+                SampleRowsPreview(
+                    look: themes.look, dark: themes.isDark, layout: model.layout, samples: SampleRowsPreview.phases
+                )
+                .frame(height: SampleRowsPreview.phasesHeight)
+                .listRowInsets(EdgeInsets())
                 Picker("Theme", selection: theme) {
                     ForEach(themes.themes, id: \.name) { theme in
                         Text(theme.name).tag(theme.name)
