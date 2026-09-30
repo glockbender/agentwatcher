@@ -67,8 +67,9 @@ final class ThemeStore: PreferenceDefaults {
         themes.filter { !isBuiltIn($0) }
     }
 
+    /// By name alone: a file that calls its theme `Default` is read under another name.
     func isBuiltIn(_ theme: WidgetTheme) -> Bool {
-        theme.name == WidgetTheme.standard.name && files[theme.name] == nil
+        theme.name == WidgetTheme.standard.name
     }
 
     var mode: ThemeMode {
@@ -133,7 +134,7 @@ final class ThemeStore: PreferenceDefaults {
         guard isBuiltIn(current) else {
             return current
         }
-        return try create(from: current, named: "\(current.name) copy")
+        return try duplicate(current)
     }
 
     /// A new theme with these colours, under a name nobody has taken, in use at once.
@@ -151,13 +152,10 @@ final class ThemeStore: PreferenceDefaults {
         return copy
     }
 
-    /// A copy of the theme in use, as a file of its own, selected.
+    /// A copy of this theme, as a file of its own, in use at once.
     @discardableResult
-    func duplicate() -> URL? {
-        guard let copy = try? create(from: theme, named: "\(theme.name) copy") else {
-            return nil
-        }
-        return files[copy.name]
+    func duplicate(_ theme: WidgetTheme) throws -> WidgetTheme {
+        try create(from: theme, named: "\(theme.name) copy")
     }
 
     /// Writes a changed theme over the one it was, which may have had another name. Nothing is
@@ -218,67 +216,6 @@ final class ThemeStore: PreferenceDefaults {
     /// The theme as a file somebody else can import.
     func export(_ theme: WidgetTheme, to url: URL) throws {
         try Self.encode(theme).write(to: url, options: .atomic)
-    }
-
-    // MARK: - Carried over from before themes
-
-    /// Before the first theme is chosen, whatever colours were set by hand become a theme of
-    /// their own, in use, so nobody's widget changes colour on update. The panel's material and
-    /// opacity, which were settings of their own before they joined the theme, go into the
-    /// theme in use the same way — once: the caller forgets the old keys afterwards.
-    ///
-    /// Says nothing to `onChange`: this runs at launch, before anything is on screen, and
-    /// what is told about a change builds the widget to show it.
-    func adoptIfNeeded(
-        lampScheme: LampScheme, background: WidgetBackground, material: WidgetMaterial? = nil,
-        opacity: CGFloat? = nil
-    ) {
-        let standard = WidgetTheme.standard.dark
-        guard preferences.string(forKey: Key.theme) == nil else {
-            adoptSurface(material: material, opacity: opacity)
-            return
-        }
-        let lamps = WidgetTheme.lamps(from: lampScheme)
-        let hex = background.color.srgbHex ?? standard.background
-        var look = WidgetTheme.Look(background: hex, lamps: lamps)
-        look.widgetMaterial = material ?? standard.widgetMaterial
-        look.widgetOpacity = opacity ?? standard.widgetOpacity
-        guard look != standard else {
-            return
-        }
-        let mine = WidgetTheme(name: "My Theme", light: look, dark: look)
-        guard let added = try? add(mine, named: mine.name) else {
-            return
-        }
-        preferences.replace([Key.theme: .string(added.name), Key.mode: .string(ThemeMode.auto.rawValue)])
-    }
-
-    private func adoptSurface(material: WidgetMaterial?, opacity: CGFloat?) {
-        guard material != nil || opacity != nil else {
-            return
-        }
-        var theme = self.theme
-        for isDark in [false, true] {
-            var look = theme.look(dark: isDark)
-            if let material {
-                look.widgetMaterial = material
-            }
-            if let opacity {
-                look.widgetOpacity = opacity
-            }
-            if isDark { theme.dark = look } else { theme.light = look }
-        }
-        guard theme != self.theme else {
-            return
-        }
-        if isBuiltIn(self.theme) {
-            guard let added = try? add(theme, named: "My Theme") else {
-                return
-            }
-            preferences.set(added.name, forKey: Key.theme)
-        } else {
-            try? write(theme, replacing: theme.name)
-        }
     }
 
     // MARK: - Files

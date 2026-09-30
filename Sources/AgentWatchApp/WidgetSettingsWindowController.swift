@@ -366,7 +366,7 @@ final class SettingsModel: ObservableObject {
     }
 
     func duplicate(_ theme: WidgetTheme) {
-        attempt { try themes.create(from: theme, named: "\(theme.name) copy") }
+        attempt { try themes.duplicate(theme) }
     }
 
     /// A theme of the built-in colours, in use and open in the editor.
@@ -498,10 +498,6 @@ final class SettingsModel: ObservableObject {
         }
         shortcuts.isMuted = shortcutRecorder?.isRecording ?? false
         refresh()
-    }
-
-    var isRecordingShortcut: Bool {
-        shortcutRecorder?.isRecording ?? false
     }
 
     var shortcutStatus: String {

@@ -881,11 +881,11 @@ final class HUDRowLayoutTests: XCTestCase {
 
                 XCTAssertGreaterThanOrEqual(
                     greyed, working * Self.faintestGreyedMark,
-                    "at \(percent)% on \(background.title) the greyed × is too faint to see"
+                    "at \(percent)% on \(background.color) the greyed × is too faint to see"
                 )
                 XCTAssertLessThan(
                     greyed, working,
-                    "at \(percent)% on \(background.title) the greyed × is as strong as a working one"
+                    "at \(percent)% on \(background.color) the greyed × is as strong as a working one"
                 )
             }
         }
@@ -1131,10 +1131,10 @@ final class HUDRowLayoutTests: XCTestCase {
         XCTAssertTrue(tinted(row()).isEmpty)
     }
 
-    /// Shape as well as colour, as the visual language requires — half the palette is light,
-    /// and a warning tint that works on graphite can vanish on sand.
-    func testTheWarningIsTintedForBothHalvesOfThePalette() {
-        XCTAssertNotEqual(WidgetBackground.graphite.warningColor, WidgetBackground.sand.warningColor)
+    /// Shape as well as colour, as the visual language requires — a warning tint that works on
+    /// graphite can vanish on a light background.
+    func testTheWarningIsTintedForDarkAndLightBackgrounds() {
+        XCTAssertNotEqual(WidgetBackground.graphite.warningColor, WidgetBackground.pearl.warningColor)
     }
 
     // MARK: - Building a row

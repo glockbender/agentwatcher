@@ -191,25 +191,9 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         (window as? HUDPanel)?.highlight()
     }
 
-    func setBackground(_ background: WidgetBackground) {
-        self.background = background
-        refreshContent()
-    }
-
-    /// The lamps are rebuilt rather than repainted, because a `SessionLampView` reads its
-    /// look once at construction — and `refreshContent()` builds the list again anyway.
-    func setLampScheme(_ scheme: LampScheme) {
-        lampScheme = scheme
-        refreshContent()
-    }
-
-    func setBackgroundOpacity(_ opacity: CGFloat) {
-        backgroundOpacity = opacity
-        refreshContent()
-    }
-
     /// Everything a theme decides about the widget at once, so a new theme rebuilds the list
-    /// once rather than once for each of them.
+    /// once rather than once for each of them. The lamps are rebuilt rather than repainted,
+    /// because a `SessionLampView` reads its look once at construction.
     func setAppearance(background: WidgetBackground, lampScheme: LampScheme, opacity: CGFloat) {
         self.background = background
         self.lampScheme = lampScheme

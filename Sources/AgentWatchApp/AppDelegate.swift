@@ -17,10 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// own configuration files. Read at four moments, shown on every redraw.
     private var widgetComplaint: String?
     private let singleInstanceCoordinator: SingleInstanceCoordinator
-    private let backgroundStore: WidgetBackgroundStore
     private let settings: WidgetSettingsStore
     private let frameStore: HUDFrameStore
-    private let lampSchemes: LampSchemeStore
     private let themes: ThemeStore
     private let rowLayouts: RowLayoutStore
     private let preferences: PreferenceFile
@@ -156,10 +154,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.singleInstanceCoordinator = singleInstanceCoordinator
         self.preferences = preferences
         self.updater = AppUpdater(preferences: preferences)
-        backgroundStore = WidgetBackgroundStore(preferences: preferences)
         settings = WidgetSettingsStore(preferences: preferences)
         frameStore = HUDFrameStore(preferences: preferences)
-        lampSchemes = LampSchemeStore(preferences: preferences)
         themes = ThemeStore(
             preferences: preferences,
             folder: AgentWatchPaths.supportDirectory()?.appendingPathComponent("Themes", isDirectory: true)
@@ -183,10 +179,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        themes.adoptIfNeeded(
-            lampScheme: lampSchemes.scheme, background: backgroundStore.selected,
-            material: backgroundStore.material, opacity: backgroundStore.opacity)
-        backgroundStore.forgetSurface()
         rowLayouts.onChange = { [weak self] setting in
             self?.settingChanged(setting)
         }

@@ -44,67 +44,19 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(store.theme, .standard)
     }
 
-    /// Colours chosen by hand in a version before themes become a theme of their own, in use,
-    /// so the update does not change anybody's widget.
-    func testLampColoursSetByHandBecomeMyThemeAndAreSelected() throws {
-        let folder = try themesFolder()
-        let preferences = try isolatedPreferences()
-        let store = ThemeStore(preferences: preferences, folder: folder)
-        var lamps = LampScheme()
-        lamps.setColor(NSColor(sRGB: "#336699"), for: .executing)
-
-        store.adoptIfNeeded(lampScheme: lamps, background: .defaultBackground)
-
-        XCTAssertEqual(store.theme.name, "My Theme")
-        XCTAssertEqual(store.mode, .auto)
-        XCTAssertEqual(store.theme.dark.lampScheme.style(for: .executing).color.srgbHex, "#336699")
-        XCTAssertEqual(store.theme.light.lampScheme.style(for: .executing).color.srgbHex, "#336699")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("My Theme.json").path))
-    }
-
-    /// Adoption is a one-time carry-over: once a theme has been chosen, the old colours are
-    /// history and must not take its place.
-    func testNothingIsAdoptedOnceAThemeHasBeenChosen() throws {
-        let folder = try themesFolder()
-        let store = ThemeStore(preferences: try isolatedPreferences(), folder: folder)
-        store.select(WidgetTheme.standard)
-        var lamps = LampScheme()
-        lamps.setColor(NSColor(sRGB: "#336699"), for: .executing)
-
-        store.adoptIfNeeded(lampScheme: lamps, background: .defaultBackground)
-
-        XCTAssertEqual(store.theme, .standard)
-        XCTAssertEqual(store.themes, [.standard])
-        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("My Theme.json").path))
-    }
-
-    /// The app's own colours are the built-in theme already; copying them into a file would
-    /// only be a second name for the same thing.
-    func testTheAppsOwnColoursAreNotAdopted() throws {
-        let folder = try themesFolder()
-        let preferences = try isolatedPreferences()
-        let store = ThemeStore(preferences: preferences, folder: folder)
-
-        store.adoptIfNeeded(lampScheme: LampScheme(), background: .defaultBackground)
-
-        XCTAssertNil(preferences.string(forKey: "theme"))
-        XCTAssertEqual(store.themes, [.standard])
-    }
-
     /// Duplicating is how editing starts: the copy is a file of its own, selected, with a name
     /// that does not collide with one already on offer.
     func testDuplicateWritesACopyAndSelectsIt() throws {
         let folder = try themesFolder()
         let store = ThemeStore(preferences: try isolatedPreferences(), folder: folder)
 
-        let first = try XCTUnwrap(store.duplicate())
+        try store.duplicate(store.theme)
 
-        XCTAssertTrue(FileManager.default.fileExists(atPath: first.path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), ["Default copy.json"])
         XCTAssertEqual(store.theme.name, "Default copy")
         XCTAssertEqual(store.theme.dark, WidgetTheme.standard.dark)
 
-        store.select(WidgetTheme.standard)
-        store.duplicate()
+        try store.duplicate(.standard)
 
         XCTAssertEqual(store.theme.name, "Default copy 2")
         XCTAssertEqual(Set(store.themes.map(\.name)), ["Default", "Default copy", "Default copy 2"])
@@ -372,43 +324,6 @@ final class ThemeStoreTests: XCTestCase {
         try store.export(theme, to: file)
 
         XCTAssertEqual(try ThemeStore.decode(Data(contentsOf: file)), theme)
-    }
-
-    // MARK: - The panel's material and opacity, from before they were the theme's
-
-    /// Set by hand while they were settings of their own, they go into the theme in use — both
-    /// of its looks — so the widget on screen does not change on update.
-    func testTheSurfaceSetBeforeThemesGoesIntoTheThemeInUse() throws {
-        let store = ThemeStore(preferences: try isolatedPreferences(), folder: try themesFolder())
-        try store.create(named: "Mine")
-        var changes = 0
-        store.onChange = { _ in changes += 1 }
-
-        store.adoptIfNeeded(
-            lampScheme: LampScheme(), background: .defaultBackground, material: .frosted, opacity: 0.42)
-
-        XCTAssertEqual(store.theme.name, "Mine")
-        for look in [store.theme.light, store.theme.dark] {
-            XCTAssertEqual(look.widgetMaterial, .frosted)
-            XCTAssertEqual(look.widgetOpacity, 0.42, accuracy: 0.0001)
-        }
-        XCTAssertEqual(changes, 0, "a launch-time carry-over builds nothing")
-    }
-
-    /// On the built-in theme, which is never written, a surface of the person's own becomes a
-    /// theme of its own; the built-in values themselves need none.
-    func testTheSurfaceOnTheBuiltInThemeBecomesATheme() throws {
-        let store = ThemeStore(preferences: try isolatedPreferences(), folder: try themesFolder())
-        store.select(WidgetTheme.standard)
-
-        store.adoptIfNeeded(
-            lampScheme: LampScheme(), background: .defaultBackground, material: .glass,
-            opacity: CGFloat(WidgetTheme.defaultOpacity))
-        XCTAssertEqual(store.theme, .standard)
-
-        store.adoptIfNeeded(lampScheme: LampScheme(), background: .defaultBackground, material: nil, opacity: 0.5)
-        XCTAssertEqual(store.theme.name, "My Theme")
-        XCTAssertEqual(store.theme.dark.widgetOpacity, 0.5, accuracy: 0.0001)
     }
 
     private func themesFolder() throws -> URL {

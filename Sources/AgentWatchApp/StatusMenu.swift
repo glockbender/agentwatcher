@@ -106,10 +106,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    private func line(_ title: String, _ action: Selector, toolTip: String? = nil) -> NSMenuItem {
+    private func line(_ title: String, _ action: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
-        item.toolTip = toolTip
         return item
     }
 
