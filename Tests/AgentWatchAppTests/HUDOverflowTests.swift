@@ -191,7 +191,7 @@ final class HUDOverflowTests: XCTestCase {
 
     /// The widget keeps the place a scrolled list was left at, and hands it to the list it
     /// builds next. The complaint this answers: it did not keep it. Dragging the widget's
-    /// width, moving the size slider, changing the palette — anything that makes the list
+    /// width, choosing a new size, changing the theme — anything that makes the list
     /// afresh rather than reusing it — dropped a scrolled list back to the top.
     ///
     /// The cause was the moment, not the intent: the offset was applied from `layout()`, and

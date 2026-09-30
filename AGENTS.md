@@ -98,7 +98,8 @@ Keep these current as part of the change, not after it.
   wrong while the app works as designed, or whose cause nobody could guess from the widget. Add an
   entry in the same change whenever an investigation ends in "this is how the agent or macOS
   behaves" — a reported bug that turned out not to be one is the typical case. An entry is
-  `## <what the person sees>` and three lines: **Why:**, **What to do:** and **Checked on:** (the
-  agent or macOS version, or `not recorded`). One that rests on a measurement also gets its row in
+  `## <what the person sees>` and three paragraphs: **Why:**, **What to do:** and **Checked on:**
+  (the agent or macOS version, or `not recorded`). One that rests on a measurement also gets its row in
   `docs/measurements.md`, which is what says to re-check it after an update. `task lint` checks the
-  shape and README's link to it; whether an entry was owed is yours to notice.
+  shape and README's link to it. Whether an entry is missing, the check cannot tell; you decide
+  that.

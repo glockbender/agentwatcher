@@ -5,9 +5,10 @@
 
 **See which Claude Code or Codex session needs you — without switching between terminals.**
 
-Agent Watch is a small menu bar app for **Apple Silicon Macs running macOS 14+**; on macOS 26
-its widget can also be Liquid Glass. Its floating widget shows your sessions together. Click a row to return to the session;
-hover for details. `⌥⌘W` shows or hides the widget; Widget Settings lets you change the shortcut.
+Agent Watch is a small menu bar app for **Apple Silicon Macs running macOS 14+**. Its floating
+widget shows your sessions together; on macOS 26 the widget can use Liquid Glass, Apple's
+see-through material. Click a row to return to the session; hover for details. `⌥⌘W` shows or
+hides the widget; **Settings… → General** changes the shortcut.
 
 <img src="docs/images/widget.png" alt="Five sessions in a compact blue Agent Watch widget" width="339">
 
@@ -47,8 +48,8 @@ with the optional plugin below.
 Nothing is written to an agent's configuration until you press an installation button.
 Claude's optional status line (**Connect Status Line** in the guide) adds context and account
 usage; your existing status-line command is kept. You can connect just one agent, and add the
-other later: **Settings → Tooling… → Set Up Again…** repeats the guide without deleting sessions,
-changing appearance or removing integrations.
+other later: **Settings… → Tooling → Open Tooling…**, then **Set Up Again…**, repeats the guide
+without deleting sessions, changing appearance or removing integrations.
 
 Tooling also shows whether each agent's program was found, separately from whether it is
 connected. “Not found” only means that the executable is not in the usual locations; you can
@@ -68,14 +69,17 @@ in one window: **Settings…** in the menu, or ⌘, while the menu is open.
 
 - **Widget** — what a row shows and how rows are ordered (**Arrival**, **Recent activity**,
   **By state** or **By blocks**).
-- **Appearance** — the theme, light or dark, and the widget's size. A theme holds every colour
+- **Appearance** — the theme, its mode (light, dark or following the system) and the widget's
+  size. A theme holds every colour
   and animation: the widget's background, material and opacity, the lamp for each state, the
   menu bar icon and the marks in the menu. **Edit Theme** changes it with live examples beside
   each setting; the built-in theme is copied on the first change. **Your Themes** lists your own
   themes to edit, export or delete, and **Import…** adds one somebody shared.
 - **Menu Bar** — a sphere coloured by the states it shows or a count for each state, and which
   states the menu lists.
-- **General** — the widget's shortcut, locks, closed sessions and updates.
+- **General** — showing the widget, its locks and resets, its shortcut, how long closed sessions
+  stay, reading transcripts, and updates.
+- **Tooling** and **Diagnostics** — the agents' integrations, and the event log.
 
 ## JetBrains IDE plugin
 
@@ -87,7 +91,7 @@ It needs the Agent Watch macOS app and does nothing on its own.
    The plugin has its own version number.
 2. In the IDE: **Settings → Plugins → gear → Install Plugin from Disk**. Select the ZIP.
    Restart if the IDE asks you to.
-3. With the IDE running, open **Settings → Tooling…** and press **Check** beside it.
+3. With the IDE running, open **Settings… → Tooling → Open Tooling…** and press **Check** beside it.
 4. Start an agent in that IDE's terminal and click its widget row to check the jump.
 
 Marketplace publication is still part of the [release plan](docs/release-plan.md).
@@ -109,8 +113,9 @@ See [agent integration](docs/agent-integration.md) for the files it writes and
 
 ## Build from source
 
-Requires Xcode 16 or newer, for Swift 6, and [Task](https://taskfile.dev/). Liquid Glass needs the
-macOS 26 SDK, which comes with Xcode 26: built with an older one, the widget is frosted instead.
+Requires Xcode 16 or newer (it includes Swift 6) and [Task](https://taskfile.dev/). Liquid Glass
+needs Xcode 26 and its macOS 26 SDK; with an older Xcode the app still builds, and the widget is
+frosted instead of glass.
 
 ```sh
 task verify   # formatting, tests, debug/release builds and app bundle

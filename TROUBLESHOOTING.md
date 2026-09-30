@@ -25,7 +25,7 @@ not tested: slash commands and the environment variable.
 keeps running. The tab is gone from every window, so a click has nothing to bring forward.
 
 **What to do:** Click the row. The widget asks whether to end the broken session. Choose **End**
-to end the agent and the shell of the closed tab. The row goes once the agent has exited. The
+to end the agent and the shell of the closed tab. The row disappears after the agent exits. The
 conversation is kept, and `claude --resume` continues it in a new tab.
 
 **Checked on:** Ghostty 1.3.1, Claude Code 2.1.284. Seen once. Why Ghostty keeps the terminal is
@@ -81,4 +81,4 @@ macOS 26 SDK, the widget draws Glass and Clear glass as frosted.
 **What to do:** Nothing is broken. On macOS 26 the same theme draws glass. The settings mark both
 glass materials `(macOS 26)` where they cannot be drawn.
 
-**Checked on:** macOS 15.3.1.
+**Checked on:** macOS 15.3.1; what macOS 26 draws was read in the code, not seen.

@@ -4,8 +4,8 @@ import Foundation
 /// The row's template as it is kept between launches.
 ///
 /// One key per field, spelled out rather than nested: the file is meant to be read and
-/// corrected by hand, and `rowLayout.parts` says what it is without a legend. `PreferenceFile` holds a string, a number or a flag and nothing else, so
-/// the order and the counter kinds are lines with commas in them.
+/// corrected by hand, and `rowLayout.parts` says what it is without a legend. The order and
+/// the counter kinds are lines with commas in them.
 ///
 /// Nothing here refuses a file. Anything unreadable falls back to what the app would have
 /// drawn anyway, and `RowLayout`'s initialiser repairs the rest — see ADR-0011.

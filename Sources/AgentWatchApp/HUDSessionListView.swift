@@ -395,7 +395,7 @@ class HUDSessionListView: NSView {
     /// the clip view clamps the offset away to nothing. Measured — asked for 46 points, the
     /// clip view took it while the document stood at 0, and the pass that followed sized the
     /// rows to 180 and put the offset back to zero, by which time the one shot was spent. So
-    /// every rebuild of the list — a width drag, the size slider, a change of palette, the
+    /// every rebuild of the list — a width drag, a new size, a change of theme, the
     /// usage block arriving — dropped a scrolled list to the top. The rows' frame change is
     /// the moment they get their height, and it arrives inside that same pass, so nothing is
     /// drawn at the top first.
