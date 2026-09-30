@@ -34,6 +34,41 @@ final class RowLayoutSectionTests: XCTestCase {
         XCTAssertEqual(model.listedParts[1], .branch)
     }
 
+    func testMovingAPartEarlierIsStored() throws {
+        let model = try makeModel()
+        var listed = model.listedParts
+        listed.removeAll { $0 == .context }
+        listed.insert(.context, at: 0)
+
+        model.reorderParts(listed)
+
+        XCTAssertEqual(model.layout.parts.first, .context)
+    }
+
+    /// The gap has no switch — it is where the row's right end starts — but moves like a part.
+    func testTheGapMovesButStaysInTheRow() throws {
+        let model = try makeModel()
+        var listed = model.listedParts
+        listed.removeAll { $0 == .gap }
+        listed.insert(.gap, at: 1)
+
+        model.reorderParts(listed)
+
+        XCTAssertEqual(model.layout.parts[1], .gap)
+        XCTAssertTrue(model.layout.shows(.gap))
+    }
+
+    func testSwitchingACounterKindOffIsStored() throws {
+        let model = try makeModel()
+        let kind = try XCTUnwrap(model.layout.counterKinds.first)
+
+        model.countActivity(kind, false)
+
+        XCTAssertFalse(model.layout.counterKinds.contains(kind))
+        model.countActivity(kind, true)
+        XCTAssertTrue(model.layout.counterKinds.contains(kind))
+    }
+
     /// A row changed from outside the page is read again; Restore Defaults puts the list back
     /// with it.
     func testTheListFollowsARowChangedElsewhere() throws {

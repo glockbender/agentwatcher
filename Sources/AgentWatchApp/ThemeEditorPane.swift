@@ -159,7 +159,7 @@ private struct LampsSection: View {
                     "Dim changes brightness. Two-color fade changes color. Full cycle sets the time out and back."
             ) {
                 Button("Restore Default Lamps") {
-                    model.editTheme { $0.lamps = WidgetTheme.lamps(from: LampScheme()) }
+                    model.editTheme { $0.restoreDefaultLamps() }
                 }
             }
         }

@@ -284,6 +284,19 @@ final class SettingsModel: ObservableObject {
         setLayout(layout.changing(parts: RowPartList.parts(from: listedParts, in: layout, switching: part, on: on)))
     }
 
+    func countActivity(_ kind: ActivityKind, _ counted: Bool) {
+        var kinds = layout.counterKinds
+        if counted { kinds.insert(kind) } else { kinds.remove(kind) }
+        setLayout(layout.changing(counterKinds: kinds))
+    }
+
+    func restoreOrderDefaults() {
+        update {
+            settings.setSessionOrder(.arrival)
+            settings.setSessionBlockOrder(SessionBlock.defaultOrder)
+        }
+    }
+
     func restoreRowDefaults() {
         listedParts = RowPartList.listed(for: .standard)
         setLayout(.standard)

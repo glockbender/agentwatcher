@@ -153,6 +153,40 @@ final class ThemeEditingTests: XCTestCase {
             WidgetTheme.standard.dark.lampScheme.style(for: .executing).gradientColor.srgbHex)
     }
 
+    /// However far the slider goes, the widget stays findable: an opacity of nothing would be a
+    /// widget nobody can see to put back.
+    func testTheOpacityCannotReachInvisible() throws {
+        let (model, themes) = try makeModel()
+
+        model.editTheme { $0.widgetOpacity = 0 }
+
+        XCTAssertGreaterThan(WidgetTheme.opacityRange.lowerBound, 0)
+        XCTAssertEqual(themes.theme.dark.widgetOpacity, CGFloat(WidgetTheme.opacityRange.lowerBound), accuracy: 0.0001)
+    }
+
+    /// A colour chosen on one lamp's row changes that phase alone; Restore Default Lamps puts
+    /// every row back.
+    func testALampChangesAloneAndTheResetPutsEveryLampBack() throws {
+        let (model, themes) = try makeModel()
+
+        model.editTheme {
+            $0.changeLampStyle(for: .executing) { $0.color = NSColor(sRGB: "#123456") }
+            $0.changeLampStyle(for: .failed) { $0.motion = .steady }
+        }
+
+        let look = themes.theme.dark
+        XCTAssertEqual(look.lampScheme.style(for: .executing).color.srgbHex, "#123456")
+        XCTAssertEqual(look.lampScheme.style(for: .failed).motion, .steady)
+        for phase in SessionPhase.allCases where phase != .executing && phase != .failed {
+            XCTAssertEqual(look.lampScheme.style(for: phase), phase.defaultLampStyle, "\(phase)")
+        }
+
+        model.editTheme { $0.restoreDefaultLamps() }
+
+        XCTAssertTrue(themes.theme.dark.lampScheme.isDefault)
+        XCTAssertTrue(themes.theme.light.lampScheme.isDefault)
+    }
+
     /// A file dropped into the folder, or a theme in use corrected there, is read when a page
     /// that shows themes opens — and the widget is told when the theme in use changed.
     func testAPageThatShowsThemesReadsTheFolderAgain() throws {

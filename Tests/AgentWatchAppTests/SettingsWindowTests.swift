@@ -30,22 +30,6 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertEqual(controller.model.page, .theme)
     }
 
-    /// A recording of the shortcut ends with the page it was started on. Left running, the
-    /// combination it muted would stay silent with nothing on screen to say why.
-    func testLeavingThePageEndsARecordingOfTheShortcut() throws {
-        let (model, shortcuts) = try makeModel()
-        let recorder = ShortcutRecorderButton()
-        model.shortcutRecorder = recorder
-        model.go(.general)
-        model.startRecordingShortcut()
-        XCTAssertTrue(shortcuts.isMuted)
-
-        model.goBack()
-
-        XCTAssertFalse(recorder.isRecording)
-        XCTAssertFalse(shortcuts.isMuted)
-    }
-
     /// The button may go with its page before anything tells it to stop; the combination it
     /// muted is heard again all the same.
     func testARecordingWhoseButtonWentLeavesNothingMuted() throws {

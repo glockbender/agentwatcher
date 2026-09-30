@@ -509,6 +509,10 @@ extension WidgetTheme.Look {
         return LampScheme(styles: styles)
     }
 
+    mutating func restoreDefaultLamps() {
+        lamps = WidgetTheme.lamps(from: LampScheme())
+    }
+
     /// Changes one thing about the phase's lamp and keeps the rest as this look has it.
     mutating func changeLampStyle(for phase: SessionPhase, _ change: (inout LampStyle) -> Void) {
         var style = lampScheme.style(for: phase)

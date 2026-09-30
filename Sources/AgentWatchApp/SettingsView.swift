@@ -375,11 +375,7 @@ private struct PartRow: View {
     private func counts(_ kind: ActivityKind) -> Binding<Bool> {
         Binding(
             get: { layout.counterKinds.contains(kind) },
-            set: { on in
-                var kinds = model.layout.counterKinds
-                if on { kinds.insert(kind) } else { kinds.remove(kind) }
-                model.setLayout(model.layout.changing(counterKinds: kinds))
-            }
+            set: { on in model.countActivity(kind, on) }
         )
     }
 }
@@ -550,11 +546,8 @@ struct OrderPane: View {
             } footer: {
                 SectionButtons(note: "Every block is always there, so no session drops out of the widget.") {
                     Button("Restore Defaults") {
-                        model.update {
-                            model.settings.setSessionOrder(.arrival)
-                            model.settings.setSessionBlockOrder(SessionBlock.defaultOrder)
-                        }
-                        blocks = SessionBlock.defaultOrder
+                        model.restoreOrderDefaults()
+                        blocks = model.settings.sessionBlockOrder
                     }
                 }
             }
