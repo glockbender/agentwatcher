@@ -125,6 +125,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         version: updater.ownVersion
     )
     private var appearanceObservation: NSKeyValueObservation?
+    private lazy var themeChange = CoalescedWork { [weak self] in
+        self?.applyTheme()
+    }
+    #if DEBUG
+        private var themeDragProbe: ThemeDragProbe?
+    #endif
     private let debugLog = EventDebugLog()
     private lazy var debugController = EventDebugWindowController(initialEntries: debugLog.recentEntries())
     private lazy var ingress = HookIngressController(
@@ -226,6 +232,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if let directory = ProcessInfo.processInfo.environment["AGENT_WATCH_WIDGET_SNAPSHOT"] {
                 snapshotWidget(into: URL(fileURLWithPath: directory))
+            }
+            if let file = ProcessInfo.processInfo.environment["AGENT_WATCH_THEME_DRAG_PROBE"] {
+                themeDragProbe = ThemeDragProbe(window: settingsWindow, file: URL(fileURLWithPath: file))
+                themeDragProbe?.start()
             }
         #endif
     }
@@ -403,18 +413,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             supervisor.transcriptSettingsChanged()
             statusMenu?.refresh()
         case .theme:
-            // Read back from the theme rather than carried in the notification: the look
-            // clamps opacity to a non-zero floor, and a control that passed its own raw value
-            // would let the live widget reach full invisibility while the saved theme did not.
-            let look = themes.look
-            WidgetTheme.active = look
-            WidgetMaterial.current = look.widgetMaterial
-            hudController.setAppearance(
-                background: look.widgetBackground, lampScheme: look.lampScheme, opacity: look.widgetOpacity)
-            // Not the menu's lines: it reads them, marks included, each time it opens, and
-            // building them asks the process tree about every broken session.
-            menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
-            settingsWindow.refresh()
+            // Once per turn of the run loop, however many changes arrive in it (`CoalescedWork`).
+            themeChange.request()
         case .scale:
             // Read back for the reason the opacity gives above: the store clamps, and a
             // control that passed its own raw value would draw the widget at a size the saved
@@ -432,6 +432,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .menuSessions:
             statusMenu?.refreshSessions()
         }
+    }
+
+    /// The theme in use, drawn everywhere it shows.
+    ///
+    /// Read back from the theme rather than carried in the notification: the look clamps
+    /// opacity to a non-zero floor, and a control that passed its own raw value would let the
+    /// live widget reach full invisibility while the saved theme did not.
+    private func applyTheme() {
+        let look = themes.look
+        WidgetTheme.active = look
+        WidgetMaterial.current = look.widgetMaterial
+        hudController.setAppearance(
+            background: look.widgetBackground, lampScheme: look.lampScheme, opacity: look.widgetOpacity)
+        // Not the menu's lines: it reads them, marks included, each time it opens, and
+        // building them asks the process tree about every broken session.
+        menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
+        settingsWindow.refresh()
     }
 
     /// Registers the combination and writes down what came of it.

@@ -43,7 +43,6 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 680, height: 460)
-        window.contentView = NSHostingView(rootView: SettingsView(model: model))
         window.center()
         super.init(window: window)
         window.delegate = self
@@ -65,6 +64,7 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
     /// own close button.
     func present() {
         model.refresh()
+        buildPages()
         showWindow(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         model.isShown = true
@@ -75,9 +75,35 @@ final class WidgetSettingsWindowController: NSWindowController, NSWindowDelegate
         model.refresh()
     }
 
+    /// The pages, unless the window already holds them.
+    func buildPages() {
+        if !hasPages {
+            window?.contentView = NSHostingView(rootView: SettingsView(model: model))
+        }
+    }
+
+    var hasPages: Bool {
+        window?.contentView is NSHostingView<SettingsView>
+    }
+
+    /// Lets go of the pages when the window closes, and builds them again when it opens.
+    ///
+    /// A closed window keeps its views, and these are a whole SwiftUI form with live examples
+    /// in it: measured on a copy with 19 sessions, the theme editor held 33 MB after the window
+    /// closed, and its examples kept their timers running. Where the window was is the model's,
+    /// so the page and the back and forward history survive.
     func windowWillClose(_ notification: Notification) {
         model.isShown = false
         model.stopRecordingShortcut()
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard self?.window?.isVisible == false else { return }
+                self?.window?.contentView = NSView()
+                // And the pages they were in: malloc keeps freed pages for the next allocation,
+                // and without this the memory the window used stays counted against the app.
+                malloc_zone_pressure_relief(nil, 0)
+            }
+        }
     }
 
     func windowDidResignKey(_ notification: Notification) {
