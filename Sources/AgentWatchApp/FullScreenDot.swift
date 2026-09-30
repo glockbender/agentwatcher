@@ -7,7 +7,8 @@ import AppKit
 /// Shown only while something needs a person or is working, and only on a screen a full-screen
 /// window covers. It cycles through the theme colour of every state that holds sessions, each
 /// for its share of them. Checked when the space or the frontmost
-/// application changes and when the counts move, never on a timer.
+/// application changes and when the counts move, never on a timer. Steps aside while the pointer
+/// is in the menu bar, which the system slides down over the dot, and returns a second after.
 @MainActor
 final class FullScreenDot {
     private static var motion: WidgetTheme.Motion { WidgetTheme.motion }
@@ -17,6 +18,11 @@ final class FullScreenDot {
     private var counts = SessionAttentionCounts(needsPerson: 0, working: 0, done: 0, quiet: 0)
     private var isEnabled = true
     private var observers: [NSObjectProtocol] = []
+    private var pointerMonitor: Any?
+    private var screenFrame: NSRect?
+    private var menuBarHeight: CGFloat = 0
+    private var menuBarShown = false
+    private var comeBack: DispatchWorkItem?
 
     init() {
         panel = NSPanel(
@@ -51,6 +57,12 @@ final class FullScreenDot {
     func refresh() {
         let active = counts.count(of: .needsPerson) > 0 || counts.count(of: .working) > 0
         guard isEnabled, active, let screen = Self.fullScreenDisplay() else {
+            stopWatchingPointer()
+            panel.orderOut(nil)
+            return
+        }
+        watchPointer(on: screen)
+        guard !menuBarShown else {
             panel.orderOut(nil)
             return
         }
@@ -110,6 +122,54 @@ final class FullScreenDot {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             self?.refresh()
         }
+    }
+
+    private func watchPointer(on screen: NSScreen) {
+        screenFrame = screen.frame
+        menuBarHeight = max(NSStatusBar.system.thickness, screen.safeAreaInsets.top)
+        guard pointerMonitor == nil else {
+            return
+        }
+        pointerMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pointerMoved() }
+        }
+    }
+
+    private func stopWatchingPointer() {
+        if let pointerMonitor {
+            NSEvent.removeMonitor(pointerMonitor)
+        }
+        pointerMonitor = nil
+        screenFrame = nil
+        comeBack?.cancel()
+        comeBack = nil
+        menuBarShown = false
+    }
+
+    private func pointerMoved() {
+        guard let screenFrame else {
+            return
+        }
+        if Self.isInMenuBar(NSEvent.mouseLocation, screen: screenFrame, height: menuBarHeight) {
+            comeBack?.cancel()
+            comeBack = nil
+            if !menuBarShown {
+                menuBarShown = true
+                panel.orderOut(nil)
+            }
+        } else if menuBarShown, comeBack == nil {
+            let work = DispatchWorkItem { [weak self] in
+                self?.menuBarShown = false
+                self?.comeBack = nil
+                self?.refresh()
+            }
+            comeBack = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+        }
+    }
+
+    static func isInMenuBar(_ point: NSPoint, screen: NSRect, height: CGFloat) -> Bool {
+        point.x >= screen.minX && point.x < screen.maxX && point.y <= screen.maxY && point.y >= screen.maxY - height
     }
 
     /// In the corner the theme names, beside the notch where the screen has one — in the band the

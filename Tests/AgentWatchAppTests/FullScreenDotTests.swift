@@ -17,6 +17,16 @@ final class FullScreenDotTests: XCTestCase {
     func testNothingToShowIsNoCycle() {
         XCTAssertTrue(FullScreenDot.cycle([]).isEmpty)
     }
+
+    func testThePointerInTheMenuBarBandOfThatScreenOnly() {
+        let screen = NSRect(x: 0, y: 0, width: 1512, height: 982)
+
+        XCTAssertTrue(FullScreenDot.isInMenuBar(NSPoint(x: 1400, y: 982), screen: screen, height: 37))
+        XCTAssertTrue(FullScreenDot.isInMenuBar(NSPoint(x: 10, y: 946), screen: screen, height: 37))
+        XCTAssertFalse(FullScreenDot.isInMenuBar(NSPoint(x: 10, y: 944), screen: screen, height: 37))
+        XCTAssertFalse(FullScreenDot.isInMenuBar(NSPoint(x: 1600, y: 982), screen: screen, height: 37))
+        XCTAssertFalse(FullScreenDot.isInMenuBar(NSPoint(x: 10, y: 990), screen: screen, height: 37))
+    }
 }
 
 private func XCTAssertEqual(
