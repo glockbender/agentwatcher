@@ -28,10 +28,8 @@ protocol StatusMenuHost: AnyObject {
     func quit()
 }
 
-/// The status item's menu: its lines, and keeping them true each time it opens.
-///
-/// Settings are written straight to the store, whose `onChange` carries the follow-up; the
-/// rest goes to the host.
+/// The status item's menu: its lines, and keeping them true each time it opens. What it asks
+/// for goes to the host.
 @MainActor
 final class StatusMenu: NSObject, NSMenuDelegate {
     let menu = NSMenu()
@@ -133,9 +131,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         summaryItem?.title = MenuBarSummaryText.line(for: host.attentionCounts)
     }
 
-    /// The listed sessions and the lines that choose them, read again from the setting. Called
-    /// straight after a choice as well as on opening: the menu is still open then, and the
-    /// lines at its top show the effect while the pointer is still in the submenu.
+    /// The listed sessions, read again from the setting and the sessions. Called on opening,
+    /// and while the menu is open when its lines have to change under the pointer: the
+    /// question of a broken session puts itself in their place, and Cancel puts them back.
     func refreshSessions() {
         if let host {
             showSessionLines(host: host)

@@ -5,11 +5,8 @@ import XCTest
 
 @testable import AgentWatchApp
 
-/// The question a click on a broken session puts over the widget, and the two answers.
-///
-/// Asked for on 2026-09-30, after the click that marked such a row and the next click that
-/// ended its agent were found confusing: one click, one question, and nothing ends unless the
-/// answer is yes.
+/// The question a click on a broken session puts over the widget, and the two answers: one
+/// click, one question, and nothing ends unless the answer is yes (ADR-0013).
 @MainActor
 final class EndAgentDialogTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

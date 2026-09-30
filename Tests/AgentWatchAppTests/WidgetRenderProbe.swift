@@ -531,9 +531,6 @@ final class WidgetRenderProbe: XCTestCase {
         return list
     }
 
-    /// The widget with one border strip lit, which is what replaces a resize cursor the
-    /// widget cannot have: a cursor appears only over the window holding keyboard focus, and
-    /// this one refuses focus so that clicking it never interrupts typing elsewhere.
     /// Built the way the widget builds it: the list, and the dialog over it at full strength —
     /// the end of its fade.
     private func widgetAskingToEndAnAgent(
@@ -567,6 +564,9 @@ final class WidgetRenderProbe: XCTestCase {
         return backdrop
     }
 
+    /// The widget with one border strip lit, which is what replaces a resize cursor the
+    /// widget cannot have: a cursor appears only over the window holding keyboard focus, and
+    /// this one refuses focus so that clicking it never interrupts typing elsewhere.
     private func highlightedWidget(_ edge: WidgetEdgeHighlightView.Edge) -> NSView {
         let width: CGFloat = 420
         let container = HUDContentContainer()

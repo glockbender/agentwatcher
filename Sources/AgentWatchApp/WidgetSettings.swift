@@ -148,9 +148,9 @@ final class WidgetSettingsStore: PreferenceDefaults {
     /// Told after every write, so the follow-up for each setting is written once.
     ///
     /// Three collaborators read this store lazily and nothing tells them a value has moved,
-    /// so every setting needs a poke afterwards — and each needs a different one. Those pokes used to live in the menu actions that made the write, which meant the
-    /// full list of who has to be told was knowledge every writer had to carry. A forgotten
-    /// one produces a setting that appears not to work and then fixes itself minutes later.
+    /// so every setting needs a poke afterwards — and each needs a different one. Written once
+    /// here, rather than by every writer: a forgotten one produces a setting that appears not
+    /// to work and then fixes itself minutes later.
     var onChange: ((WidgetSetting) -> Void)?
 
     init(preferences: PreferenceFile) {

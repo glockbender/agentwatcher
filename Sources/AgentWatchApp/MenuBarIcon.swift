@@ -172,7 +172,7 @@ struct MenuBarIconDrawing {
 
 /// Where each cell of the grid goes, as columns of indices into the cells, top first.
 ///
-/// Four keep the grid as it shipped. Fewer are stacked two to a column, so two sit one above
+/// Four keep the default grid. Fewer are stacked two to a column, so two sit one above
 /// the other and one sits alone on the bar's middle. Three put the most important — the first
 /// — alone on the right and stack the other two beside it. That was chosen by looking at it
 /// drawn next to the alternatives: three in the four-cell grid leave a hole that reads as a

@@ -202,8 +202,7 @@ struct WidgetTheme: Codable, Equatable {
 
     static let defaultOpacity: Double = 0.82
     /// Not zero: an invisible widget cannot be found again by the person who made it
-    /// invisible. At five percent it is already glass, and `Highlight Widget` can still point
-    /// at it.
+    /// invisible. At five percent it is already glass, and showing it still outlines it.
     static let opacityRange: ClosedRange<Double> = 0.05...1
 
     static let attention: [String: String] = [
@@ -213,10 +212,10 @@ struct WidgetTheme: Codable, Equatable {
         SessionAttention.quiet.rawValue: "#9E9E9E",
     ]
 
-    /// The one rhythm the menu bar's grid has always breathed at, for both states that breathe.
+    /// The rhythm the menu bar's grid breathes at by default, for both states that breathe.
     static let markCycle: Double = 1.4
 
-    /// The grid as it shipped: needs you and working breathe, done and idle hold still.
+    /// By default needs you and working breathe, done and idle hold still.
     static let attentionMotion: [String: Motion] = [
         SessionAttention.needsPerson.rawValue: Motion(motion: .dim, cycle: markCycle),
         SessionAttention.working.rawValue: Motion(motion: .dim, cycle: markCycle),

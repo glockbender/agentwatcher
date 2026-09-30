@@ -2,8 +2,6 @@ import AgentWatchCore
 import AppKit
 import SwiftUI
 
-// MARK: - Row
-
 /// The parts, in one list that never reorders itself: switching a part off leaves it where it
 /// is, and only a drag moves anything.
 struct RowPane: View {

@@ -134,7 +134,7 @@ private struct ThemeNameSection: View {
     }
 }
 
-/// A lamp's four settings, the way the lamp tab laid them out before themes.
+/// A lamp's four settings for each phase: colour, motion, second colour and cycle.
 private struct LampsSection: View {
     @ObservedObject var model: SettingsModel
     let look: WidgetTheme.Look
@@ -239,7 +239,7 @@ private struct StatesSection: View {
     var body: some View {
         Section {
             Toggle("Match the menu bar and the menu to the lamps", isOn: followsLamps)
-            // Two tables rather than one six columns wide, which did not fit the window.
+            // Two tables rather than one six columns wide, which would not fit the window.
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
                 GridRow {
                     ForEach(["State", "Color from", "Color"], id: \.self) {

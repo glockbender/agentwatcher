@@ -1,7 +1,6 @@
 import AgentWatchCore
 import AppKit
 import SwiftUI
-// MARK: - Order
 
 struct OrderPane: View {
     @ObservedObject var model: SettingsModel
@@ -77,7 +76,8 @@ struct OrderPreview: NSViewRepresentable {
         let held = "Rows hold their places while the pointer is over the widget."
         switch order {
         case .arrival: return "A made-up list. A session keeps its place until it closes. \(held)"
-        case .recentActivity, .attention: return "A made-up list, one change every two seconds. \(held)"
+        case .recentActivity, .attention:
+            return "A made-up list, one change every \(Int(SessionOrderDemo.stepInterval)) seconds. \(held)"
         case .blocks: return "A made-up list, grouped by the blocks below. \(held)"
         }
     }

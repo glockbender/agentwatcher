@@ -2,8 +2,9 @@ import AgentWatchCore
 import AppKit
 import SwiftUI
 
-// The theme editor's examples: each is the real view the app draws, given the look being
-// edited rather than the one on screen, so what the page shows is what the theme will do.
+// The theme editor's examples, drawn from the look being edited rather than the one on screen,
+// so what the page shows is what the theme will do: real rows, the real icon and lamps, and a
+// menu's lines built to look like the menu's.
 
 /// One lamp on a patch of the widget's background, moving as it will in a row.
 struct LampSwatch: NSViewRepresentable {

@@ -324,10 +324,10 @@ final class ClosedTerminalRowTests: XCTestCase {
     }
 
     // MARK: - A tab Ghostty closed and kept
+    //
+    // A person closes a Ghostty tab, Ghostty keeps the terminal behind it with the agent
+    // running, and a click must not bring forward whichever Ghostty window is in front.
 
-    /// Reported on 2026-09-29: a person closed a Ghostty tab, Ghostty kept the terminal
-    /// behind it with the agent running, and a click on the row brought forward whichever
-    /// Ghostty window was in front — an empty shell.
     /// The shell the agent was typed into and the `login` above it, as the kernel's walk up
     /// the agent's terminal would find them.
     private let shell: Int32 = 52482

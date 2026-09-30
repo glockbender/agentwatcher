@@ -10,8 +10,7 @@ import SwiftUI
 /// source of truth — every control writes straight to one and the window reads it back.
 ///
 /// The sidebar carries the system's translucent material and the forms sit on the window's own
-/// background, as in System Settings. Real Liquid Glass needs the macOS 26 SDK, which this
-/// project does not build with yet.
+/// background, as in System Settings; built with the macOS 26 SDK, the sidebar is glass.
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     let model: SettingsModel
@@ -90,8 +89,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// Lets go of the pages when the window closes, and builds them again when it opens.
     ///
     /// A closed window keeps its views, and these are a whole SwiftUI form with live examples
-    /// in it: measured on a copy with 19 sessions, the theme editor held 33 MB after the window
-    /// closed, and its examples kept their timers running. Where the window was is the model's,
+    /// in it: measured on a copy with 19 sessions, the theme editor held about 29 MB of heap
+    /// after the window closed, and its examples kept their timers running
+    /// (`docs/measurements.md`). Where the window was is the model's,
     /// so the page and the back and forward history survive.
     func windowWillClose(_ notification: Notification) {
         model.isShown = false

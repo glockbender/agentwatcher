@@ -451,13 +451,11 @@ func dismissHint(_ dismissal: RowDismissal, now: Date) -> String? {
 ///
 /// The sibling of `dismissHint`, and for the same reason it gives: a control that works needs
 /// no sentence. A click raises the session's application, which is what one click teaches
-/// anyway. The line that used to say so also named the window and the tab to look at, and
-/// both repeated what the card already carried — the project has a line of its own, and the
-/// session's name is the card's first line.
+/// anyway.
 ///
-/// What is left are the cases where a click does something else: there is nothing to
-/// raise, there is no window at all and the click opens a terminal tab instead, or the
-/// terminal was closed and the click ends the agent it left behind.
+/// What is said are the cases where a click does something else: there is nothing to raise,
+/// there is no window at all and the click opens a terminal tab instead, or the terminal was
+/// closed and the click asks whether to end the agent it left behind.
 func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
     if case let .closedTerminal(ending) = reach {
         return closedTerminalHint(ending)

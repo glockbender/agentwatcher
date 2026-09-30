@@ -31,7 +31,7 @@ struct SessionOrderDemo {
     ]
 
     /// Whether the window plays the list for this order. Only where rows move by themselves:
-    /// in the arrival order nothing does, and the blocks are shown as their builder instead.
+    /// in the arrival order nothing does.
     static func plays(_ order: SessionOrder) -> Bool {
         switch order {
         case .recentActivity, .attention: true

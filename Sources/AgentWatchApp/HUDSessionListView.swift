@@ -662,8 +662,8 @@ func orderedForDisplay(_ sessions: [SessionSnapshot]) -> [SessionSnapshot] {
 /// least that keeps the shape from touching the letters — the badge is a label, not a
 /// control, and anything more makes it look like one.
 ///
-/// The count alone, without the arrow it used to carry: the corner it stands in already says
-/// which way its rows lie, and the text is read over somebody's session name. When some of
+/// The count alone, without an arrow: the corner it stands in already says which way its rows
+/// lie, and the text is read over somebody's session name. When some of
 /// those rows need a person, the badge names them too, in that state's colour: `+5 · 2 need
 /// you`.
 ///

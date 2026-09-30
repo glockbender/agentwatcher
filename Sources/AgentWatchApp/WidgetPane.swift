@@ -2,8 +2,6 @@ import AgentWatchCore
 import AppKit
 import SwiftUI
 
-// MARK: - Widget
-
 /// The widget as it will look, and the two things that shape its list: what a row shows, and
 /// in which order the rows stand.
 struct WidgetPane: View {

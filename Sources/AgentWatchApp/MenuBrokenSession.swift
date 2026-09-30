@@ -4,14 +4,11 @@ import Carbon.HIToolbox
 /// The menu line of a broken session: drawn by itself, because a click on it has to leave the
 /// menu open for the question that follows (ADR-0013).
 ///
-/// An ordinary menu line closes the menu on every click. A line whose item has a `view` gets
-/// the click itself and the menu stays open — measured for the choice lines this app used to
-/// have (ADR-0014), which is where this one comes from. What such a line gives up is the
-/// drawing and the keyboard, done here.
-///
-/// Those lines lit up for the keyboard only, never under the pointer: their items had no
-/// action, which a menu that enables its own items reads as disabled. This one's item has an
-/// action, and the line keeps a hover of its own besides.
+/// An ordinary menu line closes the menu on every click; a line whose item has a `view` gets
+/// the click itself and the menu stays open (measured, ADR-0014). What such a line gives up is
+/// the drawing and the keyboard, done here. Its item keeps an action, since a menu that
+/// enables its own items reads one without an action as disabled and never lights it up, and
+/// the line keeps a hover of its own besides.
 @MainActor
 final class MenuBrokenSessionLineView: NSView {
     let title: String

@@ -397,12 +397,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateMenuBarIcon(sessions: shown)
     }
 
-    /// Who has to be told when a setting changes, written once.
-    ///
-    /// Nothing here is new — each line used to sit in the menu action that made the write.
-    /// The problem was that the list was knowledge every writer had to carry, and a writer
-    /// who forgot one produced a setting that appeared not to work and then fixed itself
-    /// minutes later. That has already happened once, to the topic toggle.
+    /// Who has to be told when a setting changes, written once rather than by every writer:
+    /// a writer that forgot one would leave a setting that appears not to work and then fixes
+    /// itself minutes later.
     private func settingChanged(_ setting: WidgetSetting) {
         switch setting {
         case .interactionLocks:
@@ -421,9 +418,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Once per turn of the run loop, however many changes arrive in it (`CoalescedWork`).
             themeChange.request()
         case .scale:
-            // Read back for the reason the opacity gives above: the store clamps, and a
-            // control that passed its own raw value would draw the widget at a size the saved
-            // setting does not hold — so the next launch would show a different widget.
+            // Read back from the store, which clamps: a control that passed its own raw value
+            // would draw the widget at a size the saved setting does not hold, and the next
+            // launch would show a different widget.
             hudController.setScale(settings.scale)
         case .toggleShortcut:
             applyShortcut()

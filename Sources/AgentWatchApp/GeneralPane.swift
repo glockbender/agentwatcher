@@ -1,7 +1,6 @@
 import AgentWatchCore
 import AppKit
 import SwiftUI
-// MARK: - Behavior
 
 struct GeneralPane: View {
     @ObservedObject var model: SettingsModel

@@ -1,10 +1,9 @@
 import AgentWatchCore
 import AppKit
 import SwiftUI
-// MARK: - Tooling
 
-/// The hooks, the status line and the IDE plugins live in their own window, which is reworked
-/// separately; this pane is the way to it.
+/// The hooks, the status line and the IDE plugins live in their own window; this pane is the
+/// way to it.
 struct ToolingPane: View {
     @ObservedObject var model: SettingsModel
 

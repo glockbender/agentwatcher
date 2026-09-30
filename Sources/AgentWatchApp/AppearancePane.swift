@@ -2,8 +2,6 @@ import AgentWatchCore
 import AppKit
 import SwiftUI
 
-// MARK: - Appearance
-
 struct AppearancePane: View {
     @ObservedObject var model: SettingsModel
 

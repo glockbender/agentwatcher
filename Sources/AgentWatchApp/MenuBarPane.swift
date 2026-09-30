@@ -1,7 +1,6 @@
 import AgentWatchCore
 import AppKit
 import SwiftUI
-// MARK: - Menu bar
 
 struct MenuBarPane: View {
     @ObservedObject var model: SettingsModel
