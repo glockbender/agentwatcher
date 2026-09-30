@@ -108,7 +108,9 @@ final class ThemeEditingTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(1))
 
         // Content wider than it is given widens the view to fit rather than wrapping.
-        XCTAssertEqual(hosting.frame.width, 570, "the editor needs \(hosting.frame.width) points")
+        XCTAssertEqual(
+            hosting.frame.width, 570,
+            "the editor needs \(hosting.frame.width) points; fitting \(hosting.fittingSize)")
     }
 
     /// A change that changes nothing — Return in the name field, the colour a well already

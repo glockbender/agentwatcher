@@ -53,7 +53,10 @@ final class ToolingSetupTests: XCTestCase {
 
         controller.present()
 
-        XCTAssertEqual(window.frame.origin, moved)
+        XCTAssertEqual(
+            window.frame.origin, moved,
+            "window \(window.frame), screen \(String(describing: window.screen?.frame)), "
+                + "visible \(String(describing: window.screen?.visibleFrame))")
     }
 
     /// The sender's path is an internal detail until the entries name this very copy of the

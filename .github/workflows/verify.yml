@@ -29,3 +29,17 @@ jobs:
 
       - name: Verify
         run: task verify
+
+      # Diagnostic, for this branch only: the settings pages as macOS 26 draws them.
+      - name: Draw the settings pages
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/render"
+          SETTINGS_RENDER_DIR="$RUNNER_TEMP/render" swift test --filter SettingsRenderProbe
+
+      - name: Keep the drawings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-render-macos-26
+          path: ${{ runner.temp }}/render

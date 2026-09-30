@@ -22,9 +22,18 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertTrue(controller.hasPages)
 
         controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
+        let started = Date()
         nextTurn()
+        let waited = Date().timeIntervalSince(started)
+        let visible = controller.window?.isVisible
+        let content = controller.window?.contentView.map { String(describing: type(of: $0)) }
+        let heldAtOnce = controller.hasPages
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
 
-        XCTAssertFalse(controller.hasPages)
+        XCTAssertFalse(
+            heldAtOnce,
+            "waited \(waited) s, visible \(String(describing: visible)), content \(String(describing: content)), "
+                + "still held a second later: \(controller.hasPages)")
         controller.buildPages()
         XCTAssertTrue(controller.hasPages)
         XCTAssertEqual(controller.model.page, .theme)
