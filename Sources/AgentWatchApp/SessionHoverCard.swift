@@ -130,7 +130,7 @@ final class SessionHoverCard {
 
         let padding = WidgetStyle.standard.hoverCardPadding
         let effect = makeBackdrop(cornerRadius: WidgetStyle.panelCornerRadius)
-        effect.addSubview(label)
+        effect.content.addSubview(label)
         paddingConstraints = [
             label.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: padding),
             label.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -padding),

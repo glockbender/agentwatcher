@@ -171,6 +171,16 @@ enum WidgetMaterial: String, CaseIterable {
         needsLiquidGlass && !Self.systemHasLiquidGlass ? .frosted : self
     }
 
+    /// What the widget's text is drawn for on this material. On glass the desktop, not the
+    /// theme's colour, is behind the text, so the text follows light and dark mode as the Dock's
+    /// labels do.
+    func textBackground(for themeBackground: WidgetBackground, dark: Bool) -> WidgetBackground {
+        guard needsLiquidGlass else {
+            return themeBackground
+        }
+        return dark ? .graphite : .pearl
+    }
+
     /// Kept here rather than handed down through every view that draws a backdrop; set from
     /// the theme in use, and the widget is rebuilt on every change.
     @MainActor static var current: WidgetMaterial = .glass

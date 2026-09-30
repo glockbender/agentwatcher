@@ -17,7 +17,7 @@ struct ThemeEditorPane: View {
         Form {
             ThemeNameSection(model: model)
             Section {
-                ThemeRowsPreview(look: look, layout: model.layout)
+                ThemeRowsPreview(look: look, dark: model.editedLookIsDark, layout: model.layout)
                     .frame(height: ThemeRowsPreview.height)
                     .listRowInsets(EdgeInsets())
                 ColorPicker("Background", selection: colour(look.widgetBackground.color) { $0.setBackground($1) })

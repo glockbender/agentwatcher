@@ -321,6 +321,14 @@ final class SettingsModel: ObservableObject {
         }
     }
 
+    var editedLookIsDark: Bool {
+        switch themeScope {
+        case .both: themes.isDark
+        case .light: false
+        case .dark: true
+        }
+    }
+
     /// Changes the theme in use — a copy of it first, when it is the built-in one.
     func editTheme(_ change: (inout WidgetTheme.Look) -> Void) {
         changeTheme { theme in

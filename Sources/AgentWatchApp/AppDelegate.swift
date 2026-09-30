@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             endAgent: { [weak self] sessionID in
                 self?.supervisor.endAgent(ofSessionWithID: sessionID)
             },
-            background: themes.look.widgetBackground,
+            background: themes.textBackground,
             lampScheme: themes.look.lampScheme,
             backgroundOpacity: themes.look.widgetOpacity,
             style: WidgetStyle(scale: settings.scale),
@@ -447,7 +447,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WidgetTheme.active = look
         WidgetMaterial.current = look.widgetMaterial
         hudController.setAppearance(
-            background: look.widgetBackground, lampScheme: look.lampScheme, opacity: look.widgetOpacity)
+            background: themes.textBackground, lampScheme: look.lampScheme, opacity: look.widgetOpacity)
         // Not the menu's lines: it reads them, marks included, each time it opens, and
         // building them asks the process tree about every broken session.
         menuBarIconView?.show(menuBarCells, as: settings.menuBarIconStyle)
@@ -465,13 +465,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     #if DEBUG
-        /// The widget over the real desktop, on a dark, a light and a saturated background, each
-        /// at full and at half opacity — the cases where glass is hardest to read.
+        /// The widget over the real desktop, on glass in both modes from nearly clear to full
+        /// colour, and on clear glass — the cases where glass is hardest to read.
         private func snapshotWidget(into directory: URL) {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let cases: [(ThemeMode, CGFloat, WidgetMaterial)] = WidgetMaterial.allCases.flatMap { material in
-                [(ThemeMode.dark, 0.82, material), (ThemeMode.light, 0.82, material)]
-            }
+            let cases: [(ThemeMode, CGFloat, WidgetMaterial)] = [
+                (.dark, 0.05, .glass), (.dark, 0.5, .glass), (.dark, 1, .glass),
+                (.light, 0.05, .glass), (.light, 1, .glass), (.dark, 1, .clearGlass),
+            ]
             func run(_ index: Int) {
                 guard index < cases.count else {
                     NSApplication.shared.terminate(nil)
@@ -483,7 +484,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 WidgetMaterial.current = material
                 let look = themes.look
                 hudController.setAppearance(
-                    background: look.widgetBackground, lampScheme: look.lampScheme, opacity: opacity)
+                    background: material.drawn.textBackground(for: look.widgetBackground, dark: themes.isDark),
+                    lampScheme: look.lampScheme, opacity: opacity)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [self] in
                     if let window = hudController.window, let screen = NSScreen.screens.first {
                         let frame = window.frame.insetBy(dx: -24, dy: -24)
@@ -494,7 +496,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             run(index + 1)
                             return
                         }
-                        let name = "\(index)-\(material.rawValue)-\(mode.rawValue).png"
+                        let name = "\(index)-\(material.rawValue)-\(mode.rawValue)-\(Int(opacity * 100)).png"
                         try? png.write(to: directory.appendingPathComponent(name))
                     }
                     run(index + 1)

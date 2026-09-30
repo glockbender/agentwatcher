@@ -87,6 +87,12 @@ final class ThemeStore: PreferenceDefaults {
         theme.look(dark: isDark)
     }
 
+    /// What the widget's text is drawn for (`WidgetMaterial.textBackground`).
+    @MainActor var textBackground: WidgetBackground {
+        let look = look
+        return look.widgetMaterial.drawn.textBackground(for: look.widgetBackground, dark: isDark)
+    }
+
     func select(_ theme: WidgetTheme) {
         preferences.set(theme.name, forKey: Key.theme)
         onChange?(.theme)

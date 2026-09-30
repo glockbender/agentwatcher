@@ -39,6 +39,8 @@ struct LampSwatch: NSViewRepresentable {
 struct ThemeRowsPreview: NSViewRepresentable {
     static let height: CGFloat = 86
     let look: WidgetTheme.Look
+    /// Whether the look is the dark one: on glass the text follows the mode.
+    let dark: Bool
     let layout: RowLayout
 
     func makeNSView(context: Context) -> NSView {
@@ -47,10 +49,10 @@ struct ThemeRowsPreview: NSViewRepresentable {
 
     func updateNSView(_ holder: NSView, context: Context) {
         holder.subviews.forEach { $0.removeFromSuperview() }
-        let background = look.widgetBackground
+        let background = look.widgetMaterial.drawn.textBackground(for: look.widgetBackground, dark: dark)
         let panel = makeBackdrop(
-            cornerRadius: WidgetStyle.windowCornerRadius, tint: background.color, opacity: look.widgetOpacity,
-            material: look.widgetMaterial)
+            cornerRadius: WidgetStyle.windowCornerRadius, tint: look.widgetBackground.color,
+            opacity: look.widgetOpacity, material: look.widgetMaterial)
         panel.translatesAutoresizingMaskIntoConstraints = false
         holder.addSubview(panel)
         panel.pinToEdges(of: holder)
@@ -62,7 +64,7 @@ struct ThemeRowsPreview: NSViewRepresentable {
         stack.edgeInsets = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.appearance = background.controlAppearance
-        holder.addSubview(stack)
+        panel.content.addSubview(stack)
         stack.pinToEdges(of: holder)
         for phase in [SessionPhase.waitingForUser, .executing, .completed] {
             let snapshot = SampleSession.make(id: "theme:\(phase.rawValue)", phase: phase)

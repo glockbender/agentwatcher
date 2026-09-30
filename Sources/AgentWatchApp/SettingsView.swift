@@ -428,26 +428,23 @@ struct SampleRowsView: NSViewRepresentable {
     let revision: Int
 
     func makeNSView(context: Context) -> NSView {
-        let holder = NSView()
+        NSView()
+    }
+
+    func updateNSView(_ holder: NSView, context: Context) {
+        holder.subviews.forEach { $0.removeFromSuperview() }
+        let background = model.themes.textBackground
+        let panel = makeBackgroundView(for: background, opacity: model.themes.look.widgetOpacity)
+        panel.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(panel)
+        panel.pinToEdges(of: holder)
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.edgeInsets = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        holder.addSubview(stack)
+        panel.content.addSubview(stack)
         stack.pinToEdges(of: holder)
-        return holder
-    }
-
-    func updateNSView(_ holder: NSView, context: Context) {
-        guard let stack = holder.subviews.compactMap({ $0 as? NSStackView }).first else { return }
-        holder.subviews.filter { $0 !== stack }.forEach { $0.removeFromSuperview() }
-        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let background = model.themes.look.widgetBackground
-        let panel = makeBackgroundView(for: background, opacity: model.themes.look.widgetOpacity)
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        holder.addSubview(panel, positioned: .below, relativeTo: stack)
-        panel.pinToEdges(of: holder)
         let layout = model.layout
         let working = SampleSession.make(id: "codex:sample", phase: .executing)
         stack.addArrangedSubview(
@@ -598,6 +595,7 @@ struct OrderPreview: NSViewRepresentable {
         SessionOrderTab(
             settings: model.settings,
             look: { [themes = model.themes] in themes.look },
+            background: { [themes = model.themes] in themes.textBackground },
             opacity: { [themes = model.themes] in themes.look.widgetOpacity },
             rowLayouts: model.rowLayouts
         )
@@ -635,7 +633,7 @@ struct AppearancePane: View {
         let themes = model.themes
         Form {
             Section {
-                ThemeRowsPreview(look: themes.look, layout: model.layout)
+                ThemeRowsPreview(look: themes.look, dark: themes.isDark, layout: model.layout)
                     .frame(height: ThemeRowsPreview.height)
                     .listRowInsets(EdgeInsets())
                 Picker("Theme", selection: theme) {
