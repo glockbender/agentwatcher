@@ -31,10 +31,20 @@ struct MenuBarPane: View {
                     Toggle(attention.name, isOn: menuListing(attention))
                         .disabled(!settings.listsSessionsInMenu)
                 }
+                Stepper(
+                    "Sessions before scrolling: \(settings.menuSessionsBeforeScrolling)",
+                    value: sessionsBeforeScrolling,
+                    in: WidgetSettingsStore.menuSessionsBeforeScrollingRange
+                )
+                .disabled(!settings.listsSessionsInMenu)
             } header: {
                 Text("Menu")
             } footer: {
-                Footnote("Listed sessions appear under the summary line; clicking one brings its window forward.")
+                Footnote(
+                    "Listed sessions appear under the summary line; clicking one brings its window forward. "
+                        + "Past the number above, the list scrolls. Arrow keys skip the list, "
+                        + "so a session is chosen with the pointer."
+                )
             }
         }
     }
@@ -57,6 +67,13 @@ struct MenuBarPane: View {
         Binding(
             get: { model.settings.listsSessionsInMenu },
             set: { on in model.update { model.settings.setListsSessionsInMenu(on) } }
+        )
+    }
+
+    private var sessionsBeforeScrolling: Binding<Int> {
+        Binding(
+            get: { model.settings.menuSessionsBeforeScrolling },
+            set: { count in model.update { model.settings.setMenuSessionsBeforeScrolling(count) } }
         )
     }
 

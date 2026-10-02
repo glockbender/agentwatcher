@@ -43,7 +43,7 @@ final class SettingsRenderProbe: XCTestCase {
         try themes.create(named: "Shared with me")
         try draw(AnyView(ThemesPane(model: model)), height: 400, named: "settings-themes", in: directory)
         try draw(AnyView(RowPane(model: model)), height: 900, named: "settings-rows", in: directory)
-        try draw(AnyView(MenuBarPane(model: model)), height: 520, named: "settings-menu-bar", in: directory)
+        try draw(AnyView(MenuBarPane(model: model)), height: 640, named: "settings-menu-bar", in: directory)
         _ = host
     }
 

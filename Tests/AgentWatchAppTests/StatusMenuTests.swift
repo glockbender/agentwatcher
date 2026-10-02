@@ -1,6 +1,7 @@
 import AgentWatchCore
 import AgentWatchTestSupport
 import AppKit
+import Carbon.HIToolbox
 import XCTest
 
 @testable import AgentWatchApp
@@ -83,35 +84,112 @@ final class StatusMenuTests: XCTestCase {
             "the defaults list the sessions that need a person or are done, and no others"
         )
         XCTAssertEqual(
-            menu.sessionLineItems.map { $0.image?.accessibilityDescription },
+            try list(in: menu).rows.map { $0.image?.accessibilityDescription },
             ["Needs You", "Done"],
             "every line carries its state's mark, and the mark says its state out loud"
         )
     }
 
-    func testChoosingALineIsAClickOnThatSessionsRow() throws {
+    /// The menu used to stop at eight and name the rest on one line; the list scrolls instead.
+    func testEverySessionIsListedAndNoneIsCountedAway() throws {
+        let (menu, host, _) = try makeMenu()
+        host.sessions = (0..<12).map { session($0, "Waiting \($0)", .waitingForUser) }
+
+        menu.menuWillOpen(menu.menu)
+
+        XCTAssertEqual(try list(in: menu).rows.count, 12)
+        XCTAssertFalse(outline(menu.menu).contains { $0.contains("more in the widget") })
+    }
+
+    /// As tall as its sessions up to the setting, and no taller: past it, the list scrolls.
+    func testTheListIsAsTallAsItsSessionsUpToTheSetting() throws {
+        let (menu, host, settings) = try makeMenu()
+        let line = MenuSessionListView.lineHeight
+
+        host.sessions = (0..<3).map { session($0, "Waiting \($0)", .waitingForUser) }
+        menu.menuWillOpen(menu.menu)
+        var shown = try list(in: menu)
+        XCTAssertEqual(shown.frame.height, 3 * line)
+        XCTAssertFalse(shown.scrolls)
+        XCTAssertFalse(shown.scrollView.hasVerticalScroller, "a list that shows everything has nothing to scroll")
+        XCTAssertEqual(shown.scrollView.verticalScrollElasticity, .none, "nor anything to bounce")
+
+        host.sessions = (0..<12).map { session($0, "Waiting \($0)", .waitingForUser) }
+        menu.menuWillOpen(menu.menu)
+        shown = try list(in: menu)
+        XCTAssertEqual(shown.frame.height, 8 * line, "eight until a person picks another number")
+        XCTAssertTrue(shown.scrolls)
+        XCTAssertTrue(shown.scrollView.hasVerticalScroller)
+        XCTAssertEqual(shown.scrollView.documentView?.frame.height, 12 * line)
+
+        settings.setMenuSessionsBeforeScrolling(5)
+        menu.refreshSessions()
+        XCTAssertEqual(try list(in: menu).frame.height, 5 * line)
+    }
+
+    /// A scroll moves the lines under a still pointer, so the lit line is the one the point
+    /// lands on now — counted in the scrolled list, not in the list as it first stood.
+    func testTheLineUnderAPointIsTheOneThereAfterAScroll() throws {
+        let (menu, host, _) = try makeMenu()
+        host.sessions = (0..<12).map { session($0, "Waiting \($0)", .waitingForUser) }
+        menu.menuWillOpen(menu.menu)
+        let shown = try list(in: menu)
+        let window = NSWindow(contentRect: shown.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = shown
+        let line = MenuSessionListView.lineHeight
+        let topLine = NSPoint(x: 50, y: shown.frame.height - line / 2)
+
+        XCTAssertEqual(shown.rowIndex(at: shown.convert(topLine, to: nil)), 0)
+        shown.scrollView.contentView.scroll(to: NSPoint(x: 0, y: 3 * line))
+        XCTAssertEqual(shown.rowIndex(at: shown.convert(topLine, to: nil)), 3)
+        XCTAssertNil(shown.rowIndex(at: shown.convert(NSPoint(x: 50, y: -1), to: nil)), "below the list is no line")
+    }
+
+    /// As an ordinary menu line does it: the menu goes first, and the click comes once it has.
+    func testChoosingALineClosesTheMenuAndThenClicksThatSessionsRow() throws {
         let (menu, host, _) = try makeMenu()
         host.sessions = [session(0, "Waiting on a question", .waitingForUser)]
         menu.menuWillOpen(menu.menu)
         host.calls = []
+        let shown = try list(in: menu)
 
-        try choose(XCTUnwrap(menu.sessionLineItems.first))
+        shown.choose(try XCTUnwrap(shown.rows.first))
+        XCTAssertEqual(host.calls, [], "nothing happens while the menu is still on screen")
+        menu.menuDidClose(menu.menu)
 
         XCTAssertEqual(host.calls, ["focusSession claude:session-0"])
     }
 
+    /// The arrows go to the menu's own lines and pass the list by (measured,
+    /// `docs/measurements.md`). One that reaches the list anyway is dropped there, since the
+    /// menu has already moved for it; every other key goes on to the menu.
+    func testTheListDropsArrowsAndHandsOnEveryOtherKey() throws {
+        let (menu, host, _) = try makeMenu()
+        host.sessions = [session(0, "Waiting on a question", .waitingForUser)]
+        menu.menuWillOpen(menu.menu)
+        let shown = try list(in: menu)
+        let menuBehind = KeyRecorder()
+        shown.nextResponder = menuBehind
+
+        XCTAssertFalse(shown.acceptsFirstResponder)
+        for code in [kVK_DownArrow, kVK_UpArrow, kVK_Escape] {
+            shown.keyDown(with: try press(keyCode: UInt16(code)))
+        }
+
+        XCTAssertEqual(menuBehind.keyCodes, [UInt16(kVK_Escape)])
+    }
+
     // MARK: - The question in the menu
 
-    /// A broken session's line draws itself, so its click reaches it with the menu still open,
-    /// and it keeps an action, so the menu does not read it as disabled and never light it up.
-    func testABrokenSessionsLineDrawsItselfAndStaysEnabled() throws {
+    /// A broken session's line says that a question follows, the way a menu does: with an
+    /// ellipsis.
+    func testABrokenSessionsLineSaysAQuestionFollows() throws {
         let (menu, _, _) = try openMenuWithABrokenSession()
 
-        let line = try XCTUnwrap(menu.sessionLineItems.first)
-        let view = try XCTUnwrap(line.view as? MenuBrokenSessionLineView)
-        XCTAssertTrue(view.title.hasSuffix("end its agent…"), view.title)
-        XCTAssertNotNil(line.action)
-        XCTAssertNotNil(view.image, "it carries its state's mark, like the other lines")
+        let row = try brokenRow(in: menu)
+        XCTAssertTrue(row.line.title.hasSuffix("end its agent…"), row.line.title)
+        XCTAssertTrue(row.line.isEnabled)
+        XCTAssertNotNil(row.image, "it carries its state's mark, like the other lines")
     }
 
     /// The menu cannot draw over its lines, so they give way: the question stands where they
@@ -119,12 +197,11 @@ final class StatusMenuTests: XCTestCase {
     func testChoosingTheLinePutsTheQuestionWhereTheLinesWere() throws {
         let (menu, host, _) = try openMenuWithABrokenSession()
 
-        try brokenLine(in: menu).choose()
+        try chooseBrokenRow(in: menu)
 
-        XCTAssertEqual(host.calls.last, "focusSession claude:session-0")
+        XCTAssertEqual(host.calls.last, "focusSession claude:session-0", "asked at once, with the menu open")
         XCTAssertEqual(menu.askingAbout, "claude:session-0")
-        XCTAssertEqual(menu.sessionLineItems.count, 1)
-        let question = try XCTUnwrap(menu.sessionLineItems.first?.view as? MenuEndAgentQuestionView)
+        let question = try question(in: menu)
         XCTAssertEqual(question.dialog.sessionID, "claude:session-0")
         XCTAssertEqual(
             question.frame.height, question.dialog.heightShowingEverything(atWidth: MenuEndAgentQuestionView.width))
@@ -135,18 +212,18 @@ final class StatusMenuTests: XCTestCase {
 
     func testCancelBringsTheLinesBack() throws {
         let (menu, host, _) = try openMenuWithABrokenSession()
-        try brokenLine(in: menu).choose()
+        try chooseBrokenRow(in: menu)
 
         try question(in: menu).dialog.cancelButton.performClick(nil)
 
         XCTAssertNil(menu.askingAbout)
-        XCTAssertNotNil(menu.sessionLineItems.first?.view as? MenuBrokenSessionLineView)
+        XCTAssertNoThrow(try brokenRow(in: menu))
         XCTAssertEqual(host.ended, [])
     }
 
     func testEndEndsTheAgentOfThatSession() throws {
         let (menu, host, _) = try openMenuWithABrokenSession()
-        try brokenLine(in: menu).choose()
+        try chooseBrokenRow(in: menu)
 
         try question(in: menu).dialog.endButton.performClick(nil)
 
@@ -158,27 +235,29 @@ final class StatusMenuTests: XCTestCase {
     /// next opening shows the lines.
     func testClosingTheMenuIsANo() throws {
         let (menu, host, _) = try openMenuWithABrokenSession()
-        try brokenLine(in: menu).choose()
+        try chooseBrokenRow(in: menu)
+        host.calls = []
 
         menu.menuDidClose(menu.menu)
         menu.menuWillOpen(menu.menu)
 
         XCTAssertNil(menu.askingAbout)
-        XCTAssertNotNil(menu.sessionLineItems.first?.view as? MenuBrokenSessionLineView)
+        XCTAssertNoThrow(try brokenRow(in: menu))
         XCTAssertEqual(host.ended, [])
+        XCTAssertFalse(host.calls.contains { $0.hasPrefix("focusSession") }, "closing clicked nothing")
     }
 
     /// Asked again on every rebuild: a session that came back to its terminal is no longer
     /// the question.
     func testAQuestionAboutASessionNoLongerBrokenIsDropped() throws {
         let (menu, host, _) = try openMenuWithABrokenSession()
-        try brokenLine(in: menu).choose()
+        try chooseBrokenRow(in: menu)
 
         host.sessions = [session(0, "Session", .waitingForUser)]
         menu.refreshSessions()
 
         XCTAssertNil(menu.askingAbout)
-        XCTAssertEqual(menu.sessionLineItems.map(\.title), ["Session"])
+        XCTAssertEqual(try list(in: menu).rows.map(\.line.title), ["Session"])
     }
 
     /// A line whose click asks nothing — the ending is no longer there by the time of the
@@ -187,17 +266,17 @@ final class StatusMenuTests: XCTestCase {
         let (menu, host, _) = try openMenuWithABrokenSession()
         host.clicks = [:]
 
-        try brokenLine(in: menu).choose()
+        try chooseBrokenRow(in: menu)
 
         XCTAssertNil(menu.askingAbout)
-        XCTAssertNotNil(menu.sessionLineItems.first?.view as? MenuBrokenSessionLineView)
+        XCTAssertNoThrow(try brokenRow(in: menu))
     }
 
     /// The release lands on the question's own view, which hands it to the button under it.
     /// Called here rather than clicked: what a real menu delivers is for a real click to show.
     func testAReleaseOverEndIsAnEnd() throws {
         let (menu, host, _) = try openMenuWithABrokenSession()
-        try brokenLine(in: menu).choose()
+        try chooseBrokenRow(in: menu)
         let question = try question(in: menu)
         let window = NSWindow(
             contentRect: question.frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -224,7 +303,7 @@ final class StatusMenuTests: XCTestCase {
         host.sessions = [session(1, "Second", .completed)]
         menu.menuWillOpen(menu.menu)
 
-        XCTAssertEqual(menu.sessionLineItems.map(\.title), ["Second"])
+        XCTAssertEqual(try list(in: menu).rows.map(\.line.title), ["Second"])
         XCTAssertEqual(outline(menu.menu).filter { $0 == "Second" }.count, 1, "a line was left behind")
     }
 
@@ -237,21 +316,26 @@ final class StatusMenuTests: XCTestCase {
         settings.setListsSessionsInMenu(false)
         menu.refresh()
 
-        XCTAssertEqual(menu.sessionLineItems, [])
+        XCTAssertNil(menu.sessionItem)
         XCTAssertEqual(Array(outline(menu.menu).prefix(2)), ["No active sessions", "Show Widget"])
     }
 
-    /// A menu enables its own lines as it opens, so a line is greyed by having nothing to do.
+    /// A line whose click could do nothing says why, is greyed, and does nothing when clicked.
     func testALineWhoseClickCouldDoNothingIsGreyed() throws {
         let (menu, host, _) = try makeMenu()
         host.sessions = [session(0, "Left behind", .terminalClosed)]
         host.reaches = ["claude:session-0": .closedTerminal(nil)]
-
         menu.menuWillOpen(menu.menu)
+        host.calls = []
+        let shown = try list(in: menu)
+        let row = try XCTUnwrap(shown.rows.first)
 
-        let line = try XCTUnwrap(menu.sessionLineItems.first)
-        XCTAssertEqual(line.title, "Left behind — terminal closed, nothing here can end it")
-        XCTAssertNil(line.action)
+        XCTAssertEqual(row.line.title, "Left behind — terminal closed, nothing here can end it")
+        row.isHovered = true
+        XCTAssertFalse(row.isLit, "a line that cannot be chosen does not light up")
+        shown.choose(row)
+        menu.menuDidClose(menu.menu)
+        XCTAssertEqual(host.calls, [])
     }
 
     /// The mark is what tells the states apart, so it has to be drawn: a palette given one
@@ -313,14 +397,14 @@ final class StatusMenuTests: XCTestCase {
         host.sessions = [session(0, "Still building", .executing)]
         host.attentionCounts = SessionAttentionCounts(needsPerson: 0, working: 1, done: 0, quiet: 0)
         menu.menuWillOpen(menu.menu)
-        let linesBefore = menu.sessionLineItems
+        let linesBefore = try XCTUnwrap(menu.sessionItem)
 
         host.sessions = [session(0, "Still building", .waitingForUser)]
         host.attentionCounts = SessionAttentionCounts(needsPerson: 1, working: 0, done: 0, quiet: 0)
         menu.refreshSummary()
 
         XCTAssertEqual(menu.summaryItem?.title, "1 needs you")
-        XCTAssertEqual(menu.sessionLineItems, linesBefore)
+        XCTAssertTrue(menu.sessionItem === linesBefore, "the lines were rebuilt under the pointer")
     }
 
     private func session(_ index: Int, _ title: String, _ phase: SessionPhase) -> SessionSnapshot {
@@ -339,12 +423,21 @@ final class StatusMenuTests: XCTestCase {
         return (menu, host, settings)
     }
 
-    private func brokenLine(in menu: StatusMenu) throws -> MenuBrokenSessionLineView {
-        try XCTUnwrap(menu.sessionLineItems.first?.view as? MenuBrokenSessionLineView)
+    private func list(in menu: StatusMenu) throws -> MenuSessionListView {
+        try XCTUnwrap(menu.sessionList, "no list of sessions")
+    }
+
+    private func brokenRow(in menu: StatusMenu) throws -> MenuSessionRowView {
+        try XCTUnwrap(list(in: menu).rows.first { $0.line.leadsToQuestion }, "no line that asks")
+    }
+
+    /// The click a person makes on the line, through the list it sits in.
+    private func chooseBrokenRow(in menu: StatusMenu) throws {
+        try list(in: menu).choose(brokenRow(in: menu))
     }
 
     private func question(in menu: StatusMenu) throws -> MenuEndAgentQuestionView {
-        try XCTUnwrap(menu.sessionLineItems.first?.view as? MenuEndAgentQuestionView)
+        try XCTUnwrap(menu.sessionItem?.view as? MenuEndAgentQuestionView)
     }
 
     private func makeMenu() throws -> (StatusMenu, FakeAppHost, WidgetSettingsStore) {
@@ -358,10 +451,14 @@ final class StatusMenuTests: XCTestCase {
     }
 
     /// Every line, submenus indented under the line that opens them, `---` for a separator.
-    /// Hidden lines are left out, as a person never sees them.
+    /// Hidden lines are left out, as a person never sees them, and the list of sessions is
+    /// read as the lines it shows.
     private func outline(_ menu: NSMenu, depth: Int = 0) -> [String] {
         menu.items.filter { !$0.isHidden }.flatMap { item -> [String] in
             let indent = String(repeating: "  ", count: depth)
+            if let list = item.view as? MenuSessionListView {
+                return list.rows.map { indent + $0.line.title }
+            }
             let line = indent + (item.isSeparatorItem ? "---" : item.title)
             return [line] + (item.submenu.map { outline($0, depth: depth + 1) } ?? [])
         }

@@ -39,16 +39,18 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// The lines whose title or checkmark depends on something, kept to be refreshed. Visible
     /// to the tests, which read them the way a person reads the menu.
     private(set) var summaryItem: NSMenuItem?
-    /// One line per listed session, directly under the summary. Rebuilt each time rather
-    /// than kept in step: they are a handful, and the list changes between two openings.
-    private(set) var sessionLineItems: [NSMenuItem] = []
+    /// The one menu line directly under the summary that holds the sessions: their list, or
+    /// the question standing in its place. `nil` while no session is listed. Rebuilt each time
+    /// rather than kept in step, since the sessions change between two openings.
+    private(set) var sessionItem: NSMenuItem?
     /// Shown only while the widget is hidden, so a hidden widget is never lost.
     private(set) var widgetItem: NSMenuItem?
-    /// At most this many sessions are listed; the rest are counted on one line.
-    static let listedSessionLimit = 8
     /// The broken session whose question stands where the session lines were, while the menu
     /// is open. A menu cannot draw over its own lines, so the lines give way to it.
     private(set) var askingAbout: String?
+    /// The line clicked in the list, waiting for the menu to close: an ordinary menu line's
+    /// action comes after the menu has gone, and a line in the list keeps that order.
+    private var chosenLine: MenuSessionLine?
     /// The session lines' marks, which a theme can colour and move.
     let marks = MenuMarkAnimator()
 
@@ -101,10 +103,15 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         marks.start()
     }
 
-    /// Closing the menu with the question open — Escape, a click elsewhere — is a no.
+    /// Closing the menu with the question open — Escape, a click elsewhere — is a no. A line
+    /// clicked in the list closed the menu, and its click is carried out now.
     func menuDidClose(_ menu: NSMenu) {
         askingAbout = nil
         marks.stop()
+        if let line = chosenLine {
+            chosenLine = nil
+            focusSession(line)
+        }
     }
 
     /// Every title and checkmark, read again from what they describe.
@@ -143,10 +150,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// Under the summary, so the line that counts the sessions reads as the heading of the
     /// list of them.
     private func showSessionLines(host: StatusMenuHost) {
-        for item in sessionLineItems {
-            menu.removeItem(item)
+        if let sessionItem {
+            menu.removeItem(sessionItem)
         }
-        sessionLineItems = []
+        sessionItem = nil
         marks.show([])
         guard settings.listsSessionsInMenu else {
             return
@@ -163,44 +170,35 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         {
             let item = questionItem(for: session)
             menu.insertItem(item, at: first)
-            sessionLineItems = [item]
+            sessionItem = item
             return
         }
         askingAbout = nil
+        guard !lines.isEmpty else {
+            return
+        }
         let look = ThemeInUse.look
-        var marked: [(item: NSMenuItem, attention: SessionAttention, style: LampStyle)] = []
-        sessionLineItems = lines.prefix(Self.listedSessionLimit).enumerated().map { offset, line in
-            // A line with nothing to do has no action, which is how a menu that enables its
-            // own items knows to grey it: `isEnabled` alone is overwritten when it opens.
-            let item = NSMenuItem(
-                title: line.title,
-                action: line.isEnabled ? #selector(focusSession(_:)) : nil,
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = line
-            let style = look.menuMarkStyle(for: line.phase, phases: ThemeInUse.phases)
-            item.image = MenuMarkAnimator.mark(for: line.attention, colour: style.color)
-            if line.leadsToQuestion {
-                // Still: the line draws itself, and its picture is taken once.
-                let view = MenuBrokenSessionLineView(title: line.title, image: item.image)
-                view.onChoose = { [weak self] in
-                    self?.chooseBrokenLine(line)
-                }
-                item.view = view
-            } else {
-                marked.append((item, line.attention, style))
-            }
-            menu.insertItem(item, at: first + offset)
-            return item
+        let styles = lines.map { look.menuMarkStyle(for: $0.phase, phases: ThemeInUse.phases) }
+        let list = MenuSessionListView(
+            lines: lines,
+            images: zip(lines, styles).map { MenuMarkAnimator.mark(for: $0.attention, colour: $1.color) },
+            visibleCount: settings.menuSessionsBeforeScrolling
+        )
+        list.onChoose = { [weak self] line in
+            self?.choose(line)
         }
-        marks.show(marked)
-        let unlisted = lines.count - Self.listedSessionLimit
-        if unlisted > 0 {
-            let more = NSMenuItem(title: "\(unlisted) more in the widget", action: nil, keyEquivalent: "")
-            menu.insertItem(more, at: first + sessionLineItems.count)
-            sessionLineItems.append(more)
-        }
+        // No action: a menu that enables its own items reads the list as disabled, and the
+        // arrows step over a disabled line instead of stopping on one that draws no highlight.
+        let item = NSMenuItem(title: "Sessions", action: nil, keyEquivalent: "")
+        item.view = list
+        menu.insertItem(item, at: first)
+        sessionItem = item
+        marks.show(zip(list.rows, styles).map { row, style in (row, row.line.attention, style) })
+    }
+
+    /// The list of sessions under the summary, while it is shown.
+    var sessionList: MenuSessionListView? {
+        sessionItem?.view as? MenuSessionListView
     }
 
     /// The mark the state has in the menu bar, in the state's colour (`MenuMarkAnimator.mark`).
@@ -243,17 +241,24 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     // MARK: - Actions
 
-    /// An ordinary line, whose click closes the menu. The one broken session that can only be
-    /// found by a click — a tab Ghostty closed and kept — is found here, after the menu has
-    /// gone: its row is marked, and the next opening of the menu shows its line, which asks.
-    @objc private func focusSession(_ sender: NSMenuItem) {
-        guard let line = sender.representedObject as? MenuSessionLine else {
+    /// A click on a line in the list. A broken session's asks its question in the open menu;
+    /// any other closes the menu first and is carried out once it has gone (`menuDidClose`).
+    func choose(_ line: MenuSessionLine) {
+        guard line.isEnabled else {
             return
         }
         if line.leadsToQuestion {
             chooseBrokenLine(line)
             return
         }
+        chosenLine = line
+        menu.cancelTracking()
+    }
+
+    /// The one broken session that can only be found by a click — a tab Ghostty closed and
+    /// kept — is found here, after the menu has gone: its row is marked, and the next opening
+    /// of the menu shows its line, which asks.
+    private func focusSession(_ line: MenuSessionLine) {
         host?.focusSession(id: line.sessionID)
     }
 

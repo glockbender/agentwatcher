@@ -82,3 +82,16 @@ macOS 26 SDK, the widget draws Glass and Clear glass as frosted.
 glass materials `(macOS 26)` where they cannot be drawn.
 
 **Checked on:** macOS 15.3.1; what macOS 26 draws was read in the code, not seen.
+
+## Arrow keys skip the sessions in the menu
+
+**Why:** The sessions in the menu are one scrolling list, and macOS keeps every arrow key that can
+move its own highlight. While there is a menu line above or below, the arrow goes there, and the
+list never receives it. Agent Watch therefore marks the list as a line the arrows step over, so
+they go straight from the line above it to the line below.
+
+**What to do:** Choose a session with the pointer: hover over it and click, or scroll the list with
+the trackpad. **Settings… → Menu Bar → Sessions before scrolling** sets how many sessions show
+before the list scrolls.
+
+**Checked on:** macOS 15.3.1.

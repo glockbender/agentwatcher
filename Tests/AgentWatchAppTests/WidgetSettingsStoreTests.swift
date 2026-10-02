@@ -248,6 +248,37 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(WidgetSettingsStore(preferences: preferences).menuSessionAttentions, [.done])
     }
 
+    /// Eight, where the menu stopped before its list could scroll, until a person picks another.
+    func testTheMenuShowsEightSessionsBeforeItsListScrolls() throws {
+        let preferences = try isolatedPreferences()
+        let store = WidgetSettingsStore(preferences: preferences)
+        XCTAssertEqual(store.menuSessionsBeforeScrolling, 8)
+
+        store.setMenuSessionsBeforeScrolling(12)
+
+        XCTAssertEqual(WidgetSettingsStore(preferences: preferences).menuSessionsBeforeScrolling, 12)
+    }
+
+    /// Out of range is still "more" or "fewer", so it is clamped rather than refused — from
+    /// the stepper and from an edited file alike, including a number no `Int` can hold.
+    func testTheNumberOfSessionsBeforeScrollingStaysInRange() throws {
+        let preferences = try isolatedPreferences()
+        let store = WidgetSettingsStore(preferences: preferences)
+        let range = WidgetSettingsStore.menuSessionsBeforeScrollingRange
+
+        store.setMenuSessionsBeforeScrolling(1)
+        XCTAssertEqual(store.menuSessionsBeforeScrolling, range.lowerBound)
+        store.setMenuSessionsBeforeScrolling(500)
+        XCTAssertEqual(store.menuSessionsBeforeScrolling, range.upperBound)
+
+        preferences.set(1e300, forKey: "menuSessionsBeforeScrolling")
+        XCTAssertEqual(store.menuSessionsBeforeScrolling, range.upperBound)
+        preferences.set(-4, forKey: "menuSessionsBeforeScrolling")
+        XCTAssertEqual(store.menuSessionsBeforeScrolling, range.lowerBound)
+        preferences.set(6.4, forKey: "menuSessionsBeforeScrolling")
+        XCTAssertEqual(store.menuSessionsBeforeScrolling, 6)
+    }
+
     func testChangingTheListIsAnnounced() throws {
         let store = try makeStore()
         var announced = 0
@@ -259,8 +290,9 @@ final class WidgetSettingsStoreTests: XCTestCase {
 
         store.setListsSessionsInMenu(false)
         store.setMenuLists(.quiet, true)
+        store.setMenuSessionsBeforeScrolling(10)
 
-        XCTAssertEqual(announced, 2)
+        XCTAssertEqual(announced, 3)
     }
 
     /// The sphere, counting every state, until a person picks otherwise.

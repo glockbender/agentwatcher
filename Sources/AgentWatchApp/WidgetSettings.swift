@@ -118,6 +118,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let menuBarIconAttentions = "menuBarIconAttentions"
         static let listsSessionsInMenu = "listsSessionsInMenu"
         static let menuSessionAttentions = "menuSessionAttentions"
+        static let menuSessionsBeforeScrolling = "menuSessionsBeforeScrolling"
         static let sessionOrder = "sessionOrder"
         static let sessionBlockOrder = "sessionBlockOrder"
     }
@@ -125,6 +126,13 @@ final class WidgetSettingsStore: PreferenceDefaults {
     /// Something waiting for the person, and something finished for them to look at: the two
     /// states where a switch to the session has a next move behind it.
     static let defaultMenuSessionAttentions: Set<SessionAttention> = [.needsPerson, .done]
+
+    /// Eight: the most lines the menu showed before its list could scroll.
+    static let defaultMenuSessionsBeforeScrolling = 8
+    /// Three is the fewest that still reads as a list under the trackpad. Twenty lines are
+    /// 440 points, which a laptop's screen holds together with the rest of the menu; a menu
+    /// taller than its screen scrolls as a whole, and the list inside it would scroll twice.
+    static let menuSessionsBeforeScrollingRange = 3...20
 
     private let preferences: PreferenceFile
 
@@ -140,6 +148,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.menuBarIconAttentions: .array(Self.stored(Set(SessionAttention.counted)).map(JSONValue.string)),
             Key.listsSessionsInMenu: .bool(true),
             Key.menuSessionAttentions: .array(Self.stored(Self.defaultMenuSessionAttentions).map(JSONValue.string)),
+            Key.menuSessionsBeforeScrolling: .number(Double(Self.defaultMenuSessionsBeforeScrolling)),
             Key.sessionOrder: .string(SessionOrder.arrival.rawValue),
             Key.sessionBlockOrder: .array(SessionBlock.defaultOrder.map { .string($0.rawValue) }),
         ]
@@ -311,6 +320,25 @@ final class WidgetSettingsStore: PreferenceDefaults {
             listed.remove(attention)
         }
         preferences.set(Self.stored(listed), forKey: Key.menuSessionAttentions)
+        onChange?(.menuSessions)
+    }
+
+    /// How many sessions the menu shows before its list scrolls.
+    ///
+    /// Clamped rather than refused, as the scale is: a number out of range still says "more"
+    /// or "fewer". Clamped before it becomes an `Int`, which a huge number would trap in.
+    var menuSessionsBeforeScrolling: Int {
+        guard let stored = preferences.number(forKey: Key.menuSessionsBeforeScrolling) else {
+            return Self.defaultMenuSessionsBeforeScrolling
+        }
+        let range = Self.menuSessionsBeforeScrollingRange
+        return Int(min(max(stored, Double(range.lowerBound)), Double(range.upperBound)).rounded())
+    }
+
+    func setMenuSessionsBeforeScrolling(_ count: Int) {
+        let range = Self.menuSessionsBeforeScrollingRange
+        let clamped = min(max(count, range.lowerBound), range.upperBound)
+        preferences.set(Double(clamped), forKey: Key.menuSessionsBeforeScrolling)
         onChange?(.menuSessions)
     }
 

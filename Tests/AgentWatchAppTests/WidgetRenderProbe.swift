@@ -94,19 +94,15 @@ final class WidgetRenderProbe: XCTestCase {
         try draw(
             widgetAskingToEndAnAgent(size: NSSize(width: 331, height: 173)), named: "ask-end-1x", pixelsPerPoint: 1,
             in: directory)
-        // The same question in the menu, where the session lines were, and the line that
-        // leads to it. Drawn on the menu's own material; a real menu is also translucent.
+        // The same question in the menu, where the session lines were, and the list it stands
+        // in for, the line that leads to it among them. Drawn on the menu's own material; a
+        // real menu is also translucent.
         try draw(
             menuPiece(
                 MenuEndAgentQuestionView(
                     sessionID: "claude:session-1", sessionName: "Документация проекта", onCancel: {}, onEnd: {})),
             named: "menu-question", in: directory)
-        try draw(
-            menuPiece(
-                MenuBrokenSessionLineView(
-                    title: "Документация проекта — terminal closed; end its agent…",
-                    image: StatusMenu.mark(for: .needsPerson))),
-            named: "menu-broken-line", in: directory)
+        try draw(menuPiece(menuList()), named: "menu-list", in: directory)
         try draw(highlightedWidget(.left), named: "edge-left", in: directory)
         try draw(highlightedWidget(.bottomRight), named: "edge-corner", in: directory)
         try draw(listView(width: 190), named: "narrow", in: directory)
@@ -554,6 +550,27 @@ final class WidgetRenderProbe: XCTestCase {
     }
 
     /// A menu's line on the material a menu is drawn with.
+    /// Ten sessions in a list that shows eight, the second one lit as under the pointer, a
+    /// broken one and one that can do nothing among them.
+    private func menuList() -> NSView {
+        let line = { (index: Int, title: String, attention: SessionAttention) in
+            MenuSessionLine(
+                sessionID: "claude:session-\(index)", attention: attention, phase: .waitingForUser, title: title,
+                isEnabled: true)
+        }
+        var lines = (0..<10).map { line($0, "Session \($0 + 1)", $0 % 2 == 0 ? .needsPerson : .done) }
+        lines[2] = MenuSessionLine(
+            sessionID: "claude:session-2", attention: .needsPerson, phase: .terminalClosed,
+            title: "Документация проекта — terminal closed; end its agent…", isEnabled: true, leadsToQuestion: true)
+        lines[3] = MenuSessionLine(
+            sessionID: "claude:session-3", attention: .needsPerson, phase: .terminalClosed,
+            title: "Left behind — terminal closed, nothing here can end it", isEnabled: false)
+        let list = MenuSessionListView(
+            lines: lines, images: lines.map { StatusMenu.mark(for: $0.attention) }, visibleCount: 8)
+        list.rows[1].isHovered = true
+        return list
+    }
+
     private func menuPiece(_ line: NSView) -> NSView {
         let backdrop = NSVisualEffectView(frame: line.frame)
         backdrop.material = .menu

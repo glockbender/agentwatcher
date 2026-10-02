@@ -126,7 +126,8 @@ struct Footnote: View {
     }
 
     var body: some View {
-        Text(text).frame(maxWidth: .infinity, alignment: .leading)
+        // A form's footer sets its wrapped lines to the trailing edge; a note reads from the left.
+        Text(text).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
