@@ -12,7 +12,12 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: macos-26
+    # Both systems the app is used on: they lay out the same windows differently.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 
