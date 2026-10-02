@@ -338,6 +338,54 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertEqual(host.calls, [])
     }
 
+    /// Greyed, but still read: on the menu's own material the system's colour for a disabled
+    /// control all but vanished — the owner could barely make the line out. Its text stands
+    /// from the background at least half as far as an ordinary line's.
+    func testAGreyedLineIsStillReadable() throws {
+        let frame = NSRect(x: 0, y: 0, width: 300, height: MenuSessionListView.lineHeight)
+        let line = { (isEnabled: Bool) in
+            MenuSessionLine(
+                sessionID: "claude:session-0", attention: .needsPerson, phase: .terminalClosed,
+                title: "Left behind — terminal closed", isEnabled: isEnabled)
+        }
+
+        let ordinary = try textContrast(of: MenuSessionRowView(line: line(true), image: nil, frame: frame))
+        let greyed = try textContrast(of: MenuSessionRowView(line: line(false), image: nil, frame: frame))
+
+        XCTAssertLessThan(greyed, ordinary, "a greyed line has to look greyed")
+        XCTAssertGreaterThanOrEqual(greyed / ordinary, 0.5, "greyed \(greyed) against ordinary \(ordinary)")
+    }
+
+    /// How far the brightest pixel of a line's text stands from its background, drawn in the
+    /// dark appearance on a menu's grey.
+    private func textContrast(of row: MenuSessionRowView) throws -> CGFloat {
+        let scale = 2
+        let bitmap = try XCTUnwrap(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: Int(row.bounds.width) * scale,
+                pixelsHigh: Int(row.bounds.height) * scale, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        bitmap.size = row.bounds.size
+        let background: CGFloat = 0.2
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        NSColor(white: background, alpha: 1).setFill()
+        row.bounds.fill()
+        try XCTUnwrap(NSAppearance(named: .darkAqua)).performAsCurrentDrawingAppearance {
+            row.draw(row.bounds)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        var brightest: CGFloat = 0
+        for x in 0..<bitmap.pixelsWide {
+            for y in 0..<bitmap.pixelsHigh {
+                if let colour = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) {
+                    brightest = max(brightest, abs(colour.brightnessComponent - background))
+                }
+            }
+        }
+        return brightest
+    }
+
     /// The mark is what tells the states apart, so it has to be drawn: a palette given one
     /// colour paints the mark the colour of its disc, and all four lines showed a plain dot.
     func testEveryLinesMarkIsDrawnInsideItsDisc() throws {

@@ -191,8 +191,10 @@ final class MenuSessionRowView: NSView {
             NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 0), xRadius: 4, yRadius: 4).fill()
         }
         let font = NSFont.menuFont(ofSize: 0)
+        // Secondary, not the disabled control colour: on the menu's own material that one all
+        // but vanished, and a greyed line still says why it cannot be chosen.
         let colour: NSColor =
-            lit ? .selectedMenuItemTextColor : line.isEnabled ? .labelColor : .disabledControlTextColor
+            lit ? .selectedMenuItemTextColor : line.isEnabled ? .labelColor : .secondaryLabelColor
         // Where the probe for the choice lines put it, beside the system's own lines.
         let textY = ((bounds.height - font.capHeight) / 2 - 3).rounded()
         if let image {
