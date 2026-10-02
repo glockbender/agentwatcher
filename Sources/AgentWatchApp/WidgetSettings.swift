@@ -121,6 +121,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let menuSessionsBeforeScrolling = "menuSessionsBeforeScrolling"
         static let sessionOrder = "sessionOrder"
         static let sessionBlockOrder = "sessionBlockOrder"
+        static let showsWidget = "showsWidget"
+        static let showsFullScreenDot = "showsFullScreenDot"
     }
 
     /// Something waiting for the person, and something finished for them to look at: the two
@@ -151,6 +153,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.menuSessionsBeforeScrolling: .number(Double(Self.defaultMenuSessionsBeforeScrolling)),
             Key.sessionOrder: .string(SessionOrder.arrival.rawValue),
             Key.sessionBlockOrder: .array(SessionBlock.defaultOrder.map { .string($0.rawValue) }),
+            Key.showsWidget: .bool(true),
+            Key.showsFullScreenDot: .bool(true),
         ]
     }
 
@@ -254,6 +258,27 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     func setMenuBarIconStyle(_ style: MenuBarIconStyle) {
         preferences.set(style.rawValue, forKey: Key.menuBarIconStyle)
+        onChange?(.menuBarIcon)
+    }
+
+    /// Whether the widget was on screen when it was last shown or hidden, so the next launch
+    /// opens it the same way. Shown on a fresh install: the empty widget is where the first
+    /// launch offers `Connect Agent →`.
+    var showsWidget: Bool {
+        preferences.flag(forKey: Key.showsWidget) ?? true
+    }
+
+    func setShowsWidget(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsWidget)
+    }
+
+    /// Whether a full-screen display gets the dot that stands in for the hidden menu bar.
+    var showsFullScreenDot: Bool {
+        preferences.flag(forKey: Key.showsFullScreenDot) ?? true
+    }
+
+    func setShowsFullScreenDot(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsFullScreenDot)
         onChange?(.menuBarIcon)
     }
 

@@ -29,16 +29,6 @@ enum MenuBarSphereMetrics {
     static let highlightCentre = CGPoint(x: -0.36, y: 0.44)
     static let highlightRadius: CGFloat = 0.32
     static let highlightStrength: CGFloat = 0.95
-    /// The halo around the sphere, in the colour of the most important state it holds.
-    static let glowRadius: CGFloat = 2.5
-    static let glowOpacity: Float = 0.6
-    /// While anything needs a person the halo breathes between these, and the sphere itself
-    /// never fades: a glow that swells and settles, not a lamp that blinks. How long a breath
-    /// takes, how far the colours sway and for how long, and whether any of it happens, are
-    /// the theme's (`WidgetTheme.Sphere`).
-    static let glowBreath: ClosedRange<Float> = 0.3...0.95
-    /// When a count changes the sphere swells once, this much larger, and settles.
-    static let swellScale: CGFloat = 1.08
     /// The line an empty sphere is drawn with.
     static let emptyLineWidth: CGFloat = 1.5
 }

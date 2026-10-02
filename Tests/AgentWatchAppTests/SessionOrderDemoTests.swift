@@ -6,6 +6,7 @@ import XCTest
 /// The made-up list the settings window plays. It has to be worth watching: a loop that
 /// returns to its start, a block for every session kind, and movement exactly in the orders
 /// that move rows.
+@MainActor
 final class SessionOrderDemoTests: XCTestCase {
     /// Played forever, so the last step has to leave the list where the first began.
     func testTheScriptEndsWhereItBegan() {

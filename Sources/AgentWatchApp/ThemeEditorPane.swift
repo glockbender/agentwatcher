@@ -55,6 +55,11 @@ struct ThemeEditorPane: View {
                     ColorPicker(role.name, selection: colour(look.color(role)) { $0.setColor($1, for: role) })
                 }
             }
+            Section {
+                PageLink(title: "Timing", detail: "Widget, menu bar, full-screen dot") { model.go(.timing) }
+            } footer: {
+                Footnote("How long things take and how far they fade. The same in light and dark.")
+            }
         }
     }
 
@@ -215,15 +220,16 @@ private struct LampRow: View {
 }
 
 /// Seconds for one full animation, out and back, with the number beside it.
-private struct CycleSlider: View {
+struct CycleSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     var unit = "s"
+    var format = "%.1f"
 
     var body: some View {
         HStack(spacing: 4) {
             Slider(value: $value, in: range).frame(width: 64)
-            Text(String(format: "%.1f \(unit)", value))
+            Text(String(format: "\(format) \(unit)", value))
                 .font(.caption.monospacedDigit())
                 .frame(width: 38, alignment: .leading)
         }
@@ -394,11 +400,38 @@ private struct SphereSection: View {
             }
             LabeledContent("Swells once when a count changes") {
                 HStack {
+                    CycleSlider(
+                        value: field(\.swellScale), range: WidgetTheme.Sphere.swellScaleRange, unit: "×", format: "%.2f"
+                    )
+                    .help("How much larger it gets.")
+                    .disabled(!sphere.swell)
                     CycleSlider(value: field(\.swellSeconds), range: WidgetTheme.Sphere.swellSecondsRange)
                         .help("How long the swell takes.")
                         .disabled(!sphere.swell)
                     Toggle("", isOn: field(\.swell)).labelsHidden().toggleStyle(.switch)
                 }
+            }
+            LabeledContent("Halo size and strength") {
+                HStack {
+                    CycleSlider(value: field(\.haloRadius), range: WidgetTheme.Sphere.haloRadiusRange, unit: "pt")
+                        .help("How far the halo reaches.")
+                    CycleSlider(
+                        value: field(\.haloOpacity), range: WidgetTheme.Sphere.fractionRange, unit: "", format: "%.2f"
+                    )
+                    .help("How strong the halo is while it holds still.")
+                }
+                .disabled(!sphere.halo)
+            }
+            LabeledContent("Halo breathes between") {
+                HStack {
+                    CycleSlider(
+                        value: field(\.haloBreathLow), range: WidgetTheme.Sphere.fractionRange, unit: "", format: "%.2f"
+                    )
+                    CycleSlider(
+                        value: field(\.haloBreathHigh), range: WidgetTheme.Sphere.fractionRange, unit: "",
+                        format: "%.2f")
+                }
+                .disabled(!sphere.halo || !sphere.haloBreathes)
             }
         } header: {
             Heading(title: "Sphere", hint: "The Sphere icon's movements. Its colours are the states' above.")

@@ -293,8 +293,8 @@ final class MenuBarIconView: NSView {
     private func halo(_ target: CALayer, colour: NSColor, breathing: Bool, period: TimeInterval, in size: CGSize) {
         target.shadowColor = colour.cgColor
         target.shadowOffset = .zero
-        target.shadowRadius = MenuBarSphereMetrics.glowRadius
-        target.shadowOpacity = MenuBarSphereMetrics.glowOpacity
+        target.shadowRadius = sphereMotion.haloRadius
+        target.shadowOpacity = Float(sphereMotion.haloOpacity)
         let side = MenuBarSphereMetrics.diameter
         target.shadowPath = CGPath(
             ellipseIn: CGRect(
@@ -305,8 +305,10 @@ final class MenuBarIconView: NSView {
             return
         }
         let animation = CABasicAnimation(keyPath: "shadowOpacity")
-        animation.fromValue = MenuBarSphereMetrics.glowBreath.lowerBound
-        animation.toValue = MenuBarSphereMetrics.glowBreath.upperBound
+        // The halo breathes and the sphere itself never fades: a glow that swells and settles,
+        // not a lamp that blinks.
+        animation.fromValue = sphereMotion.haloBreathLow
+        animation.toValue = sphereMotion.haloBreathHigh
         target.add(onTheClock(animation, period: period), forKey: Self.breathKey)
     }
 
@@ -321,7 +323,7 @@ final class MenuBarIconView: NSView {
     /// Once, when a count changes: a little larger and brighter, then back.
     private func swell(_ target: CALayer, over seconds: TimeInterval) {
         let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-        scale.values = [1, MenuBarSphereMetrics.swellScale, 1]
+        scale.values = [1, sphereMotion.swellScale, 1]
         let brightness = CAKeyframeAnimation(keyPath: "shadowRadius")
         brightness.values = [target.shadowRadius, target.shadowRadius * 2, target.shadowRadius]
         let group = CAAnimationGroup()

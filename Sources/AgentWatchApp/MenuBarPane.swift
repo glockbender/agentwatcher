@@ -46,7 +46,22 @@ struct MenuBarPane: View {
                         + "so a session is chosen with the pointer."
                 )
             }
+            Section {
+                Toggle("Show a dot on full-screen displays", isOn: showsDot)
+            } footer: {
+                Footnote(
+                    "The menu bar hides in full screen. A small dot in a top corner shows when a session needs you "
+                        + "or is working, in its state's colour, and steps aside while the menu bar is shown. Its "
+                        + "size and corner are the theme's timing.")
+            }
         }
+    }
+
+    private var showsDot: Binding<Bool> {
+        Binding(
+            get: { model.settings.showsFullScreenDot },
+            set: { on in model.update { model.settings.setShowsFullScreenDot(on) } }
+        )
     }
 
     private var iconStyle: Binding<MenuBarIconStyle> {

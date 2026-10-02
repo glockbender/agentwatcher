@@ -365,6 +365,17 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(WidgetSettingsStore(preferences: preferences).menuBarIconAttentions, [.done])
     }
 
+    /// The empty widget is where a first launch offers to connect an agent, so a fresh install
+    /// shows it; after that, the next launch keeps it as it was left.
+    func testTheWidgetIsShownOnAFreshInstallAndThenAsItWasLeft() throws {
+        let preferences = try isolatedPreferences()
+        XCTAssertTrue(WidgetSettingsStore(preferences: preferences).showsWidget)
+
+        WidgetSettingsStore(preferences: preferences).setShowsWidget(false)
+
+        XCTAssertFalse(WidgetSettingsStore(preferences: preferences).showsWidget)
+    }
+
     private func makeStore() throws -> WidgetSettingsStore {
         WidgetSettingsStore(preferences: try isolatedPreferences())
     }

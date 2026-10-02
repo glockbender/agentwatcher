@@ -27,13 +27,13 @@ struct WidgetBackground: Hashable {
 
     static let defaultBackground = WidgetBackground(color: NSColor(sRGB: "#006996"))
 
-    /// The two neutral backgrounds: what the text on glass is drawn for in dark and in light
-    /// mode (`WidgetMaterial.textBackground`).
-    static let graphite = WidgetBackground(color: NSColor(calibratedRed: 0.13, green: 0.14, blue: 0.16, alpha: 1))
-    static let pearl = WidgetBackground(color: NSColor(calibratedRed: 0.93, green: 0.95, blue: 0.98, alpha: 1))
+    /// The built-in theme's two neutral backgrounds: what the text on glass is drawn for in dark
+    /// and in light mode (`WidgetMaterial.textBackground`).
+    static let graphite = WidgetBackground(color: WidgetTheme.standardColor(.glassDark))
+    static let pearl = WidgetBackground(color: WidgetTheme.standardColor(.glassLight))
 
-    var foregroundColor: NSColor {
-        isLight ? Self.darkText : NSColor(calibratedWhite: 1, alpha: 1)
+    @MainActor var foregroundColor: NSColor {
+        isLight ? ThemeInUse.look.color(.ink) : .white
     }
 
     /// The appearance AppKit is to draw controls on this background in — the bezel of a row's
@@ -43,7 +43,9 @@ struct WidgetBackground: Hashable {
         NSAppearance(named: isLight ? .aqua : .darkAqua)
     }
 
-    private static let darkText = NSColor(calibratedRed: 0.10, green: 0.12, blue: 0.15, alpha: 1)
+    /// The built-in theme's text on a light background, which the choice of dark or white text
+    /// is made against: a theme's own ink does not move where that line falls.
+    private static let darkText = WidgetTheme.standardColor(.ink)
 
     /// Whether dark text stands out from this colour more than white does.
     ///
@@ -74,14 +76,13 @@ struct WidgetBackground: Hashable {
 
     /// The wash under a hovered row. Faint on purpose: it answers "which row am I on"
     /// without competing with the lamp for attention.
-    var hoverColor: NSColor {
-        foregroundColor.withAlphaComponent(isLight ? 0.08 : 0.12)
+    @MainActor var hoverColor: NSColor {
+        let timing = ThemeInUse.timing.widget
+        return foregroundColor.withAlphaComponent(isLight ? timing.hoverWashLight : timing.hoverWashDark)
     }
 
-    var secondaryForegroundColor: NSColor {
-        isLight
-            ? NSColor(calibratedRed: 0.29, green: 0.33, blue: 0.38, alpha: 1)
-            : NSColor(calibratedWhite: 1, alpha: 0.68)
+    @MainActor var secondaryForegroundColor: NSColor {
+        ThemeInUse.look.color(isLight ? .inkSecondaryOnLight : .inkSecondaryOnDark)
     }
 
     /// The marker for a session the app has stopped being sure about.
@@ -91,10 +92,8 @@ struct WidgetBackground: Hashable {
     /// triangle beside the lamp's disc, so the colour is not carrying the meaning alone —
     /// which matters here more than anywhere, because `systemYellow` is invisible on a light
     /// background.
-    var warningColor: NSColor {
-        isLight
-            ? NSColor(calibratedRed: 0.70, green: 0.44, blue: 0.02, alpha: 1)
-            : NSColor(calibratedRed: 1.00, green: 0.78, blue: 0.29, alpha: 1)
+    @MainActor var warningColor: NSColor {
+        ThemeInUse.look.color(isLight ? .warningOnLight : .warningOnDark)
     }
 }
 
@@ -140,10 +139,10 @@ enum WidgetMaterial: String, CaseIterable {
     /// What the widget's text is drawn for on this material. On glass the desktop, not the
     /// theme's colour, is behind the text, so the text follows light and dark mode as the Dock's
     /// labels do.
-    func textBackground(for themeBackground: WidgetBackground, dark: Bool) -> WidgetBackground {
+    func textBackground(for look: WidgetTheme.Look, dark: Bool) -> WidgetBackground {
         guard needsLiquidGlass else {
-            return themeBackground
+            return look.widgetBackground
         }
-        return dark ? .graphite : .pearl
+        return WidgetBackground(custom: look.color(dark ? .glassDark : .glassLight)) ?? (dark ? .graphite : .pearl)
     }
 }

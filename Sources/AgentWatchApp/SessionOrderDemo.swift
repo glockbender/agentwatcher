@@ -16,7 +16,7 @@ struct SessionOrderDemo {
     private(set) var step = 0
 
     /// How far the demo's clock moves each step. Also what the window waits between steps.
-    static let stepInterval: TimeInterval = 2
+    @MainActor static var stepInterval: TimeInterval { ThemeInUse.timing.widget.orderExampleStep }
 
     /// Who changes, and into what — eight steps that bring every session back where it began.
     static let script: [(index: Int, phase: SessionPhase)] = [
@@ -46,7 +46,7 @@ struct SessionOrderDemo {
 
     /// The next step, and the clock moves on with it: the session that changed is the one
     /// heard from last.
-    mutating func advance() {
+    @MainActor mutating func advance() {
         let (index, phase) = Self.script[step % Self.script.count]
         now += Self.stepInterval
         sessions[index].phase = phase

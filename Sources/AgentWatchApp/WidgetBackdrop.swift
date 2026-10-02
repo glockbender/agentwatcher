@@ -97,11 +97,12 @@ private func makeFrost(cornerRadius: CGFloat, tint: NSColor?, opacity: CGFloat) 
     return frost
 }
 
-/// How much of the theme's colour the glass takes: half at full opacity, a quarter on clear
-/// glass, and less as the opacity slider goes down, so lower is clearer glass. A hint, as the
-/// Dock's, not a coat of paint — the text on glass is not drawn for this colour.
+/// How much of the theme's colour the glass takes: the theme's glass tint at full opacity, half
+/// that on clear glass, and less as the opacity slider goes down, so lower is clearer glass. A
+/// hint, as the Dock's, not a coat of paint — the text on glass is not drawn for this colour.
+@MainActor
 func glassTint(_ colour: NSColor, opacity: CGFloat, clear: Bool = false) -> NSColor {
-    colour.withAlphaComponent(opacity * (clear ? 0.25 : 0.5))
+    colour.withAlphaComponent(opacity * ThemeInUse.timing.widget.glassTint * (clear ? 0.5 : 1))
 }
 
 /// A backdrop of `material`, or of the theme in use's when none is named.
