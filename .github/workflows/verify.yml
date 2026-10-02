@@ -35,7 +35,7 @@ jobs:
       - name: Verify
         run: task verify
 
-      # Diagnostic, for this branch only: the settings pages as macOS 26 draws them.
+      # Diagnostic, for this branch only: the settings pages as each system draws them.
       - name: Draw the settings pages
         if: always()
         run: |
@@ -46,5 +46,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: settings-render-macos-26
+          name: settings-render-${{ matrix.os }}
           path: ${{ runner.temp }}/render
