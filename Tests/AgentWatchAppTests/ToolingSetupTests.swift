@@ -47,16 +47,16 @@ final class ToolingSetupTests: XCTestCase {
         defer { controller.window?.orderOut(nil) }
         let window = try XCTUnwrap(controller.window)
         controller.present()
-        let moved = NSPoint(x: window.frame.minX + 40, y: window.frame.minY - 30)
+        // Down to the Dock and no further: macOS 26 moves a window shown under the Dock back
+        // above it, and on the CI machine's 768-point screen this one has 35 points to spare.
+        let visible = try XCTUnwrap(window.screen?.visibleFrame)
+        let moved = NSPoint(x: window.frame.minX + 40, y: visible.minY)
         window.setFrameOrigin(moved)
         window.orderOut(nil)
 
         controller.present()
 
-        XCTAssertEqual(
-            window.frame.origin, moved,
-            "window \(window.frame), screen \(String(describing: window.screen?.frame)), "
-                + "visible \(String(describing: window.screen?.visibleFrame))")
+        XCTAssertEqual(window.frame.origin, moved)
     }
 
     /// The sender's path is an internal detail until the entries name this very copy of the

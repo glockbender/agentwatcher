@@ -22,18 +22,9 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertTrue(controller.hasPages)
 
         controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
-        let started = Date()
         nextTurn()
-        let waited = Date().timeIntervalSince(started)
-        let visible = controller.window?.isVisible
-        let content = controller.window?.contentView.map { String(describing: type(of: $0)) }
-        let heldAtOnce = controller.hasPages
-        RunLoop.main.run(until: Date().addingTimeInterval(1))
 
-        XCTAssertFalse(
-            heldAtOnce,
-            "waited \(waited) s, visible \(String(describing: visible)), content \(String(describing: content)), "
-                + "still held a second later: \(controller.hasPages)")
+        XCTAssertFalse(controller.hasPages)
         controller.buildPages()
         XCTAssertTrue(controller.hasPages)
         XCTAssertEqual(controller.model.page, .theme)
@@ -69,9 +60,11 @@ final class SettingsWindowTests: XCTestCase {
         return (model, shortcuts)
     }
 
+    /// Ten seconds: two ran out once on the CI machine for macOS 26 and passed on the next run,
+    /// so the timeout is only a bound on a hang.
     private func nextTurn() {
         let done = expectation(description: "the main queue has run what it held")
         DispatchQueue.main.async { done.fulfill() }
-        wait(for: [done], timeout: 2)
+        wait(for: [done], timeout: 10)
     }
 }

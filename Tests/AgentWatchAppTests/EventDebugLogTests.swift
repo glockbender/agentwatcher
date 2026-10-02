@@ -150,11 +150,10 @@ final class EventDebugLogTests: XCTestCase {
         document.layoutManager?.ensureLayout(for: container)
         let clip = scroll.contentView
         XCTAssertGreaterThan(document.frame.height, clip.bounds.height * 2, "the log is not long enough to scroll")
+        // Whether the end is in view, not where the clip stops: measured on macOS 26, the clip
+        // stood 6 points past the end of a 2814-point log.
         XCTAssertEqual(
-            clip.bounds.maxY, document.frame.maxY, accuracy: 1,
-            "the window did not open at its end: clip \(clip.bounds), document \(document.frame), "
-                + "insets \(scroll.contentInsets), adjusts \(scroll.automaticallyAdjustsContentInsets), "
-                + "text inset \(document.textContainerInset), scale \(scroll.window?.backingScaleFactor ?? 0)")
+            document.visibleRect.maxY, document.bounds.maxY, accuracy: 1, "the window did not open at its end")
     }
 
     func testFailedCompactionDoesNotAllowTheFileToKeepGrowing() throws {
