@@ -72,7 +72,7 @@ struct SampleRowsPreview: NSViewRepresentable {
 
     func updateNSView(_ holder: NSView, context: Context) {
         holder.subviews.forEach { $0.removeFromSuperview() }
-        let background = look.widgetMaterial.drawn.textBackground(for: look.widgetBackground, dark: dark)
+        let background = look.widgetMaterial.drawn.textBackground(for: look, dark: dark)
         let panel = makeBackdrop(
             cornerRadius: WidgetStyle.windowCornerRadius, tint: look.widgetBackground.color,
             opacity: look.widgetOpacity, material: look.widgetMaterial)

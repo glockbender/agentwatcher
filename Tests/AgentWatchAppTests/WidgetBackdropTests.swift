@@ -12,14 +12,15 @@ final class WidgetBackdropTests: XCTestCase {
     /// On glass the desktop is behind the text, so the text follows the mode; on the others it
     /// is drawn for the theme's own colour.
     func testTextOnGlassFollowsTheModeAndElsewhereTheThemesColour() {
-        let theme = WidgetBackground(custom: NSColor(sRGB: "#006996"))!
+        let look = WidgetTheme.standard.dark
+        let theme = look.widgetBackground
         for material in [WidgetMaterial.glass, .clearGlass] {
-            XCTAssertEqual(material.textBackground(for: theme, dark: true), .graphite, material.rawValue)
-            XCTAssertEqual(material.textBackground(for: theme, dark: false), .pearl, material.rawValue)
+            XCTAssertEqual(material.textBackground(for: look, dark: true), .graphite, material.rawValue)
+            XCTAssertEqual(material.textBackground(for: look, dark: false), .pearl, material.rawValue)
         }
         for material in [WidgetMaterial.frosted, .solid] {
-            XCTAssertEqual(material.textBackground(for: theme, dark: true), theme, material.rawValue)
-            XCTAssertEqual(material.textBackground(for: theme, dark: false), theme, material.rawValue)
+            XCTAssertEqual(material.textBackground(for: look, dark: true), theme, material.rawValue)
+            XCTAssertEqual(material.textBackground(for: look, dark: false), theme, material.rawValue)
         }
     }
 

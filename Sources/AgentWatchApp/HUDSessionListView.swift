@@ -725,7 +725,10 @@ final class HUDOverflowBadge: NSView {
                     attributes: [.font: font, .foregroundColor: urgent]))
         }
         label.attributedStringValue = text
-        let border = needingYou > 0 ? urgent.withAlphaComponent(0.6) : countColor.withAlphaComponent(0.25)
+        let border =
+            needingYou > 0
+            ? urgent.withAlphaComponent(ThemeInUse.timing.widget.counterBorder)
+            : countColor.withAlphaComponent(ThemeInUse.timing.widget.counterBorderQuiet)
         layer?.borderColor = border.cgColor
     }
 

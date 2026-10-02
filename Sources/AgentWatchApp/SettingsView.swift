@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case widget, rows, order, appearance, theme, themes, menuBar, general, tooling, diagnostics
+    case widget, rows, order, appearance, theme, timing, themes, menuBar, general, tooling, diagnostics
 
     var id: String { rawValue }
 
@@ -11,7 +11,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var parent: SettingsPage {
         switch self {
         case .rows, .order: .widget
-        case .theme, .themes: .appearance
+        case .theme, .timing, .themes: .appearance
         default: self
         }
     }
@@ -25,6 +25,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .order: "Order"
         case .appearance: "Appearance"
         case .theme: "Edit Theme"
+        case .timing: "Timing"
         case .themes: "Your Themes"
         case .menuBar: "Menu Bar"
         case .general: "General"
@@ -36,7 +37,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .widget, .rows, .order: "rectangle.split.3x1"
-        case .appearance, .theme, .themes: "paintpalette"
+        case .appearance, .theme, .timing, .themes: "paintpalette"
         case .menuBar: "menubar.rectangle"
         case .general: "gearshape"
         case .tooling: "wrench.and.screwdriver"
@@ -66,6 +67,7 @@ struct SettingsView: View {
                 case .order: OrderPane(model: model)
                 case .appearance: AppearancePane(model: model)
                 case .theme: ThemeEditorPane(model: model)
+                case .timing: TimingPane(model: model)
                 case .themes: ThemesPane(model: model)
                 case .menuBar: MenuBarPane(model: model)
                 case .general: GeneralPane(model: model)

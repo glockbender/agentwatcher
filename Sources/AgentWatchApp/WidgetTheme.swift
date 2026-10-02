@@ -12,11 +12,13 @@ struct WidgetTheme: Codable, Equatable {
     var name: String
     var light: Look
     var dark: Look
+    var timing: Timing
 
-    init(name: String, light: Look, dark: Look) {
+    init(name: String, light: Look, dark: Look, timing: Timing = Timing()) {
         self.name = name
         self.light = light
         self.dark = dark
+        self.timing = timing
     }
 
     /// A look is filled in from the built-in theme's look of the same mode.
@@ -29,6 +31,7 @@ struct WidgetTheme: Codable, Equatable {
         dark =
             try values.contains(.dark)
             ? Look(from: values.superDecoder(forKey: .dark), defaults: Self.standard.dark) : Self.standard.dark
+        timing = try values.decode(.timing, or: Timing())
     }
 
     struct Look: Codable, Equatable {
@@ -165,9 +168,15 @@ struct WidgetTheme: Codable, Equatable {
         var sway = true
         var swayDegrees: Double = 35
         var swayCycle: Double = 7
-        /// One swell when a count changes.
+        /// One swell when a count changes, and how much larger it gets.
         var swell = true
         var swellSeconds: Double = 1.6
+        var swellScale: Double = 1.08
+        /// The halo's size and strength, and how far it breathes.
+        var haloRadius: Double = 2.5
+        var haloOpacity: Double = 0.6
+        var haloBreathLow: Double = 0.3
+        var haloBreathHigh: Double = 0.95
 
         init() {}
 
@@ -182,12 +191,20 @@ struct WidgetTheme: Codable, Equatable {
             swayCycle = try values.decode(.swayCycle, or: standard.swayCycle)
             swell = try values.decode(.swell, or: standard.swell)
             swellSeconds = try values.decode(.swellSeconds, or: standard.swellSeconds)
+            swellScale = try values.decode(.swellScale, or: standard.swellScale)
+            haloRadius = try values.decode(.haloRadius, or: standard.haloRadius)
+            haloOpacity = try values.decode(.haloOpacity, or: standard.haloOpacity)
+            haloBreathLow = try values.decode(.haloBreathLow, or: standard.haloBreathLow)
+            haloBreathHigh = try values.decode(.haloBreathHigh, or: standard.haloBreathHigh)
         }
 
         static let haloCycleRange: ClosedRange<Double> = 1...10
         static let swayDegreesRange: ClosedRange<Double> = 5...90
         static let swayCycleRange: ClosedRange<Double> = 2...20
         static let swellSecondsRange: ClosedRange<Double> = 0.4...4
+        static let swellScaleRange: ClosedRange<Double> = 1...1.3
+        static let haloRadiusRange: ClosedRange<Double> = 0.5...6
+        static let fractionRange: ClosedRange<Double> = 0...1
 
         /// Every number held inside the range the editor offers, whatever a file says.
         var clamped: Sphere {
@@ -196,6 +213,11 @@ struct WidgetTheme: Codable, Equatable {
             sphere.swayDegrees = swayDegrees.clamped(to: Self.swayDegreesRange, or: Sphere().swayDegrees)
             sphere.swayCycle = swayCycle.clamped(to: Self.swayCycleRange, or: Sphere().swayCycle)
             sphere.swellSeconds = swellSeconds.clamped(to: Self.swellSecondsRange, or: Sphere().swellSeconds)
+            sphere.swellScale = swellScale.clamped(to: Self.swellScaleRange, or: Sphere().swellScale)
+            sphere.haloRadius = haloRadius.clamped(to: Self.haloRadiusRange, or: Sphere().haloRadius)
+            sphere.haloOpacity = haloOpacity.clamped(to: Self.fractionRange, or: Sphere().haloOpacity)
+            sphere.haloBreathLow = haloBreathLow.clamped(to: Self.fractionRange, or: Sphere().haloBreathLow)
+            sphere.haloBreathHigh = haloBreathHigh.clamped(to: Self.fractionRange, or: Sphere().haloBreathHigh)
             return sphere
         }
     }
@@ -228,12 +250,25 @@ struct WidgetTheme: Codable, Equatable {
         case timerQuiet, timerStale
         /// The outline that flashes when the widget is shown.
         case highlight
+        /// Text on a light background; secondary text on a light and on a dark one.
+        case ink, inkSecondaryOnLight, inkSecondaryOnDark
+        /// The mark on a session the app is no longer sure about, on a light and a dark background.
+        case warningOnLight, warningOnDark
+        /// What text on glass is drawn for, in light and in dark mode.
+        case glassLight, glassDark
 
         var name: String {
             switch self {
             case .timerQuiet: "Timer, quiet"
             case .timerStale: "Timer, silent too long"
             case .highlight: "Highlight outline"
+            case .ink: "Text on light"
+            case .inkSecondaryOnLight: "Secondary text on light"
+            case .inkSecondaryOnDark: "Secondary text on dark"
+            case .warningOnLight: "Warning on light"
+            case .warningOnDark: "Warning on dark"
+            case .glassLight: "Glass, light mode"
+            case .glassDark: "Glass, dark mode"
             }
         }
     }
@@ -242,7 +277,19 @@ struct WidgetTheme: Codable, Equatable {
         Role.timerQuiet.rawValue: "#FFD60A",
         Role.timerStale.rawValue: "#FF9F0A",
         Role.highlight.rawValue: "#FF9F0A",
+        Role.ink.rawValue: "#222933",
+        Role.inkSecondaryOnLight.rawValue: "#5C6774",
+        Role.inkSecondaryOnDark.rawValue: "#FFFFFFAD",
+        Role.warningOnLight.rawValue: "#C18300",
+        Role.warningOnDark.rawValue: "#FFD05B",
+        Role.glassLight.rawValue: "#F1F5FB",
+        Role.glassDark.rawValue: "#2C3036",
     ]
+
+    /// The built-in theme's colour for `role`, opaque.
+    static func standardColor(_ role: Role) -> NSColor {
+        NSColor(sRGB: colors[role.rawValue] ?? "#808080")
+    }
 
     /// Where a state's colour comes from.
     enum ColourSource: Hashable {
@@ -312,7 +359,7 @@ extension WidgetTheme.Look {
     }
 
     mutating func setColor(_ colour: NSColor, for role: WidgetTheme.Role) {
-        colors[role.rawValue] = colour.srgbHex ?? colors[role.rawValue]
+        colors[role.rawValue] = colour.srgbHexWithAlpha ?? colors[role.rawValue]
     }
 
     /// The state's colour as it is drawn: its lamp's when it follows one, its own otherwise.
@@ -553,7 +600,7 @@ enum ThemeMode: String, CaseIterable {
 extension KeyedDecodingContainer {
     /// The value under `key`, or `fallback` when the file leaves it out. A value of the wrong
     /// kind still throws: a guess at what a mistyped field meant would be drawn as if chosen.
-    fileprivate func decode<Value: Decodable>(_ key: Key, or fallback: Value) throws -> Value {
+    func decode<Value: Decodable>(_ key: Key, or fallback: Value) throws -> Value {
         try decodeIfPresent(Value.self, forKey: key) ?? fallback
     }
 }

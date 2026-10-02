@@ -21,8 +21,9 @@ enum MenuBarIconMetrics {
     /// merges into the mark beside it. At 50 % it reads as a dark collar instead of a
     /// hairline.
     static let knockout: CGFloat = 10
-    /// What an empty cell is drawn at. A zero has to hold its place without asking to be read.
-    static let emptyCellAlpha: CGFloat = 0.4
+    /// What an empty cell is drawn at, the theme's: a zero has to hold its place without asking
+    /// to be read.
+    @MainActor static var emptyCellAlpha: CGFloat { ThemeInUse.timing.menuBar.emptyMark }
     /// How much wider than its drawing the status item is made.
     ///
     /// Left to itself `NSStatusItem` adds 16 pt around an image — measured, and constant from
@@ -98,14 +99,12 @@ struct MenuBarIconCell: Equatable {
 }
 
 extension SessionAttention {
-    /// How far this state's cell fades at the bottom of its breath, when it breathes.
-    var breathDepth: CGFloat {
-        switch self {
-        // Deeper than working, at the same rhythm: the one that needs a person has to carry
-        // further across a glance without becoming a blink.
-        case .needsPerson: 0.65
-        case .working, .done, .quiet, .closed: 0.45
-        }
+    /// How far this state's cell fades at the bottom of its breath, when it breathes: the
+    /// theme's. Needs you goes deeper than the rest by default, at the same rhythm — it has to
+    /// carry further across a glance without becoming a blink.
+    @MainActor var breathDepth: CGFloat {
+        let menuBar = ThemeInUse.timing.menuBar
+        return self == .needsPerson ? menuBar.dimNeedsYou : menuBar.dimOthers
     }
 }
 

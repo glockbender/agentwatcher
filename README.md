@@ -73,12 +73,14 @@ in one window: **Settings…** in the menu, or ⌘, while the menu is open.
   size. A theme holds every colour
   and animation: the widget's background, material and opacity, the lamp for each state, the
   menu bar icon and the marks in the menu. **Edit Theme** changes it with live examples beside
-  each setting; the built-in theme is copied on the first change. **Your Themes** lists your own
+  each setting, and its **Timing** page sets how long things take and how far they fade; the
+  built-in theme is copied on the first change. **Your Themes** lists your own
   themes to edit, export or delete, and **Import…** adds one somebody shared.
-- **Menu Bar** — a sphere coloured by the states it shows or a count for each state, and which
-  states the menu lists.
-- **General** — showing the widget, its locks and resets, its shortcut, how long closed sessions
-  stay, reading transcripts, and updates.
+- **Menu Bar** — a sphere coloured by the states it shows or a count for each state, which
+  states the menu lists, and a dot in a corner of a full-screen display, where the menu bar is
+  hidden. The dot steps aside while the menu bar slides down.
+- **General** — showing the widget (the next launch keeps it as it was left), its locks and
+  resets, its shortcut, how long closed sessions stay, reading transcripts, and updates.
 - **Tooling** and **Diagnostics** — the agents' integrations, and the event log.
 
 ## JetBrains IDE plugin
