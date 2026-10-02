@@ -47,6 +47,41 @@ final class SettingsRenderProbe: XCTestCase {
         _ = host
     }
 
+    /// The theme page inside the window itself, at the size the window opens at: a drawing of the
+    /// page alone cannot say whether the window gives the page the width it asks for.
+    func testDrawTheWindowOnTheThemePage() throws {
+        let requested = ProcessInfo.processInfo.environment["SETTINGS_RENDER_DIR"]
+        try XCTSkipIf(requested == nil, "a drawing probe, not a check: set SETTINGS_RENDER_DIR")
+        let directory = try XCTUnwrap(requested)
+        let preferences = try isolatedPreferences()
+        let settings = WidgetSettingsStore(preferences: preferences)
+        let host = FakeAppHost()
+        let controller = SettingsWindowController(
+            themes: ThemeStore(preferences: preferences, folder: nil), settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences),
+            shortcuts: FakeShortcutRegistrar.controller(for: settings), host: host, version: nil)
+        controller.model.go(.theme)
+        controller.buildPages()
+        let window = try XCTUnwrap(controller.window)
+        let content = try XCTUnwrap(window.contentView)
+        content.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+        content.layoutSubtreeIfNeeded()
+
+        func splits(in view: NSView) -> [NSSplitView] {
+            let own = (view as? NSSplitView).map { [$0] } ?? []
+            return own + view.subviews.flatMap(splits)
+        }
+        let panes = splits(in: content).map { split in split.arrangedSubviews.map(\.frame.width) }
+        print("window \(window.frame.size), content min \(window.contentMinSize), panes \(panes)")
+        let rep = try XCTUnwrap(content.bitmapImageRepForCachingDisplay(in: content.bounds))
+        content.cacheDisplay(in: content.bounds, to: rep)
+        let url = URL(fileURLWithPath: directory).appendingPathComponent("settings-window-theme.png")
+        try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)
+        print("drew \(url.path)")
+        _ = host
+    }
+
     /// 570 points: the settings window opens 760 wide, and its sidebar takes about 190 of them.
     private func draw(_ root: AnyView, height: CGFloat, named name: String, in directory: String) throws {
         let size = NSSize(width: 570, height: height)
