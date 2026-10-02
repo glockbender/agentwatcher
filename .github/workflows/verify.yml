@@ -23,6 +23,7 @@ jobs:
 
       - name: Show the toolchain
         run: |
+          sw_vers
           swift --version
           xcode-select -p
           swift format --version
