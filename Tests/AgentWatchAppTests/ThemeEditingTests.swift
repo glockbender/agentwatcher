@@ -85,9 +85,9 @@ final class ThemeEditingTests: XCTestCase {
         XCTAssertEqual(themes.customThemes, [])
     }
 
-    /// The editor fits the settings window as it opens: 760 points, of which the sidebar
-    /// takes about 190. One table of six columns for the states asked for 640, and the page
-    /// cut off the lamps' samples on the right.
+    /// The editor fits the settings window at the size it opens at: 760 points, of which the
+    /// sidebar takes about 190. A wider page widens the window rather than being cut off
+    /// (measured: 811 for a page that asked for 640), so this holds the window to its size.
     func testTheEditorFitsTheWindowAsItOpens() throws {
         let (model, themes) = try makeModel()
         try themes.create(named: "Wide")
@@ -108,7 +108,18 @@ final class ThemeEditingTests: XCTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(1))
 
         // Content wider than it is given widens the view to fit rather than wrapping.
-        XCTAssertEqual(hosting.frame.width, 570, "the editor needs \(hosting.frame.width) points")
+        XCTAssertEqual(hosting.frame.width, Self.editorWidth, "the editor needs \(hosting.frame.width) points")
+    }
+
+    /// macOS 26 draws colour wells and pop-up buttons wider: there the editor asks for 592,
+    /// and the window opens at 790 instead of 760.
+    private static var editorWidth: CGFloat {
+        #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                return 592
+            }
+        #endif
+        return 570
     }
 
     /// A change that changes nothing — Return in the name field, the colour a well already

@@ -60,9 +60,11 @@ final class SettingsWindowTests: XCTestCase {
         return (model, shortcuts)
     }
 
+    /// Ten seconds: two ran out once on the CI machine for macOS 26 and passed on the next run,
+    /// so the timeout is only a bound on a hang.
     private func nextTurn() {
         let done = expectation(description: "the main queue has run what it held")
         DispatchQueue.main.async { done.fulfill() }
-        wait(for: [done], timeout: 2)
+        wait(for: [done], timeout: 10)
     }
 }
