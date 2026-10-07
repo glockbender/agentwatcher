@@ -29,7 +29,8 @@ GROUPS = (
 SUBJECTS = tuple(subject for _, subjects in GROUPS for subject in subjects)
 NOT_RECORDED = "версия не записана"
 # A pre-release keeps its tag: 0.162.0-alpha.2 is not 0.162.0.
-VERSION = r"\d+(?:\.\d+)+(?:-[A-Za-z]+(?:\.\d+)*)?"
+PRE_RELEASE = r"(?:-[A-Za-z]+(?:\.\d+)*)?"
+VERSION = r"\d+(?:\.\d+)+" + PRE_RELEASE
 
 DOC_MARKER = re.compile(r"\(замер: ([^)]*)\)")
 # A statement that something was measured. A plan to measure («замерить») and a negative («не
@@ -41,7 +42,7 @@ CLAIM = re.compile(
 )
 CODE_MARKER = re.compile(
     r"[Mm]easured on (" + "|".join(re.escape(s) for s in SUBJECTS) + r")\b"
-    r"((?: \d+(?:\.\d+)*)?(?:(?:, | and |, and )" + VERSION + r")*)"
+    r"((?: \d+(?:\.\d+)*" + PRE_RELEASE + r")?(?:(?:, | and |, and )" + VERSION + r")*)"
 )
 CHECKED_ON = re.compile(r"^\*\*Checked on:\*\* (.+)$")
 SUBJECT_AND_VERSION = re.compile("(" + "|".join(re.escape(s) for s in SUBJECTS) + ") (" + VERSION + ")")
@@ -79,7 +80,7 @@ def parse_doc_marker(body: str) -> list[tuple[str, str]] | None:
 
 
 def parse_code_marker(match: re.Match) -> list[tuple[str, str]]:
-    versions = re.findall(r"\d+(?:\.\d+)*", match.group(2))
+    versions = re.findall(r"\d+(?:\.\d+)*" + PRE_RELEASE, match.group(2))
     return [(match.group(1), v) for v in versions] or [(match.group(1), NOT_RECORDED)]
 
 

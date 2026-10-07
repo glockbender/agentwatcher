@@ -101,6 +101,12 @@ class CodeTests(unittest.TestCase):
         rows, _ = collect({"Sources/A/B.swift": "// Measured on macOS 15.3.1 and 19 sessions.\n"})
         self.assertEqual([(r[0], r[1]) for r in rows], [("macOS", "15.3.1")])
 
+    def test_a_comment_keeps_the_pre_release_tag(self):
+        rows, _ = collect({"Sources/A/B.swift": "// Measured on Codex 0.162.0-alpha.2 and 0.163.0-beta: x.\n"})
+        self.assertEqual(
+            [(r[0], r[1]) for r in rows], [("Codex", "0.162.0-alpha.2"), ("Codex", "0.163.0-beta")]
+        )
+
     def test_measured_on_something_else_is_prose(self):
         rows, _ = collect({"Sources/A/B.swift": "// Measured on a copy with 19 sessions.\n"})
         self.assertEqual(rows, [])
