@@ -107,7 +107,9 @@ counter added to the app later is not on your saved list until you tick it.
 `/reload-plugins` in the sessions that are open, or start new ones. In **Settings… → Widget →
 Rows**, open the menu beside **Counters** and tick **MCP server questions**.
 
-**Checked on:** Claude Code 2.1.293.
+**Checked on:** Claude Code 2.1.293. Tested: Claude Code sends the question and its answer to a hook
+registered for them, with a test MCP server. Read in the code but not seen on a real install: the
+repaired hooks reaching the app.
 
 ## A Claude app session appears as soon as you open it
 

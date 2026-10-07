@@ -117,8 +117,8 @@ final class HookCaptureRedactorTests: XCTestCase {
             declaredEvent: "Elicitation",
             input: Data(
                 """
-                {"session_id": "38a39273-a501-496c-a3ad-e65ad3b3424a",
-                 "transcript_path": "/Users/someone/.claude/projects/p/38a39273.jsonl",
+                {"session_id": "5c1e0b7a-2d4f-4e8a-9b36-7f0a1c2d3e4f",
+                 "transcript_path": "/Users/someone/.claude/projects/p/5c1e0b7a.jsonl",
                  "cwd": "/Users/someone/project", "hook_event_name": "Elicitation",
                  "mcp_server_name": "probe", "message": "Which colour?", "mode": "form",
                  "url": "https://example.com/connect?token=abc", "elicitation_id": "e-1",
@@ -129,7 +129,7 @@ final class HookCaptureRedactorTests: XCTestCase {
             declaredEvent: "ElicitationResult",
             input: Data(
                 """
-                {"session_id": "38a39273-a501-496c-a3ad-e65ad3b3424a", "hook_event_name": "ElicitationResult",
+                {"session_id": "5c1e0b7a-2d4f-4e8a-9b36-7f0a1c2d3e4f", "hook_event_name": "ElicitationResult",
                  "mcp_server_name": "probe", "mode": "form", "action": "accept",
                  "content": {"colour": "blue"}}
                 """.utf8)
