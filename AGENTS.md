@@ -15,8 +15,8 @@
 
 Two gates, both installed by `task setup`:
 
-- **commit** — `task verify`: format, the shape of `TROUBLESHOOTING.md`, tests, debug and release
-  builds, app bundle. Does not cover `ide-plugin/`.
+- **commit** — `task verify`: format, the shape of `TROUBLESHOOTING.md`, links between documents,
+  tests, debug and release builds, app bundle. Does not cover `ide-plugin/`.
 - **push** — `task verify-all`: the above plus the IDE plugin (`task plugin-check`: build and
   tests, without staging — the staged file may be a signed release), the network probe that
   downloads a published release (`task probe-update`), and the end-to-end update
