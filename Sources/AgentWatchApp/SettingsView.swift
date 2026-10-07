@@ -16,7 +16,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         }
     }
 
-    static let sidebar: [SettingsPage] = [.widget, .appearance, .menuBar, .general, .tooling, .diagnostics]
+    static let sidebar: [SettingsPage] = [.general, .tooling, .appearance, .menuBar, .widget, .diagnostics]
 
     var title: String {
         switch self {

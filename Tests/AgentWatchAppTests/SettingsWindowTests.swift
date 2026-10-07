@@ -7,6 +7,14 @@ import XCTest
 /// The settings window as a whole: what it holds while closed, and what leaving a page ends.
 @MainActor
 final class SettingsWindowTests: XCTestCase {
+    /// The order the owner chose; Diagnostics, which they did not place, stays last.
+    func testTheSidebarListsThePagesInTheChosenOrder() {
+        XCTAssertEqual(
+            SettingsPage.sidebar.map(\.title),
+            ["General", "Tooling", "Appearance", "Menu Bar", "Widget", "Diagnostics"]
+        )
+    }
+
     /// Closed, the window holds no pages; opened again, it builds them, on the page it was on.
     func testTheSettingsWindowLetsGoOfItsPagesWhenItCloses() throws {
         let preferences = try isolatedPreferences()

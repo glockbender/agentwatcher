@@ -42,7 +42,8 @@ final class SettingsModel: ObservableObject {
     /// A page that shows themes reads their folder again, so a file dropped in or corrected
     /// there is listed, and the editor changes what the file now holds.
     /// Leaving a page also ends a recording of the shortcut started on it.
-    @Published private(set) var page: SettingsPage = .widget {
+    /// The window first opens on the sidebar's top entry, as System Settings does.
+    @Published private(set) var page: SettingsPage = SettingsPage.sidebar[0] {
         didSet {
             stopRecordingShortcut()
             if page.parent == .appearance {
