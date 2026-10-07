@@ -809,6 +809,13 @@ final class UnixSocketIngressTests: XCTestCase {
         let process = Process()
         process.executableURL = packageRootURL.appendingPathComponent(".build/debug/AgentWatchSend")
         process.arguments = arguments
+        // While a person has the debug capture switched on, this sender would record every
+        // test payload into it. A path with nothing at it keeps the capture off; set it over
+        // the caller's environment too, since that is a copy of ours and may name a real one.
+        var environment = environment ?? ProcessInfo.processInfo.environment
+        environment[DebugHookCaptureControl.directoryOverrideVariable] =
+            URL(fileURLWithPath: "/private/tmp")
+            .appendingPathComponent("agent-watch-ingress-tests-no-capture-\(UUID().uuidString)").path
         process.environment = environment
         let inputPipe = Pipe()
         let outputPipe = Pipe()
