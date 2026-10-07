@@ -243,9 +243,9 @@ final class SessionLifecycleTests: XCTestCase {
 
     // MARK: - The session mode
 
-    /// `docs/implementation-plan.md`: a missing `permission_mode` means the mode is unknown
-    /// and is never guessed. Guessing `standard` turned a session that had started in plan
-    /// mode into a working one the moment its next prompt arrived without one.
+    /// A missing `permission_mode` means the mode is unknown and is never guessed. Guessing
+    /// `standard` turned a session that had started in plan mode into a working one the moment
+    /// its next prompt arrived without one.
     func testATurnWithoutADeclaredModeKeepsTheOneAlreadyKnown() throws {
         var engine = SessionStateEngine()
         try engine.ingest(

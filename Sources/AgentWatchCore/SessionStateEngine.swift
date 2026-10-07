@@ -318,9 +318,9 @@ public struct SessionStateEngine: Sendable {
             snapshot = SessionReducer.reduce(snapshot, event: .sessionClosed(at: event.observedAt))
         case .turnStarted:
             // An event that does not state a mode keeps the one the session already knows.
-            // `docs/implementation-plan.md` says a missing `permission_mode` means the mode
-            // is unknown and is never guessed — and guessing `standard` here turned a
-            // session that had started in plan mode into a working one on its next prompt.
+            // A missing `permission_mode` means the mode is unknown and is never guessed —
+            // guessing `standard` here turned a session that had started in plan mode into a
+            // working one on its next prompt.
             snapshot = SessionReducer.reduce(
                 snapshot,
                 event: .turnStarted(mode: event.mode ?? snapshot.mode, at: event.observedAt)

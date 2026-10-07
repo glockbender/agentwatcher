@@ -215,52 +215,36 @@ Claude Code и Codex поддерживают lifecycle hooks, получающ�
 
 ## 6. Единая модель событий
 
-Claude и Codex передают похожие, но не идентичные payload. Sender сохраняет исходное событие почти
-без изменений, а нормализация выполняется внутри приложения.
+Claude и Codex передают похожие, но не идентичные payload. Отправитель передаёт приложению исходное
+имя хука и отфильтрованный payload (`HookIngressRequest`: `declaredEvent` и `payload`), а
+нормализует приложение. Через сокет проходят только поля из
+разрешённого списка ([ADR-0001](adr/0001-nothing-leading-to-a-file-crosses-the-socket.md)): в
+запросе нет prompt, stdout, пути к проекту и текста shell-команды. Идентификатора хода тоже нет —
+поле без читателя на границе процесса только добавляет поверхность.
 
-Минимальный внутренний формат может выглядеть так:
+Что во что превращается (`EventKind`). Какие из этих хуков у кого запрашиваются — в
+[agent-integration.md](agent-integration.md); нормализатор понимает больше, чем запрашивается,
+потому что событие может прийти от установки, сделанной руками или старой версией.
 
-```json
-{
-  "schema": 1,
-  "source": "claude",
-  "session_id": "abc123",
-  "event": "tool.started",
-  "observed_at": "2026-09-03T10:24:12Z",
-  "mode": "default",
-  "tool": {
-    "id": "toolu_01ABC",
-    "kind": "shell",
-    "background": false,
-    "parent_activity_id": null
-  }
-}
-```
+| Хук | Событие | Оговорки |
+|---|---|---|
+| `SessionStart` | `sessionStarted` | сброс, который он делает, и есть реакция на `/clear`; `source: fork` помечает копию |
+| `SessionEnd` | `sessionEnded` | одинаково для обоих агентов |
+| `UserPromptSubmit` | `turnStarted` | |
+| `Stop` | `turnCompleted` | несёт список работы, оставшейся после хода |
+| `StopFailure` | `turnFailed`; у Claude с `error: rate_limit` — `turnRateLimited` | ход кончился ошибкой API, а не ответом |
+| `Interrupt` | `turnInterrupted` | только Codex; сессия садится в `idle`, а не в `completed` |
+| `PreToolUse` | `activityStarted`; для `AskUserQuestion` — `userInputRequired` (выбор) | фоновый `Bash` — фоновая работа |
+| `PostToolUse` | `activityCompleted` | понимается, но не запрашивается |
+| `PostToolUseFailure`, `PermissionDenied` | `activityFailed` | |
+| `PreCompact` / `PostCompact` | `activityStarted` / `activityCompleted` | одна активность на сессию: сессия сжимает один контекст за раз |
+| `SubagentStart` / `SubagentStop` | `activityStarted` / `activityCompleted` | сабагент переживает ход |
+| `PermissionRequest` | `userInputRequired` (разрешение) | |
+| `StatusLine` | `statusUpdated` | только Claude; у Codex отклоняется |
+| `status` в `~/.claude/sessions/<pid>.json` | конец ожидания человека | не хук; только гасит ожидание, только у Claude — [ADR-0010](adr/0010-the-answer-to-a-dialog-comes-from-the-session-record.md) |
 
-Пример намеренно не содержит prompt, stdout, путь к проекту или текст shell-команды. Идентификатора
-хода в нём тоже нет: `turn_id` какое-то время передавался и никем не читался, а поле, пересекающее
-границу процесса без единого читателя, — это поверхность без выгоды. Вернуть его, когда понадобится
-группировка по ходу, стоит нескольких строк. Текущий transport принимает только allowlisted поля и
-нормализует их до безопасных фактов; это не обещание о финальном публичном API.
-
-Базовые нормализованные события:
-
-```text
-session.started
-session.ended
-turn.started
-turn.completed
-tool.started
-tool.completed
-tool.failed
-user_input.required
-subagent.started
-subagent.completed
-background.started
-background.completed
-agent.interrupted
-agent.failed
-```
+Режим планирования берётся из `permission_mode: plan` и только при явном значении: отсутствующее
+поле не угадывается.
 
 ### У вызова инструмента четыре конца, и хуком приходят не все
 
