@@ -234,8 +234,9 @@ public enum AgentProcessLocator {
     /// How many terminals an application holds with something running in them: the distinct
     /// controlling terminals of its own child processes.
     ///
-    /// Ghostty starts every terminal's shell as its own child, so this counts its terminals
-    /// from the kernel's side — including one it no longer lists, which is the point of
+    /// Ghostty starts every terminal's `login` as its own child, with that terminal as the
+    /// controlling one, and the shell and the agent run under it on the same terminal —
+    /// measured on Ghostty 1.3.1. So this counts its terminals from the kernel's side — including one it no longer lists, which is the point of
     /// asking. A terminal whose shell has exited is not counted, and can only make the count
     /// smaller than the list.
     public static func terminalCount(heldBy applicationProcessID: Int32) -> Int {

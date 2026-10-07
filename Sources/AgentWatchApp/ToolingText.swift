@@ -311,14 +311,14 @@ func toolingComplaint(states: [ToolingInstallationState]) -> String? {
     }
     // Ahead of the advice below, and it replaces it: the hooks are installed, so installing
     // them is the one thing that cannot help. Where to go next differs by agent, and the
-    // menu is where that is said.
+    // Tooling window is where that is said.
     if states.contains(.unheard) {
         return "Hooks are installed, but no event has arrived. See Tooling."
     }
     // The action comes first so that it survives a narrow widget: the sentence wraps to two
     // lines and then truncates, and what a person needs is what to do, not a restatement of
     // the empty row they are already looking at.
-    return "Install hooks from Tooling in the menu."
+    return "Install hooks from Tooling in Settings."
 }
 
 /// What to say after this agent's hooks are installed.

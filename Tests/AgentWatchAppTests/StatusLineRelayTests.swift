@@ -90,6 +90,21 @@ final class StatusLineRelayTests: XCTestCase {
         XCTAssertEqual(try waitForContents(of: received), #"{"session_id":"abc"}"#)
     }
 
+    /// The script stays in a person's setup long after it was written, so a renamed menu
+    /// would leave a wrong instruction there. Installed scripts are not migrated.
+    @MainActor
+    func testTheScriptNamesTheRouteToUndoIt() {
+        let script = StatusLineRelay.script(senderPath: "/bin/true", originalCommand: "")
+        let route = [
+            StatusMenu.settingsItemTitle,
+            SettingsPage.tooling.title,
+            ToolingPane.openToolingTitle,
+            ToolingReport.statusLineTitle,
+        ].joined(separator: " -> ")
+
+        XCTAssertTrue(script.contains("Agent Watch menu -> \(route)."), script)
+    }
+
     private func waitForContents(of url: URL, timeout: TimeInterval = 5) throws -> String {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

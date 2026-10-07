@@ -262,10 +262,6 @@ public struct SessionActivity: Identifiable, Codable, Equatable, Sendable {
     ///
     /// The two differ in what releases them, so `turnStarted` sweeps the background shell
     /// and keeps the subagent: see `SessionReducer`.
-    ///
-    /// Declared at the point the activity is created rather than inferred from its kind: a
-    /// subagent *tool call* that was denied is also `.subagent`, and it does not outlive
-    /// anything.
     public let outlivesTurn: Bool
     /// Whether the work continues after the tool call that started it reports back.
     ///
