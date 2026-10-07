@@ -41,16 +41,16 @@ struct WidgetShortcut: Equatable {
     /// Function keys are the exception, and the only one: nobody types `F13` into a document, so
     /// taking it from the whole machine costs nothing, and `F13`–`F19` sit on a full keyboard
     /// with nothing else asking for them. The system was never the obstacle here —
-    /// `RegisterEventHotKey` takes a bare `F5` and answers `noErr`, measured.
+    /// `RegisterEventHotKey` takes a bare `F5` and answers `noErr`, measured on macOS 15.3.1.
     ///
     /// The exception stops there. An arrow reaches this app through the same kind of code point
     /// but is pressed constantly, so it keeps the rule.
     ///
     /// `fn` is not part of any of this and cannot be: Carbon's modifier mask has bits for
-    /// `⌘⇧⌥⌃` and the right-hand halves of them, and none for `fn`. What `fn` decides is which
-    /// event the hardware produces at all — `F5` or screen brightness — before a shortcut is
-    /// ever matched. Somebody who records `F5` pressed whatever produces `F5` on their machine,
-    /// and will press it the same way again.
+    /// `⌘⇧⌥⌃` and the right-hand halves of them, and none for `fn`, measured on macOS 15.3.1.
+    /// What `fn` decides is which event the hardware produces at all — `F5` or screen
+    /// brightness — before a shortcut is ever matched. Somebody who records `F5` pressed
+    /// whatever produces `F5` on their machine, and will press it the same way again.
     init?(keyCode: UInt16, modifiers: Modifiers) {
         guard let key = Self.keys[keyCode], !modifiers.isEmpty || key.standsAlone else {
             return nil

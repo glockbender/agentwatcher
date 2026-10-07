@@ -28,7 +28,7 @@ public enum JetBrainsFocusRefusal: String, Equatable, Sendable {
 ///
 /// The transport is one URL. The platform registers the scheme, routes the address to the
 /// plugin and runs it, so there is no socket, no port and no permission anywhere in this —
-/// see `docs/session-focus-research.md`.
+/// see `docs/research/session-focus.md`.
 ///
 /// Everything here is a rule over values somebody else read, which is why it lives in the
 /// core: the four preconditions are four file-system questions, and a rule about their

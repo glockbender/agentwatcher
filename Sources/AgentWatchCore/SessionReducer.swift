@@ -200,9 +200,9 @@ public enum SessionReducer {
                 next.rateLimitReachedAt = nil
             }
             next.phase = .waitingForUser
-            // A permission request names no tool of its own — measured on 2.1.272, it is the
-            // one tool hook with no `tool_use_id` — but it always follows the start of the
-            // call it is asking about, in that same agent. So the asking agent's most recent
+            // A permission request names no tool of its own — measured on Claude Code 2.1.272,
+            // it is the one tool hook with no `tool_use_id` — but it always follows the start of
+            // the call it is asking about, in that same agent. So the asking agent's most recent
             // call is the one being waited on. An inference, but from event order, not from
             // any model's words.
             //

@@ -392,11 +392,11 @@ class HUDSessionListView: NSView {
     ///
     /// Driven by the rows' frame rather than by `layout()`, and that is the fix: a parent
     /// lays out before its children, so at `layout()` time the rows are still zero-high and
-    /// the clip view clamps the offset away to nothing. Measured — asked for 46 points, the
-    /// clip view took it while the document stood at 0, and the pass that followed sized the
-    /// rows to 180 and put the offset back to zero, by which time the one shot was spent. So
-    /// every rebuild of the list — a width drag, a new size, a change of theme, the
-    /// usage block arriving — dropped a scrolled list to the top. The rows' frame change is
+    /// the clip view clamps the offset away to nothing. Measured on macOS 15.3.1 — asked for
+    /// 46 points, the clip view took it while the document stood at 0, and the pass that
+    /// followed sized the rows to 180 and put the offset back to zero, by which time the one
+    /// shot was spent. So every rebuild of the list — a width drag, a new size, a change of theme,
+    /// the usage block arriving — dropped a scrolled list to the top. The rows' frame change is
     /// the moment they get their height, and it arrives inside that same pass, so nothing is
     /// drawn at the top first.
     ///
@@ -404,7 +404,7 @@ class HUDSessionListView: NSView {
     /// yet has nothing to scroll and nothing to report, and waits.
     ///
     /// The offset is held to what the rows can reach, by the clip view's own
-    /// `constrainBoundsRect`. Measured, because the obvious assumption is wrong:
+    /// `constrainBoundsRect`. Measured on macOS 15.3.1, because the obvious assumption is wrong:
     /// `NSClipView.scroll(to:)` does not clamp. Asked for 4000 points of a list 65 points
     /// long it went to 4000, leaving the widget showing nothing at all. A list that has grown
     /// shorter since it was left — the sessions that made it that long have ended — lands as

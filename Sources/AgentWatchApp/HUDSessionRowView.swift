@@ -832,12 +832,13 @@ final class RowDismissButton: NSButton {
 
     /// The `×` as a symbol rather than as text, for a button with no bezel.
     ///
-    /// Not a matter of taste — measured, on both a dark and a light widget. A disabled
-    /// borderless button does not draw its title **at all**: with AppKit's own colour, with
-    /// the widget's, at full strength and faded, every one came out as bare background, so a
-    /// `×` that did not work yet was not merely faint but absent. The same button drawn with
-    /// an image is drawn in both states, and AppKit dims the disabled one itself — measured
-    /// against a light widget at 0.49 working and 0.75 not yet, where the background is 0.97.
+    /// Not a matter of taste — measured on macOS 15.3.1, on both a dark and a light widget.
+    /// A disabled borderless button does not draw its title **at all**: with AppKit's own
+    /// colour, with the widget's, at full strength and faded, every one came out as bare
+    /// background, so a `×` that did not work yet was not merely faint but absent. The same
+    /// button drawn with an image is drawn in both states, and AppKit dims the disabled one
+    /// itself — measured against a light widget at 0.49 working and 0.75 not yet, where the
+    /// background is 0.97.
     ///
     /// That matters more here than anywhere: a button that cannot work yet has to stay put
     /// and stay visible, because the question a person asks is "why can I not close this?"

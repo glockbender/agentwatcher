@@ -15,27 +15,22 @@
 
 Two gates, both installed by `task setup`:
 
-- **commit** — `task verify`: format, the shape of `TROUBLESHOOTING.md`, tests, debug and release
-  builds, app bundle. Does not cover `ide-plugin/`.
-- **push** — `task verify-all`: the above plus the IDE plugin (`task plugin-check`: build and
-  tests, without staging — the staged file may be a signed release), the network probe that
-  downloads a published release (`task probe-update`), and the end-to-end update
-  (`task e2e-update`). About a minute. The plugin is skipped where no JetBrains IDE is installed,
-  and the end-to-end part is skipped under `CI` or with `SKIP_E2E=1` — it opens dialogs on screen
-  and answers them. The hook runs the gate only when a branch is pushed; a tag or a deletion goes
-  through without it.
+- **commit** — `task verify`: format, the document checks, tests, debug and release builds, app
+  bundle. Does not cover `ide-plugin/`.
+- **push** — `task verify-all`: the above plus the IDE plugin (`task plugin-check`), the network
+  probe of a published release (`task probe-update`) and the end-to-end update
+  (`task e2e-update`), about a minute. The plugin is skipped where no JetBrains IDE is installed;
+  the end-to-end part is skipped under `CI` or with `SKIP_E2E=1`, because it opens dialogs on
+  screen and answers them. A tag or a deletion is pushed without the gate.
 
-Both gates check the working tree, so both refuse to run when it is not exactly what goes out:
-a commit with unstaged or untracked files beside it, a push with uncommitted changes, or a push
-of a branch that is not checked out. To commit part of the tree, set the rest aside with
-`git stash push --keep-index --include-untracked`.
+Both gates check the working tree and refuse to run when it is not exactly what goes out: a commit
+with unstaged or untracked files beside it, a push with uncommitted changes, or a push of a branch
+that is not checked out.
 
-The IDE plugin needs nothing installed for itself: its Gradle wrapper fetches Gradle and its own
-JDK. It compiles against a JetBrains IDE, taken from this machine when one is here (GoLand or
-IntelliJ IDEA, 2026.1 or newer — an older one is refused with the reason) and downloaded when none
-is — `task plugin-download` forces the downloaded path. Of the tasks, only
-`task plugin` and `task plugin-download` stage the ZIP, in
-`~/Library/Application Support/AgentWatch/ide-plugin/` — the one directory Tooling's
+The IDE plugin needs nothing installed: its Gradle wrapper fetches Gradle and a JDK. It compiles
+against GoLand or IntelliJ IDEA 2026.1 or newer from this machine, or downloads one when none is
+here (`task plugin-download` forces that). Only `task plugin` and `task plugin-download` stage the
+ZIP, in `~/Library/Application Support/AgentWatch/ide-plugin/` — the one directory Tooling's
 `Open Plugins` offers a plugin from.
 
 Add or update tests for every domain-state transition. Keep UI thin enough that important behaviour
@@ -45,61 +40,52 @@ can be tested in `AgentWatchCoreTests` without launching an application.
 
 - **A local bundle loses macOS permissions on every rebuild unless it is signed with a
   certificate.** `scripts/build-app.sh` uses one called `Agent Watch Developer` when the keychain
-  holds it; the reasoning is in the script's own comment. To create it: Keychain Access →
-  Certificate Assistant → Create a Certificate…, Self Signed Root, Code Signing. It does not need
-  to be trusted, and `security find-identity -v` will not list it for that reason.
+  holds it. To create it: Keychain Access → Certificate Assistant → Create a Certificate…, Self
+  Signed Root, Code Signing. It need not be trusted, so `security find-identity -v` will not list
+  it.
 - **`task verify` rebuilds `dist/` from scratch**, so hooks installed from `dist/AgentWatch.app`
   point at a bundle that will be replaced. Copy it to `/Applications` and install from the copy.
 - **One Agent Watch runs at a time.** Quit an installed copy before running a build:
   `osascript -e 'quit app "AgentWatch"'`.
-- **The shared Xcode scheme is committed on purpose.** Xcode builds only the products a scheme
-  names, and the generated one left out `AgentWatchSend` — so hooks installed from Xcode pointed at
-  a file that did not exist.
+- **The shared Xcode scheme is committed on purpose:** Xcode builds only the products a scheme
+  names, and a generated scheme leaves out `AgentWatchSend`.
 - When Xcode is installed but `xcode-select -p` still points at the Command Line Tools:
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer task verify`.
-- **A click on the widget is checked with a real mouse event, not by calling `mouseDown`.**
-  The widget moves when its background is dragged, and by default AppKit lets one press both
-  reach a see-through view and start that drag — a click then also shifts the widget, which a
-  test that calls `mouseDown` cannot notice. Run a debug copy with `AGENT_WATCH_SUPPORT_DIR`
-  pointing at a scratch directory (see the end-to-end script for the launch), find its widget
-  among the process's windows — both copies open at the same place, and the widget is not
-  always window 1 — and post the click with `CGEventPost`: System Events' `click at` did not
-  reach the row.
-- **`task e2e-update` runs a throwaway copy beside yours and presses its dialogs itself.** It
-  relies on two overrides a debug build has and a release build does not: the state directory
-  from `AGENT_WATCH_SUPPORT_DIR` and the release address from `AGENT_WATCH_RELEASE_URL`. Your own
-  Agent Watch has to be running — the copy it installs is a release build, and with nothing to
-  find it would run against your real state — so the script refuses to start without it. The
-  terminal needs Accessibility permission, which macOS asks for once.
+- **A click on the widget is checked with a real mouse event, not by calling `mouseDown`:** one
+  press can both reach a see-through view and drag the widget, and a test that calls `mouseDown`
+  cannot see the drag. Run a debug copy with `AGENT_WATCH_SUPPORT_DIR` pointing at a scratch
+  directory (the end-to-end script shows the launch), find its widget among the process's windows
+  (it is not always window 1) and post the click with `CGEventPost`; System Events' `click at`
+  does not reach the row.
+- **`task e2e-update` runs a throwaway copy beside yours and presses its dialogs itself.** It needs
+  your own Agent Watch running — otherwise the release build it installs would run against your real
+  state — and Accessibility permission for the terminal.
 
 ## Documentation
 
-Keep these current as part of the change, not after it.
+Keep documents current as part of the change, not after it. Read `docs/implementation-plan.md`
+before implementing: it holds status, next milestones and deferred decisions.
 
-- `docs/implementation-plan.md` — read before implementing; holds status, next milestones and
-  deferred decisions.
-- `docs/architecture.md` — product behaviour and architecture.
-- `docs/agent-integration.md` — anything about attaching to Claude Code or Codex: hooks, install
-  state, the status line, what each agent reports, and the measurements behind it.
-- `docs/distribution.md` — how a release is built, signed and published.
-- `docs/adr/` — one decision per file, numbered and never renumbered. Code cites a decision as
-  `ADR-0001`, not as a section number, because a section number moves when something is inserted
-  above it. Add one only for a decision that is hard to reverse, surprising without the reason, and
-  the result of a real trade-off — including the deliberate no-s, which is what stops the next
-  review from re-suggesting them. A pointer to a passage stays a pointer: `§14` still means
-  "read this part".
-- `docs/measurements.md` — the index of what was measured against which version of Claude Code,
-  Codex or macOS. Its question is "what has to be re-checked now that the agent updated", so a new
-  measurement gets a row with the version it was taken on, and the reasoning stays where it is.
-- `README.md` — for somebody installing the app: keep it short, and put developer-only notes in
-  this file instead. It describes the latest commit, never a particular release: no version
-  numbers, no "coming in the next release", no comparison with an older build.
-- `TROUBLESHOOTING.md` — for the same reader, in the same plain English: something that looks
-  wrong while the app works as designed, or whose cause nobody could guess from the widget. Add an
-  entry in the same change whenever an investigation ends in "this is how the agent or macOS
-  behaves" — a reported bug that turned out not to be one is the typical case. An entry is
-  `## <what the person sees>` and three paragraphs: **Why:**, **What to do:** and **Checked on:**
-  (the agent or macOS version, or `not recorded`). One that rests on a measurement also gets its row in
-  `docs/measurements.md`, which is what says to re-check it after an update. `task lint` checks the
-  shape and README's link to it. Whether an entry is missing, the check cannot tell; you decide
-  that.
+`docs/` holds one document per subject, and each says in its opening lines what it holds and what
+it leaves out — find the owner of a subject there, not in a list. `task lint` checks the links
+between documents, the opening, a limit of 500 lines and the status line of every ADR.
+
+- **Behaviour** goes into the document that owns the subject, in the present tense. History stays
+  in git. A document past 500 lines holds several subjects: split it.
+- **Plans and open work** go into the plan documents, not into the ones that describe behaviour.
+- **A decision** that is hard to reverse, surprising without the reason, and the result of a real
+  trade-off gets an ADR in `docs/adr/` — including the deliberate no-s, which stop the next review
+  from suggesting them again. One decision per file, numbered and never renumbered, with a status
+  line. Code cites `ADR-0001`; a passage is cited by its heading, never by a section number.
+- **A measured fact** about Claude Code, Codex, an IDE or macOS carries its version where it is
+  stated: `(замер: Claude Code 2.1.272)` in a document, `Measured on Claude Code 2.1.272` in a code
+  comment. `docs/measurements.md` is generated from these by `task measurements`; never edit it.
+- **A closed study** moves to `docs/research/` with an archive banner. An article in
+  `docs/articles/` is a snapshot of its date. Neither is updated afterwards.
+- **`README.md`** is for somebody installing the app: short, describing the latest commit — no
+  version numbers, no "coming in the next release". Developer notes belong in this file.
+- **`TROUBLESHOOTING.md`** is for the same reader: something that looks wrong while the app works as
+  designed. Add an entry whenever an investigation ends in "this is how the agent or macOS
+  behaves". An entry is `## <what the person sees>` and three paragraphs: **Why:**, **What to do:**
+  and **Checked on:** (the version, or `not recorded`). `task lint` checks the shape; whether an
+  entry is missing, you decide.

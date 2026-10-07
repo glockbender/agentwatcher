@@ -167,6 +167,9 @@ public enum SessionAttention: String, CaseIterable, Sendable {
 public enum UserInputRequestKind: String, Codable, Sendable {
     case approval
     case selection
+    /// An MCP server's question to the person: `Elicitation`. What it asks — a form to fill
+    /// in, or a link to open — is the server's business and does not cross the socket.
+    case elicitation
 }
 
 /// One question a session is waiting for an answer to.
@@ -235,6 +238,12 @@ public enum ActivityKind: String, Codable, Sendable, CaseIterable {
     /// client, so neither `PreToolUse` nor `PostToolUse` fires for it. It reaches the app only
     /// through the transcript, and only for Claude — Codex has no equivalent.
     case advisor
+    /// An MCP server is waiting for the person to answer its question.
+    ///
+    /// Not work the session started: it is drawn from the session's open dialogs rather than
+    /// from its calls — see `activityCounts` — and is a kind here so that the row shows it
+    /// among the counters and the settings window switches it off with them.
+    case elicitation
     case tool
 }
 
@@ -253,10 +262,6 @@ public struct SessionActivity: Identifiable, Codable, Equatable, Sendable {
     ///
     /// The two differ in what releases them, so `turnStarted` sweeps the background shell
     /// and keeps the subagent: see `SessionReducer`.
-    ///
-    /// Declared at the point the activity is created rather than inferred from its kind: a
-    /// subagent *tool call* that was denied is also `.subagent`, and it does not outlive
-    /// anything.
     public let outlivesTurn: Bool
     /// Whether the work continues after the tool call that started it reports back.
     ///
@@ -442,12 +447,12 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     ///
     /// `/bg` runs the session on in a process of its own, and that process is what
     /// `agentProcessID` names: it is what the hooks come from and what the row lives and dies
-    /// with. But the terminal `/bg` was typed in is not freed — measured on 2.1.269, the
-    /// interactive process stays alive, attached to the job, and the session is on screen
+    /// with. But the terminal `/bg` was typed in is not freed — measured on Claude Code 2.1.269,
+    /// the interactive process stays alive, attached to the job, and the session is on screen
     /// right there. That terminal is where a person finds the session, so the click and the
     /// icon belong to it while it is there, and to `claude attach` once it is gone. Only the
-    /// app can tell (it is Claude Code's registry and a process list, §14 of the
-    /// architecture), and it says so through `SessionStateEngine.setViewer`.
+    /// app can tell (it is Claude Code's registry and a process list, see
+    /// `docs/session-recovery.md`), and it says so through `SessionStateEngine.setViewer`.
     ///
     /// Optional for the reason `discoveredProcess` gives: a file written before this field
     /// existed must still read.

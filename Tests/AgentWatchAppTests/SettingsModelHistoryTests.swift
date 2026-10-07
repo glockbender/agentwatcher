@@ -6,11 +6,13 @@ import XCTest
 /// order the pages were opened, with a new page dropping whatever was ahead.
 @MainActor
 final class SettingsModelHistoryTests: XCTestCase {
-    /// A fresh window has nowhere to go but where the person sends it.
-    func testAFreshWindowOpensOnTheWidgetWithNoHistory() throws {
+    /// A fresh window opens on the sidebar's top entry and has nowhere to go but where the
+    /// person sends it.
+    func testAFreshWindowOpensOnGeneralWithNoHistory() throws {
         let (model, _) = try makeModel()
 
-        XCTAssertEqual(model.page, .widget)
+        XCTAssertEqual(model.page, .general)
+        XCTAssertEqual(model.page, SettingsPage.sidebar.first)
         XCTAssertFalse(model.canGoBack)
         XCTAssertFalse(model.canGoForward)
     }
@@ -24,7 +26,7 @@ final class SettingsModelHistoryTests: XCTestCase {
         model.goBack()
         XCTAssertEqual(model.page, .appearance)
         model.goBack()
-        XCTAssertEqual(model.page, .widget)
+        XCTAssertEqual(model.page, .general)
         XCTAssertFalse(model.canGoBack)
 
         model.goForward()
@@ -53,7 +55,7 @@ final class SettingsModelHistoryTests: XCTestCase {
     func testGoingToThePageAlreadyShownIsNotRemembered() throws {
         let (model, _) = try makeModel()
 
-        model.go(.widget)
+        model.go(.general)
 
         XCTAssertFalse(model.canGoBack)
     }
@@ -65,7 +67,7 @@ final class SettingsModelHistoryTests: XCTestCase {
         model.goBack()
         model.goForward()
 
-        XCTAssertEqual(model.page, .widget)
+        XCTAssertEqual(model.page, .general)
     }
 
     /// The host is held weakly by the model, so it is returned for the test to keep alive.

@@ -190,7 +190,7 @@ public struct SessionStateEngine: Sendable {
             // life: whether the parked terminal says one under the same identifier when a
             // person walks back into the session is unmeasured, and reading it as life would
             // split one conversation in two — the very thing this rule exists to stop.
-            // `docs/architecture.md` §14, "Сессию отправили в фон", has the measurements.
+            // `docs/session-recovery.md`, "Сессию отправили в фон", has the measurements.
             if let copies = known.continuedBy {
                 let joinedAfterSpeaker =
                     event.sessionID == known.sessionLabel
@@ -318,9 +318,9 @@ public struct SessionStateEngine: Sendable {
             snapshot = SessionReducer.reduce(snapshot, event: .sessionClosed(at: event.observedAt))
         case .turnStarted:
             // An event that does not state a mode keeps the one the session already knows.
-            // `docs/implementation-plan.md` says a missing `permission_mode` means the mode
-            // is unknown and is never guessed — and guessing `standard` here turned a
-            // session that had started in plan mode into a working one on its next prompt.
+            // A missing `permission_mode` means the mode is unknown and is never guessed —
+            // guessing `standard` here turned a session that had started in plan mode into a
+            // working one on its next prompt.
             snapshot = SessionReducer.reduce(
                 snapshot,
                 event: .turnStarted(mode: event.mode ?? snapshot.mode, at: event.observedAt)

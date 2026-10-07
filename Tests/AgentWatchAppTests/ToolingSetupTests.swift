@@ -48,7 +48,8 @@ final class ToolingSetupTests: XCTestCase {
         let window = try XCTUnwrap(controller.window)
         controller.present()
         // Down to the Dock and no further: macOS 26 moves a window shown under the Dock back
-        // above it, and on the CI machine's 768-point screen this one has 35 points to spare.
+        // above it, measured on macOS 26.6.2, and on the CI machine's 768-point screen this one
+        // has 35 points to spare.
         let visible = try XCTUnwrap(window.screen?.visibleFrame)
         let moved = NSPoint(x: window.frame.minX + 40, y: visible.minY)
         window.setFrameOrigin(moved)

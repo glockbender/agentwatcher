@@ -82,7 +82,15 @@ enum SessionLamp {
             case .planning: "planning"
             case .executing: "working"
             case .waitingForChildren: "waiting for subtasks"
-            case .waitingForUser: snapshot.userInputRequestKind == .selection ? "choice needed" : "approval needed"
+            case .waitingForUser:
+                // A wait restored from a file that did not record the kind reads as the
+                // commonest one.
+                switch snapshot.userInputRequestKind {
+                case .approval, nil: "approval needed"
+                case .selection: "choice needed"
+                // Claude Code's own word for it, in the record it keeps of the session.
+                case .elicitation: "input needed"
+                }
             case .completed: "completed"
             case .rateLimited: "limit reached"
             case .failed: "failed"

@@ -42,8 +42,8 @@ final class SubagentDialogTests: XCTestCase {
         XCTAssertFalse(answered.isAwaitingAnswer)
     }
 
-    /// Two subagents asking at once, which Claude Code allows: measured on 2.1.272, two
-    /// `PermissionRequest` hooks arrived a second apart with neither of them answered.
+    /// Two subagents asking at once, which Claude Code allows: measured on Claude Code 2.1.272,
+    /// two `PermissionRequest` hooks arrived a second apart with neither of them answered.
     /// Answering one of them leaves the other still on screen, so the session is still
     /// waiting for its person.
     func testOneAnswerDoesNotEndASecondSubagentsDialog() throws {

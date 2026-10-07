@@ -11,9 +11,9 @@ import XCTest
 /// first and took all of them, and the route then put the right one on top of the pile.
 @MainActor
 final class SessionFocusWindowsTests: XCTestCase {
-    /// Ghostty's `focus` raises the terminal's own window — read in Ghostty 1.3.1's
-    /// `BaseTerminalController.focusSurface`, which does `makeKeyAndOrderFront` on it — so
-    /// there is nothing left for a wide net to do but undo that.
+    /// Ghostty's `focus` raises the terminal's own window — measured on Ghostty 1.3.1 by
+    /// reading its `BaseTerminalController.focusSurface`, which does `makeKeyAndOrderFront` on
+    /// it — so there is nothing left for a wide net to do but undo that.
     func testAnAddressedGhosttyTabBringsOnlyItsOwnWindow() {
         XCTAssertEqual(
             SessionHostRegistry.activationOptions(for: .ghostty(terminalID: UUID().uuidString)),
@@ -28,6 +28,20 @@ final class SessionFocusWindowsTests: XCTestCase {
         let address = try XCTUnwrap(URL(string: "jetbrains://goland/agent-watch/focus?pid=4242"))
 
         XCTAssertEqual(SessionHostRegistry.activationOptions(for: .jetBrains(address)), [])
+    }
+
+    /// A desktop client's own link shows its main window with the session in it: Claude.app's
+    /// handler calls `show()` and `focus()`, ChatGPT.app's makes its primary window visible —
+    /// read in their `app.asar` (Claude.app 2.26454.0, ChatGPT.app 26.1002.52244). Every other
+    /// window of the client coming forward too would bury it, as with Ghostty.
+    func testADesktopClientsSessionBringsOnlyTheWindowItShowsItIn() throws {
+        for address in [
+            "claude://code/continue?session=local_3f2a9c1e-8b47-4d05-a6e2-91c0d7b4e5f8",
+            "codex://threads/019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b",
+        ] {
+            let link = try XCTUnwrap(URL(string: address))
+            XCTAssertEqual(SessionHostRegistry.activationOptions(for: .desktopClient(link)), [], address)
+        }
     }
 
     /// With no route, the wide net is the whole point: the session is in one of those windows

@@ -32,6 +32,9 @@ public enum HookEventName: String, CaseIterable, Sendable {
     case permissionRequest = "PermissionRequest"
     case preCompact = "PreCompact"
     case postCompact = "PostCompact"
+    /// An MCP server asks the person something, and the answer it got. Claude only.
+    case elicitation = "Elicitation"
+    case elicitationResult = "ElicitationResult"
     case statusLine = "StatusLine"
 
     /// Every name, as the agents write them.

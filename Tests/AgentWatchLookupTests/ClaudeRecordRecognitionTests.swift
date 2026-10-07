@@ -5,7 +5,7 @@ import XCTest
 
 /// The path to the program knows a Claude process only while the kernel names it the way it
 /// was installed. Two measured cases where it does not, both now answered by the process's own
-/// record — `docs/agent-integration.md` §1б, «Путь к программе называет файл, а не запуск».
+/// record — `docs/agent-processes.md`, «Путь к программе называет файл, а не запуск».
 final class ClaudeRecordRecognitionTests: XCTestCase {
     private var directory: URL!
     private let started = Date(timeIntervalSince1970: 1_789_398_361)
@@ -53,8 +53,8 @@ final class ClaudeRecordRecognitionTests: XCTestCase {
         XCTAssertNil(ClaudeProcessRules.byPathAlone.agentProcessID(among: ancestors))
     }
 
-    /// Not every session gets a record (a short-lived one raised from a pty did not, on
-    /// 2.1.272), so the record adds to the path and replaces nothing.
+    /// Not every session gets a record (a short-lived one raised from a pty did not,
+    /// measured on Claude Code 2.1.272), so the record adds to the path and replaces nothing.
     func testThePathStillKnowsASessionWithoutARecord() throws {
         let ancestors = [
             ProcessSnapshot(
@@ -126,9 +126,60 @@ final class ClaudeRecordRecognitionTests: XCTestCase {
         XCTAssertNotNil(AgentProcessLocator.commandName(of: getpid()))
     }
 
-    private func rules(recording processIDs: [Int32]) throws -> ClaudeProcessRules {
+    /// Claude.app runs each of its sessions as a process of its own, under its `disclaimer`
+    /// helper, from a path the path rule does not know — and says so in the process's record.
+    /// Measured on Claude.app 2.26454.0 with Claude Code 2.1.289, on all four such processes.
+    func testASessionClaudeAppStartedIsADesktopOne() throws {
+        let ancestors = [
+            ProcessSnapshot(processID: 900, executableName: "sh", executablePath: "/bin/sh"),
+            ProcessSnapshot(
+                processID: 8864,
+                executableName: "claude",
+                executablePath:
+                    "/Users/someone/Library/Application Support/Claude/claude-code/2.1.289/ee67e3f1ea60/claude.app/Contents/MacOS/claude"
+            ),
+            ProcessSnapshot(
+                processID: 8863, executableName: "disclaimer",
+                executablePath: "/Applications/Claude.app/Contents/Helpers/disclaimer"),
+            ProcessSnapshot(
+                processID: 81418, executableName: "Claude",
+                executablePath: "/Applications/Claude.app/Contents/MacOS/Claude"),
+        ]
+        let rules = try rules(
+            recording: [8864],
+            fields: #""entrypoint":"claude-desktop","hostSessionId":"local_3f2a9c1e-8b47-4d05-a6e2-91c0d7b4e5f8""#)
+
+        XCTAssertEqual(rules.agentProcessID(among: ancestors), 8864)
+        XCTAssertEqual(rules.clientKind(among: ancestors, argumentsOfProcess: { _ in nil }), .desktop)
+    }
+
+    /// `claude` typed into Claude.app's own terminal pane runs under the app as well, but in a
+    /// terminal — one it can lose like any other — and its record says it was typed.
+    func testClaudeTypedIntoATerminalUnderClaudeAppIsNoDesktopSession() throws {
+        let ancestors = [
+            ProcessSnapshot(
+                processID: 400, executableName: "2.1.289", executablePath: "/private/opaque/claude/versions/2.1.289"),
+            ProcessSnapshot(processID: 300, executableName: "zsh", executablePath: "/bin/zsh"),
+            ProcessSnapshot(
+                processID: 81418, executableName: "Claude",
+                executablePath: "/Applications/Claude.app/Contents/MacOS/Claude"),
+        ]
+
+        XCTAssertEqual(
+            try rules(recording: [400], fields: #""entrypoint":"cli""#)
+                .clientKind(among: ancestors, argumentsOfProcess: { _ in nil }),
+            .cli
+        )
+        XCTAssertEqual(
+            ClaudeProcessRules.byPathAlone.clientKind(among: ancestors, argumentsOfProcess: { _ in nil }),
+            .cli
+        )
+    }
+
+    private func rules(recording processIDs: [Int32], fields: String? = nil) throws -> ClaudeProcessRules {
+        let extra = fields.map { "," + $0 } ?? ""
         for processID in processIDs {
-            try Data(#"{"pid":\#(processID),"procStart":"Mon Sep 14 15:06:01 2026"}"#.utf8)
+            try Data(#"{"pid":\#(processID),"procStart":"Mon Sep 14 15:06:01 2026"\#(extra)}"#.utf8)
                 .write(to: directory.appendingPathComponent("\(processID).json"))
         }
         let started = started

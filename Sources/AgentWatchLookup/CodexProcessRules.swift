@@ -30,7 +30,8 @@ public struct CodexProcessRules: AgentProcessRules {
     /// application hosts many threads in one process, so a process says nothing about how
     /// many sessions it holds; and its hooks report no process number at all, so a row built
     /// from a process could never be joined to the session it belongs to and would stand
-    /// beside it forever. See `docs/agent-integration.md` §1б.
+    /// beside it forever. Measured on Codex, version not recorded. See
+    /// `docs/agent-processes.md`, «Почему живой агент находится только у Claude».
     public func liveSessions() -> [DiscoveredAgentProcess] {
         []
     }

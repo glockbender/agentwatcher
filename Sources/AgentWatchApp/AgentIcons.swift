@@ -101,6 +101,7 @@ enum ActivityIcon {
         case .backgroundTask: "clock.arrow.circlepath"
         case .compaction: "arrow.down.right.and.arrow.up.left"
         case .advisor: "lightbulb"
+        case .elicitation: "questionmark.bubble"
         case .tool: "wrench.and.screwdriver.fill"
         }
     }
@@ -119,6 +120,8 @@ enum ActivityIcon {
         // call at a time, so the digit would never vary.
         case .advisor: "asking the advisor"
         case .compaction: "compacting context"
+        // No number either: the main thread is asked one thing at a time.
+        case .elicitation: "your answer to an MCP server"
         case .subagent: "\(count) \(count == 1 ? "subagent" : "subagents")"
         case .shell: "\(count) \(count == 1 ? "shell command" : "shell commands")"
         case .backgroundTask: "\(count) \(count == 1 ? "background task" : "background tasks")"

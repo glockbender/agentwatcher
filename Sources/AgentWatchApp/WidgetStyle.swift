@@ -35,12 +35,12 @@ struct WidgetStyle {
     ///
     /// Each of them is read off a real label, a real image view or a real button, because
     /// AppKit is the only authority on what it will draw — the reasoning is beside each one
-    /// below. That makes them the expensive part of this type by a distance: measured at 125%,
-    /// one `rowHeight` costs 341 µs and one `buttonSize` 691 µs, against 1.9 ms for building a
-    /// whole row. Left as computed properties they were taken again for every row of every
-    /// rebuild, so over half the cost of drawing the list was re-deriving four numbers that
-    /// had not changed. A width drag rebuilds the whole list per frame, which is where that
-    /// showed.
+    /// below. That makes them the expensive part of this type by a distance:
+    /// measured on macOS 15.3.1 at 125%, one `rowHeight` costs 341 µs and one `buttonSize`
+    /// 691 µs, against 1.9 ms for building a whole row. Left as computed properties they were
+    /// taken again for every row of every rebuild, so over half the cost of drawing the list
+    /// was re-deriving four numbers that had not changed. A width drag rebuilds the whole list
+    /// per frame, which is where that showed.
     ///
     /// Stored on the instance and not in a `static`, which is the distinction the type comment
     /// draws: a `static let` would answer for whichever scale asked first, where a style is
@@ -190,7 +190,7 @@ struct WidgetStyle {
     /// warning triangle laid out at 9.5 — with three required height constraints of 7, 3.5
     /// and 6 on it at once, which is AppKit's own doing. A smaller `symbolConfiguration`,
     /// `imageScaling` set to scale down and an explicit `NSImage.size` were each tried and
-    /// measured, and none moved it.
+    /// measured on macOS 15.3.1, and none moved it.
     ///
     /// So the row makes room for the symbol instead of pretending it shrank — the same answer
     /// the dismiss button's bezel gets at the other end of the range, and for the same reason:
@@ -220,9 +220,10 @@ struct WidgetStyle {
     /// wide, thin capsule with a small `×` adrift inside it. Drawn and looked at, which is the
     /// only way that shows.
     ///
-    /// Measured, so the numbers are worth stating: the bezel's own height is 19, 23, 23, 23,
-    /// 23 across the five sizes from 100% to 200% — it stops growing after 125% and the button
-    /// then sits centred in a taller row — while its width goes on growing, 21, 25, 26, 27, 29.
+    /// Measured on macOS 15.3.1, so the numbers are worth stating: the bezel's own height is
+    /// 19, 23, 23, 23, 23 across the five sizes from 100% to 200% — it stops growing after 125%
+    /// and the button then sits centred in a taller row — while its width goes on growing, 21,
+    /// 25, 26, 27, 29.
     ///
     /// At the tuned size the height is untouched — the bezel's own 19 points are where the
     /// row's height came from in the first place — and the width gives up one point, 22 to 21,
@@ -256,7 +257,8 @@ struct WidgetStyle {
     /// to draw it taller than its control size; going down it refuses to draw it smaller at
     /// all, and draws it *larger than the box it was given* — at half size that put a bezel
     /// 16 points tall in a 13-point frame inside a 10-point row, so the `×` of one row
-    /// overlapped the `×` of the next. Drawn and looked at, like the failure at the other end.
+    /// overlapped the `×` of the next, measured on macOS 15.3.1. Drawn and looked at, like the
+    /// failure at the other end.
     ///
     /// Below the size where the smallest bezel fits, the button keeps everything that makes
     /// it a button — its box, its click, its place at the end of the row — and gives up the

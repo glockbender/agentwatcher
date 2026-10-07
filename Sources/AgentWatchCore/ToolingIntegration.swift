@@ -69,6 +69,10 @@ public enum ToolingHooks {
                 .postCompact,
                 .subagentStart,
                 .subagentStop,
+                // Without them a session whose MCP server is asking the person reads as
+                // working: the server's tool call is the last thing any other hook reported.
+                .elicitation,
+                .elicitationResult,
             ]
         case .codex:
             // Every event Codex offers except the one declined above. Kept in step by
@@ -164,7 +168,7 @@ public enum ToolingInstallationState: Equatable, Sendable {
     case unheard
     /// Some hooks are not there.
     ///
-    /// They are named rather than counted, in the order the set declares them: "2 of 13
+    /// They are named rather than counted, in the order the set declares them: "2 of 15
     /// missing" says there is a problem and nothing about which one, and what to do about it
     /// depends on which.
     case incomplete(missing: [String])

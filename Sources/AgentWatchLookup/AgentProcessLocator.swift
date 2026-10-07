@@ -187,7 +187,7 @@ public enum AgentProcessLocator {
         /// Measured on Claude Code 2.1.270 and 2.1.280 in a JetBrains terminal tab: after the
         /// tab was closed the IDE still held the pty open, the agent's shutdown waited in
         /// `tcsetattr` for output nothing drained, and neither `SIGTERM` nor `SIGKILL` got it
-        /// past that wait. `docs/agent-integration.md` has the reproduction.
+        /// past that wait. `docs/agent-processes.md` has the reproduction.
         case lost
         /// It never had one — an application, or a child given a pty only for its output.
         case neverHad
@@ -234,8 +234,9 @@ public enum AgentProcessLocator {
     /// How many terminals an application holds with something running in them: the distinct
     /// controlling terminals of its own child processes.
     ///
-    /// Ghostty starts every terminal's shell as its own child, so this counts its terminals
-    /// from the kernel's side — including one it no longer lists, which is the point of
+    /// Ghostty starts every terminal's `login` as its own child, with that terminal as the
+    /// controlling one, and the shell and the agent run under it on the same terminal —
+    /// measured on Ghostty 1.3.1. So this counts its terminals from the kernel's side — including one it no longer lists, which is the point of
     /// asking. A terminal whose shell has exited is not counted, and can only make the count
     /// smaller than the list.
     public static func terminalCount(heldBy applicationProcessID: Int32) -> Int {
@@ -245,7 +246,7 @@ public enum AgentProcessLocator {
     }
 
     /// The same count over records somebody else read, so it can be checked against the
-    /// processes measured under Ghostty without Ghostty running.
+    /// processes measured on Ghostty 1.3.1 without Ghostty running.
     static func terminalCount(
         heldBy applicationProcessID: Int32, among processIDs: [Int32], record: (Int32) -> TerminalProcess?
     ) -> Int {
@@ -275,7 +276,7 @@ public enum AgentProcessLocator {
     }
 
     /// The same walk over records somebody else read, so the rule can be checked against the
-    /// chain measured under a closed Ghostty tab without such a tab being open.
+    /// chain measured on Ghostty 1.3.1 under a closed tab without such a tab being open.
     static func terminalProcessChain(from processID: Int32, record: (Int32) -> TerminalProcess?) -> [Int32] {
         guard let first = record(processID), let device = first.terminalDevice else {
             return []

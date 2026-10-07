@@ -31,7 +31,7 @@ struct InstalledJetBrainsIDE: Equatable {
 /// Nothing here is cached. Every reading is a reading of now: an IDE updated between two
 /// openings of this window has a **different** settings directory, so a remembered answer
 /// would report a plugin that the new version never loaded. That is the mistake the focus
-/// button made — an answer computed once — and `docs/implementation-plan.md` names it.
+/// button once made: an answer computed once and never asked again.
 @MainActor
 enum JetBrainsIDEs {
     /// Every IDE this machine has, the running ones first.

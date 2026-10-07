@@ -13,10 +13,11 @@ import XCTest
 final class MenuBarIconTests: XCTestCase {
     /// A digit is placed on a baseline taken from cap height, not centred in its line box.
     ///
-    /// The line box of a 12 pt digit is 15 pt and the digit inside it is 8.5 pt, all the
-    /// difference being space for parts of letters a digit does not have. Centring the box in
-    /// an 11 pt row leaves room for a 9 pt font and puts the number high in its half of the
-    /// bar; centring the cap height fills the row and sits level with the disc beside it.
+    /// Measured on macOS 15.3.1: the line box of a 12 pt digit is 15 pt and the digit inside it
+    /// is 8.5 pt, all the difference being space for parts of letters a digit does not have.
+    /// Centring the box in an 11 pt row leaves room for a 9 pt font and puts the number high in
+    /// its half of the bar; centring the cap height fills the row and sits level with the disc
+    /// beside it.
     func testADigitIsAsTallAsItsCapHeightAndSitsLevelInItsRow() throws {
         let cell = try XCTUnwrap(drawing(needsPerson: 8).parts.first)
         let digit = try XCTUnwrap(ink(of: cell.image, from: digitOnlyLeftEdge))
@@ -130,10 +131,11 @@ final class MenuBarIconTests: XCTestCase {
 
     /// The grid belongs to the bar, not to the button it is drawn in.
     ///
-    /// Measured on a real item: the button is 22 pt tall at launch and 28 pt once the item has
-    /// been rebuilt — hanging below the bar and above it — while the view holding the button
-    /// keeps the bar's height throughout. A grid centred in the button therefore sat right at
-    /// launch and moved off centre as soon as the counts were switched off and on again.
+    /// Measured on macOS 15.3.1 on a real item: the button is 22 pt tall at launch and 28 pt
+    /// once the item has been rebuilt — hanging below the bar and above it — while the view
+    /// holding the button keeps the bar's height throughout. A grid centred in the button
+    /// therefore sat right at launch and moved off centre as soon as the counts were switched
+    /// off and on again.
     func testTheGridSitsOnTheBarWhenTheButtonIsTallerThanTheBar() throws {
         let bar = MenuBarIconMetrics.barHeight
         let slot = NSView(frame: NSRect(x: 0, y: 0, width: 51, height: bar))

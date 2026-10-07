@@ -3,9 +3,9 @@ import Foundation
 /// Work asked for many times in a row and done once, on the next turn of the main run loop.
 ///
 /// A dragged colour wheel reports a new colour many times before the run loop turns, and each
-/// report used to rebuild the whole widget at once. Measured on a copy with 19 sessions: 120
-/// theme changes in one turn took the process from 92 MB to 373 MB, and it still held 144 MB
-/// three seconds later (`docs/measurements.md`). Done once per turn, the rows are built once.
+/// report used to rebuild the whole widget at once. Measured on macOS 15.3.1 on a copy with
+/// 19 sessions: 120 theme changes in one turn took the process from 92 MB to 373 MB, and it
+/// still held 144 MB three seconds later. Done once per turn, the rows are built once.
 @MainActor
 final class CoalescedWork {
     private let work: () -> Void

@@ -52,8 +52,9 @@ final class SessionDescriptionResolverTests: XCTestCase {
     }
 
     func testASessionNamedAtLaunchHasANameWithoutAnAITitle() {
-        // What `claude -p --name aw-name-probe` wrote on 2.1.284: no `ai-title` at all, which
-        // is also every session of a person whose Claude Code generates no titles.
+        // What `claude -p --name aw-name-probe` wrote, measured on Claude Code 2.1.284: no
+        // `ai-title` at all, which is also every session of a person whose Claude Code
+        // generates no titles.
         let tail = lines([
             #"{"type":"custom-title","customTitle":"aw-name-probe","sessionId":"abc"}"#,
             #"{"type":"agent-name","agentName":"aw-name-probe","sessionId":"abc"}"#,

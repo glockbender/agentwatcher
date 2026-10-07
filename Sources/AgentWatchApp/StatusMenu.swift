@@ -46,7 +46,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// the question standing in its place. `nil` while no session is listed. Rebuilt each time
     /// rather than kept in step, since the sessions change between two openings.
     private(set) var sessionItem: NSMenuItem?
-    /// Shown only while the widget is hidden, so a hidden widget is never lost.
+    /// Always in the menu, so the widget is shown and hidden from the same place; its title
+    /// says which a click does.
     private(set) var widgetItem: NSMenuItem?
     /// The broken session whose question stands where the session lines were, while the menu
     /// is open. A menu cannot draw over its own lines, so the lines give way to it.
@@ -124,7 +125,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
         refreshSummary()
         refreshSessions()
-        widgetItem?.isHidden = host.isWidgetVisible
+        widgetItem?.title = host.isWidgetVisible ? "Hide Widget" : "Show Widget"
         if let widgetItem {
             host.showShortcut(on: widgetItem)
         }

@@ -177,7 +177,7 @@ enum ToolingReport {
     /// A section rather than a screen of its own, and that is a decision: the person does the
     /// installing inside somebody else's program, and everything this app can do is say where
     /// each IDE stands and open the right page. Marketplace is what will make even that
-    /// unnecessary — see `docs/implementation-plan.md`.
+    /// unnecessary — see ADR-0019.
     private static func ideSection(
         readings: [IDEPluginReading],
         stagedPlugin: StagedIDEPlugin?,

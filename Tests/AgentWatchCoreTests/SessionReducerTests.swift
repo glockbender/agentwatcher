@@ -575,9 +575,9 @@ final class SessionReducerTests: XCTestCase {
         XCTAssertTrue(failed.activities.isEmpty, "a call that was refused started nothing to outlive it")
     }
 
-    /// Measured on 2.1.272: every hook fired from inside a subagent carries `agent_id`, and
-    /// the main thread's hooks carry none. So a dialog has an owner, and only its owner's
-    /// events say anything about it.
+    /// Measured on Claude Code 2.1.272: every hook fired from inside a subagent carries
+    /// `agent_id`, and the main thread's hooks carry none. So a dialog has an owner, and only
+    /// its owner's events say anything about it.
     ///
     /// The sequence is a real one, from the evening the row was wrong: a subagent asked for
     /// permission at 19:48:09, a second subagent started a call one second later, the main

@@ -13,7 +13,7 @@ import Foundation
 /// The cost of being told instead of looking is a convention this makes an assumption about.
 /// If either agent renames its transcripts, or `CLAUDE_CONFIG_DIR` moves the root, nothing is
 /// found — and that is a reported failure rather than wrong data, which is the property that
-/// makes the assumption acceptable. ADR-0001 records when to revisit it.
+/// makes the assumption acceptable. `docs/transcript-reader.md` records when to revisit it.
 public enum TranscriptLocator {
     public static func defaultRoot(for source: AgentSource, home: URL) -> URL {
         switch source {
@@ -31,6 +31,12 @@ public enum TranscriptLocator {
     /// index with it instead of leaving one of the two behind.
     public static func codexThreadIndex(inRoot root: URL) -> URL {
         root.deletingLastPathComponent().appendingPathComponent("session_index.jsonl")
+    }
+
+    /// Where Codex moves the transcript of a thread that was archived: one flat folder beside
+    /// the sessions directory. Measured on 0.162.0-alpha.2 inside ChatGPT.app 26.1002.52244.
+    public static func codexArchivedSessions(inRoot root: URL) -> URL {
+        root.deletingLastPathComponent().appendingPathComponent("archived_sessions", isDirectory: true)
     }
 
     /// The transcript for one session, or `nil` when no file's name matches.

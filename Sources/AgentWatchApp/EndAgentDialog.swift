@@ -90,9 +90,11 @@ final class EndAgentDialog: NSView {
 
     /// Every length here is a whole number of points before it is used, not rounded after:
     /// a card centred by halves stood between two pixels, and on a screen of one pixel per
-    /// point every line of text on it came out soft. Rounding a finished frame instead would
-    /// narrow the sentence's box below the width it was measured at, and it could wrap onto a
-    /// line the box has no room for.
+    /// point every line of text on it came out soft, measured on macOS 15.3.1. A label half a
+    /// point wide (306.5 or 390.5) also draws darker than the same label at a whole width, the
+    /// same through `cacheDisplay` and `layer.render`, measured on macOS 15.3.1. Rounding a
+    /// finished frame instead would narrow the sentence's box below the width it was measured
+    /// at, and it could wrap onto a line the box has no room for.
     override func layout() {
         super.layout()
         let full = fullLayout(atWidth: bounds.width)
@@ -208,6 +210,7 @@ final class EndAgentDialog: NSView {
     }
 
     /// The panel never becomes key, so every click on it is a first click.
+    /// Measured on macOS 15.3.1.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
     }

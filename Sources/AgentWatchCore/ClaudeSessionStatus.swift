@@ -7,16 +7,17 @@ import Foundation
 /// answered with nothing rather than with a guess when it is missing or shaped unexpectedly.
 ///
 /// It earns its place here by reporting the one moment nothing else does: a person answering
-/// a dialog. No hook fires for it — the catalogue of Claude Code 2.1.272 holds 33 events and
-/// none of them is the answer — and the transcript writes nothing between the call's record
-/// and its result. So a row waiting on an approved call kept claiming "approval needed" for
+/// a dialog. No hook fires for it — the catalogue of Claude Code 2.1.272 holds 33 events, and
+/// the one answer among them, `ElicitationResult`, answers an MCP server rather than a
+/// permission — and the transcript writes nothing between the call's record and its result. So a row waiting on an approved call kept claiming "approval needed" for
 /// as long as that call then ran: measured on this machine, 89 seconds for a `git push`
 /// answered at once.
 ///
 /// The record also carries `waitingFor` — `permission prompt` for a request to run something,
 /// `input needed` for a question, and a few others. It is deliberately not read: nothing here
 /// would do anything with it, and a field crossing into this app with no reader is surface
-/// with no benefit. Its values are written down in `docs/agent-integration.md` §1б instead.
+/// with no benefit. Its values are written down in `docs/agent-processes.md`,
+/// «Почему живой агент находится только у Claude», instead.
 public struct ClaudeSessionStatus: Equatable, Sendable {
     /// The four words Claude Code writes, spelled as it spells them.
     ///

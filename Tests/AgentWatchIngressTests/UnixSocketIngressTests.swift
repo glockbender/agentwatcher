@@ -274,12 +274,12 @@ final class UnixSocketIngressTests: XCTestCase {
 
     /// A subagent's tool call reaches the app, and says whose it is.
     ///
-    /// Through the real executable, with the payload shaped as Claude Code 2.1.272 actually
-    /// sends it: `transcript_path` is the **parent's**, identical to the main thread's, and
-    /// the subagent is named only by `agent_id`. A filter that judged by the path used to
-    /// stand here and recognised nobody; this is what has to keep working now it is gone —
-    /// the call is what a permission dialog is about, so dropping it would leave the dialog
-    /// with nothing to point at.
+    /// Through the real executable, with the payload shaped as Claude Code actually sends it,
+    /// measured on Claude Code 2.1.272: `transcript_path` is the **parent's**, identical to the
+    /// main thread's, and the subagent is named only by `agent_id`. A filter that judged by the
+    /// path used to stand here and recognised nobody; this is what has to keep working now it is
+    /// gone — the call is what a permission dialog is about, so dropping it would leave the
+    /// dialog with nothing to point at.
     func testExecutableDeliversASubagentsCallAndNamesTheSubagent() throws {
         let directoryURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }
