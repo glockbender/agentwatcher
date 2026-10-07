@@ -19,6 +19,9 @@ final class SessionHostRegistry {
     /// place a background session's job identifier can be read from. A parameter so a test
     /// can point it at a folder of its own.
     private let claudeHome: URL
+    /// The transcript the app found for a session, by row — the file a Codex thread is named
+    /// by, and so the only place its identifier can be read from on this side of the socket.
+    private let transcriptOfSession: (SessionSnapshot) -> URL?
     private var hosts: [String: SessionHost] = [:]
     private lazy var exitWatcher = SessionProcessExitWatcher { [weak self] key in
         if let sessionID = Self.sessionID(ofViewerWatch: key) {
@@ -35,9 +38,11 @@ final class SessionHostRegistry {
         claudeHome: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude", isDirectory: true),
         onAgentProcessExit: @escaping (String) -> Void,
-        onViewerProcessExit: @escaping (String) -> Void = { _ in }
+        onViewerProcessExit: @escaping (String) -> Void = { _ in },
+        transcriptOfSession: @escaping (SessionSnapshot) -> URL? = { _ in nil }
     ) {
         self.claudeHome = claudeHome
+        self.transcriptOfSession = transcriptOfSession
         self.onAgentProcessExit = onAgentProcessExit
         self.onViewerProcessExit = onViewerProcessExit
     }
@@ -119,6 +124,9 @@ final class SessionHostRegistry {
         case ghostty(terminalID: String)
         /// The IDE plugin picks the window and the tab; this is the address it answers to.
         case jetBrains(URL)
+        /// A desktop client shows the session itself — Claude.app or ChatGPT.app, by the link
+        /// it answers with one of its sessions (`DesktopSessionLink`).
+        case desktopClient(URL)
         /// Nothing here addresses a tab, and the reason belongs in the log.
         case noTab(TabFocusAttempt)
     }
@@ -138,7 +146,7 @@ final class SessionHostRegistry {
     /// there was only one on screen to test with.
     static func activationOptions(for route: TabRoute) -> NSApplication.ActivationOptions {
         switch route {
-        case .ghostty, .jetBrains: []
+        case .ghostty, .jetBrains, .desktopClient: []
         case .noTab: [.activateAllWindows]
         }
     }
@@ -257,20 +265,68 @@ final class SessionHostRegistry {
 
     /// Who can be asked for this session's tab, and how.
     ///
-    /// Two hosts can be asked, by two entirely different routes, and which one applies is
-    /// decided by the application rather than by the session: a JetBrains IDE through its
-    /// plugin, Ghostty through its AppleScript dictionary. Everything else has no way to
-    /// address a tab, and that is the ordinary answer rather than a fault.
+    /// Four hosts can be asked, by three different routes, and which one applies is decided
+    /// by the application rather than by the session: a JetBrains IDE through its plugin,
+    /// Ghostty through its AppleScript dictionary, Claude.app and ChatGPT.app through the link
+    /// each answers with one of its sessions. Everything else has no way to address a tab, and
+    /// that is the ordinary answer rather than a fault.
     private func tabRoute(
         of snapshot: SessionSnapshot,
         in application: NSRunningApplication,
         otherSessionNames: [String]
     ) -> TabRoute {
-        if application.bundleIdentifier == GhosttyScripting.bundleIdentifier {
+        switch application.bundleIdentifier {
+        case GhosttyScripting.bundleIdentifier:
             return ghosttyRoute(
                 of: snapshot, heldBy: application.processIdentifier, otherSessionNames: otherSessionNames)
+        case DesktopSessionLink.claudeBundleIdentifier:
+            return claudeDesktopRoute(of: snapshot)
+        case DesktopSessionLink.codexBundleIdentifier:
+            return codexDesktopRoute(of: snapshot)
+        default:
+            return ideRoute(of: snapshot, in: application)
         }
-        return ideRoute(of: snapshot, in: application)
+    }
+
+    /// Claude.app's link to the session, from Claude Code's record of the session's process,
+    /// read now: the record is there only while the process lives, and a link to a session
+    /// that is archived or gone would take Claude.app to the start page of Code instead.
+    private func claudeDesktopRoute(of snapshot: SessionSnapshot) -> TabRoute {
+        // A Claude session somebody typed into a terminal that happens to run under another
+        // agent's desktop client — by that agent's shell tool, say — is not Claude.app's own.
+        guard snapshot.source == .claude, let agentProcessID = snapshot.agentProcessID else {
+            return .noTab(.unaddressable)
+        }
+        let registry = ClaudeSessionRegistry(
+            directory: claudeHome.appendingPathComponent("sessions", isDirectory: true))
+        guard let record = registry.record(ofLiveProcess: agentProcessID) else {
+            return .noTab(.missing("Claude Code keeps no record of process \(agentProcessID)"))
+        }
+        // `claude` typed into the app's own terminal pane: a session of Claude Code's, running
+        // under the app, that the app does not list. The ordinary case for such a row.
+        guard record.isDesktopSession else {
+            return .noTab(.unaddressable)
+        }
+        guard let link = DesktopSessionLink.claude(record: record, sessionLabel: snapshot.transcriptLabel) else {
+            return .noTab(.missing("Claude Code's record of process \(agentProcessID) names no session of this row's"))
+        }
+        return .desktopClient(link)
+    }
+
+    /// ChatGPT.app's link to the thread, from the name of the transcript found for it. Before
+    /// the transcript is found — the first moments of a thread — the application is raised as
+    /// it always was.
+    private func codexDesktopRoute(of snapshot: SessionSnapshot) -> TabRoute {
+        guard snapshot.source == .codex else {
+            return .noTab(.unaddressable)
+        }
+        guard let transcript = transcriptOfSession(snapshot) else {
+            return .noTab(.missing("the thread's transcript has not been found yet"))
+        }
+        guard let link = DesktopSessionLink.codex(transcript: transcript, sessionLabel: snapshot.transcriptLabel) else {
+            return .noTab(.missing("the transcript found for this row is named after another thread"))
+        }
+        return .desktopClient(link)
     }
 
     private func ghosttyRoute(
@@ -331,6 +387,13 @@ final class SessionHostRegistry {
             // daemon, which hands it to the IDE, which runs the plugin. Nothing comes back
             // along that path. What the plugin did is in the IDE's own log.
             _ = NSWorkspace.shared.open(url)
+            return .asked
+        case .desktopClient(let url):
+            // The same: what the application made of the link is in its own log —
+            // `setFocusedSession` in Claude's, `thread_stream_view_activity_changed` in ChatGPT's.
+            guard NSWorkspace.shared.open(url) else {
+                return .missing("macOS found no application for \(url.scheme ?? "the link")")
+            }
             return .asked
         case .noTab(let attempt):
             return attempt
@@ -491,9 +554,14 @@ final class SessionHostRegistry {
 }
 
 extension AgentSource {
-    /// The desktop application that hosts this agent, when it has one. Claude Code runs
-    /// in a terminal and has no bundle of its own, which is why its sessions rely on the
-    /// process-exit watcher instead.
+    /// The desktop application whose being open vouches for this agent's sessions, when there
+    /// is one. Only Codex's: ChatGPT.app holds all its threads in one process and leaves helper
+    /// processes behind when it quits, so its own termination is the one fact to trust.
+    ///
+    /// Not Claude.app, although it runs Claude sessions too. It runs each as a process of its
+    /// own and stops that process while staying open — when a session is archived, or left
+    /// unused (`docs/agent-integration.md` §1г) — so a Claude session is vouched for by its
+    /// process, and the process-exit watcher reports its end, wherever it runs.
     var desktopBundleIdentifier: String? {
         switch self {
         case .claude: nil

@@ -95,3 +95,19 @@ the trackpad. **Settings… → Menu Bar → Sessions before scrolling** sets ho
 before the list scrolls.
 
 **Checked on:** macOS 15.3.1.
+
+## A Claude app session appears as soon as you open it
+
+**Why:** The Claude desktop app runs each of its sessions as a separate Claude Code process, and it
+starts that process when you open the session in its sidebar, before you send anything. The session
+starts there, so its row appears. When the process stops, the row closes: archiving the session or
+quitting the app stops it, and the app can also stop the process of a session you have not used for
+a while, even though the session stays in its sidebar.
+
+**What to do:** Nothing. The row is a real session, ready to work. When you send a message in a
+session whose row has closed, the app starts the process again under the same session, and the row
+comes back.
+
+**Checked on:** Claude app 2.26454.0 with Claude Code 2.1.289. Tested: opening a session starts it,
+archiving ends it, and a continued session keeps its identifier. Read in the app's code but not
+seen: the app stopping an unused session on its own.

@@ -11,6 +11,19 @@ public struct ClaudeSessionRecord: Equatable, Sendable {
     public let processID: Int32
     /// When the process started, as the record says, or `nil` when it does not.
     public let startedAt: Date?
+    /// The session the process runs, raw. Read only on this side of the socket, to be compared
+    /// with a row's label — it names a transcript (ADR-0001).
+    public let sessionID: String?
+    /// Whether Claude.app started this process for one of its sessions: `entrypoint` is
+    /// `claude-desktop`. Measured on all four such processes on Claude Code 2.1.289; the eleven
+    /// sessions typed into terminals said `cli`. A `claude` typed into Claude.app's own
+    /// terminal pane was not measured, and is expected to say `cli` as well.
+    public let isDesktopSession: Bool
+    /// The session's identifier inside Claude.app — `hostSessionId`, `local_…` — which is not
+    /// the session's own identifier and is what the app's link takes. Only read for a session
+    /// Claude.app started: the field means "the host's name for me", and another host would
+    /// name it in a scheme of its own.
+    public let desktopSessionID: String?
 
     /// How far the record's start may be from the kernel's and still be the same process. The
     /// kernel's own reading in the record matched `ps` to the second on the three records
@@ -30,6 +43,9 @@ public struct ClaudeSessionRecord: Equatable, Sendable {
         }
         self.processID = processID
         self.startedAt = Self.startedAt(in: record)
+        self.sessionID = record["sessionId"] as? String
+        self.isDesktopSession = record["entrypoint"] as? String == "claude-desktop"
+        self.desktopSessionID = isDesktopSession ? record["hostSessionId"] as? String : nil
     }
 
     /// Whether a record's start and the kernel's are one process's, rather than a number the

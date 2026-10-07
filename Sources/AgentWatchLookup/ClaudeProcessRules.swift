@@ -52,7 +52,19 @@ public struct ClaudeProcessRules: AgentProcessRules {
             return (isAgentProcess(process) || Self.isTheAgentsExecutable(arguments))
                 && Self.isHelperCommand(arguments)
         }
-        return runsUnderAHelper ? .background : .cli
+        if runsUnderAHelper {
+            return .background
+        }
+        // Claude.app runs each of its sessions as a process of its own and says so in that
+        // process's record, the record `isAgentProcess` has just read for it: its path is no
+        // `versions/` one, so the record is how it was recognised at all. Asked of the record
+        // rather than of `Claude.app` above it in the tree, because `claude` typed into the
+        // app's own terminal pane would run under the app too, in a terminal it can lose.
+        // Measured on 2.1.289: `docs/agent-integration.md` §1г.
+        if registry.record(ofLiveProcess: ancestors[agentIndex].processID)?.isDesktopSession == true {
+            return .desktop
+        }
+        return .cli
     }
 
     /// Reads the original out of a fork's arguments: `--fork-session` says the process is a
