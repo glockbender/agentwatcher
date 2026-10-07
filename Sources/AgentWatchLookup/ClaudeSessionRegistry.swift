@@ -34,17 +34,24 @@ public struct ClaudeSessionRegistry: Sendable {
     /// agrees with. The start is required rather than taken on trust: a record can outlive its
     /// process, the number is then handed to a stranger, and this answer builds a row.
     func recordsLiveProcess(_ processID: Int32) -> Bool {
+        record(ofLiveProcess: processID) != nil
+    }
+
+    /// The record of this live process, on the same terms as `recordsLiveProcess`: a record
+    /// whose process has gone, or whose number now belongs to somebody else, is no record.
+    public func record(ofLiveProcess processID: Int32) -> ClaudeSessionRecord? {
         let file = directory.appendingPathComponent("\(processID).json", isDirectory: false)
         guard
             let data = try? Data(contentsOf: file),
             let record = ClaudeSessionRecord(data: data),
             record.processID == processID,
             let recordedStart = record.startedAt,
-            let kernelStart = startTime(processID)
+            let kernelStart = startTime(processID),
+            ClaudeSessionRecord.starts(recordedStart, match: kernelStart)
         else {
-            return false
+            return nil
         }
-        return ClaudeSessionRecord.starts(recordedStart, match: kernelStart)
+        return record
     }
 
     /// Every process a record speaks for — one listing of a folder holding a dozen files,

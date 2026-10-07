@@ -23,6 +23,15 @@ final class ToolingIntegrationTests: XCTestCase {
         }
     }
 
+    /// Without the pair, a session whose MCP server asks the person something reads as
+    /// `working`: the server's tool call is the last thing any other hook reported.
+    func testClaudeIsAskedWhenAnMCPServerQuestionsThePerson() {
+        let asked = ToolingHooks.hooks(for: .claude)
+
+        XCTAssertTrue(asked.contains("Elicitation"))
+        XCTAssertTrue(asked.contains("ElicitationResult"))
+    }
+
     /// The sender lives in `~/Library/Application Support/AgentWatch/`, and both agents run a
     /// hook through a shell. An unquoted path with a space in it is therefore two words: the
     /// shell tried to run `/Users/…/Library/Application` and answered `No such file or

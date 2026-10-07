@@ -71,6 +71,9 @@ final class SessionSupervisor {
         },
         onViewerProcessExit: { [weak self] sessionID in
             self?.handleViewerProcessExit(sessionID: sessionID)
+        },
+        transcriptOfSession: { [weak self] snapshot in
+            self?.transcriptOfSession(snapshot)
         }
     )
 
@@ -78,6 +81,33 @@ final class SessionSupervisor {
     /// every process it runs.
     private var claudeHome: URL {
         home.appendingPathComponent(".claude", isDirectory: true)
+    }
+
+    /// The transcript a click on a Codex thread needs, for the thread's identifier in its name.
+    ///
+    /// The watcher's, when it found one. Otherwise looked for now, once for this click: the
+    /// watcher reads only rows whose quiet might end without a hook, so a row at rest — the
+    /// usual row to click, a finished turn — may never have had its file found. Both of
+    /// Codex's folders are searched, because a thread archived in ChatGPT.app takes its file
+    /// with it and its row stays. On the main thread, which the locator warns against for a
+    /// timer: a click is one search of a few hundred names, 3 to 23 ms when the locator was measured.
+    func transcriptOfSession(_ snapshot: SessionSnapshot) -> URL? {
+        if let found = transcripts.transcriptURL(forSessionWithID: snapshot.id) {
+            return found
+        }
+        let root = TranscriptLocator.defaultRoot(for: snapshot.source, home: home)
+        var roots = [root]
+        if snapshot.source == .codex {
+            roots.append(TranscriptLocator.codexArchivedSessions(inRoot: root))
+        }
+        for root in roots {
+            if let found = TranscriptLocator.locate(
+                sessionLabel: snapshot.transcriptLabel, source: snapshot.source, root: root)
+            {
+                return found
+            }
+        }
+        return nil
     }
 
     private lazy var transcripts = TranscriptWatcher(

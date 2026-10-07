@@ -225,6 +225,13 @@ final class TranscriptWatcher {
         rescheduleReads()
     }
 
+    /// The transcript found for a row, if it has been found. A row is watched only while its
+    /// quiet might end without a hook, so a row that has never worked while this app watched —
+    /// one restored at rest after a restart — has none.
+    func transcriptURL(forSessionWithID id: String) -> URL? {
+        watches[id]?.url
+    }
+
     func stop() {
         timer?.invalidate()
         timer = nil

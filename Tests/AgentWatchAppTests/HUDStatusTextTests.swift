@@ -72,7 +72,7 @@ final class HUDStatusTextTests: XCTestCase {
     /// A symbol nobody can read is worse than the word it replaced, so every kind has to
     /// resolve to a real symbol on this system rather than silently to nothing.
     func testEveryActivityKindHasASymbolThisSystemActuallyHas() {
-        for kind in [ActivityKind.subagent, .shell, .backgroundTask, .tool] {
+        for kind in ActivityKind.allCases {
             XCTAssertNotNil(ActivityIcon.image(for: kind), "\(kind) has no symbol")
         }
     }
@@ -174,6 +174,31 @@ final class HUDStatusTextTests: XCTestCase {
             SessionLamp.builtInAppearance(for: snapshot(phase: .waitingForUser, userInputRequestKind: .selection)).name,
             "choice needed"
         )
+        XCTAssertEqual(
+            SessionLamp.builtInAppearance(for: snapshot(phase: .waitingForUser, userInputRequestKind: .elicitation))
+                .name,
+            "input needed"
+        )
+    }
+
+    /// The lamp says something is being asked; the counter says it is an MCP server asking.
+    /// First in the row, because it is why the row is waiting, and with no number: the main
+    /// thread is asked one thing at a time. It comes from the open dialog, not from a call.
+    func testAnMCPServersQuestionIsCountedFirstAndWithoutANumber() {
+        var asked = snapshot(
+            phase: .waitingForUser,
+            activities: [SessionActivity(id: "mcp-call", kind: .tool, startedAt: start)]
+        )
+        asked.setAwaitedDialogs([AwaitedDialog(activityID: "elicitation", kind: .elicitation)])
+
+        let counts = activityCounts(for: asked)
+
+        XCTAssertEqual(counts.map(\.kind), [.elicitation, .tool])
+        XCTAssertNil(counterText(for: .elicitation, count: 1))
+        XCTAssertEqual(activitiesText(for: asked), "waiting on your answer to an MCP server · 1 tool call")
+
+        asked.clearAwaited()
+        XCTAssertEqual(activityCounts(for: asked).map(\.kind), [.tool], "answered, it is gone")
     }
 
     /// Freshness stops tracking `no signal` the moment the phase is reached, so a timer

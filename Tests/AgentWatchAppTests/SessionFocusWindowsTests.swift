@@ -30,6 +30,20 @@ final class SessionFocusWindowsTests: XCTestCase {
         XCTAssertEqual(SessionHostRegistry.activationOptions(for: .jetBrains(address)), [])
     }
 
+    /// A desktop client's own link shows its main window with the session in it: Claude.app's
+    /// handler calls `show()` and `focus()`, ChatGPT.app's makes its primary window visible —
+    /// read in their `app.asar` (Claude.app 2.26454.0, ChatGPT.app 26.1002.52244). Every other
+    /// window of the client coming forward too would bury it, as with Ghostty.
+    func testADesktopClientsSessionBringsOnlyTheWindowItShowsItIn() throws {
+        for address in [
+            "claude://code/continue?session=local_3f2a9c1e-8b47-4d05-a6e2-91c0d7b4e5f8",
+            "codex://threads/019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b",
+        ] {
+            let link = try XCTUnwrap(URL(string: address))
+            XCTAssertEqual(SessionHostRegistry.activationOptions(for: .desktopClient(link)), [], address)
+        }
+    }
+
     /// With no route, the wide net is the whole point: the session is in one of those windows
     /// and Agent Watch cannot say which. A host with no dictionary and no plugin — and a
     /// Ghostty that would not name a single tab for this session — keeps today's behaviour.

@@ -167,6 +167,9 @@ public enum SessionAttention: String, CaseIterable, Sendable {
 public enum UserInputRequestKind: String, Codable, Sendable {
     case approval
     case selection
+    /// An MCP server's question to the person: `Elicitation`. What it asks — a form to fill
+    /// in, or a link to open — is the server's business and does not cross the socket.
+    case elicitation
 }
 
 /// One question a session is waiting for an answer to.
@@ -235,6 +238,12 @@ public enum ActivityKind: String, Codable, Sendable, CaseIterable {
     /// client, so neither `PreToolUse` nor `PostToolUse` fires for it. It reaches the app only
     /// through the transcript, and only for Claude — Codex has no equivalent.
     case advisor
+    /// An MCP server is waiting for the person to answer its question.
+    ///
+    /// Not work the session started: it is drawn from the session's open dialogs rather than
+    /// from its calls — see `activityCounts` — and is a kind here so that the row shows it
+    /// among the counters and the settings window switches it off with them.
+    case elicitation
     case tool
 }
 

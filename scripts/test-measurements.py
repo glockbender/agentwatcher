@@ -42,6 +42,12 @@ class MarkerTests(unittest.TestCase):
     def test_the_longer_program_name_wins(self):
         self.assertEqual(measurements.parse_doc_marker("Codex Desktop 26.1"), [("Codex Desktop", "26.1")])
 
+    def test_a_desktop_app_and_a_pre_release(self):
+        self.assertEqual(
+            measurements.parse_doc_marker("Claude.app 2.26454.0, Codex 0.162.0-alpha.2"),
+            [("Claude.app", "2.26454.0"), ("Codex", "0.162.0-alpha.2")],
+        )
+
     def test_words_inside_a_marker_are_refused(self):
         self.assertIsNone(measurements.parse_doc_marker("macOS 26.6.2 на машине GitHub"))
         self.assertIsNone(measurements.parse_doc_marker("Xcode 26"))
@@ -108,8 +114,18 @@ class TroubleshootingTests(unittest.TestCase):
         self.assertEqual(rows[0][3], "[TROUBLESHOOTING.md, «The row stays»](../TROUBLESHOOTING.md#the-row-stays)")
 
     def test_not_recorded_gives_no_row(self):
-        rows, _ = collect({"TROUBLESHOOTING.md": "# T\n\n## X\n\n**Checked on:** not recorded.\n"})
-        self.assertEqual(rows, [])
+        rows, problems = collect({"TROUBLESHOOTING.md": "# T\n\n## X\n\n**Checked on:** not recorded.\n"})
+        self.assertEqual((rows, problems), ([], []))
+
+    def test_programs_are_found_in_the_first_sentence(self):
+        text = "# T\n\n## X\n\n**Checked on:** Claude.app 2.26454.0 with Claude Code 2.1.289. Tested: macOS 26.1.\n"
+        rows, _ = collect({"TROUBLESHOOTING.md": text})
+        self.assertEqual([(r[0], r[1]) for r in rows], [("Claude.app", "2.26454.0"), ("Claude Code", "2.1.289")])
+
+    def test_a_line_naming_no_program_is_a_problem(self):
+        _, problems = collect({"TROUBLESHOOTING.md": "# T\n\n## X\n\n**Checked on:** the owner's laptop.\n"})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("TROUBLESHOOTING.md:5", problems[0])
 
 
 class RenderTests(unittest.TestCase):
@@ -122,7 +138,11 @@ class RenderTests(unittest.TestCase):
             ]
         )
         table = [line for line in text.split("\n") if line.startswith("| ") and "---" not in line][1:]
-        self.assertEqual([line.split(" | ")[0] for line in table], ["| 2.1.272", "| 2.1.9", f"| {measurements.NOT_RECORDED}"])
+        self.assertEqual([line.split(" | ")[0] for line in table], ["| Claude Code 2.1.272", "| Claude Code 2.1.9", f"| Claude Code {measurements.NOT_RECORDED}"])
+
+    def test_a_release_comes_before_its_pre_release(self):
+        text = measurements.render([("Codex", "0.162.0-alpha.2", "a", "w"), ("Codex", "0.162.0", "b", "w")])
+        self.assertLess(text.index("| Codex 0.162.0 |"), text.index("| Codex 0.162.0-alpha.2 |"))
 
     def test_a_group_of_programs_names_the_program(self):
         text = measurements.render([("GoLand", "2026.1.4", "f", "w")])

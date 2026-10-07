@@ -33,6 +33,12 @@ public enum TranscriptLocator {
         root.deletingLastPathComponent().appendingPathComponent("session_index.jsonl")
     }
 
+    /// Where Codex moves the transcript of a thread that was archived: one flat folder beside
+    /// the sessions directory. Measured on 0.162.0-alpha.2 inside ChatGPT.app 26.1002.52244.
+    public static func codexArchivedSessions(inRoot root: URL) -> URL {
+        root.deletingLastPathComponent().appendingPathComponent("archived_sessions", isDirectory: true)
+    }
+
     /// The transcript for one session, or `nil` when no file's name matches.
     ///
     /// Every name is hashed and compared; nothing is opened and nothing is read. Enumerating

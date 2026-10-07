@@ -1019,6 +1019,32 @@ final class SessionSupervisorTests: XCTestCase {
         return value
     }
 
+    /// A thread archived in ChatGPT.app takes its transcript to `archived_sessions` while its row
+    /// stays, and a click on the row needs the thread's identifier, which only that file's name
+    /// holds. The row has never worked while watched, so the watcher has no file for it either.
+    /// Measured on Codex 0.162.0-alpha.2 inside ChatGPT.app 26.1002.52244.
+    func testAClickFindsTheTranscriptOfAThreadArchivedInChatGPT() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let thread = "01a11136-a671-7840-bade-ed65b91cb0a9"
+        let archive = directory.appendingPathComponent(".codex/archived_sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+        let transcript = archive.appendingPathComponent("rollout-2026-10-06T15-35-56-\(thread).jsonl")
+        try Data("{}\n".utf8).write(to: transcript)
+        let supervisor = try makeSupervisor(home: directory)
+
+        supervisor.ingest(
+            HookIngressRequest(
+                source: .codex,
+                declaredEvent: "SessionStart",
+                payload: .object(["session_id": .string(try senderSideSessionID(thread))]),
+                clientKind: .desktop
+            ))
+        let snapshot = try XCTUnwrap(supervisor.sessions.first)
+
+        XCTAssertEqual(supervisor.transcriptOfSession(snapshot)?.lastPathComponent, transcript.lastPathComponent)
+    }
+
     /// A home with one Claude transcript in it, named the way Claude names them.
     private func makeTranscript(named sessionUUID: String, in directory: URL) throws -> URL {
         let projects = directory.appendingPathComponent(".claude/projects/p", isDirectory: true)

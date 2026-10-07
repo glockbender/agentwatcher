@@ -20,15 +20,16 @@ FROZEN = ("docs/research/", "docs/articles/")
 # A plan says what is still to be measured; its «измерены» is a criterion, not a result.
 PLANS = ("docs/implementation-plan.md", "docs/release-plan.md")
 GROUPS = (
-    ("Claude Code", ("Claude Code",)),
-    ("Codex", ("Codex Desktop", "Codex")),
+    ("Claude Code", ("Claude Code", "Claude.app")),
+    ("Codex", ("Codex Desktop", "Codex", "ChatGPT.app")),
     ("Ghostty", ("Ghostty",)),
     ("JetBrains IDE", ("GoLand", "IntelliJ IDEA", "PyCharm")),
     ("macOS", ("macOS",)),
 )
 SUBJECTS = tuple(subject for _, subjects in GROUPS for subject in subjects)
 NOT_RECORDED = "версия не записана"
-VERSION = r"\d+(?:\.\d+)+"
+# A pre-release keeps its tag: 0.162.0-alpha.2 is not 0.162.0.
+VERSION = r"\d+(?:\.\d+)+(?:-[A-Za-z]+(?:\.\d+)*)?"
 
 DOC_MARKER = re.compile(r"\(замер: ([^)]*)\)")
 # A statement that something was measured. A plan to measure («замерить») and a negative («не
@@ -43,6 +44,7 @@ CODE_MARKER = re.compile(
     r"((?: \d+(?:\.\d+)*)?(?:(?:, | and |, and )" + VERSION + r")*)"
 )
 CHECKED_ON = re.compile(r"^\*\*Checked on:\*\* (.+)$")
+SUBJECT_AND_VERSION = re.compile("(" + "|".join(re.escape(s) for s in SUBJECTS) + ") (" + VERSION + ")")
 HEADING = re.compile(r"^(#+)\s+(.*?)\s*#*\s*$")
 UNIT_START = re.compile(r"^(?:\||[-*] |\d+\. )")
 CODE_COMMENT = {".swift": "//", ".kt": "//", ".kts": "//", ".sh": "#"}
@@ -184,12 +186,17 @@ def collect(files: dict[str, str]):
                     fact = sentence_around(unit, match.start(), match.end())
                     rows += [(subject, version, fact, where) for subject, version in parsed]
         elif name == "TROUBLESHOOTING.md":
-            for heading, anchor, unit, _ in units(text):
+            for heading, anchor, unit, line in units(text):
                 checked = CHECKED_ON.match(unit)
                 if not checked:
                     continue
-                first = re.split(r"\. |; |\.$", checked.group(1))[0]
-                for subject, version in parse_doc_marker(first) or []:
+                # Plain English for the reader, so the programs are found in the first sentence
+                # rather than parsed from a marker; one that names none is a problem, not a skip.
+                first = re.split(r"\. |; ", checked.group(1).rstrip("."))[0]
+                found = SUBJECT_AND_VERSION.findall(first)
+                if not found and not first.startswith("not recorded"):
+                    problems.append(f"{name}:{line}: **Checked on:** names a program and its version, or says not recorded")
+                for subject, version in found:
                     where = f"[TROUBLESHOOTING.md, «{heading}»](../TROUBLESHOOTING.md#{anchor})"
                     rows.append((subject, version, heading.replace("|", "\\|"), where))
         elif suffix in CODE_COMMENT:
@@ -203,8 +210,9 @@ def collect(files: dict[str, str]):
 def version_key(version: str):
     """Newest first; an unrecorded version last, because it cannot be tied to any update."""
     if version == NOT_RECORDED:
-        return (1, ())
-    return (0, tuple(-int(part) for part in version.split(".")))
+        return (1, (), 0)
+    release, _, tag = version.partition("-")
+    return (0, tuple(-int(part) for part in release.split(".")), 1 if tag else 0)
 
 
 def render(rows) -> str:
