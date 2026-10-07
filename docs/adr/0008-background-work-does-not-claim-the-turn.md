@@ -42,4 +42,4 @@
 работы. Записано, чтобы следующий разбор не предлагал это заново как недосмотр.
 
 Отсюда же и то, что список фоновой работы приходит только с `Stop` и заменяет собой предыдущий, а
-не накапливается: см. `docs/agent-integration.md` §3 и `Tests/AgentWatchCoreTests/BackgroundWorkTests.swift`.
+не накапливается: см. [«Какие события мы просим»](../agent-integration.md#какие-события-мы-просим) и `Tests/AgentWatchCoreTests/BackgroundWorkTests.swift`.

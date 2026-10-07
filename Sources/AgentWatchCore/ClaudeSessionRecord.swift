@@ -1,8 +1,8 @@
 import Foundation
 
 /// Which process one of Claude Code's own records is about: `~/.claude/sessions/<pid>.json`,
-/// written for a process while it runs. Measured, not documented — `docs/agent-integration.md`
-/// §1б.
+/// written for a process while it runs. Measured, not documented — `docs/agent-integration.md`,
+/// «Почему живой агент находится только у Claude».
 ///
 /// Two readers need exactly this: the viewer of a background job, and the rule that knows an
 /// agent's process by its record rather than by its path. A number handed out again has to be

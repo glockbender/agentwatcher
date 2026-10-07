@@ -13,7 +13,8 @@ import AgentWatchCore
 ///
 /// The same rules serve the hook sender and the app's scanner, and have to: a row the scanner
 /// builds and the row its first hook builds must agree about which process is the session's.
-/// Why the split is by agent here and by concern elsewhere: `docs/agent-integration.md` §1а.
+/// Why the split is by agent here and by concern elsewhere: `docs/agent-integration.md`,
+/// «Где это живёт в коде».
 public protocol AgentProcessRules: Sendable {
     /// The process a hook names as its session's, found among the hook's ancestors — nearest
     /// first — or `nil` when this agent's hooks carry no process number.

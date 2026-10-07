@@ -5,7 +5,8 @@ import XCTest
 
 /// Claude Code's own record of a process knows it as the agent's when its path no longer can:
 /// after an update deleted the version it runs, or while the kernel reports it under the second
-/// name a background session gave the file. `docs/agent-integration.md` §1б.
+/// name a background session gave the file. `docs/agent-integration.md`,
+/// «Почему живой агент находится только у Claude».
 final class ClaudeSessionRegistryTests: XCTestCase {
     private var directory: URL!
 

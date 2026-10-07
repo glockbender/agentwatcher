@@ -5,8 +5,9 @@ import Foundation
 /// for the one thing the path to the program cannot always say: that a live process is one of
 /// its sessions.
 ///
-/// The path fails in two measured ways (`docs/agent-integration.md` §1б). An update deletes the
-/// version a long-running session was started from, and the kernel then names no path at all.
+/// The path fails in two measured ways (`docs/agent-integration.md`,
+/// «Почему живой агент находится только у Claude»). An update deletes the version a long-running session was
+/// started from, and the kernel then names no path at all.
 /// And a background session gives the same file a second name inside `ClaudeCode.app`, which
 /// the kernel then reports for every process running that version. The record is written by
 /// the process itself and carries its start, so neither touches it.
