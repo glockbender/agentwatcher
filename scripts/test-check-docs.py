@@ -73,5 +73,55 @@ class ADRTests(unittest.TestCase):
         self.assertEqual(check.adr_problems(files), [f"{ADR}one.md: an ADR file is named NNNN-words-with-hyphens.md"])
 
 
+class SectionSignTests(unittest.TestCase):
+    def test_a_section_number_is_named(self):
+        files = {"Sources/A.swift": "// See the plan, §7.", DOCS + "a.md": "Section §  12 there."}
+        self.assertEqual(
+            check.section_sign_problems(files),
+            [
+                "Sources/A.swift:1: points at a section by number; name the heading",
+                f"{DOCS}a.md:1: points at a section by number; name the heading",
+            ],
+        )
+
+    def test_an_archived_document_keeps_its_numbers(self):
+        self.assertEqual(check.section_sign_problems({DOCS + "research/x.md": "§7"}), [])
+
+
+class StatusTests(unittest.TestCase):
+    def problems(self, status):
+        return check.status_problems({ADR + "0003-x.md": f"# X\n\n{status}\n\nText."})
+
+    def test_accepted_and_replaced_pass(self):
+        self.assertEqual(self.problems("**Статус:** принято 2026-09-15."), [])
+        self.assertEqual(self.problems("**Статус:** заменено [ADR-0016](0016-every-setting.md)."), [])
+        self.assertEqual(self.problems("**Статус:** частично заменено [ADR-0016](0016-every-setting.md) — что именно."), [])
+
+    def test_a_missing_or_loose_status_is_named(self):
+        expected = [f"{ADR}0003-x.md:3: the third line is the status: **Статус:** принято YYYY-MM-DD."]
+        self.assertEqual(self.problems("Text."), expected)
+        self.assertEqual(self.problems("**Статус:** действует."), expected)
+
+
+class OpeningTests(unittest.TestCase):
+    def test_an_opening_may_wrap_anywhere(self):
+        text = "# A\n\nЗдесь — одно. Чего здесь\nнет: другое.\n\nТекст.\n"
+        self.assertEqual(check.opening_problems({DOCS + "a.md": text}), [])
+
+    def test_a_document_without_its_scope_is_named(self):
+        files = {DOCS + "a.md": "# A\n\nТекст.\n", ADR + "0001-x.md": "# X\n\nТекст.\n"}
+        self.assertEqual(check.opening_problems(files), [f"{DOCS}a.md:3: opens with «Здесь — …» and «Чего здесь нет: …»"])
+
+
+class LengthTests(unittest.TestCase):
+    def test_a_long_document_is_named_and_an_archive_is_not(self):
+        long = "строка\n" * (check.MAX_LINES + 1)
+        files = {DOCS + "a.md": long, DOCS + "research/b.md": long, DOCS + "c.md": "строка\n" * check.MAX_LINES}
+        self.assertEqual(
+            check.length_problems(files),
+            [f"{DOCS}a.md: {check.MAX_LINES + 1} lines; split it by subject (the limit is {check.MAX_LINES})"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

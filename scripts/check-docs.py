@@ -2,8 +2,10 @@
 
 Each check holds one thing that used to drift silently: a link to a heading that was renamed, a
 `docs/…` path in a comment after the file moved, two ADRs that took the same number on parallel
-branches. What the documents say is not checked here; whether a sentence is still true is for the
-person who changes the code it describes.
+branches, a "§7" that pointed elsewhere once a section was inserted above it, an ADR nobody could
+tell was replaced, a document that did not say what it holds, and one that grew into several.
+What the documents say is not checked here; whether a sentence is still true is for the person
+who changes the code it describes.
 """
 
 import os
@@ -18,6 +20,15 @@ FENCE = re.compile(r"^```.*?^```", re.M | re.S)
 DOC_PATH = re.compile(r"\bdocs/[\w./-]+\.md\b")
 ADR_FILE = re.compile(r"^(\d{4})-[a-z0-9-]+\.md$")
 ADR_MENTION = re.compile(r"\bADR-(\d{4})\b")
+SECTION_SIGN = re.compile(r"§\s*\d")
+STATUS = re.compile(
+    r"^\*\*Статус:\*\* (?:принято \d{4}-\d{2}-\d{2}"
+    r"|заменено \[ADR-\d{4}\]\(\d{4}-[a-z0-9-]+\.md\)"
+    r"|частично заменено \[ADR-\d{4}\]\(\d{4}-[a-z0-9-]+\.md\) — .+)\.$"
+)
+MAX_LINES = 500
+# Snapshots: an archived study or a published article is kept as it was written.
+FROZEN = ("docs/research/", "docs/articles/")
 
 
 def slug(heading: str) -> str:
@@ -92,7 +103,64 @@ def adr_problems(files: dict[str, str]) -> list[str]:
     return found
 
 
-CHECKS = (link_problems, path_problems, adr_problems)
+def is_living_doc(name: str) -> bool:
+    return name.startswith("docs/") and name.endswith(".md") and not name.startswith(FROZEN)
+
+
+def section_sign_problems(files: dict[str, str]) -> list[str]:
+    """A pointer names its heading: "§7" pointed elsewhere the day a section was inserted above."""
+    found = []
+    for name, text in files.items():
+        if name.startswith(FROZEN) or not name.endswith((".md", ".swift", ".kt")):
+            continue
+        for match in SECTION_SIGN.finditer(text):
+            found.append(f"{name}:{line_of(text, match.start())}: points at a section by number; name the heading")
+    return found
+
+
+def status_problems(files: dict[str, str]) -> list[str]:
+    """An ADR says on its third line whether it still holds, so nobody follows a replaced one."""
+    found = []
+    for name, text in files.items():
+        if Path(name).parent != Path("docs/adr") or not name.endswith(".md"):
+            continue
+        lines = text.split("\n")
+        if len(lines) < 3 or not STATUS.match(lines[2]):
+            found.append(f"{name}:3: the third line is the status: **Статус:** принято YYYY-MM-DD.")
+    return found
+
+
+def opening_problems(files: dict[str, str]) -> list[str]:
+    """A document in docs/ says first what it holds and what it leaves out, so nothing has to list it."""
+    found = []
+    for name, text in files.items():
+        if Path(name).parent != Path("docs") or not name.endswith(".md"):
+            continue
+        paragraphs = [p for p in text.split("\n\n") if p.strip()]
+        opening = " ".join(paragraphs[1].split()) if len(paragraphs) > 1 else ""
+        if not (opening.startswith("Здесь") and "Чего здесь нет" in opening):
+            found.append(f"{name}:3: opens with «Здесь — …» and «Чего здесь нет: …»")
+    return found
+
+
+def length_problems(files: dict[str, str]) -> list[str]:
+    """Past this, a document is several subjects, and the next edit lands under the nearest heading."""
+    found = []
+    for name, text in files.items():
+        if is_living_doc(name) and Path(name).parent == Path("docs") and text.count("\n") > MAX_LINES:
+            found.append(f"{name}: {text.count(chr(10))} lines; split it by subject (the limit is {MAX_LINES})")
+    return found
+
+
+CHECKS = (
+    link_problems,
+    path_problems,
+    adr_problems,
+    section_sign_problems,
+    status_problems,
+    opening_problems,
+    length_problems,
+)
 
 
 def tracked_text_files() -> dict[str, str]:
