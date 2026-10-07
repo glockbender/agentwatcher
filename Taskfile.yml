@@ -52,7 +52,7 @@ tasks:
       - ./scripts/build-app.sh release
 
   release:
-    desc: Package the release zip and its checksum from the app bundle
+    desc: Package the release zip and disk image, each with its checksum, from the app bundle
     cmds:
       # Signs with AGENT_WATCH_RELEASE_IDENTITY when it names a Developer ID certificate and
       # ad-hoc when it does not — never with the local development certificate, which means
