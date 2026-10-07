@@ -122,6 +122,43 @@ final class AppUpdaterTests: XCTestCase {
         )
     }
 
+    /// Left alone, `URLSession` would name the app with its bundle version — the release
+    /// version — on both downloads, and the documents promise that no request carries it.
+    /// The checksum does not match, so both requests go out and nothing is unpacked.
+    func testTheDownloadsNameTheAppAndNotItsVersion() async throws {
+        let archiveURL = try XCTUnwrap(URL(string: "https://example.com/AgentWatch-0.2.0.zip"))
+        let checksumURL = try XCTUnwrap(URL(string: "https://example.com/AgentWatch-0.2.0.zip.sha256"))
+        let sent = SentRequests()
+
+        let staged = await AppUpdater.stage(
+            downloadURL: archiveURL,
+            checksumURL: checksumURL,
+            expectedVersion: "0.2.0",
+            beside: FileManager.default.temporaryDirectory.appendingPathComponent("AgentWatch.app"),
+            transport: { request in
+                await sent.record(request)
+                let body =
+                    request.url == checksumURL ? String(repeating: "0", count: 64) + "  AgentWatch-0.2.0.zip\n" : "zip"
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                return (Data(body.utf8), response)
+            }
+        )
+
+        XCTAssertNil(staged)
+        let requests = await sent.value
+        XCTAssertEqual(requests.map(\.url), [archiveURL, checksumURL])
+        for request in requests {
+            XCTAssertEqual(
+                request.value(forHTTPHeaderField: "User-Agent"), "AgentWatch", request.url?.lastPathComponent ?? ""
+            )
+        }
+    }
+
+    private actor SentRequests {
+        var value: [URLRequest] = []
+        func record(_ request: URLRequest) { value.append(request) }
+    }
+
     /// The new copy is opened by a shell that outlives this process, and it has to wait for
     /// this process to be gone — not for two seconds. A copy opened while the old one still
     /// holds the lock finds it, asks it to show itself, and exits: nothing left running, right

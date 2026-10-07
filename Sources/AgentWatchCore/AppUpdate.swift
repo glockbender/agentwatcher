@@ -61,22 +61,38 @@ public enum AppUpdate {
         return URL(string: "https://api.github.com/repos/glockbender/agentwatcher/releases/latest")
     }
 
+    /// How every request about updating introduces the app: its name, and not its version.
+    ///
+    /// Set because it would otherwise be set for us: measured on macOS 15.3.1, `URLSession`
+    /// introduces a request as `<executable>/<CFBundleVersion> CFNetwork/… Darwin/…`, and the
+    /// bundle's version is the release version — the one thing these requests promise not to carry.
+    /// GitHub wants some name here; it gets the app's and nothing more.
+    public static let userAgent = "AgentWatch"
+
     /// A request GitHub's API answers with the JSON `release(from:)` reads.
     ///
     /// Written once because two callers send it — the app's check and the probe that
     /// downloads a real release — and the idle timeout is a decision, not a default: a check
     /// that hangs would hold the "one check at a time" flag for as long as the system's
     /// own limit, which is a minute.
-    ///
-    /// `User-Agent` is set because it would otherwise be set for us: measured, `URLSession`
-    /// introduces a request as `<executable>/<CFBundleVersion> CFNetwork/… Darwin/…`, and the
-    /// bundle's version is the release version — the one thing this request promises not to
-    /// carry. GitHub wants some name here; it gets the app's and nothing more.
     public static func request(for url: URL) -> URLRequest {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("AgentWatch", forHTTPHeaderField: "User-Agent")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        return request
+    }
+
+    /// A request for a file attached to a release: the archive or its checksum.
+    ///
+    /// Not `request(for:)`: that one asks the API for JSON and shortens the system's idle limit
+    /// for the check; a file is not JSON, and the download keeps the system's limit. The
+    /// address answers with a redirect to GitHub's file host, and `URLSession` carries the
+    /// header over to that second request (measured on macOS 15.3.1 against a redirect to
+    /// another host).
+    public static func downloadRequest(for url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         return request
     }
 

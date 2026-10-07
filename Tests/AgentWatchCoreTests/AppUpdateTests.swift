@@ -145,9 +145,10 @@ final class AppUpdateTests: XCTestCase {
         XCTAssertEqual(decision, .upToDate)
     }
 
-    /// Measured: left alone, `URLSession` introduces the request as `<executable>/<CFBundleVersion>
-    /// CFNetwork/… Darwin/…`, and the bundle's version is the release version — so the one
-    /// header the app sets is the one that would otherwise have carried it.
+    /// Measured on macOS 15.3.1: left alone, `URLSession` introduces the request as
+    /// `<executable>/<CFBundleVersion> CFNetwork/… Darwin/…`, and the bundle's version is the
+    /// release version — so the one header the app sets is the one that would otherwise have
+    /// carried it.
     func testTheRequestNamesTheAppAndNotItsVersion() {
         let request = AppUpdate.request(for: URL(string: "https://api.github.com/x")!)
 
