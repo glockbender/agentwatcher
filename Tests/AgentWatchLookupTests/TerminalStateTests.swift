@@ -6,10 +6,10 @@ import XCTest
 
 /// Whether an agent still has the terminal it was started in.
 ///
-/// The three pairs below are the kernel's answers read off this machine on 2026-09-22
-/// (Darwin 24.3.0, Claude Code 2.1.270 and 2.1.280): two `claude` processes whose JetBrains
-/// terminal tab had been closed, the live sessions beside them, and the applications that
-/// never had a terminal at all.
+/// The three pairs below are the kernel's answers read off this machine on 2026-09-22,
+/// measured on macOS 15.3.1 (Darwin 24.3.0, Claude Code 2.1.270 and 2.1.280): two `claude`
+/// processes whose JetBrains terminal tab had been closed, the live sessions beside them, and
+/// the applications that never had a terminal at all.
 final class TerminalStateTests: XCTestCase {
     func testATerminalIsLostOnlyWhenTheProcessHadOneAndItIsGone() {
         // Both closed-tab processes: the flag still set, the device gone.

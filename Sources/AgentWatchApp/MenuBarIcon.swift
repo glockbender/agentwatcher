@@ -8,8 +8,8 @@ import AppKit
 enum MenuBarIconMetrics {
     /// The menu bar's own height, which two rows of cells divide.
     static let barHeight: CGFloat = 22
-    /// 11 pt gives a 14 × 14 disc — a shade under half the bar, so two rows fit with the
-    /// digits.
+    /// 11 pt gives a 14 × 14 disc, measured on macOS 15.3.1 — a shade under half the bar, so two
+    /// rows fit with the digits.
     static let symbolSize: CGFloat = 11
     static let digitSize: CGFloat = 12
     static let gapToDigit: CGFloat = 2
@@ -300,7 +300,7 @@ enum MenuBarIconRenderer {
     ///
     /// Painted in, not over: `sourceAtop` keeps the glyph's own coverage and mixes the paint
     /// into its black, so the translucent ink of an empty cell came out as an opaque disc —
-    /// grey on a dark bar by luck, solid black on a light one.
+    /// grey on a dark bar by luck, solid black on a light one, measured on macOS 15.3.1.
     private static func drawGlyph(_ glyph: NSImage, tint: NSColor, slot: CGFloat, rowHeight: CGFloat) {
         let tinted = NSImage(size: glyph.size)
         tinted.lockFocus()

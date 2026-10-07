@@ -176,9 +176,9 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertEqual(host.calls, ["focusSession claude:session-0"])
     }
 
-    /// The arrows go to the menu's own lines and pass the list by (measured,
-    /// `docs/measurements.md`). One that reaches the list anyway is dropped there, since the
-    /// menu has already moved for it; every other key goes on to the menu.
+    /// The arrows go to the menu's own lines and pass the list by (measured on macOS 15.3.1).
+    /// One that reaches the list anyway is dropped there, since the menu has already moved for
+    /// it; every other key goes on to the menu.
     func testTheListDropsArrowsAndHandsOnEveryOtherKey() throws {
         let (menu, host, _) = try makeMenu()
         host.sessions = [session(0, "Waiting on a question", .waitingForUser)]
@@ -355,8 +355,8 @@ final class StatusMenuTests: XCTestCase {
     }
 
     /// Greyed, but still read: on the menu's own material the system's colour for a disabled
-    /// control all but vanished — the owner could barely make the line out. Its text stands
-    /// from the background at least half as far as an ordinary line's.
+    /// control all but vanished (measured on macOS 15.3.1) — the owner could barely make the
+    /// line out. Its text stands from the background at least half as far as an ordinary line's.
     func testAGreyedLineIsStillReadable() throws {
         let frame = NSRect(x: 0, y: 0, width: 300, height: MenuSessionListView.lineHeight)
         let line = { (isEnabled: Bool) in
@@ -403,7 +403,8 @@ final class StatusMenuTests: XCTestCase {
     }
 
     /// The mark is what tells the states apart, so it has to be drawn: a palette given one
-    /// colour paints the mark the colour of its disc, and all four lines showed a plain dot.
+    /// colour paints the mark the colour of its disc, and all four lines showed a plain dot —
+    /// measured on macOS 15.3.1.
     func testEveryLinesMarkIsDrawnInsideItsDisc() throws {
         for attention in SessionAttention.counted {
             let image = try XCTUnwrap(StatusMenu.mark(for: attention), "\(attention) has no mark")

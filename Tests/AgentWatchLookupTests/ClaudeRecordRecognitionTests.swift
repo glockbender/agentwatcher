@@ -53,8 +53,8 @@ final class ClaudeRecordRecognitionTests: XCTestCase {
         XCTAssertNil(ClaudeProcessRules.byPathAlone.agentProcessID(among: ancestors))
     }
 
-    /// Not every session gets a record (a short-lived one raised from a pty did not, on
-    /// 2.1.272), so the record adds to the path and replaces nothing.
+    /// Not every session gets a record (a short-lived one raised from a pty did not,
+    /// measured on Claude Code 2.1.272), so the record adds to the path and replaces nothing.
     func testThePathStillKnowsASessionWithoutARecord() throws {
         let ancestors = [
             ProcessSnapshot(

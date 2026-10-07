@@ -442,8 +442,8 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     ///
     /// `/bg` runs the session on in a process of its own, and that process is what
     /// `agentProcessID` names: it is what the hooks come from and what the row lives and dies
-    /// with. But the terminal `/bg` was typed in is not freed — measured on 2.1.269, the
-    /// interactive process stays alive, attached to the job, and the session is on screen
+    /// with. But the terminal `/bg` was typed in is not freed — measured on Claude Code 2.1.269,
+    /// the interactive process stays alive, attached to the job, and the session is on screen
     /// right there. That terminal is where a person finds the session, so the click and the
     /// icon belong to it while it is there, and to `claude attach` once it is gone. Only the
     /// app can tell (it is Claude Code's registry and a process list, see

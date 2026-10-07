@@ -440,7 +440,7 @@ final class ToolingIntegrationTests: XCTestCase {
     /// Codex records hook trust positionally: `~/.codex/config.toml` keeps a `trusted_hash`
     /// per hook under a key of `path:event:group:hook`. So moving somebody else's entry
     /// costs them their trust just as surely as editing it would, and they then have to
-    /// approve their own hook again. Measured on 0.140.
+    /// approve their own hook again. Measured on Codex 0.140.
     ///
     /// Keeping ours last is what makes that impossible: a foreign group already in the file
     /// never changes index, on install or on removal. `contains` cannot see this — the

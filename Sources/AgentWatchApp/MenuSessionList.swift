@@ -7,9 +7,9 @@ import Carbon.HIToolbox
 /// A menu has no part that scrolls by itself — it scrolls as a whole, and only once it is
 /// taller than its screen — so the list is one menu line holding a scroll view (ADR-0018).
 /// Its lines draw themselves and answer the pointer: the trackpad's scroll, the hover and the
-/// click were measured in a real menu on macOS 15.3.1. The arrows skip the list: a menu keeps
+/// click were measured on macOS 15.3.1 in a real menu. The arrows skip the list: a menu keeps
 /// every arrow it can use, so no line inside the list ever sees one, and the list's menu line
-/// has no action, which a menu reads as disabled and steps over (`docs/measurements.md`).
+/// has no action, which a menu reads as disabled and steps over (measured on macOS 15.3.1).
 @MainActor
 final class MenuSessionListView: NSView {
     /// The height of an ordinary menu line on the machine it was measured on.
@@ -103,7 +103,7 @@ final class MenuSessionListView: NSView {
     }
 
     /// An arrow can reach the list while the menu is already moving its highlight for that
-    /// same arrow — seen on macOS 15.3.1 — so the list drops it rather than hand it on. Every
+    /// same arrow — measured on macOS 15.3.1 — so the list drops it rather than hand it on. Every
     /// other key goes up the responder chain, as it would without the list.
     override func keyDown(with event: NSEvent) {
         switch Int(event.keyCode) {
@@ -192,7 +192,8 @@ final class MenuSessionRowView: NSView {
         }
         let font = NSFont.menuFont(ofSize: 0)
         // Secondary, not the disabled control colour: on the menu's own material that one all
-        // but vanished, and a greyed line still says why it cannot be chosen.
+        // but vanished (measured on macOS 15.3.1), and a greyed line still says why it cannot
+        // be chosen.
         let colour: NSColor =
             lit ? .selectedMenuItemTextColor : line.isEnabled ? .labelColor : .secondaryLabelColor
         // Where the probe for the choice lines put it, beside the system's own lines.

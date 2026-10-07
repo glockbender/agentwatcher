@@ -9,9 +9,8 @@ import XCTest
 /// free: a command it started is still running, and its ending is what will wake the session
 /// for the next turn. Without this the row said `completed` and nothing else, and the one
 /// case that matters most was invisible: a foreground command Claude Code moved into the
-/// background itself after its timeout, which no `run_in_background` flag ever announced.
-///
-/// Measured on Claude Code 2.1.272 — see `docs/measurements.md`.
+/// background itself after its timeout, which no `run_in_background` flag ever announced
+/// (measured on Claude Code 2.1.272; the details are in `docs/agent-events.md`).
 final class BackgroundWorkTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 2_000)
 

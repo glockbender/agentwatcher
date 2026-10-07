@@ -64,8 +64,8 @@ enum ClosedTerminal {
     /// `SIGHUP` rather than `SIGTERM` because it is what closing a terminal sends, and the
     /// whole chain because closing a tab ends its shell too: left running, the shell keeps
     /// Ghostty holding a terminal it does not show, which is half of how the next closed tab
-    /// is recognised. Claude Code answers `SIGHUP` with its ordinary shutdown
-    /// (`docs/measurements.md`).
+    /// is recognised. Claude Code answers `SIGHUP` with its ordinary shutdown,
+    /// measured on Claude Code 2.1.284.
     static func hangUp(processIDs: [Int32]) -> Bool {
         guard mayHangUp(processIDs, ownProcessID: getpid()) else {
             return false

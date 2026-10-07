@@ -1198,10 +1198,11 @@ final class SessionSupervisorTests: XCTestCase {
     }
 
     /// `/bg` leaves the terminal it was typed in showing the session: the interactive process
-    /// stays alive and Claude Code's record of it names the job as parked. Measured on 2.1.269
-    /// — the terminal that parked the job was the only interactive process attached to the
-    /// daemon, and no `claude attach` ran anywhere. That terminal is where a person finds the
-    /// session, so the row is reached through it, and the log says so once.
+    /// stays alive and Claude Code's record of it names the job as parked.
+    /// Measured on Claude Code 2.1.269 — the terminal that parked the job was the only
+    /// interactive process attached to the daemon, and no `claude attach` ran anywhere. That
+    /// terminal is where a person finds the session, so the row is reached through it, and the
+    /// log says so once.
     func testTheTerminalThatSentTheSessionToTheBackgroundIsWhereTheRowIsReached() throws {
         let home = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: home) }

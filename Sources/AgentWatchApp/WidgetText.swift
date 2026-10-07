@@ -334,9 +334,10 @@ let noNameMark = "ⓘ"
 /// The first line of the card when the session has no name to put there.
 ///
 /// Claude's rule is Claude Code's own and moves when it does: a name is asked of a model only
-/// after a prompt of at least ten characters, and a shorter one waits for the next. Measured on
-/// 2.1.284; the rows in `docs/measurements.md` are what gets re-checked when Claude Code
-/// updates. Codex has no rule anybody here has found, so its line claims none.
+/// after a prompt of at least ten characters, and a shorter one waits for the next.
+/// Measured on Claude Code 2.1.284; the rows in `docs/measurements.md` are what gets
+/// re-checked when Claude Code updates. Codex has no rule anybody here has found, so its line
+/// claims none.
 func noNameText(for snapshot: SessionSnapshot) -> String {
     if snapshot.discoveredProcess != nil {
         return "No name yet — found by its process; the name comes with the session's first event"

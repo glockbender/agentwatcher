@@ -179,9 +179,9 @@ final class EndAgentDialogTests: XCTestCase {
         }
     }
 
-    /// Reported on 2026-09-30 from a screen of one pixel per point: the question's text was
-    /// soft. Centring by halves put the card, and everything on it, between two pixels; a
-    /// line of text that starts half a pixel off is drawn across both.
+    /// Reported on 2026-09-30 from a screen of one pixel per point, measured on macOS 15.3.1:
+    /// the question's text was soft. Centring by halves put the card, and everything on it,
+    /// between two pixels; a line of text that starts half a pixel off is drawn across both.
     func testEveryPartOfTheQuestionStandsOnWholePoints() throws {
         for size in [NSSize(width: 331, height: 173), NSSize(width: 340, height: 200), NSSize(width: 207, height: 57)] {
             for scale in WidgetSettingsStore.offeredScales {

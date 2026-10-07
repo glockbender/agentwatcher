@@ -245,7 +245,7 @@ public enum AgentProcessLocator {
     }
 
     /// The same count over records somebody else read, so it can be checked against the
-    /// processes measured under Ghostty without Ghostty running.
+    /// processes measured on Ghostty 1.3.1 without Ghostty running.
     static func terminalCount(
         heldBy applicationProcessID: Int32, among processIDs: [Int32], record: (Int32) -> TerminalProcess?
     ) -> Int {
@@ -275,7 +275,7 @@ public enum AgentProcessLocator {
     }
 
     /// The same walk over records somebody else read, so the rule can be checked against the
-    /// chain measured under a closed Ghostty tab without such a tab being open.
+    /// chain measured on Ghostty 1.3.1 under a closed tab without such a tab being open.
     static func terminalProcessChain(from processID: Int32, record: (Int32) -> TerminalProcess?) -> [Int32] {
         guard let first = record(processID), let device = first.terminalDevice else {
             return []

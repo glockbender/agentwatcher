@@ -11,9 +11,9 @@ import XCTest
 /// first and took all of them, and the route then put the right one on top of the pile.
 @MainActor
 final class SessionFocusWindowsTests: XCTestCase {
-    /// Ghostty's `focus` raises the terminal's own window — read in Ghostty 1.3.1's
-    /// `BaseTerminalController.focusSurface`, which does `makeKeyAndOrderFront` on it — so
-    /// there is nothing left for a wide net to do but undo that.
+    /// Ghostty's `focus` raises the terminal's own window — measured on Ghostty 1.3.1 by
+    /// reading its `BaseTerminalController.focusSurface`, which does `makeKeyAndOrderFront` on
+    /// it — so there is nothing left for a wide net to do but undo that.
     func testAnAddressedGhosttyTabBringsOnlyItsOwnWindow() {
         XCTAssertEqual(
             SessionHostRegistry.activationOptions(for: .ghostty(terminalID: UUID().uuidString)),

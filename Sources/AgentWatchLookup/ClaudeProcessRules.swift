@@ -39,8 +39,9 @@ public struct ClaudeProcessRules: AgentProcessRules {
         // helpers somewhere in that chain — it *is* `claude bg-spare`, or it is a session
         // sent to the background with `/bg`, which the pty host `claude --bg-pty-host`
         // starts as a child of its own. Either way there is no terminal above it, and so
-        // no window the widget could ever raise. Measured on 2.1.269: the host runs from
-        // `ClaudeCode.app`, not from `versions/`, so it is found by its words, not its path.
+        // no window the widget could ever raise. Measured on Claude Code 2.1.269: the host
+        // runs from `ClaudeCode.app`, not from `versions/`, so it is found by its words, not
+        // its path.
         //
         // Only Claude's own processes are asked, which is what "helper of the agent's"
         // means. The words are ordinary ones, and something far above the session may
@@ -58,7 +59,7 @@ public struct ClaudeProcessRules: AgentProcessRules {
     /// Reads the original out of a fork's arguments: `--fork-session` says the process is a
     /// copy, and `--resume` (or `-r`, or `--resume=…`) names what it was copied from — the
     /// transcript file, named after the session, when Claude Code started the copy itself;
-    /// the identifier, when a person typed it. Measured on 2.1.269. A resume without
+    /// the identifier, when a person typed it. Measured on Claude Code 2.1.269. A resume without
     /// `--fork-session` keeps its identifier and is nothing to continue from.
     ///
     /// `/bg` and `/fork` continue a session in a new process under a new identifier, and the
@@ -194,8 +195,9 @@ public struct ClaudeProcessRules: AgentProcessRules {
             return false
         }
         // `claude bg-pty-host …` in one build, `claude --bg-pty-host …` in the next — the same
-        // helper, named as a word or as a flag. Measured on 2.1.269 and 2.1.270 side by side.
-        // One `--` and no more: everything else a word can start with is somebody else's.
+        // helper, named as a word or as a flag. Measured on Claude Code 2.1.269 and 2.1.270
+        // side by side. One `--` and no more: everything else a word can start with is
+        // somebody else's.
         let name = subcommand.hasPrefix("--") ? String(subcommand.dropFirst(2)) : subcommand
         return helperCommands.contains(name)
     }
@@ -222,8 +224,8 @@ public struct ClaudeProcessRules: AgentProcessRules {
     /// Whether these are the arguments of a process running the agent's own program, asked of
     /// the name it was started under — for the helpers `isClaudeProcess` does not recognise,
     /// which know themselves by a path ending in `claude` (the pty host runs from
-    /// `ClaudeCode.app`, not from `versions/`, measured on 2.1.269) or by the name a renamed
-    /// process gives itself, `claude <something>`.
+    /// `ClaudeCode.app`, not from `versions/`, measured on Claude Code 2.1.269) or by the name
+    /// a renamed process gives itself, `claude <something>`.
     private static func isTheAgentsExecutable(_ arguments: [String]) -> Bool {
         guard let program = arguments.first else {
             return false

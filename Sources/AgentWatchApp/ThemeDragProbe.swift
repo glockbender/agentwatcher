@@ -10,7 +10,10 @@
     ///     open --env AGENT_WATCH_SUPPORT_DIR=<copy> --env AGENT_WATCH_THEME_DRAG_PROBE=<file> -n <app>
     ///
     /// 240 changes spaced 30 ms apart, then 120 in one turn of the run loop, which is what a
-    /// colour wheel does while it is held. The numbers it wrote are in `docs/measurements.md`.
+    /// colour wheel does while it is held. Measured on macOS 15.3.1 with 19 rows: rebuilding on
+    /// every change took the process from 92 to 373 MB (144 MB three seconds later), rebuilding
+    /// once per turn (`CoalescedWork`) kept it at 92 MB, and the spaced changes stayed at 92 MB
+    /// either way, so the heap does not grow.
     /// The window opens on screen and takes the focus for about twenty seconds.
     @MainActor
     final class ThemeDragProbe {

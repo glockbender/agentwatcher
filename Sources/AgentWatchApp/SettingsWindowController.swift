@@ -89,10 +89,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// Lets go of the pages when the window closes, and builds them again when it opens.
     ///
     /// A closed window keeps its views, and these are a whole SwiftUI form with live examples
-    /// in it: measured on a copy with 19 sessions, the theme editor held about 29 MB of heap
-    /// after the window closed, and its examples kept their timers running
-    /// (`docs/measurements.md`). Where the window was is the model's,
-    /// so the page and the back and forward history survive.
+    /// in it: measured on macOS 15.3.1 on a copy with 19 sessions, the theme editor held about
+    /// 29 MB of heap after the window closed, and its examples kept their timers running.
+    /// Where the window was is the model's, so the page and the back and forward history
+    /// survive.
     func windowWillClose(_ notification: Notification) {
         model.isShown = false
         model.stopRecordingShortcut()
