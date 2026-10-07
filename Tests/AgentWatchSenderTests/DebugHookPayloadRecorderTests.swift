@@ -201,11 +201,41 @@ final class DebugHookPayloadRecorderTests: XCTestCase {
         XCTAssertTrue(recorded.first?.contains("end-to-end") == true)
     }
 
-    private func runSender(input: Data, captureDirectory: URL) throws {
+    /// A Codex session missing from Codex's own index is never sent. Its payload is still the
+    /// one a study of that filter needs, so the recorder hears it all the same.
+    func testAPayloadTheSenderWithholdsIsRecordedToo() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+        XCTAssertTrue(DebugHookCaptureControl.enable(duration: 60, directoryURL: directoryURL))
+
+        try runSender(
+            input: Data(#"{"hook_event_name":"SessionStart","session_id":"not-in-the-index"}"#.utf8),
+            source: "codex",
+            captureDirectory: directoryURL,
+            // An empty Codex home: no session_index.jsonl, so no thread is admitted.
+            environment: ["CODEX_HOME": directoryURL.path]
+        )
+
+        let deadline = Date().addingTimeInterval(5)
+        while lines(in: directoryURL).isEmpty, Date() < deadline {
+            usleep(50_000)
+        }
+
+        let recorded = lines(in: directoryURL)
+        XCTAssertEqual(recorded.count, 1)
+        XCTAssertTrue(recorded.first?.contains("not-in-the-index") == true)
+    }
+
+    private func runSender(
+        input: Data,
+        source: String = "claude",
+        captureDirectory: URL,
+        environment extraEnvironment: [String: String] = [:]
+    ) throws {
         let process = Process()
         process.executableURL = packageRootURL.appendingPathComponent(".build/debug/AgentWatchSend")
         process.arguments = [
-            "--source", "claude",
+            "--source", source,
             "--event", "SessionStart",
             // Nothing listens there. The event is dropped, which is the ordinary fail-open
             // path; what this test watches happens beside it.
@@ -213,6 +243,7 @@ final class DebugHookPayloadRecorderTests: XCTestCase {
         ]
         var environment = ProcessInfo.processInfo.environment
         environment[DebugHookCaptureControl.directoryOverrideVariable] = captureDirectory.path
+        environment.merge(extraEnvironment) { _, new in new }
         process.environment = environment
         let inputPipe = Pipe()
         process.standardInput = inputPipe

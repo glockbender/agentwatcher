@@ -46,10 +46,9 @@ enum AgentWatchSendMain {
             }
         #endif
 
-        guard let request = makeRequest(options: options, payload: payload) else {
-            return
-        }
-        if let socketPath = options.socketPath ?? HookEventSender.defaultSocketPath() {
+        if let request = makeRequest(options: options, payload: payload),
+            let socketPath = options.socketPath ?? HookEventSender.defaultSocketPath()
+        {
             _ = try? HookEventSender.send(
                 request,
                 to: socketPath,
@@ -59,7 +58,8 @@ enum AgentWatchSendMain {
 
         // Last, after the event is on its way. Diagnostics may cost the hook nothing it did
         // not already owe: reading the switch, copying the payload and starting a second
-        // process are all work the agent would otherwise be waiting through.
+        // process are all work the agent would otherwise be waiting through. A payload this
+        // process withheld is recorded too: what a filter drops is what a study of it needs.
         #if AGENT_WATCH_DEBUG_CAPTURE
             if DebugHookCaptureControl.isEnabled() {
                 DebugHookCaptureLauncher.start(
@@ -145,10 +145,9 @@ enum AgentWatchSendMain {
         let description: SessionDescription?
         if options.source == .codex {
             let codexSession = SessionDescriptionResolver.resolveCodexSession(payload: payload)
-            // Codex Desktop also invokes configured hooks for an internal service session.
-            // Its ID never becomes a user thread in `session_index.jsonl`; withholding it
-            // here keeps a service turn from entering deterministic session state at all.
-            guard codexSession.isIndexed else {
+            // ChatGPT.app also runs the configured hooks for the internal session that names a
+            // new thread. Withholding it here keeps that turn out of session state at all.
+            guard codexSession.isAdmitted else {
                 return nil
             }
             description = codexSession.description

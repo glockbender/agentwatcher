@@ -33,6 +33,10 @@ public enum SessionDescriptionResolver {
     /// silently hide an otherwise valid user session. `readTail` receives this maximum value
     /// and consequently starts at byte zero for every representable file size.
     static let codexIndexByteCount = Int.max
+    /// Measured on Codex 0.162.0-alpha.2: a transcript opens with `session_meta`, which carries
+    /// the instructions the thread started with, 23 KB on this machine. A window that ends
+    /// before that record's newline reads as a record not yet written.
+    static let codexSessionMetaByteCount = 64 * 1024
 
     public static func resolve(
         source: AgentSource,
@@ -59,32 +63,74 @@ public enum SessionDescriptionResolver {
         return description.isEmpty ? nil : description
     }
 
-    /// Resolves the one Codex file read into both facts the sender needs: a human-facing name
-    /// when one exists, and whether this is a thread Codex itself indexes at all.
+    /// Resolves the Codex file reads into both facts the sender needs: a human-facing name
+    /// when one exists, and whether this is a thread a person started at all.
     ///
-    /// The latter is deliberately different from having a name. A newly created user thread
-    /// can have no `thread_name` yet, while Codex also emits hooks for internal service
-    /// sessions that never enter `session_index.jsonl` and must not become widget rows.
+    /// The latter is deliberately different from having a name, and from being in
+    /// `session_index.jsonl`. Measured on Codex 0.162.0-alpha.2: ChatGPT.app writes a new
+    /// thread there only once the thread is named, seconds into its first turn, and that
+    /// turn's first hooks come earlier. Its transcript exists by then and opens with a record
+    /// saying who started it, so a thread missing from the index is admitted when that record
+    /// says a person did.
+    ///
+    /// What must stay out is the internal session ChatGPT.app runs to name the thread. It has
+    /// no transcript (`transcript_path` is null), so only the index could admit it, and it
+    /// never enters the index.
     public static func resolveCodexSession(
         payload: JSONValue,
         indexPath: String = SessionDescriptionResolver.codexSessionIndexPath(),
         fileSystem: TitleFileSystem = .live
     ) -> CodexSessionResolution {
-        guard
-            let sessionID = string("session_id", in: payload),
-            let index = fileSystem.readTail(indexPath, codexIndexByteCount)
-        else {
-            return CodexSessionResolution(isIndexed: false, description: nil)
+        guard let sessionID = string("session_id", in: payload) else {
+            return CodexSessionResolution(isAdmitted: false, description: nil)
         }
-
-        let entry = codexSessionEntry(forSessionID: sessionID, inIndex: index)
         let projectName = string("cwd", in: payload).flatMap(projectName(inWorkingDirectory:))
+
+        if let index = fileSystem.readTail(indexPath, codexIndexByteCount),
+            let entry = codexSessionEntry(forSessionID: sessionID, inIndex: index)
+        {
+            return CodexSessionResolution(
+                isAdmitted: true,
+                description: SessionDescription(title: entry.threadName, projectName: projectName)
+            )
+        }
+        guard
+            let transcriptPath = string("transcript_path", in: payload),
+            isCodexUserThread(transcriptPath: transcriptPath, fileSystem: fileSystem)
+        else {
+            return CodexSessionResolution(isAdmitted: false, description: nil)
+        }
         return CodexSessionResolution(
-            isIndexed: entry != nil,
-            description: entry.map {
-                SessionDescription(title: $0.threadName, projectName: projectName)
-            }
+            isAdmitted: true,
+            description: SessionDescription(title: nil, projectName: projectName)
         )
+    }
+
+    /// Whether the transcript opens with the `session_meta` of a thread a person started.
+    ///
+    /// Anything short of that answers no: a file not there yet, a first record still being
+    /// written, an older Codex whose record has no `thread_source`. Each of those leaves the
+    /// session to the index alone, which is how every Codex session was judged before this
+    /// check existed — so a failure here can delay a row, never add one.
+    static func isCodexUserThread(transcriptPath: String, fileSystem: TitleFileSystem) -> Bool {
+        guard
+            let head = fileSystem.readHead(transcriptPath, codexSessionMetaByteCount),
+            let newline = head.firstIndex(of: UInt8(ascii: "\n")),
+            let record = try? JSONDecoder().decode(JSONValue.self, from: head[head.startIndex..<newline]),
+            case let .object(fields) = record,
+            case .string("session_meta")? = fields["type"],
+            case let .object(meta)? = fields["payload"],
+            // Subagents say `subagent`, the reviewer of approval requests `guardian_review`.
+            case .string("user")? = meta["thread_source"]
+        else {
+            return false
+        }
+        // `codex exec` runs say `user` too, but none of them enters the index, so none has ever
+        // had a row. Admitting them would be a new decision, not this fix.
+        if case .string("exec")? = meta["source"] {
+            return false
+        }
+        return true
     }
 
     /// The directory's own name. The path that leads to it never leaves this process.
@@ -261,14 +307,14 @@ public enum SessionDescriptionResolver {
     }
 }
 
-/// A Codex hook is admitted only when its raw session ID belongs to a thread in Codex's own
-/// index. The optional name is separate because the index can create a thread before naming it.
+/// A Codex hook is admitted only when it is about a thread a person started. The optional
+/// name is separate because a thread can be admitted before it is named.
 public struct CodexSessionResolution: Equatable, Sendable {
-    public let isIndexed: Bool
+    public let isAdmitted: Bool
     public let description: SessionDescription?
 
-    public init(isIndexed: Bool, description: SessionDescription?) {
-        self.isIndexed = isIndexed
+    public init(isAdmitted: Bool, description: SessionDescription?) {
+        self.isAdmitted = isAdmitted
         self.description = description
     }
 }
@@ -277,28 +323,42 @@ private struct CodexIndexEntry {
     let threadName: String?
 }
 
-/// The one file read the resolver needs, isolated so tests can exercise the parsing
-/// without touching a real home directory.
+/// The file reads the resolver needs, isolated so tests can exercise the parsing without
+/// touching a real home directory.
 public struct TitleFileSystem: Sendable {
     public let readTail: @Sendable (String, Int) -> Data?
+    public let readHead: @Sendable (String, Int) -> Data?
 
-    public init(readTail: @escaping @Sendable (String, Int) -> Data?) {
+    public init(
+        readTail: @escaping @Sendable (String, Int) -> Data?,
+        readHead: @escaping @Sendable (String, Int) -> Data? = { _, _ in nil }
+    ) {
         self.readTail = readTail
+        self.readHead = readHead
     }
 
-    public static let live = TitleFileSystem(readTail: { path, byteCount in
-        guard byteCount > 0, let handle = FileHandle(forReadingAtPath: path) else {
-            return nil
+    public static let live = TitleFileSystem(
+        readTail: { path, byteCount in
+            guard byteCount > 0, let handle = FileHandle(forReadingAtPath: path) else {
+                return nil
+            }
+            defer { try? handle.close() }
+            guard let end = try? handle.seekToEnd() else {
+                return nil
+            }
+            // Unsigned arithmetic: subtracting from a file shorter than the window would wrap.
+            let offset = end > UInt64(byteCount) ? end - UInt64(byteCount) : 0
+            guard (try? handle.seek(toOffset: offset)) != nil else {
+                return nil
+            }
+            return try? handle.readToEnd()
+        },
+        readHead: { path, byteCount in
+            guard byteCount > 0, let handle = FileHandle(forReadingAtPath: path) else {
+                return nil
+            }
+            defer { try? handle.close() }
+            return try? handle.read(upToCount: byteCount)
         }
-        defer { try? handle.close() }
-        guard let end = try? handle.seekToEnd() else {
-            return nil
-        }
-        // Unsigned arithmetic: subtracting from a file shorter than the window would wrap.
-        let offset = end > UInt64(byteCount) ? end - UInt64(byteCount) : 0
-        guard (try? handle.seek(toOffset: offset)) != nil else {
-            return nil
-        }
-        return try? handle.readToEnd()
-    })
+    )
 }
