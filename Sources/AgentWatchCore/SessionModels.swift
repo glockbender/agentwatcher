@@ -446,8 +446,8 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     /// interactive process stays alive, attached to the job, and the session is on screen
     /// right there. That terminal is where a person finds the session, so the click and the
     /// icon belong to it while it is there, and to `claude attach` once it is gone. Only the
-    /// app can tell (it is Claude Code's registry and a process list, §14 of the
-    /// architecture), and it says so through `SessionStateEngine.setViewer`.
+    /// app can tell (it is Claude Code's registry and a process list, see
+    /// `docs/session-recovery.md`), and it says so through `SessionStateEngine.setViewer`.
     ///
     /// Optional for the reason `discoveredProcess` gives: a file written before this field
     /// existed must still read.

@@ -190,7 +190,7 @@ public struct SessionStateEngine: Sendable {
             // life: whether the parked terminal says one under the same identifier when a
             // person walks back into the session is unmeasured, and reading it as life would
             // split one conversation in two — the very thing this rule exists to stop.
-            // `docs/architecture.md` §14, "Сессию отправили в фон", has the measurements.
+            // `docs/session-recovery.md`, "Сессию отправили в фон", has the measurements.
             if let copies = known.continuedBy {
                 let joinedAfterSpeaker =
                     event.sessionID == known.sessionLabel

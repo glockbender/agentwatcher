@@ -571,8 +571,8 @@ extension String {
 /// the window configures the phase itself and has only one row for it. Both switches are
 /// exhaustive, so a new phase cannot be added without being named and explained.
 ///
-/// The explanations are the `Значение` column of the phase table in `docs/architecture.md`
-/// §7, in English. They are not written twice: if that table changes, so do these.
+/// The explanations are the `Значение` column of the phase table in `docs/widget.md`,
+/// «Лампочка фазы», in English. They are not written twice: if that table changes, so do these.
 extension SessionPhase {
     /// The phase's own name, for a place that sets the phase up rather than showing a session.
     var settingsName: String {

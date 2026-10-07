@@ -83,7 +83,7 @@ enum JetBrainsInstallation {
     /// nothing deletes it when the plugin is removed — so this answers "has been seen", not
     /// "is there now". That is enough here, because a `focus` address that reaches an IDE
     /// without the plugin does nothing and says nothing. Freshness is the installation
-    /// screen's question, and `docs/architecture.md` says so.
+    /// screen's question, and `docs/ide-plugin.md` says so.
     static func hasAnsweredPing(ofApplicationAt bundleURL: URL, fileManager: FileManager = .default) -> Bool {
         guard
             let dataDirectoryName = dataDirectoryName(ofApplicationAt: bundleURL, fileManager: fileManager),
