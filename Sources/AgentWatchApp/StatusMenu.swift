@@ -33,7 +33,7 @@ protocol StatusMenuHost: AnyObject {
 @MainActor
 final class StatusMenu: NSObject, NSMenuDelegate {
     /// Named because the status-line relay script quotes it, in files the app never rewrites.
-    static let settingsTitle = "Settings…"
+    static let settingsItemTitle = "Settings…"
 
     let menu = NSMenu()
     private let settings: WidgetSettingsStore
@@ -78,7 +78,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(widget)
         widgetItem = widget
         menu.addItem(.separator())
-        let settings = line(Self.settingsTitle, #selector(showWidgetSettings))
+        let settings = line(Self.settingsItemTitle, #selector(showWidgetSettings))
         settings.keyEquivalent = ","
         menu.addItem(settings)
         menu.addItem(.separator())

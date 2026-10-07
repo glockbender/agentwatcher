@@ -96,7 +96,7 @@ final class StatusLineRelayTests: XCTestCase {
     func testTheScriptNamesTheRouteToUndoIt() {
         let script = StatusLineRelay.script(senderPath: "/bin/true", originalCommand: "")
         let route = [
-            StatusMenu.settingsTitle,
+            StatusMenu.settingsItemTitle,
             SettingsPage.tooling.title,
             ToolingPane.openToolingTitle,
             ToolingReport.statusLineTitle,
