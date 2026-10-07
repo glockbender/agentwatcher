@@ -5,7 +5,7 @@ import XCTest
 
 /// The path to the program knows a Claude process only while the kernel names it the way it
 /// was installed. Two measured cases where it does not, both now answered by the process's own
-/// record — `docs/agent-integration.md`, «Путь к программе называет файл, а не запуск».
+/// record — `docs/agent-processes.md`, «Путь к программе называет файл, а не запуск».
 final class ClaudeRecordRecognitionTests: XCTestCase {
     private var directory: URL!
     private let started = Date(timeIntervalSince1970: 1_789_398_361)

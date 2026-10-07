@@ -16,7 +16,7 @@ import Foundation
 /// The record also carries `waitingFor` — `permission prompt` for a request to run something,
 /// `input needed` for a question, and a few others. It is deliberately not read: nothing here
 /// would do anything with it, and a field crossing into this app with no reader is surface
-/// with no benefit. Its values are written down in `docs/agent-integration.md`,
+/// with no benefit. Its values are written down in `docs/agent-processes.md`,
 /// «Почему живой агент находится только у Claude», instead.
 public struct ClaudeSessionStatus: Equatable, Sendable {
     /// The four words Claude Code writes, spelled as it spells them.

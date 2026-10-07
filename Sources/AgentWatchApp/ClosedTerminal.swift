@@ -8,7 +8,7 @@ import Foundation
 /// `tcsetattr` waiting for its last output to be taken. Neither `SIGTERM` nor `SIGKILL`
 /// ended it — after `SIGKILL` it stays in exit (`E` in `ps`) until the terminal drains.
 /// Discarding the unread output ends the wait, and the agent exits on its own a moment
-/// later. `docs/agent-integration.md` has the reproduction; ADR-0013 the decision to do it
+/// later. `docs/agent-processes.md` has the reproduction; ADR-0013 the decision to do it
 /// on a click.
 ///
 /// A terminal Ghostty kept after closing its tab is the other way in, and needs the other

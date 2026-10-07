@@ -15,7 +15,7 @@ import Foundation
 /// anyway — the one `claude agents` lists and `claude attach` takes. Claude Code writes it into
 /// its own record of the process, `~/.claude/sessions/<pid>.json`, beside the session's kind and
 /// name; that file is measured, not documented, so a record without the field is answered with
-/// nothing rather than with a guess. `docs/agent-integration.md`,
+/// nothing rather than with a guess. `docs/agent-processes.md`,
 /// «Почему живой агент находится только у Claude».
 public enum BackgroundSessionAttach {
     /// Claude Code's own record of a running process, named after its process number.

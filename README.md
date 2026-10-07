@@ -112,7 +112,7 @@ Session monitoring stays on your Mac. Hooks send local events and fail open when
 is not running. Settings and remembered sessions live in
 `~/Library/Application Support/AgentWatch/`. The app goes online only to check GitHub for
 updates and to download a release you asked to install.
-See [agent integration](docs/agent-integration.md) for the files it writes and
+See [installing into the agents](docs/agent-install.md) for the files it writes and
 [architecture](docs/architecture.md) for the privacy boundaries.
 
 ## Build from source

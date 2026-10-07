@@ -187,7 +187,7 @@ public enum AgentProcessLocator {
         /// Measured on Claude Code 2.1.270 and 2.1.280 in a JetBrains terminal tab: after the
         /// tab was closed the IDE still held the pty open, the agent's shutdown waited in
         /// `tcsetattr` for output nothing drained, and neither `SIGTERM` nor `SIGKILL` got it
-        /// past that wait. `docs/agent-integration.md` has the reproduction.
+        /// past that wait. `docs/agent-processes.md` has the reproduction.
         case lost
         /// It never had one — an application, or a child given a pty only for its output.
         case neverHad
