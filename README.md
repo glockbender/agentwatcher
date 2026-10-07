@@ -64,11 +64,13 @@ still connect an agent installed elsewhere.
 
 ## Settings
 
-The menu bar menu lists your sessions and shows the widget when it is hidden. Everything else is
-in one window: **Settings…** in the menu, or ⌘, while the menu is open.
+The menu bar menu lists your sessions, and its **Hide Widget** or **Show Widget** line does what it
+says. Everything else is in one window: **Settings…** in the menu, or ⌘, while the menu is open.
+The pages, in the order the window lists them:
 
-- **Widget** — what a row shows and how rows are ordered (**Arrival**, **Recent activity**,
-  **By state** or **By blocks**).
+- **General** — showing the widget (the next launch keeps it as it was left), its locks and
+  resets, its shortcut, how long closed sessions stay, reading transcripts, and updates.
+- **Tooling** — the agents' integrations.
 - **Appearance** — the theme, its mode (light, dark or following the system) and the widget's
   size. A theme holds every colour
   and animation: the widget's background, material and opacity, the lamp for each state, the
@@ -79,9 +81,9 @@ in one window: **Settings…** in the menu, or ⌘, while the menu is open.
 - **Menu Bar** — a sphere coloured by the states it shows or a count for each state, which
   states the menu lists, and a dot in a corner of a full-screen display, where the menu bar is
   hidden. The dot steps aside while the menu bar slides down.
-- **General** — showing the widget (the next launch keeps it as it was left), its locks and
-  resets, its shortcut, how long closed sessions stay, reading transcripts, and updates.
-- **Tooling** and **Diagnostics** — the agents' integrations, and the event log.
+- **Widget** — what a row shows and how rows are ordered (**Arrival**, **Recent activity**,
+  **By state** or **By blocks**).
+- **Diagnostics** — the event log.
 
 ## JetBrains IDE plugin
 
@@ -96,8 +98,8 @@ It needs the Agent Watch macOS app and does nothing on its own.
 3. With the IDE running, open **Settings… → Tooling → Open Tooling…** and press **Check** beside it.
 4. Start an agent in that IDE's terminal and click its widget row to check the jump.
 
-Marketplace publication is still part of the [release plan](docs/release-plan.md).
-The app does not download the plugin for you yet, so install the ZIP from disk as above.
+The plugin is not on JetBrains Marketplace, and the app does not install it, so install the ZIP
+from disk as above.
 
 ## If something looks wrong
 
@@ -129,10 +131,6 @@ Development details are in [AGENTS.md](AGENTS.md).
 
 ## Documentation
 
-Project documents are in Russian:
-
-- [Release plan](docs/release-plan.md) — remaining blockers, plugin publication and acceptance checks.
-- [Architecture](docs/architecture.md) · [Implementation plan](docs/implementation-plan.md)
-- [Agent integration](docs/agent-integration.md) · [Distribution](docs/distribution.md)
+Project documents are in Russian, in [docs](docs/).
 
 MIT — see [LICENSE](LICENSE).
