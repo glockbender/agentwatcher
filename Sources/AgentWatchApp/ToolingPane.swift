@@ -5,13 +5,16 @@ import SwiftUI
 /// The hooks, the status line and the IDE plugins live in their own window; this pane is the
 /// way to it.
 struct ToolingPane: View {
+    /// Named because the status-line relay script quotes it, in files the app never rewrites.
+    static let openToolingTitle = "Open Tooling…"
+
     @ObservedObject var model: SettingsModel
 
     var body: some View {
         Form {
             Section {
                 LabeledContent("Hooks, status line and IDE plugins") {
-                    Button("Open Tooling…") { model.showTooling() }
+                    Button(Self.openToolingTitle) { model.showTooling() }
                 }
             } footer: {
                 Footnote("Install or repair what connects Claude Code, Codex and your IDE to Agent Watch.")
