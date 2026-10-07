@@ -95,3 +95,33 @@ the trackpad. **Settings… → Menu Bar → Sessions before scrolling** sets ho
 before the list scrolls.
 
 **Checked on:** macOS 15.3.1.
+
+## No question mark on the row while an MCP server asks you something
+
+**Why:** Two things have to be in place, and updating Agent Watch brings neither by itself. Claude
+Code reports the question only to a hook registered for it, and hooks installed by an earlier
+version do not include that one. And a row shows the counters saved in your settings: a kind of
+counter added to the app later is not on your saved list until you tick it.
+
+**What to do:** In **Settings… → Tooling**, press **Repair** for Claude Code, then run
+`/reload-plugins` in the sessions that are open, or start new ones. In **Settings… → Widget →
+Rows**, open the menu beside **Counters** and tick **MCP server questions**.
+
+**Checked on:** Claude Code 2.1.293, with a test MCP server: after Repair and the tick, a new
+session's question showed the question mark on its row until it was answered.
+
+## A Claude app session appears as soon as you open it
+
+**Why:** The Claude desktop app runs each of its sessions as a separate Claude Code process, and it
+starts that process when you open the session in its sidebar, before you send anything. The session
+starts there, so its row appears. When the process stops, the row closes: archiving the session or
+quitting the app stops it, and the app can also stop the process of a session you have not used for
+a while, even though the session stays in its sidebar.
+
+**What to do:** Nothing. The row is a real session, ready to work. When you send a message in a
+session whose row has closed, the app starts the process again under the same session, and the row
+comes back.
+
+**Checked on:** Claude.app 2.26454.0 with Claude Code 2.1.289. Tested: opening a session starts it,
+archiving ends it, and a continued session keeps its identifier. Read in the app's code but not
+seen: the app stopping an unused session on its own.

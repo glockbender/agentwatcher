@@ -78,8 +78,8 @@ final class MenuBarIconStylesTests: XCTestCase {
 
     /// An empty cell is drawn in translucent ink on either bar. Painting the ink over the
     /// glyph instead of into it kept the glyph's own black under it, which on a light bar
-    /// came out as a solid black disc — the loudest cell in the grid for the one that holds
-    /// nothing.
+    /// came out as a solid black disc, measured on macOS 15.3.1 — the loudest cell in the grid
+    /// for the one that holds nothing.
     func testAnEmptyCellIsTranslucentOnEitherBar() throws {
         for dark in [true, false] {
             let empty = try XCTUnwrap(
@@ -381,7 +381,7 @@ final class MenuBarIconStylesTests: XCTestCase {
     ///
     /// Not `tiffRepresentation`: its bitmap came back tagged as a space the pixels were not
     /// drawn in, and every colour read from it was off by a gamma — the palette's grey 0.62
-    /// read as 0.68.
+    /// read as 0.68, measured on macOS 15.3.1.
     private func bitmap(of image: NSImage) throws -> NSBitmapImageRep {
         let map = try XCTUnwrap(
             NSBitmapImageRep(
@@ -407,7 +407,7 @@ final class MenuBarIconStylesTests: XCTestCase {
 }
 
 /// The image the button is given under the drawing, which decides how the other screens
-/// blend their copy of the item.
+/// blend their copy of the item, measured on macOS 15.3.1.
 @MainActor
 final class MenuBarIconPlaceholderTests: XCTestCase {
     /// Not a template, and nothing in it: the drawing on top is the only thing to see.

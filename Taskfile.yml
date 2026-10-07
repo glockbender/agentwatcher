@@ -14,14 +14,23 @@ tasks:
       - task: build-sender
       - python3 scripts/test-e2e-sandbox-cleanup.py
       - python3 scripts/test-check-troubleshooting.py
+      - python3 scripts/test-check-docs.py
+      - python3 scripts/test-measurements.py
       - swift test --parallel -Xswiftc -warnings-as-errors
 
   lint:
-    desc: Check Swift formatting and style, and the shape of TROUBLESHOOTING.md
+    desc: Check Swift formatting and style, the shape of TROUBLESHOOTING.md, the documents, and the list of measurements
     cmds:
       - swift format lint --configuration .swift-format --recursive --parallel --strict Sources Tests
       - swift format lint --configuration .swift-format --strict Package.swift
       - python3 scripts/check-troubleshooting.py
+      - python3 scripts/check-docs.py
+      - python3 scripts/measurements.py --check
+
+  measurements:
+    desc: Rebuild docs/measurements.md from the version markers next to each measured fact
+    cmds:
+      - python3 scripts/measurements.py
 
   format:
     desc: Format Swift sources

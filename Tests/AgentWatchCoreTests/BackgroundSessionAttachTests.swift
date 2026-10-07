@@ -17,10 +17,10 @@ final class BackgroundSessionAttachTests: XCTestCase {
 
     /// `/bg` leaves the terminal it was typed in attached to the job: the interactive process
     /// stays alive, its own record names the job in `parkedJobId`, and the session is on screen
-    /// there. Measured on 2.1.269: the record of the terminal that parked job `b95a16c1` carried
-    /// `"kind":"interactive","parkedJobId":"b95a16c1"`, and no `claude attach` process existed.
-    /// That terminal is the session's window, and a click must reach it rather than open a
-    /// second one.
+    /// there. Measured on Claude Code 2.1.269: the record of the terminal that parked job
+    /// `b95a16c1` carried `"kind":"interactive","parkedJobId":"b95a16c1"`, and no `claude attach`
+    /// process existed. That terminal is the session's window, and a click must reach it rather
+    /// than open a second one.
     func testTheTerminalThatParkedTheJobIsItsViewer() {
         let parked = Data(
             #"{"pid":81685,"kind":"interactive","name":"agent-watch-31","parkedJobId":"b95a16c1"}"#.utf8)

@@ -201,6 +201,38 @@ final class EventProtocolTests: XCTestCase {
         XCTAssertEqual(event.kind, .userInputRequired)
     }
 
+    /// One fixed identifier for the question, as for compaction: measured on 2.1.293, a form
+    /// question names no agent and carries no identifier of its own.
+    func testAnMCPServersQuestionIsAWaitForThePersonAndItsResultEndsIt() throws {
+        let payload: JSONValue = .object(["session_id": .string("id_session")])
+
+        let asked = try HookEventNormalizer.normalize(
+            source: .claude, declaredEvent: "Elicitation", payload: payload, observedAt: start)
+        let answered = try HookEventNormalizer.normalize(
+            source: .claude, declaredEvent: "ElicitationResult", payload: payload, observedAt: start)
+
+        XCTAssertEqual(asked.kind, .userInputRequired)
+        XCTAssertEqual(asked.userInputRequestKind, .elicitation)
+        XCTAssertNil(asked.agentID)
+        XCTAssertEqual(answered.kind, .activityCompleted)
+        XCTAssertEqual(answered.activityID, asked.activityID, "the answer ends this question and nothing else")
+    }
+
+    /// Codex offers neither hook; a sender claiming otherwise is refused, as `StatusLine` is.
+    func testOnlyClaudeIsHeardOnAnMCPServersQuestion() {
+        for event in ["Elicitation", "ElicitationResult"] {
+            XCTAssertThrowsError(
+                try HookEventNormalizer.normalize(
+                    source: .codex,
+                    declaredEvent: event,
+                    payload: .object(["session_id": .string("id_session")]),
+                    observedAt: start
+                ),
+                event
+            )
+        }
+    }
+
     func testSubagentHooksTrackTheAgentAsAnActivity() throws {
         let payload: JSONValue = .object([
             "session_id": .string("id_session"),

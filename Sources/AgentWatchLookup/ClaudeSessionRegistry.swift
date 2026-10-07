@@ -5,8 +5,9 @@ import Foundation
 /// for the one thing the path to the program cannot always say: that a live process is one of
 /// its sessions.
 ///
-/// The path fails in two measured ways (`docs/agent-integration.md` §1б). An update deletes the
-/// version a long-running session was started from, and the kernel then names no path at all.
+/// The path fails in two measured ways (`docs/agent-processes.md`,
+/// «Почему живой агент находится только у Claude»). An update deletes the version a long-running session was
+/// started from, and the kernel then names no path at all.
 /// And a background session gives the same file a second name inside `ClaudeCode.app`, which
 /// the kernel then reports for every process running that version. The record is written by
 /// the process itself and carries its start, so neither touches it.
@@ -33,17 +34,24 @@ public struct ClaudeSessionRegistry: Sendable {
     /// agrees with. The start is required rather than taken on trust: a record can outlive its
     /// process, the number is then handed to a stranger, and this answer builds a row.
     func recordsLiveProcess(_ processID: Int32) -> Bool {
+        record(ofLiveProcess: processID) != nil
+    }
+
+    /// The record of this live process, on the same terms as `recordsLiveProcess`: a record
+    /// whose process has gone, or whose number now belongs to somebody else, is no record.
+    public func record(ofLiveProcess processID: Int32) -> ClaudeSessionRecord? {
         let file = directory.appendingPathComponent("\(processID).json", isDirectory: false)
         guard
             let data = try? Data(contentsOf: file),
             let record = ClaudeSessionRecord(data: data),
             record.processID == processID,
             let recordedStart = record.startedAt,
-            let kernelStart = startTime(processID)
+            let kernelStart = startTime(processID),
+            ClaudeSessionRecord.starts(recordedStart, match: kernelStart)
         else {
-            return false
+            return nil
         }
-        return ClaudeSessionRecord.starts(recordedStart, match: kernelStart)
+        return record
     }
 
     /// Every process a record speaks for — one listing of a folder holding a dozen files,

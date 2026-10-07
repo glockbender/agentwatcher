@@ -83,6 +83,9 @@ struct IDEPluginReading: Equatable {
 /// here. That property is the one the menu this replaced was written to keep, and it is kept.
 @MainActor
 enum ToolingReport {
+    /// Named because the status-line relay script quotes it, in files the app never rewrites.
+    static let statusLineTitle = "Status line"
+
     /// - Parameters:
     ///   - hookState: read per agent, from disk, because the files belong to other programs.
     ///   - statusLineState: read once — the slot is Claude Code's and there is only one.
@@ -152,7 +155,7 @@ enum ToolingReport {
         path: String
     ) -> ToolingReportRow {
         ToolingReportRow(
-            title: "Status line",
+            title: statusLineTitle,
             status: nil,
             state: statusLineStateText(state: state),
             details: ["Writes \(path)"],
@@ -174,7 +177,7 @@ enum ToolingReport {
     /// A section rather than a screen of its own, and that is a decision: the person does the
     /// installing inside somebody else's program, and everything this app can do is say where
     /// each IDE stands and open the right page. Marketplace is what will make even that
-    /// unnecessary — see `docs/implementation-plan.md`.
+    /// unnecessary — see ADR-0019.
     private static func ideSection(
         readings: [IDEPluginReading],
         stagedPlugin: StagedIDEPlugin?,

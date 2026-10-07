@@ -225,6 +225,13 @@ final class TranscriptWatcher {
         rescheduleReads()
     }
 
+    /// The transcript found for a row, if it has been found. A row is watched only while its
+    /// quiet might end without a hook, so a row that has never worked while this app watched —
+    /// one restored at rest after a restart — has none.
+    func transcriptURL(forSessionWithID id: String) -> URL? {
+        watches[id]?.url
+    }
+
     func stop() {
         timer?.invalidate()
         timer = nil
@@ -589,8 +596,8 @@ final class TranscriptWatcher {
     }
 
     /// Codex puts a thread's name nowhere near its transcript, so this reads a different file
-    /// and takes nothing else from it: the branch and the context size come from the
-    /// transcript's own opening record, which `locate` has already read.
+    /// and takes nothing else from it: the branch comes from the transcript's own opening
+    /// record, which `locate` has already read, and the context size from its tail.
     ///
     /// The index is keyed by the raw session identifier, which the app never holds — so the
     /// match is made the way `TranscriptLocator` makes it, by hashing every candidate. The

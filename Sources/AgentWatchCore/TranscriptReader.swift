@@ -3,7 +3,7 @@ import Foundation
 /// Something that happened in a session and that no hook reports.
 ///
 /// Every case here was measured on real transcripts before it was written down; the counts
-/// are in ADR-0001.
+/// are in `docs/transcript-reader.md`.
 public enum TranscriptFact: Equatable, Sendable {
     /// A tool call reported back — where the successful end of a call comes from, since
     /// `PostToolUse` is not registered with either agent.
@@ -112,7 +112,7 @@ public enum TranscriptReadError: Error, Equatable, Sendable {
 ///
 /// Only three kinds of record are looked at out of the fourteen a transcript holds. Every
 /// other line is skipped by its shape without its content being kept, which is what makes the
-/// privacy note in §15 true: prompts and command output pass through a parse and are dropped.
+/// privacy note in `docs/transcript-reader.md` true: prompts and command output pass through a parse and are dropped.
 public enum TranscriptReader {
     /// Four megabytes: eighty times the largest increment measured in ordinary use.
     public static let maximumIncrementByteCount = 4 * 1_048_576

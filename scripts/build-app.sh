@@ -62,7 +62,7 @@ if command -v codesign >/dev/null 2>&1; then
     #
     # A certificate replaces that hash with the certificate's own identity, which a rebuild
     # does not change. Self-signed is enough for that; Developer ID is for handing the app
-    # to other people. Measured both ways in `docs/session-focus-research.md`.
+    # to other people. Measured both ways in `docs/research/session-focus.md`.
     #
     # Looked up without `-v`, and that is the whole of the difference between working and
     # not: `-v` keeps only identities the system *trusts*, and a self-signed root is not

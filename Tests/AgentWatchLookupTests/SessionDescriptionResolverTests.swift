@@ -52,8 +52,9 @@ final class SessionDescriptionResolverTests: XCTestCase {
     }
 
     func testASessionNamedAtLaunchHasANameWithoutAnAITitle() {
-        // What `claude -p --name aw-name-probe` wrote on 2.1.284: no `ai-title` at all, which
-        // is also every session of a person whose Claude Code generates no titles.
+        // What `claude -p --name aw-name-probe` wrote, measured on Claude Code 2.1.284: no
+        // `ai-title` at all, which is also every session of a person whose Claude Code
+        // generates no titles.
         let tail = lines([
             #"{"type":"custom-title","customTitle":"aw-name-probe","sessionId":"abc"}"#,
             #"{"type":"agent-name","agentName":"aw-name-probe","sessionId":"abc"}"#,
@@ -106,7 +107,7 @@ final class SessionDescriptionResolverTests: XCTestCase {
         )
         let absent = Self.codexResolution(of: "absent", in: index)
         XCTAssertNil(absent.description)
-        XCTAssertFalse(absent.isIndexed, "a session the index does not name is not a session to report")
+        XCTAssertFalse(absent.isAdmitted, "a session the index does not name, with no transcript, is not reported")
     }
 
     func testCodexSessionWithoutANameIsStillIndexed() {
@@ -131,23 +132,102 @@ final class SessionDescriptionResolverTests: XCTestCase {
             fileSystem: fileSystem
         )
 
-        XCTAssertTrue(resolution.isIndexed)
+        XCTAssertTrue(resolution.isAdmitted)
         XCTAssertNil(resolution.description?.title)
         XCTAssertEqual(resolution.description?.projectName, "agent-watch")
     }
 
-    func testCodexServiceSessionOutsideTheIndexIsNotAdmitted() {
+    /// The session ChatGPT.app runs to name a new thread has no transcript at all. A reader
+    /// that would call any transcript a user's shows that the null path alone keeps it out.
+    func testTheSessionThatNamesAThreadIsNotAdmitted() {
         let index = lines([#"{"id":"user-thread","thread_name":"Visible"}"#])
-        let fileSystem = TitleFileSystem(readTail: { _, _ in index })
+        let fileSystem = TitleFileSystem(
+            readTail: { _, _ in index },
+            readHead: { _, _ in Self.sessionMeta(source: "vscode", threadSource: "user") }
+        )
 
         let resolution = SessionDescriptionResolver.resolveCodexSession(
-            payload: .object(["session_id": .string("service-thread")]),
+            payload: .object(["session_id": .string("title-session"), "transcript_path": .null]),
             indexPath: "/tmp/session_index.jsonl",
             fileSystem: fileSystem
         )
 
-        XCTAssertFalse(resolution.isIndexed)
+        XCTAssertFalse(resolution.isAdmitted)
         XCTAssertNil(resolution.description)
+    }
+
+    /// A new thread enters the index only once it is named, seconds into its first turn. Its
+    /// transcript is already there and says a person started it.
+    func testAThreadNotYetInTheIndexIsAdmittedByItsTranscript() {
+        let readPath = RecordedPath()
+        let index = lines([#"{"id":"older-thread","thread_name":"Older"}"#])
+        for indexRead in [index, nil] {
+            let fileSystem = TitleFileSystem(
+                readTail: { _, _ in indexRead },
+                readHead: { path, _ in
+                    readPath.value = path
+                    return Self.sessionMeta(source: "vscode", threadSource: "user")
+                }
+            )
+
+            let resolution = SessionDescriptionResolver.resolveCodexSession(
+                payload: Self.codexPayload(sessionID: "new-thread"),
+                indexPath: "/tmp/session_index.jsonl",
+                fileSystem: fileSystem
+            )
+
+            XCTAssertTrue(resolution.isAdmitted, "index read: \(indexRead == nil ? "none" : "without it")")
+            XCTAssertNil(resolution.description?.title, "named only once the index has it")
+            XCTAssertEqual(resolution.description?.projectName, "agent-watch")
+            XCTAssertEqual(readPath.value, "/tmp/rollout-new-thread.jsonl")
+        }
+    }
+
+    /// Until the transcript was read at all, the index alone decided. Outside the index, each
+    /// of these is still refused.
+    func testTranscriptsOfThreadsAPersonDidNotStartAreNotEnough() {
+        let guardian = #"{"subagent":{"other":"guardian"}}"#
+        let spawned = #"{"subagent":{"thread_spawn":{}}}"#
+        let otherKind = #"{"type":"event_msg","payload":{"thread_source":"user"}}"# + "\n"
+        let refused: [(String, Data?)] = [
+            ("approval reviewer", Self.sessionMeta(source: guardian, threadSource: "guardian_review")),
+            ("subagent", Self.sessionMeta(source: spawned, threadSource: "subagent")),
+            ("codex exec", Self.sessionMeta(source: "exec", threadSource: "user")),
+            ("an older Codex", Self.sessionMeta(source: "vscode", threadSource: nil)),
+            ("no transcript yet", nil),
+            ("first record still being written", Data(#"{"type":"session_meta","payload":{"thread_sou"#.utf8)),
+            ("a first record of another kind", Data(otherKind.utf8)),
+        ]
+        for (name, head) in refused {
+            let fileSystem = TitleFileSystem(readTail: { _, _ in Data() }, readHead: { _, _ in head })
+
+            let resolution = SessionDescriptionResolver.resolveCodexSession(
+                payload: Self.codexPayload(sessionID: "not-indexed"),
+                indexPath: "/tmp/session_index.jsonl",
+                fileSystem: fileSystem
+            )
+
+            XCTAssertFalse(resolution.isAdmitted, name)
+        }
+    }
+
+    /// The opening record as Codex 0.162.0-alpha.2 writes it, trimmed to the fields read here,
+    /// with the next record after it as in a real file.
+    private static func sessionMeta(source: String, threadSource: String?) -> Data {
+        let sourceValue = source.hasPrefix("{") ? source : #""\#(source)""#
+        let threadSourceField = threadSource.map { #","thread_source":"\#($0)""# } ?? ""
+        return Data(
+            (#"{"type":"session_meta","payload":{"id":"t","originator":"codex_work_desktop","source":\#(sourceValue)\#(threadSourceField)}}"#
+                + "\n" + #"{"type":"event_msg","payload":{"type":"task_started"}}"# + "\n").utf8
+        )
+    }
+
+    private static func codexPayload(sessionID: String) -> JSONValue {
+        .object([
+            "session_id": .string(sessionID),
+            "cwd": .string("/Users/ilya/Projects/agent-watch"),
+            "transcript_path": .string("/tmp/rollout-\(sessionID).jsonl"),
+        ])
     }
 
     func testALaterCodexEntrySupersedesAnEarlierOne() {

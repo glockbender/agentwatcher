@@ -19,7 +19,7 @@ struct JetBrainsProduct: Equatable {
 /// `hasAnsweredPing` looks for it there. Asking the bundle what it is works for whichever IDE
 /// a person actually has, without a table of bundle identifiers to keep in step with
 /// JetBrains' catalogue — and without asking macOS for a single permission. See
-/// `docs/session-focus-research.md`.
+/// `docs/research/session-focus.md`.
 enum JetBrainsInstallation {
     /// Reads the one field this needs out of the bundle's own description of itself.
     static func dataDirectoryName(ofApplicationAt bundleURL: URL, fileManager: FileManager = .default) -> String? {
@@ -83,7 +83,7 @@ enum JetBrainsInstallation {
     /// nothing deletes it when the plugin is removed — so this answers "has been seen", not
     /// "is there now". That is enough here, because a `focus` address that reaches an IDE
     /// without the plugin does nothing and says nothing. Freshness is the installation
-    /// screen's question, and `docs/architecture.md` says so.
+    /// screen's question, and `docs/ide-plugin.md` says so.
     static func hasAnsweredPing(ofApplicationAt bundleURL: URL, fileManager: FileManager = .default) -> Bool {
         guard
             let dataDirectoryName = dataDirectoryName(ofApplicationAt: bundleURL, fileManager: fileManager),

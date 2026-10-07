@@ -274,12 +274,12 @@ final class UnixSocketIngressTests: XCTestCase {
 
     /// A subagent's tool call reaches the app, and says whose it is.
     ///
-    /// Through the real executable, with the payload shaped as Claude Code 2.1.272 actually
-    /// sends it: `transcript_path` is the **parent's**, identical to the main thread's, and
-    /// the subagent is named only by `agent_id`. A filter that judged by the path used to
-    /// stand here and recognised nobody; this is what has to keep working now it is gone —
-    /// the call is what a permission dialog is about, so dropping it would leave the dialog
-    /// with nothing to point at.
+    /// Through the real executable, with the payload shaped as Claude Code actually sends it,
+    /// measured on Claude Code 2.1.272: `transcript_path` is the **parent's**, identical to the
+    /// main thread's, and the subagent is named only by `agent_id`. A filter that judged by the
+    /// path used to stand here and recognised nobody; this is what has to keep working now it is
+    /// gone — the call is what a permission dialog is about, so dropping it would leave the
+    /// dialog with nothing to point at.
     func testExecutableDeliversASubagentsCallAndNamesTheSubagent() throws {
         let directoryURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }
@@ -342,8 +342,9 @@ final class UnixSocketIngressTests: XCTestCase {
 
         var environment = ProcessInfo.processInfo.environment
         environment["CODEX_HOME"] = codexHomeURL.path
+        // The session that names a new thread: no transcript, never in the index.
         let sender = try runSender(
-            input: Data(#"{"session_id":"service-thread"}"#.utf8),
+            input: Data(#"{"session_id":"service-thread","transcript_path":null}"#.utf8),
             arguments: [
                 "--source", "codex",
                 "--event", "SessionStart",
@@ -380,6 +381,56 @@ final class UnixSocketIngressTests: XCTestCase {
         environment["CODEX_HOME"] = codexHomeURL.path
         let sender = try runSender(
             input: Data(#"{"session_id":"user-thread","cwd":"/tmp/agent-watch"}"#.utf8),
+            arguments: [
+                "--source", "codex",
+                "--event", "SessionStart",
+                "--socket", socketPath,
+            ],
+            environment: environment
+        )
+
+        XCTAssertEqual(sender.status, 0)
+        wait(for: [received], timeout: 1)
+        let request = try XCTUnwrap(try results.snapshot().first?.get())
+        XCTAssertEqual(request.source, .codex)
+        XCTAssertNil(request.description?.title)
+        XCTAssertEqual(request.description?.projectName, "agent-watch")
+    }
+
+    /// The first hooks of a new thread come before the index has it. The real file reader
+    /// takes the transcript's opening record, as long as a real one is, and admits the thread.
+    func testExecutableDeliversACodexThreadBeforeTheIndexHasIt() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let codexHomeURL = directoryURL.appendingPathComponent("codex-home")
+        try FileManager.default.createDirectory(at: codexHomeURL, withIntermediateDirectories: true)
+        try Data(#"{"id":"older-thread","thread_name":"Older"}"#.utf8).write(
+            to: codexHomeURL.appendingPathComponent("session_index.jsonl")
+        )
+        let transcriptURL = directoryURL.appendingPathComponent("rollout-new-thread.jsonl")
+        let instructions = String(repeating: "x", count: 23_000)
+        try Data(
+            (#"{"type":"session_meta","payload":{"id":"new-thread","source":"vscode","thread_source":"user","base_instructions":{"text":"\#(instructions)"}}}"#
+                + "\n").utf8
+        ).write(to: transcriptURL)
+
+        let socketPath = directoryURL.appendingPathComponent("agent-watch.sock").path
+        let received = expectation(description: "the new thread reaches ingress")
+        let results = IngressResults()
+        let ingress = UnixSocketIngress(socketPath: socketPath) { result in
+            results.append(result)
+            received.fulfill()
+        }
+        try ingress.start()
+        defer { ingress.stop() }
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["CODEX_HOME"] = codexHomeURL.path
+        let sender = try runSender(
+            input: Data(
+                #"{"session_id":"new-thread","cwd":"/tmp/agent-watch","transcript_path":"\#(transcriptURL.path)"}"#.utf8
+            ),
             arguments: [
                 "--source", "codex",
                 "--event", "SessionStart",

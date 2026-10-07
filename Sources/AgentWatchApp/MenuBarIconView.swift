@@ -4,11 +4,11 @@ import QuartzCore
 /// The counts, drawn inside the status item's button as a grid or as a sphere.
 ///
 /// A view with a layer per cell — or one for the whole sphere — rather than a picture swapped
-/// on a timer. Both were measured on a real status item over twenty seconds: the timer at
-/// eleven frames a second costs this process 1.95 % of a core, the layers 0.02 % — which is
-/// what doing nothing costs. Neither showed above the noise in the window server, whose own
-/// load on an idle machine is around 58 % of a core and drifts by more than either variant
-/// adds.
+/// on a timer. Both were measured on macOS 15.3.1 on a real status item over twenty seconds:
+/// the timer at eleven frames a second costs this process 1.95 % of a core, the layers
+/// 0.02 % — which is what doing nothing costs. Neither showed above the noise in the window
+/// server, whose own load on an idle machine is around 58 % of a core and drifts by more than
+/// either variant adds.
 ///
 /// The measurement is only half the reason. A timer redraws a value that has not changed,
 /// eleven times a second, for as long as anything is working — against the rule the widget is
@@ -78,8 +78,8 @@ final class MenuBarIconView: NSView {
         return style == .sphere ? NSStatusItem.squareLength : drawing.size.width + MenuBarIconMetrics.itemPadding
     }
 
-    /// The button underneath owns the click that opens the menu. Without this the view takes
-    /// the press and the menu never appears.
+    /// The button underneath owns the click that opens the menu, measured on macOS 15.3.1.
+    /// Without this the view takes the press and the menu never appears.
     override func hitTest(_ point: NSPoint) -> NSView? {
         nil
     }
@@ -151,11 +151,11 @@ final class MenuBarIconView: NSView {
         }
         positionLayers()
         // New layers with new pictures in them are not enough to change what is on screen.
-        // Measured: with the counts moving from 0 waiting to 2, every redraw ran and reported
-        // success while the bar kept showing the first frame it was ever given, and opening
-        // the menu — which makes the button redraw — brought it up to date at once. A status
-        // item's window is not on anybody's display cycle while the application is inactive,
-        // which is always, so it has to be asked.
+        // Measured on macOS 15.3.1: with the counts moving from 0 waiting to 2, every redraw
+        // ran and reported success while the bar kept showing the first frame it was ever
+        // given, and opening the menu — which makes the button redraw — brought it up to date
+        // at once. A status item's window is not on anybody's display cycle while the
+        // application is inactive, which is always, so it has to be asked.
         needsDisplay = true
         redrawRequests += 1
         standInForTheButtonsImage()
@@ -187,9 +187,9 @@ final class MenuBarIconView: NSView {
     /// template and adds it to the bar (`plusL`) — right for a white glyph, and it turned the
     /// icon's colours into pastels brighter than anything else on the bar: grey 0.68 came out
     /// 0.84 over a bar of 0.29. With a non-template image the copy is laid over the bar as it
-    /// is, dimmed the way the system dims every other item on an inactive bar. Measured on
-    /// macOS 15.3.1; the choice is AppKit's and undocumented, so a later release may make it
-    /// differently.
+    /// is, dimmed the way the system dims every other item on an inactive bar.
+    /// Measured on macOS 15.3.1; the choice is AppKit's and undocumented, so a later release
+    /// may make it differently.
     ///
     /// As large as the drawing because the copy may be cut to the image's size, and a grid
     /// wider than its placeholder would lose its right-hand column on the other screen.
@@ -217,11 +217,11 @@ final class MenuBarIconView: NSView {
 
     /// The band the status bar actually gave this item.
     ///
-    /// Not `bounds`, because the button is not always its own slot: measured, it is 22 pt tall
-    /// at launch and 28 pt tall once the item has been rebuilt — hanging 2.5 pt below the bar
-    /// and 3.5 above it — so a grid centred in the button sits off the bar's centre, and moves
-    /// the moment the counts are switched off and on again. The view holding the button keeps
-    /// the bar's height whatever the button does.
+    /// Not `bounds`, because the button is not always its own slot: measured on macOS 15.3.1,
+    /// it is 22 pt tall at launch and 28 pt tall once the item has been rebuilt — hanging 2.5 pt
+    /// below the bar and 3.5 above it — so a grid centred in the button sits off the bar's
+    /// centre, and moves the moment the counts are switched off and on again. The view holding
+    /// the button keeps the bar's height whatever the button does.
     private var barSlot: NSRect {
         guard let container = superview?.superview else {
             return bounds
@@ -376,8 +376,8 @@ final class MenuBarIconView: NSView {
     ///
     /// Counted rather than read back from `needsDisplay`: on a layer-backed view AppKit turns
     /// the request into layer invalidation, and the flag reads false again immediately — tried
-    /// in a window ordered on screen, and it still does. The flag is not an honest answer to
-    /// "did this ask to be redrawn", so the test asks this instead.
+    /// in a window ordered on screen, and it still does, measured on macOS 15.3.1. The flag is
+    /// not an honest answer to "did this ask to be redrawn", so the test asks this instead.
     private(set) var redrawRequests = 0
 
     /// Where the cells ended up, for a test that cannot see the bar.

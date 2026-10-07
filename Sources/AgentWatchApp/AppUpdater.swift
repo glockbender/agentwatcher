@@ -4,11 +4,13 @@ import CryptoKit
 
 /// Finding out that a newer build exists, and putting it in place.
 ///
-/// This is the one thing Agent Watch does that reaches outside the machine. The request is a
+/// This is the one thing Agent Watch does that reaches outside the machine. The check is a
 /// plain `GET` to GitHub's public API with nothing of the person's in it — no identifier, no
 /// query, not even which version is running, because the comparison happens here. GitHub sees
 /// what any web server sees: an address and an IP. It can be turned off, and it turns itself
-/// off in a build that has no version to compare.
+/// off in a build that has no version to compare. Only when the person agrees to update do two
+/// more requests follow, for the archive and its checksum, and they introduce the app the same
+/// way: `AppUpdate.userAgent`, without the version.
 ///
 /// The update is downloaded by the app rather than by a browser, and that is worth a sentence
 /// because it changes what the person has to do: `com.apple.quarantine` is written by whoever
@@ -166,9 +168,9 @@ final class AppUpdater: PreferenceDefaults {
     /// `data(for:)` hands back an error page as happily as a file, and a checksum that then
     /// fails to match says "the download is broken" where the truth is "there is no such
     /// file".
-    private nonisolated static func fetch(_ request: URLRequest) async -> Data? {
+    private nonisolated static func fetch(_ request: URLRequest, transport: Transport) async -> Data? {
         guard
-            let (data, response) = try? await URLSession.shared.data(for: request),
+            let (data, response) = try? await transport(request),
             (response as? HTTPURLResponse)?.statusCode == 200
         else {
             return nil
@@ -251,12 +253,14 @@ final class AppUpdater: PreferenceDefaults {
         }
         isWorking = true
         let destination = Bundle.main.bundleURL
+        let transport = transport
         Task { [weak self] in
             let staged = await Self.stage(
                 downloadURL: downloadURL,
                 checksumURL: checksumURL,
                 expectedVersion: release.version,
-                beside: destination
+                beside: destination,
+                transport: transport
             )
             guard let self else {
                 return
@@ -285,12 +289,13 @@ final class AppUpdater: PreferenceDefaults {
         downloadURL: URL,
         checksumURL: URL,
         expectedVersion: String,
-        beside destination: URL
+        beside destination: URL,
+        transport: Transport = { try await URLSession.shared.data(for: $0) }
     ) async -> URL? {
         let fileManager = FileManager.default
         guard
-            let archive = await fetch(URLRequest(url: downloadURL)),
-            let checksumData = await fetch(URLRequest(url: checksumURL)),
+            let archive = await fetch(AppUpdate.downloadRequest(for: downloadURL), transport: transport),
+            let checksumData = await fetch(AppUpdate.downloadRequest(for: checksumURL), transport: transport),
             let expected = AppUpdate.checksum(fromChecksumFile: String(decoding: checksumData, as: UTF8.self)),
             expected == sha256Hex(of: archive),
             let workingDirectory = try? fileManager.url(

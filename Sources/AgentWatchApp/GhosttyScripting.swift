@@ -63,8 +63,8 @@ enum GhosttyScripting {
     /// the line feed is a real one; measured with a `touch` typed this way.
     ///
     /// Judged by the terminal list rather than by the command's reply, and that too is
-    /// measured: Ghostty 1.3.1 creates the tab and then fails to hand the tab object back, so
-    /// `new tab` answers −1708 for a tab that is there. The ids before and after, and the new
+    /// measured on Ghostty 1.3.1: it creates the tab and then fails to hand the tab object back,
+    /// so `new tab` answers −1708 for a tab that is there. The ids before and after, and the new
     /// one read off the difference, are true either way. With no window to add a tab to —
     /// Ghostty was just launched by the script — a window is asked for instead.
     static func openTab(typing line: String) -> String? {

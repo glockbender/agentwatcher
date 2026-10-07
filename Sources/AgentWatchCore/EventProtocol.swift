@@ -487,6 +487,24 @@ public enum HookEventNormalizer {
             return envelope(.activityStarted, activityID: Self.compactionActivityID, activityKind: .compaction)
         case .postCompact:
             return envelope(.activityCompleted, activityID: Self.compactionActivityID)
+        // An MCP server asking the person something. Measured on 2.1.293, the hook arrives
+        // inside the server's own tool call, between its `PreToolUse` and its `PostToolUse`,
+        // and names neither the agent nor — for a form, the ordinary kind — the question. So
+        // the dialog is the main thread's, with one fixed identifier per session, as for
+        // compaction. The answer is `ElicitationResult`. When some other hook answers the
+        // question instead, none comes; the session's next call, the end of its turn or its
+        // own record (ADR-0010) then ends the wait.
+        case .elicitation:
+            guard source == .claude else {
+                throw EventNormalizationError.unsupportedEvent(source: source, name: declaredEvent)
+            }
+            return envelope(
+                .userInputRequired, activityID: Self.elicitationActivityID, userInputRequestKind: .elicitation)
+        case .elicitationResult:
+            guard source == .claude else {
+                throw EventNormalizationError.unsupportedEvent(source: source, name: declaredEvent)
+            }
+            return envelope(.activityCompleted, activityID: Self.elicitationActivityID)
         case .subagentStart:
             guard let activityID = identifier(in: fields, keys: ["agent_id", "subagent_id", "tool_use_id"]) else {
                 throw EventNormalizationError.missingActivityID
@@ -508,6 +526,10 @@ public enum HookEventNormalizer {
     /// A session compacts one context at a time, so its compaction needs no identifier of
     /// its own to be told apart from anything else in the same session.
     static let compactionActivityID = "compaction"
+
+    /// What an MCP server's question is waited on as. No call of that name exists, so its
+    /// answer ends this one dialog and touches nothing in the session's list of calls.
+    static let elicitationActivityID = "elicitation"
 
     /// What kind of work a tool call is, from its name alone.
     ///

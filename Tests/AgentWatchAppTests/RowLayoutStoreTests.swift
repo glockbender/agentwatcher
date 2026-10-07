@@ -36,6 +36,20 @@ final class RowLayoutStoreTests: XCTestCase {
         XCTAssertEqual(store.layout.counterKinds, [.shell, .tool])
     }
 
+    /// The file lists the kinds to count, so a kind added to the app after the file was
+    /// written is not counted until somebody ticks it — the reason `TROUBLESHOOTING.md` has an
+    /// entry for the MCP server's question. A file written whole is never rewritten behind its
+    /// owner's back; see the seeding test below.
+    func testAKindAddedAfterTheFileWasWrittenIsNotCountedUntilTicked() throws {
+        let preferences = try isolatedPreferences()
+        preferences.set("shell,subagent,backgroundTask,compaction,advisor,tool", forKey: "rowLayout.counterKinds")
+        preferences.set("timer,lamp,agent,fault,name,gap,counters,context", forKey: "rowLayout.parts")
+        let store = RowLayoutStore(preferences: preferences)
+
+        XCTAssertFalse(store.layout.counterKinds.contains(.elicitation))
+        XCTAssertTrue(RowLayout.standard.counterKinds.contains(.elicitation), "a fresh install counts it")
+    }
+
     /// A file written by a later version names parts this one has never heard of. Dropping
     /// them quietly is the same fail-open rule monitoring follows: a row missing one part is
     /// worth more than no row at all, and refusing the file would leave the widget empty.

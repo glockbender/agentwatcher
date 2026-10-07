@@ -318,6 +318,12 @@ final class WidgetRenderProbe: XCTestCase {
         var waiting = session(1, "Переписать ingress", .waitingForUser, secondsAgo: 95)
         waiting.userInputRequestKind = .approval
 
+        // An MCP server asking the person, inside its own tool call: the question beside the
+        // wrench it interrupted, which is the pairing that has to read at a glance.
+        var asked = session(12, "Вопрос от MCP-сервера", .waitingForUser, secondsAgo: 6)
+        asked.activities = [SessionActivity(id: "mcp-call", kind: .tool, startedAt: now)]
+        asked.setAwaitedDialogs([AwaitedDialog(activityID: "elicitation", kind: .elicitation)])
+
         var compacting = session(5, "Сжатие контекста", .executing, secondsAgo: 4)
         compacting.activities = [
             SessionActivity(id: "compaction", kind: .compaction, startedAt: now)
@@ -386,7 +392,7 @@ final class WidgetRenderProbe: XCTestCase {
         ).row(arrivalIndex: 9)
 
         return [
-            working, waiting, session(20, "Claude · limit reached", .rateLimited, secondsAgo: 120),
+            working, waiting, asked, session(20, "Claude · limit reached", .rateLimited, secondsAgo: 120),
             compacting, consulting, background, leftRunning, headless,
             unnamed, codex, lost, session(4, "Старая сессия", .sessionClosed, secondsAgo: 30),
             discovered,

@@ -215,7 +215,7 @@ func idePluginNextStep(presence: IDEPluginPresence, staged: StagedIDEPlugin?) ->
 ///
 /// Only when the file is newer, and it says what the update costs: an install from a file
 /// restarts the IDE whatever the plugin does — the platform decides that the moment it sees a
-/// copy already installed. Measured; see `docs/session-focus-research.md`.
+/// copy already installed. Measured; see `docs/research/session-focus.md`.
 private func idePluginUpdateStep(installedVersion: String?, staged: StagedIDEPlugin?) -> String? {
     guard
         let staged,
@@ -310,15 +310,15 @@ func toolingComplaint(states: [ToolingInstallationState]) -> String? {
         return "Reinstall from Tooling — Agent Watch moved."
     }
     // Ahead of the advice below, and it replaces it: the hooks are installed, so installing
-    // them is the one thing that cannot help. Where to go next differs by agent, and
-    // Tooling is where that is said.
+    // them is the one thing that cannot help. Where to go next differs by agent, and the
+    // Tooling window is where that is said.
     if states.contains(.unheard) {
         return "Hooks are installed, but no event has arrived. See Tooling."
     }
     // The action comes first so that it survives a narrow widget: the sentence wraps to two
     // lines and then truncates, and what a person needs is what to do, not a restatement of
     // the empty row they are already looking at.
-    return "Install hooks from Settings → Tooling."
+    return "Install hooks from Tooling in Settings."
 }
 
 /// What to say after this agent's hooks are installed.

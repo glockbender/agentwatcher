@@ -8,7 +8,7 @@ import AppKit
 ///
 /// Its buttons take no click of their own: whether a button inside a menu's line can track a
 /// press has not been measured, and this line's own release is what a menu is known to
-/// deliver — seen again with real clicks on this question (`docs/measurements.md`). The
+/// deliver — seen again with real clicks on this question, measured on macOS 15.3.1. The
 /// release is handed to the button it lands on.
 @MainActor
 final class MenuEndAgentQuestionView: NSView {

@@ -188,10 +188,10 @@ final class AgentProcessLocatorTests: XCTestCase {
 
     /// A session sent to the background with `/bg` keeps running in a fresh `claude` started
     /// by the agent's pty host, and that host is the parent, not the session's own command.
-    /// Measured on 2.1.269: the host runs from `ClaudeCode.app`, not from `versions/`, and
-    /// names itself by a flag — `claude --bg-pty-host …` — so neither the executable rule nor
-    /// the first-word rule saw it, and the session was reported as a terminal one with no
-    /// terminal anywhere above it.
+    /// Measured on Claude Code 2.1.269: the host runs from `ClaudeCode.app`, not from
+    /// `versions/`, and names itself by a flag — `claude --bg-pty-host …` — so neither the
+    /// executable rule nor the first-word rule saw it, and the session was reported as a
+    /// terminal one with no terminal anywhere above it.
     func testASessionUnderTheAgentsPtyHostIsReportedAsBackground() {
         let ancestors = [
             ProcessSnapshot(
@@ -236,7 +236,7 @@ final class AgentProcessLocatorTests: XCTestCase {
     /// `/bg` continues a session in a new process under a new identifier, and the only place
     /// the old identifier survives is the process's own arguments: `--fork-session` says it
     /// is a copy, and `--resume` names the transcript it was copied from, whose file is named
-    /// after the session. Measured on 2.1.269; no hook field carries it.
+    /// after the session. Measured on Claude Code 2.1.269; no hook field carries it.
     ///
     /// The copy's process runs a second, two-second session first — the one `--resume`
     /// always leaves behind — and its hooks read the same arguments. Only the session the

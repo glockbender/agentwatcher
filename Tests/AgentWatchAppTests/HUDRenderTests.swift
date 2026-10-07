@@ -21,10 +21,10 @@ final class HUDRenderTests: XCTestCase {
     func testTheComplaintIsOnScreenBeforeAnySessionArrives() throws {
         let controller = try makeController()
 
-        controller.render(WidgetState(complaint: "Install hooks from Settings → Tooling."))
+        controller.render(WidgetState(complaint: "Install hooks from Tooling in Settings."))
 
         XCTAssertTrue(
-            visibleText(of: controller).contains("Install hooks from Settings → Tooling."),
+            visibleText(of: controller).contains("Install hooks from Tooling in Settings."),
             "the widget shows: \(visibleText(of: controller))"
         )
     }
@@ -33,7 +33,7 @@ final class HUDRenderTests: XCTestCase {
     /// say, with no session arriving to force the redraw.
     func testAChangedComplaintReplacesTheOneOnScreen() throws {
         let controller = try makeController()
-        controller.render(WidgetState(complaint: "Install hooks from Settings → Tooling."))
+        controller.render(WidgetState(complaint: "Install hooks from Tooling in Settings."))
 
         controller.render(WidgetState(complaint: nil))
 

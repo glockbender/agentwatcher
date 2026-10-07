@@ -26,7 +26,7 @@ import java.time.Instant
  *
  * The process number is the join for focus, and it is the strongest one available: it does
  * not depend on what the tab is called, on the "Show application title in tab name" setting,
- * or on two sessions happening to have the same name. See `docs/session-focus-research.md`.
+ * or on two sessions happening to have the same name. See `docs/research/session-focus.md`.
  */
 class FocusSessionCommand : JBProtocolCommand(COMMAND) {
     override suspend fun executeAndGetResult(

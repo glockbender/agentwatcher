@@ -8,7 +8,7 @@ import Foundation
 /// `tcsetattr` waiting for its last output to be taken. Neither `SIGTERM` nor `SIGKILL`
 /// ended it — after `SIGKILL` it stays in exit (`E` in `ps`) until the terminal drains.
 /// Discarding the unread output ends the wait, and the agent exits on its own a moment
-/// later. `docs/agent-integration.md` has the reproduction; ADR-0013 the decision to do it
+/// later. `docs/agent-processes.md` has the reproduction; ADR-0013 the decision to do it
 /// on a click.
 ///
 /// A terminal Ghostty kept after closing its tab is the other way in, and needs the other
@@ -64,8 +64,8 @@ enum ClosedTerminal {
     /// `SIGHUP` rather than `SIGTERM` because it is what closing a terminal sends, and the
     /// whole chain because closing a tab ends its shell too: left running, the shell keeps
     /// Ghostty holding a terminal it does not show, which is half of how the next closed tab
-    /// is recognised. Claude Code answers `SIGHUP` with its ordinary shutdown
-    /// (`docs/measurements.md`).
+    /// is recognised. Claude Code answers `SIGHUP` with its ordinary shutdown,
+    /// measured on Claude Code 2.1.284.
     static func hangUp(processIDs: [Int32]) -> Bool {
         guard mayHangUp(processIDs, ownProcessID: getpid()) else {
             return false

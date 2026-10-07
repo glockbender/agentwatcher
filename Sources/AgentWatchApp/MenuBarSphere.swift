@@ -119,8 +119,8 @@ enum MenuBarSphereRenderer {
     /// the colours can move under it.
     ///
     /// Painted into an sRGB bitmap rather than with `lockFocus`, whose image is kept in the
-    /// screen's profile: the colours here are mixed by arithmetic, and have to be stored as
-    /// the numbers they were mixed to.
+    /// screen's profile, measured on macOS 15.3.1: the colours here are mixed by arithmetic,
+    /// and have to be stored as the numbers they were mixed to.
     private static func paint(shares: [MenuBarSphereShare], colours: [NSColor], size: NSSize, scale: CGFloat)
         -> (colours: NSImage, light: NSImage)
     {

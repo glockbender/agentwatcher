@@ -15,7 +15,8 @@ import Foundation
 /// anyway — the one `claude agents` lists and `claude attach` takes. Claude Code writes it into
 /// its own record of the process, `~/.claude/sessions/<pid>.json`, beside the session's kind and
 /// name; that file is measured, not documented, so a record without the field is answered with
-/// nothing rather than with a guess. `docs/agent-integration.md` §1б.
+/// nothing rather than with a guess. `docs/agent-processes.md`,
+/// «Почему живой агент находится только у Claude».
 public enum BackgroundSessionAttach {
     /// Claude Code's own record of a running process, named after its process number.
     public static func sessionRecordURL(claudeHome: URL, agentProcessID: Int32) -> URL {
@@ -46,8 +47,9 @@ public enum BackgroundSessionAttach {
     /// `/bg` does not free the terminal it was typed in: the interactive process stays, its own
     /// record names the job in `parkedJobId`, and the session is on screen right there — so
     /// that terminal is the session's window, and a click on the row belongs to it, not to a
-    /// fresh tab with `claude attach`. Measured on 2.1.269, and undocumented like the rest of
-    /// the record: the docs speak of the terminal as freed, and of `parkedJobId` not at all.
+    /// fresh tab with `claude attach`. Measured on Claude Code 2.1.269, and undocumented like
+    /// the rest of the record: the docs speak of the terminal as freed, and of `parkedJobId` not
+    /// at all.
     ///
     /// Only an interactive record counts. The job's own record names the job as `jobId` and
     /// is no viewer of itself. And only a live process: the file outlives its process, so a

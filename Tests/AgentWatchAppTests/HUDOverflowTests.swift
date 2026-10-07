@@ -409,8 +409,9 @@ final class HUDOverflowTests: XCTestCase {
     ///
     /// Half size asks for nothing at all, and that is measured too. Those 25 % are one point of a
     /// four-point mark on a Retina screen. On a screen of one pixel per point — the CI machine,
-    /// `1.0x` — the badge lands on the mark's own bottom edge and covers the whole of it: mark
-    /// 50–54, badge 50–59, where this machine has the mark at 59–63 and the badge from 60.
+    /// `1.0x`, measured on macOS 15 — the badge lands on the mark's own bottom edge and covers
+    /// the whole of it: mark 50–54, badge 50–59, where this machine has the mark at 59–63 and
+    /// the badge from 60.
     func testEitherCounterLeavesTheDismissMarkShowing() throws {
         for scale in WidgetSettingsStore.offeredScales {
             let style = WidgetStyle(scale: scale)
