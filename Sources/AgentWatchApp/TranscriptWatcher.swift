@@ -589,8 +589,8 @@ final class TranscriptWatcher {
     }
 
     /// Codex puts a thread's name nowhere near its transcript, so this reads a different file
-    /// and takes nothing else from it: the branch and the context size come from the
-    /// transcript's own opening record, which `locate` has already read.
+    /// and takes nothing else from it: the branch comes from the transcript's own opening
+    /// record, which `locate` has already read, and the context size from its tail.
     ///
     /// The index is keyed by the raw session identifier, which the app never holds — so the
     /// match is made the way `TranscriptLocator` makes it, by hashing every candidate. The
