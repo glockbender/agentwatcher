@@ -215,7 +215,7 @@ func idePluginNextStep(presence: IDEPluginPresence, staged: StagedIDEPlugin?) ->
 ///
 /// Only when the file is newer, and it says what the update costs: an install from a file
 /// restarts the IDE whatever the plugin does — the platform decides that the moment it sees a
-/// copy already installed. Measured; see `docs/session-focus-research.md`.
+/// copy already installed. Measured; see `docs/research/session-focus.md`.
 private func idePluginUpdateStep(installedVersion: String?, staged: StagedIDEPlugin?) -> String? {
     guard
         let staged,

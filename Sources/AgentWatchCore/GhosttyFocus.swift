@@ -37,7 +37,7 @@ public enum GhosttyFocusRefusal: Equatable, Sendable {
 ///
 /// The whole key is that Claude titles the terminal itself, with the session name that Agent
 /// Watch already shows in the widget — so the two sides agree on a string neither had to
-/// invent. See `docs/session-focus-research.md`.
+/// invent. See `docs/research/session-focus.md`.
 ///
 /// Everything here is a rule over values somebody else read, which is why it is in the core:
 /// the terminals come from an Apple event and the answer is decided without a disk, an app,

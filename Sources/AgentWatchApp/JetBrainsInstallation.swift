@@ -19,7 +19,7 @@ struct JetBrainsProduct: Equatable {
 /// `hasAnsweredPing` looks for it there. Asking the bundle what it is works for whichever IDE
 /// a person actually has, without a table of bundle identifiers to keep in step with
 /// JetBrains' catalogue — and without asking macOS for a single permission. See
-/// `docs/session-focus-research.md`.
+/// `docs/research/session-focus.md`.
 enum JetBrainsInstallation {
     /// Reads the one field this needs out of the bundle's own description of itself.
     static func dataDirectoryName(ofApplicationAt bundleURL: URL, fileManager: FileManager = .default) -> String? {

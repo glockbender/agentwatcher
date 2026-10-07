@@ -71,7 +71,7 @@
 `At least one state stays in the icon.` То же правило держит само хранилище. Вид — ключ
 `menuBarIconStyle`. Строка-сводка и подсказка называют все четыре числа при любом выборе.
 
-Полный разбор с замерами — [`menu-bar-icon-design.md`](menu-bar-icon-design.md), палитра —
+Полный разбор с замерами — [`research/menu-bar-icon.md`](research/menu-bar-icon.md), палитра —
 [ADR-0012](adr/0012-the-menu-bar-is-not-the-widgets-canvas.md).
 
 ## Меню значка
