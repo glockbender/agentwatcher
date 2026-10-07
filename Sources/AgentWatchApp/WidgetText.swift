@@ -27,13 +27,23 @@ extension SessionClientKind {
 /// a single label could explain none of them.
 func activityCounts(for snapshot: SessionSnapshot) -> [(kind: ActivityKind, count: Int)] {
     let grouped = Dictionary(grouping: snapshot.activities, by: \.kind)
-    // Compaction first, then the advisor: while either runs the session is doing nothing
-    // else, and together they are the answer to "why has this row gone quiet".
-    return [ActivityKind.compaction, .advisor, .subagent, .shell, .backgroundTask, .tool]
+    // An MCP server's question first: the lamp says only that something is being asked, and
+    // this is what. Then compaction and the advisor: while either runs the session is doing
+    // nothing else, and together they are the answer to "why has this row gone quiet".
+    //
+    // Written out rather than taken from `ActivityKind.allCases`, so a kind added there is
+    // drawn nowhere until it is given its place here.
+    return [ActivityKind.elicitation, .compaction, .advisor, .subagent, .shell, .backgroundTask, .tool]
         .compactMap { kind in
             if kind == .backgroundTask {
                 let drawn = drawnBackgroundWork(for: snapshot)
                 return drawn.isEmpty ? nil : (kind: kind, count: drawn.count)
+            }
+            // From the open dialogs rather than the calls: the question is something the
+            // session waits on, not work it started.
+            if kind == .elicitation {
+                let asked = snapshot.unansweredDialogs.filter { $0.kind == .elicitation }.count
+                return asked == 0 ? nil : (kind: kind, count: asked)
             }
             return grouped[kind].map { (kind: kind, count: $0.count) }
         }
@@ -45,7 +55,9 @@ func activityCounts(for snapshot: SessionSnapshot) -> [(kind: ActivityKind, coun
 /// there is a digit that never varies — it takes room in every row and answers nothing.
 func counterText(for kind: ActivityKind, count: Int) -> String? {
     switch kind {
-    case .compaction, .advisor: nil
+    // A session's main thread is asked one thing at a time, so the question has no digit
+    // either.
+    case .compaction, .advisor, .elicitation: nil
     case .subagent, .shell, .backgroundTask, .tool: "\(count)"
     }
 }
@@ -567,8 +579,8 @@ extension String {
 /// How the settings window talks about a phase.
 ///
 /// Two strings rather than one, and neither is the row's own wording: a row says
-/// `approval needed` or `choice needed` depending on what the session is waiting for, while
-/// the window configures the phase itself and has only one row for it. Both switches are
+/// `approval needed`, `choice needed` or `input needed` depending on what the session is
+/// waiting for, while the window configures the phase itself and has only one row for it. Both switches are
 /// exhaustive, so a new phase cannot be added without being named and explained.
 ///
 /// The explanations are the `Значение` column of the phase table in `docs/architecture.md`
@@ -603,7 +615,7 @@ extension SessionPhase {
         case .waitingForChildren:
             "The turn has finished, and a subagent it started is still running."
         case .waitingForUser:
-            "The turn has stopped until you answer — a permission request, or a choice."
+            "The turn has stopped until you answer — a permission request, a choice, or an MCP server's question."
         case .completed:
             "The last turn finished, and the session is waiting for what you say next."
         case .rateLimited:
@@ -740,6 +752,7 @@ extension ActivityKind {
         case .backgroundTask: "Background tasks"
         case .compaction: "Compacting context"
         case .advisor: "Asking the advisor"
+        case .elicitation: "MCP server questions"
         case .tool: "Tool calls"
         }
     }

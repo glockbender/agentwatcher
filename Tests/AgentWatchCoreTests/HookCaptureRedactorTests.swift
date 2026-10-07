@@ -109,6 +109,49 @@ final class HookCaptureRedactorTests: XCTestCase {
         XCTAssertNotEqual(sessionID, "session-secret")
     }
 
+    /// The question, the server's name, what it asks for and what the person answered all
+    /// stay in the hook process (ADR-0001). The payloads are the ones Claude Code 2.1.293
+    /// sent, with the paths replaced; a link question carries `url` and `elicitation_id` too.
+    func testAnMCPServersQuestionAndItsAnswerStayOnThisSideOfTheSocket() throws {
+        let question = try redacted(
+            declaredEvent: "Elicitation",
+            input: Data(
+                """
+                {"session_id": "38a39273-a501-496c-a3ad-e65ad3b3424a",
+                 "transcript_path": "/Users/someone/.claude/projects/p/38a39273.jsonl",
+                 "cwd": "/Users/someone/project", "hook_event_name": "Elicitation",
+                 "mcp_server_name": "probe", "message": "Which colour?", "mode": "form",
+                 "url": "https://example.com/connect?token=abc", "elicitation_id": "e-1",
+                 "requested_schema": {"type": "object", "properties": {"colour": {"type": "string"}}}}
+                """.utf8)
+        )
+        let answer = try redacted(
+            declaredEvent: "ElicitationResult",
+            input: Data(
+                """
+                {"session_id": "38a39273-a501-496c-a3ad-e65ad3b3424a", "hook_event_name": "ElicitationResult",
+                 "mcp_server_name": "probe", "mode": "form", "action": "accept",
+                 "content": {"colour": "blue"}}
+                """.utf8)
+        )
+
+        for event in [question, answer] {
+            guard case let .object(payload) = event.payload else {
+                return XCTFail("Expected an object payload")
+            }
+            for key in ["mcp_server_name", "mode", "elicitation_id", "requested_schema", "action"] {
+                XCTAssertNil(payload[key], "\(event.declaredEvent) kept \(key)")
+            }
+            for key in ["message", "url", "content"] where payload[key] != nil {
+                XCTAssertEqual(payload[key], .string("<redacted>"), "\(event.declaredEvent) kept \(key)")
+            }
+            let encoded = String(decoding: try JSONEncoder().encode(event.payload), as: UTF8.self)
+            for word in ["probe", "colour", "Which", "blue", "example.com"] {
+                XCTAssertFalse(encoded.contains(word), "\(event.declaredEvent) carries \(word)")
+            }
+        }
+    }
+
     func testProducesTheSameIdentifierLabelForTheSameRawIdentifier() throws {
         let input = Data("{\"session_id\":\"same-session\"}".utf8)
 

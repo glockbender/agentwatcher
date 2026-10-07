@@ -7,9 +7,9 @@ import Foundation
 /// answered with nothing rather than with a guess when it is missing or shaped unexpectedly.
 ///
 /// It earns its place here by reporting the one moment nothing else does: a person answering
-/// a dialog. No hook fires for it — the catalogue of Claude Code 2.1.272 holds 33 events and
-/// none of them is the answer — and the transcript writes nothing between the call's record
-/// and its result. So a row waiting on an approved call kept claiming "approval needed" for
+/// a dialog. No hook fires for it — the catalogue of Claude Code 2.1.272 holds 33 events, and
+/// the one answer among them, `ElicitationResult`, answers an MCP server rather than a
+/// permission — and the transcript writes nothing between the call's record and its result. So a row waiting on an approved call kept claiming "approval needed" for
 /// as long as that call then ran: measured on this machine, 89 seconds for a `git push`
 /// answered at once.
 ///

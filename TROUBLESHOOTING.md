@@ -96,6 +96,19 @@ before the list scrolls.
 
 **Checked on:** macOS 15.3.1.
 
+## No question mark on the row while an MCP server asks you something
+
+**Why:** Two things have to be in place, and updating Agent Watch brings neither by itself. Claude
+Code reports the question only to a hook registered for it, and hooks installed by an earlier
+version do not include that one. And a row shows the counters saved in your settings: a kind of
+counter added to the app later is not on your saved list until you tick it.
+
+**What to do:** In **Settings… → Tooling**, press **Repair** for Claude Code, then run
+`/reload-plugins` in the sessions that are open, or start new ones. In **Settings… → Widget →
+Rows**, open the menu beside **Counters** and tick **MCP server questions**.
+
+**Checked on:** Claude Code 2.1.293.
+
 ## A Claude app session appears as soon as you open it
 
 **Why:** The Claude desktop app runs each of its sessions as a separate Claude Code process, and it
