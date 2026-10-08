@@ -151,6 +151,21 @@ final class ClaudeRecordRecognitionTests: XCTestCase {
 
         XCTAssertEqual(rules.agentProcessID(among: ancestors), 8864)
         XCTAssertEqual(rules.clientKind(among: ancestors, argumentsOfProcess: { _ in nil }), .desktop)
+        // Its options are those of a run driven by a program — stream-json in and out, a
+        // permission tool — but no `-p`, which is what keeps it from reading as one. Measured on
+        // Claude Code 2.1.289: read whole from the three sessions open in Claude.app, here with
+        // the tool list and the settings shortened.
+        let appSession = [
+            "/Users/someone/Library/Application Support/Claude/claude-code/2.1.289/ee67e3f1ea60/claude.app/Contents/MacOS/claude",
+            "--output-format", "stream-json", "--verbose", "--input-format", "stream-json",
+            "--model", "claude-opus-5-5", "--permission-prompt-tool", "stdio",
+            "--resume=1e4ffa7d-7801-4cae-aea3-a9b0c2b8b614", "--allowedTools", "mcp__computer-use",
+            "--disallowedTools", "SubscribePR", "--setting-sources=user,project,local",
+            "--permission-mode", "auto", "--allow-dangerously-skip-permissions", "--include-partial-messages",
+            "--await-initialize", "--thinking-display", "omitted", "--replay-user-messages",
+            "--settings", #"{"deniedMcpServers":[]}"#,
+        ]
+        XCTAssertEqual(rules.clientKind(among: ancestors, argumentsOfProcess: { _ in appSession }), .desktop)
     }
 
     /// `claude` typed into Claude.app's own terminal pane runs under the app as well, but in a
