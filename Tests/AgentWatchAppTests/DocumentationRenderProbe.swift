@@ -2,113 +2,272 @@ import AgentWatchCore
 import AgentWatchTestSupport
 import AppKit
 import ImageIO
+import SwiftUI
 import UniformTypeIdentifiers
 import XCTest
 
 @testable import AgentWatchApp
 
-/// Real compact widget views with fictional sessions and the shipped palette.
-/// Animation samples use the lamp's actual Core Animation endpoints, duration and easing.
+/// Draws the README's pictures from the real views and the invented sessions of
+/// `ReadmeShowcase`, into `DOC_RENDER_DIR`. `task readme-images` runs it into `docs/images`.
+///
+/// Offscreen: nothing appears on screen and nothing takes the focus. The menu is the one
+/// picture it cannot draw, since the system draws most of a menu; `ReadmeMenuProbe` takes
+/// that one from a real menu.
 @MainActor
 final class DocumentationRenderProbe: XCTestCase {
-    private let width: CGFloat = 339
-    private let style = WidgetStyle(scale: 0.9)
+    private let now = ReadmeShowcase.now
 
-    func testRenderReadmeAssets() throws {
-        guard let directory = ProcessInfo.processInfo.environment["DOC_RENDER_DIR"] else {
-            throw XCTSkip("Set DOC_RENDER_DIR to generate README images")
+    func testDrawTheWidgetPictures() throws {
+        let root = try outputDirectory()
+        let afternoon = ReadmeShowcase.sessions()
+        let byState = ordered(afternoon, by: .attention)
+        try write(widget(byState, width: 380, usage: ReadmeShowcase.usageLimits), "widget", in: root)
+        try write(hoverCard(for: afternoon[2]), "card", in: root)
+
+        // The looks: one theme in its two modes, and a theme of somebody's own.
+        let four = Array(byState.prefix(4))
+        try write(widget(four, width: 330, look: WidgetTheme.standard.dark), "look-dark", in: root)
+        try write(widget(four, width: 330, look: WidgetTheme.standard.light), "look-light", in: root)
+        try write(widget(four, width: 330, look: Self.ownTheme), "look-own", in: root)
+        try write(widget(four, width: 270, style: WidgetStyle(scale: 0.75)), "size-75", in: root)
+        try write(widget(four, width: 450, style: WidgetStyle(scale: 1.5)), "size-150", in: root)
+
+        // What a row shows: the least and the most it can.
+        let three = Array(byState.prefix(3))
+        try write(widget(three, width: 260, layout: RowLayout(parts: [.lamp, .name])), "row-minimal", in: root)
+        let everything = RowLayout(
+            parts: [.timer, .lamp, .agent, .name, .project, .branch, .gap, .model, .counters, .context],
+            flexible: .name)
+        try write(widget(three, width: 620, layout: everything), "row-full", in: root)
+
+        // The same afternoon in three of the four orders; the fourth moves on every event.
+        let orders: [(SessionOrder, String)] = [(.arrival, "arrival"), (.attention, "state"), (.blocks, "blocks")]
+        for (order, name) in orders {
+            let rows = RowLayout(parts: [.lamp, .agent, .name])
+            try write(widget(ordered(afternoon, by: order), width: 280, layout: rows), "order-\(name)", in: root)
         }
-        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-        let root = URL(fileURLWithPath: directory)
-        let frames = 240
-        let fps = 12.0
+
+        for style in MenuBarIconStyle.allCases {
+            try write(menuBarIcon(afternoon, style: style), "menubar-\(style.rawValue)", in: root)
+        }
+    }
+
+    /// Every lamp at its own rhythm, one row each, named by what it means.
+    ///
+    /// Thirty seconds, so the loop closes on a whole cycle of every lamp but the 2.8-second
+    /// ring, which steps once per loop.
+    func testDrawTheLampLegend() throws {
+        let root = try outputDirectory()
+        let fps = 10.0
+        let frames = 300
         let gif = try XCTUnwrap(
             CGImageDestinationCreateWithURL(
-                root.appendingPathComponent("widget-demo.gif") as CFURL, UTType.gif.identifier as CFString, frames, nil)
-        )
+                root.appendingPathComponent("lamps.gif") as CFURL, UTType.gif.identifier as CFString, frames, nil))
         CGImageDestinationSetProperties(
             gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
-        let now = Date(timeIntervalSince1970: 100_000)
-        var ordering = SessionOrdering()
+        let legend = ReadmeShowcase.legend()
         for frame in 0..<frames {
-            let time = Double(frame) / fps
-            let stage = Int(time / 4)
-            let cast = sessions(stage: stage, now: now)
-            let sorted = ordering.order(cast, mode: .blocks, blocks: SessionBlock.defaultOrder, now: now)
-            if stage == 1 { XCTAssertEqual(sorted.first?.title, "Catalog") }
-            let list = HUDSessionListView(
-                models: sorted.map { HUDRowModel(snapshot: $0, now: now, layout: .standard) }, usageLimits: [],
-                now: now, availableWidth: width, focus: { _ in }, remove: { _ in },
-                background: .defaultBackground, lampScheme: LampScheme(),
-                backgroundOpacity: CGFloat(WidgetTheme.defaultOpacity), style: style,
-                restoredScrollOffset: nil, onScroll: { _ in })
-            let height = HUDSessionListView.selfSizedHeight(
-                sessionCount: cast.count, usageLimits: [],
-                background: .defaultBackground, style: style)
-            let canvas = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height + 56))
-            canvas.wantsLayer = true
-            canvas.layer?.backgroundColor = NSColor(sRGB: "#F4F6F8").cgColor
-            list.frame = NSRect(x: 0, y: 0, width: width, height: height)
-            canvas.addSubview(list)
-            let titles = [
-                "Different rhythms, one glance", "Catalog becomes active ↑", "Catalog needs your answer",
-                "Catalog has finished", "Catalog is inactive again ↓",
-            ]
-            let subtitles = [
-                "Work pulses. Requests alternate orange and yellow.", "The project moves from Inactive to Active.",
-                "A fast orange ↔ yellow signal asks for attention.", "A steady light means this turn is complete.",
-                "No signal: the project returns below active work.",
-            ]
-            for (text, y, size, weight) in [
-                (titles[stage], height + 29, CGFloat(14), NSFont.Weight.semibold),
-                (subtitles[stage], height + 8, CGFloat(10), NSFont.Weight.regular),
-            ] {
-                let label = NSTextField(labelWithString: text)
-                label.font = .systemFont(ofSize: size, weight: weight)
-                label.textColor = NSColor(sRGB: "#23303D")
-                label.frame = NSRect(x: 6, y: y, width: width - 12, height: 21)
-                canvas.addSubview(label)
-            }
-            canvas.layoutSubtreeIfNeeded()
-            sampleAnimations(in: list, at: time)
-            if frame == 0 {
-                let widget = try bitmap(list)
-                try XCTUnwrap(widget.representation(using: .png, properties: [:])).write(
-                    to: root.appendingPathComponent("widget.png"))
-            }
+            let list = widget(legend, width: 300, layout: RowLayout(parts: [.lamp, .name]))
+            let canvas = framed(list, padding: 12, color: NSColor(sRGB: "#F4F6F8"))
+            sampleAnimations(in: list, at: Double(frame) / fps)
             let image = try XCTUnwrap(bitmap(canvas).cgImage)
-            if frame.isMultiple(of: 48) || frame == 50 {
-                let png = NSBitmapImageRep(cgImage: image)
-                try XCTUnwrap(png.representation(using: .png, properties: [:])).write(
-                    to: root.appendingPathComponent("demo-frame-\(frame).png"))
-            }
             CGImageDestinationAddImage(
-                gif, image,
-                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / fps]] as CFDictionary)
+                gif, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / fps]] as CFDictionary)
         }
         XCTAssertTrue(CGImageDestinationFinalize(gif))
     }
 
-    private func sessions(stage: Int, now: Date) -> [SessionSnapshot] {
-        let phase: SessionPhase = [.disconnected, .executing, .waitingForUser, .completed, .disconnected][stage]
-        return [
-            testSession(index: 0, title: "API tests", phase: .executing, lastObservedAt: now - 20),
-            testSession(
-                index: 1, source: .codex, title: "Release review", phase: .waitingForUser,
-                userInputRequestKind: .approval, lastObservedAt: now - 10),
-            testSession(index: 2, title: "Search plan", phase: .planning, lastObservedAt: now - 30),
-            testSession(
-                index: 3, source: .codex, title: "Catalog", phase: phase,
-                userInputRequestKind: phase == .waitingForUser ? .approval : nil,
-                lastObservedAt: stage == 0 || stage == 4 ? now - 3600 : now),
-            testSession(index: 4, title: "Sync failed", phase: .failed, lastObservedAt: now - 120),
-        ]
+    /// The settings pages the README points at, in the light appearance.
+    func testDrawTheSettingsPages() throws {
+        let root = try outputDirectory()
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentWatchThemes.\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let preferences = try isolatedPreferences()
+        let settings = WidgetSettingsStore(preferences: preferences)
+        let themes = ThemeStore(preferences: preferences, folder: folder) { try FileManager.default.removeItem(at: $0) }
+        let model = SettingsModel(
+            themes: themes, settings: settings, rowLayouts: RowLayoutStore(preferences: preferences),
+            shortcuts: FakeShortcutRegistrar.controller(for: settings), host: FakeAppHost(), version: nil)
+
+        try write(page(AnyView(RowPane(model: model)), height: 1000), "settings-rows", in: root, trimming: true)
+        try write(page(AnyView(OrderPane(model: model)), height: 1000), "settings-order", in: root, trimming: true)
+        try write(page(AnyView(MenuBarPane(model: model)), height: 1000), "settings-menu-bar", in: root, trimming: true)
+        // Down to the lamps: the menu bar's colours below them are a second table of the same kind.
+        try write(page(AnyView(ThemeEditorPane(model: model)), height: 985), "settings-theme", in: root)
     }
 
+    // MARK: - Scenes
+
+    /// A dark theme somebody made: its own panel, and its own lamps for planning, work, a
+    /// question and done.
+    private static var ownTheme: WidgetTheme.Look {
+        var lamps = LampScheme()
+        lamps.setColor(NSColor(sRGB: "#C6A0F6"), for: .planning)
+        lamps.setColor(NSColor(sRGB: "#A6DA95"), for: .executing)
+        lamps.setColor(NSColor(sRGB: "#F5A97F"), for: .waitingForUser)
+        lamps.setColor(NSColor(sRGB: "#8AADF4"), for: .completed)
+        return WidgetTheme.Look(background: "#24273A", lamps: WidgetTheme.lamps(from: lamps))
+    }
+
+    private func ordered(_ sessions: [SessionSnapshot], by order: SessionOrder) -> [SessionSnapshot] {
+        var ordering = SessionOrdering()
+        return ordering.order(sessions, mode: order, blocks: SessionBlock.defaultOrder, now: now)
+    }
+
+    private func widget(
+        _ sessions: [SessionSnapshot],
+        width: CGFloat,
+        layout: RowLayout = .standard,
+        look: WidgetTheme.Look = WidgetTheme.standard.dark,
+        style: WidgetStyle = .standard,
+        usage: [AgentUsageLimits] = []
+    ) -> HUDSessionListView {
+        let background = look.widgetBackground
+        let list = HUDSessionListView(
+            models: sessions.map { HUDRowModel(snapshot: $0, now: now, layout: layout) },
+            usageLimits: usage, now: now, availableWidth: width, focus: { _ in }, remove: { _ in },
+            background: background, lampScheme: look.lampScheme, backgroundOpacity: 1, style: style,
+            restoredScrollOffset: nil, onScroll: { _ in })
+        let height = HUDSessionListView.selfSizedHeight(
+            sessionCount: sessions.count, usageLimits: usage, background: background, style: style)
+        place(list, size: NSSize(width: width, height: height))
+        return list
+    }
+
+    /// Built the way `SessionHoverCard` builds it.
+    private func hoverCard(for snapshot: SessionSnapshot) -> NSView {
+        let style = WidgetStyle.standard
+        let label = NSTextField(
+            labelWithString: hoverCardText(for: snapshot, now: now, layout: .standard, reach: .anApplication))
+        label.font = style.secondaryFont
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 0
+        let padding = style.hoverCardPadding
+        let available = style.hoverCardMaximumWidth - 2 * padding
+        label.preferredMaxLayoutWidth = available
+        let size = label.sizeThatFits(NSSize(width: available, height: CGFloat.greatestFiniteMagnitude))
+        let card = NSView(
+            frame: NSRect(x: 0, y: 0, width: size.width + 2 * padding, height: size.height + 2 * padding))
+        card.wantsLayer = true
+        card.layer?.backgroundColor = NSColor(calibratedWhite: 0.13, alpha: 1).cgColor
+        card.layer?.cornerRadius = WidgetStyle.panelCornerRadius
+        label.frame = NSRect(x: padding, y: padding, width: size.width, height: size.height)
+        card.addSubview(label)
+        place(card, size: card.frame.size)
+        return card
+    }
+
+    /// The status item's drawing on a strip the colour of a dark menu bar.
+    private func menuBarIcon(_ sessions: [SessionSnapshot], style: MenuBarIconStyle) -> NSView {
+        let icon = MenuBarIconView()
+        var length = MenuBarIconMetrics.barHeight
+        icon.onLengthChange = { length = $0 }
+        icon.show(MenuBarIconCell.cells(for: SessionAttentionCounts(sessions: sessions)), as: style)
+        // The sphere asks for `NSStatusItem.squareLength`, a negative marker rather than a width.
+        if length < 0 {
+            length = MenuBarIconMetrics.barHeight
+        }
+        let strip = NSView(frame: NSRect(x: 0, y: 0, width: length + 16, height: MenuBarIconMetrics.barHeight + 4))
+        strip.wantsLayer = true
+        strip.layer?.backgroundColor = NSColor(sRGB: "#2B2D31").cgColor
+        strip.layer?.cornerRadius = 6
+        icon.frame = NSRect(x: 8, y: 2, width: length, height: MenuBarIconMetrics.barHeight)
+        strip.addSubview(icon)
+        place(strip, size: strip.frame.size)
+        return strip
+    }
+
+    /// A settings page, drawn taller than it needs: a form cannot say how tall it is.
+    private func page(_ root: AnyView, height: CGFloat) -> NSView {
+        let hosting = NSHostingView(rootView: root.formStyle(.grouped))
+        hosting.appearance = NSAppearance(named: .aqua)
+        place(hosting, size: NSSize(width: 570, height: height))
+        // SwiftUI fills a form in over a few turns of the run loop.
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+        return hosting
+    }
+
+    private func framed(_ view: NSView, padding: CGFloat, color: NSColor) -> NSView {
+        let canvas = NSView(
+            frame: NSRect(
+                x: 0, y: 0, width: view.frame.width + 2 * padding, height: view.frame.height + 2 * padding))
+        canvas.wantsLayer = true
+        canvas.layer?.backgroundColor = color.cgColor
+        if let window = view.window, window.contentView === view {
+            window.contentView = nil
+        }
+        view.frame.origin = NSPoint(x: padding, y: padding)
+        canvas.addSubview(view)
+        place(canvas, size: canvas.frame.size)
+        return canvas
+    }
+
+    // MARK: - Drawing
+
+    private func outputDirectory() throws -> URL {
+        guard let directory = ProcessInfo.processInfo.environment["DOC_RENDER_DIR"] else {
+            throw XCTSkip("Set DOC_RENDER_DIR to draw the README's pictures")
+        }
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        return URL(fileURLWithPath: directory)
+    }
+
+    private func write(_ view: NSView, _ name: String, in root: URL, trimming: Bool = false) throws {
+        var image = try XCTUnwrap(bitmap(view).cgImage)
+        if trimming {
+            image = trimmedBottom(image)
+        }
+        let url = root.appendingPathComponent("\(name).png")
+        let png = NSBitmapImageRep(cgImage: image)
+        try XCTUnwrap(png.representation(using: .png, properties: [:])).write(to: url)
+        print("drew \(url.lastPathComponent) at \(image.width)×\(image.height)")
+    }
+
+    /// Two pixels per point, or the probe fails: on a one-pixel display an offscreen window
+    /// draws at one, and such pictures look soft on every Retina screen that opens the README.
     private func bitmap(_ view: NSView) throws -> NSBitmapImageRep {
         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        XCTAssertEqual(
+            CGFloat(bitmap.pixelsWide), 2 * view.bounds.width,
+            "drawn at \(view.window?.backingScaleFactor ?? 0)x: run it with a Retina display as the main one")
         view.cacheDisplay(in: view.bounds, to: bitmap)
         return bitmap
+    }
+
+    /// The image without the rows at its bottom that are all the colour of its last pixel, but
+    /// for a margin: the empty strip under a form drawn taller than it is.
+    private func trimmedBottom(_ image: CGImage, margin: Int = 40) -> CGImage {
+        guard image.bitsPerPixel == 32, let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data)
+        else {
+            return image
+        }
+        let rowBytes = image.bytesPerRow
+        let blank = (image.height - 1) * rowBytes
+        func isBlank(_ row: Int) -> Bool {
+            let start = row * rowBytes
+            for offset in stride(from: 0, to: image.width * 4, by: 4) {
+                for channel in 0..<4 where abs(Int(bytes[start + offset + channel]) - Int(bytes[blank + channel])) > 2 {
+                    return false
+                }
+            }
+            return true
+        }
+        var bottom = image.height - 1
+        while bottom > 0, isBlank(bottom) {
+            bottom -= 1
+        }
+        let height = min(image.height, bottom + 1 + margin)
+        return image.cropping(to: CGRect(x: 0, y: 0, width: image.width, height: height)) ?? image
+    }
+
+    /// A window, because a view outside one lays out against nothing.
+    private func place(_ view: NSView, size: NSSize) {
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
     }
 
     /// Freeze each real lamp at a frame time; cacheDisplay otherwise captures only the model layer.

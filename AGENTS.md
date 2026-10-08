@@ -60,6 +60,12 @@ can be tested in `AgentWatchCoreTests` without launching an application.
 - **`task e2e-update` runs a throwaway copy beside yours and presses its dialogs itself.** It needs
   your own Agent Watch running — otherwise the release build it installs would run against your real
   state — and Accessibility permission for the terminal.
+- **The README's pictures are drawn from code; redraw them in the change that alters what they
+  show.** `task readme-images` draws them offscreen from the invented sessions in
+  `ReadmeShowcase`. `task readme-menu` opens a real menu for a second and takes only its window,
+  with Screen Recording permission. Both refuse to run unless a Retina display is the main one.
+  The clips (`docs/images/clip-*.avif`) are screen recordings: the `readme-media` skill records and
+  cuts them again.
 
 ## Documentation
 

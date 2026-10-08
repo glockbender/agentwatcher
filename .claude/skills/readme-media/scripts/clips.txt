@@ -1,0 +1,9 @@
+# One clip a line: name, take, in, out, width, height, keyframes. In and out are marks of the take
+# (`@mark±seconds`); the size is twice the width the README shows it at.
+clip-hero    hero      @long-task-1.1  @done+3.0     1600 1004  clips/hero.keys
+clip-icon    menu      @waiting-2.2    @waiting+2.6  1280 720   clips/icon.keys
+clip-menu    menu      @open-menu-1.2  @escape-0.1   1280 1072  clips/menu.keys
+clip-order   settings  @state-2.1      @state+2.1    1600 900   clips/order.keys
+clip-light   settings  @light-1.8      @light+2.4    1600 900   clips/light.keys
+clip-branch  settings  @branch-1.8     @branch+2.2   1600 900   clips/branch.keys
+clip-counts  settings  @counts-1.9     @counts+2.7   1600 900   clips/counts.keys

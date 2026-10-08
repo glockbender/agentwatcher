@@ -1,0 +1,11 @@
+#!/bin/zsh
+# Builds aw-media.swift on first use, or after it changes, and runs it. The binary lives in the
+# cache, never in the repository.
+set -e
+src=${0:A:h}/aw-media.swift
+bin=~/Library/Caches/agent-watch-media/aw-media
+if [[ ! -x $bin || $src -nt $bin ]]; then
+  mkdir -p ${bin:h}
+  swiftc -O $src -o $bin
+fi
+exec $bin "$@"
