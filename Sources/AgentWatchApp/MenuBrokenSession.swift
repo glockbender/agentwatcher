@@ -17,9 +17,13 @@ final class MenuEndAgentQuestionView: NSView {
 
     static let width: CGFloat = 300
 
-    init(sessionID: String, sessionName: String?, onCancel: @escaping () -> Void, onEnd: @escaping () -> Void) {
+    init(
+        sessionID: String, sessionName: String?, reason: EndAgentReason = .closedTerminal,
+        onCancel: @escaping () -> Void, onEnd: @escaping () -> Void
+    ) {
         dialog = EndAgentDialog(
-            sessionID: sessionID, sessionName: sessionName, style: .standard, onCancel: onCancel, onEnd: onEnd)
+            sessionID: sessionID, sessionName: sessionName, reason: reason, style: .standard, onCancel: onCancel,
+            onEnd: onEnd)
         let height = dialog.heightShowingEverything(atWidth: Self.width)
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: height))
         autoresizingMask = [.width]

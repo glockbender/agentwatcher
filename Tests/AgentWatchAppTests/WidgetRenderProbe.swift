@@ -361,8 +361,8 @@ final class WidgetRenderProbe: XCTestCase {
         // An agent with no window of its own. Its row answers a click like every other — the
         // click opens a terminal tab — and the crossed-out window icon is what says the
         // difference; this is the only place that icon can be looked at beside the other two.
-        var headless = session(10, "Ночная проверка по расписанию", .executing, secondsAgo: 12)
-        headless.clientKind = .background
+        var unattached = session(10, "Ночная проверка по расписанию", .executing, secondsAgo: 12)
+        unattached.clientKind = .background
 
         var codex = session(2, "Мониторинг AI-сессий", .completed, secondsAgo: 400)
         codex.clientKind = .desktop
@@ -393,7 +393,7 @@ final class WidgetRenderProbe: XCTestCase {
 
         return [
             working, waiting, asked, session(20, "Claude · limit reached", .rateLimited, secondsAgo: 120),
-            compacting, consulting, background, leftRunning, headless,
+            compacting, consulting, background, leftRunning, unattached,
             unnamed, codex, lost, session(4, "Старая сессия", .sessionClosed, secondsAgo: 30),
             discovered,
         ]

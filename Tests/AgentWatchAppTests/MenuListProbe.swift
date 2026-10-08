@@ -28,7 +28,7 @@ final class MenuListProbe: XCTestCase {
 
         let settings = WidgetSettingsStore(preferences: try isolatedPreferences())
         let host = FakeAppHost()
-        let ending = ClosedTerminalEnding.discardOutput(devicePath: "/dev/ttys004")
+        let ending = AgentEnding.discardOutput(devicePath: "/dev/ttys004")
         let observed = Date(timeIntervalSince1970: 1_000)
         host.sessions = (0..<12).map { index in
             switch index {

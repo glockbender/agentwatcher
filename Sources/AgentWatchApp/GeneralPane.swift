@@ -41,7 +41,9 @@ struct GeneralPane: View {
             } header: {
                 Text("Headless runs")
             } footer: {
-                Footnote("claude -p, Agent SDK runs and codex exec: a program starts them, and they have no window.")
+                Footnote(
+                    "claude -p, Agent SDK runs and codex exec: a program starts them, and they have no window. "
+                        + "Shown, a click on one offers to end it.")
             }
             Section("Closed sessions") {
                 Picker("Closed sessions", selection: retention) {
