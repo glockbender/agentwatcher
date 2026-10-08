@@ -35,6 +35,27 @@ final class AgentProcessRulesTests: XCTestCase {
         )
     }
 
+    /// A `codex exec` run holds one thread and nothing else, so its own process is named: the
+    /// nearest `codex` above the hook, and never the Claude session that started the run.
+    /// Measured on Codex 0.153.4, where the hook is that process's child or its shell's.
+    func testAHeadlessCodexRunNamesItsOwnProcess() {
+        let ancestors = [
+            ProcessSnapshot(processID: 800, executableName: "zsh", executablePath: "/bin/zsh"),
+            ProcessSnapshot(
+                processID: 700, executableName: "codex",
+                executablePath: "/opt/homebrew/Caskroom/codex/0.153.4/bin/codex"),
+            ProcessSnapshot(processID: 600, executableName: "zsh"),
+            ProcessSnapshot(
+                processID: 400,
+                executableName: "2.1.289",
+                executablePath: "/private/opaque/claude/versions/2.1.289"
+            ),
+        ]
+
+        XCTAssertEqual(AgentSource.codex.processRules.headlessRunProcessID(among: ancestors), 700)
+        XCTAssertNil(AgentSource.codex.processRules.agentProcessID(among: ancestors))
+    }
+
     /// Codex's processes do not count its sessions — one desktop process holds many threads —
     /// so no row is ever built from one.
     func testCodexSessionsAreNeverFoundFromProcesses() {

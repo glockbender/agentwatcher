@@ -361,7 +361,8 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         )
     }
 
-    /// A click on a row, which a broken session answers with a question instead of a window.
+    /// A click on a row, which a broken session and a headless run answer with a question
+    /// instead of a window.
     func rowClicked(_ snapshot: SessionSnapshot) {
         if case .asksToEndAgent = focus(snapshot) {
             askToEndAgent(ofSessionWithID: snapshot.id)
@@ -371,7 +372,9 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     private func askToEndAgent(ofSessionWithID id: String) {
         // Read from what is on screen now: the click has just marked the row, and the widget
         // was redrawn for it before the answer came back.
-        guard let session = state.sessions.first(where: { $0.id == id }), session.phase == .terminalClosed else {
+        guard let session = state.sessions.first(where: { $0.id == id }),
+            session.phase == .terminalClosed || session.hostKind == .headless
+        else {
             return
         }
         endHover()
@@ -379,6 +382,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             EndAgentDialog(
                 sessionID: id,
                 sessionName: EndAgentQuestion.name(of: session),
+                reason: EndAgentReason(for: session),
                 style: style,
                 onCancel: { [weak self] in
                     self?.container.hideDialog()

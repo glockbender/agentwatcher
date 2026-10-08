@@ -20,6 +20,11 @@ public protocol AgentProcessRules: Sendable {
     /// first — or `nil` when this agent's hooks carry no process number.
     func agentProcessID(among ancestors: [ProcessSnapshot]) -> Int32?
 
+    /// The process of a headless run, which holds that one session and nothing else — named
+    /// even by an agent whose other processes cannot be, as Codex's: `codex exec` runs one
+    /// thread, where its desktop application holds many.
+    func headlessRunProcessID(among ancestors: [ProcessSnapshot]) -> Int32?
+
     /// Where the session runs, or `nil` when the ancestry does not make it trustworthy.
     ///
     /// - Parameter argumentsOfProcess: what a process was started with; handed in so a test

@@ -200,6 +200,20 @@ final class SessionHostLivenessTests: XCTestCase {
         XCTAssertEqual(registry.reach(for: background), .nowhere)
     }
 
+    /// A `codex exec` run is the one Codex process that holds a single session, so its exit
+    /// ends the run and is watched like a Claude agent's. Above it is only the program that
+    /// started it — here the test runner's terminal or IDE — which is nothing to bring forward.
+    func testAHeadlessCodexRunIsWatchedByItsProcessAndReachesNoApplication() {
+        let registry = SessionHostRegistry { _ in }
+        var run = testSession(source: .codex, clientKind: .headless, lastObservedAt: Date())
+        run.agentProcessID = getpid()
+
+        registry.associate(run)
+
+        XCTAssertEqual(registry.watchedSessionIDs, [run.id])
+        XCTAssertEqual(registry.reach(for: run), .nowhere)
+    }
+
     /// A `~/.claude` of this test's own, with the `sessions` folder Claude Code keeps there.
     private func temporaryClaudeHome() throws -> URL {
         let home = FileManager.default.temporaryDirectory

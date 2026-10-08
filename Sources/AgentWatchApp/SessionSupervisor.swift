@@ -46,6 +46,8 @@ final class SessionSupervisor {
     /// Sends those processes the hang-up their closed tab never did. Injected so a test
     /// never signals a real process.
     private let hangUp: ([Int32]) -> Bool
+    /// Asks a headless run to stop. Injected for the same reason.
+    private let terminate: (Int32) -> Bool
     /// What a click asks of the session's host, and the question asked again before a
     /// hang-up. `nil` asks the host registry; a test answers instead, because the process
     /// running it may well be in a Ghostty tab, and the registry would ask that Ghostty.
@@ -145,6 +147,7 @@ final class SessionSupervisor {
         releaseTerminal: @escaping (String) -> Bool = ClosedTerminal.discardUnreadOutput(devicePath:),
         terminalProcessChain: @escaping (Int32) -> [Int32] = AgentProcessLocator.terminalProcessChain(from:),
         hangUp: @escaping ([Int32]) -> Bool = ClosedTerminal.hangUp(processIDs:),
+        terminate: @escaping (Int32) -> Bool = HeadlessRun.terminate(processID:),
         focusHost: ((SessionSnapshot, [String]) -> SessionHostRegistry.FocusOutcome)? = nil,
         tabIsGoneWithTerminalKept: ((SessionSnapshot, [String]) -> Bool)? = nil,
         onChange: @escaping ([SessionSnapshot], [AgentUsageLimits]) -> Void,
@@ -163,6 +166,7 @@ final class SessionSupervisor {
         self.releaseTerminal = releaseTerminal
         self.terminalProcessChain = terminalProcessChain
         self.hangUp = hangUp
+        self.terminate = terminate
         self.focusHost = focusHost
         self.tabIsGoneWithTerminalKept = tabIsGoneWithTerminalKept
         self.onChange = onChange
@@ -297,12 +301,29 @@ final class SessionSupervisor {
         guard snapshot.phase != .terminalClosed else {
             return .closedTerminal(closedTerminalEnding(of: snapshot))
         }
+        if snapshot.hostKind == .headless {
+            return .headlessRun(headlessRunEnding(of: snapshot))
+        }
         return hostRegistry.reach(for: snapshot)
+    }
+
+    /// How a click would end a headless run: by its process, while that is still the run's.
+    private func headlessRunEnding(of snapshot: SessionSnapshot) -> AgentEnding? {
+        guard
+            snapshot.phase != .sessionClosed,
+            let agentProcessID = snapshot.agentProcessID,
+            SessionHostRegistry.isStillTheAgent(
+                agentProcessID: agentProcessID, lastObservedAt: snapshot.lastObservedAt,
+                processStartedAt: agentProcessStartedAt)
+        else {
+            return nil
+        }
+        return .terminate(processID: agentProcessID)
     }
 
     /// How a click would end the agent of a row marked closed, read from the kernel alone:
     /// this is asked on every hover, and a hover sends Ghostty nothing.
-    private func closedTerminalEnding(of snapshot: SessionSnapshot) -> ClosedTerminalEnding? {
+    private func closedTerminalEnding(of snapshot: SessionSnapshot) -> AgentEnding? {
         guard let agentProcessID = snapshot.agentProcessID else {
             return nil
         }
@@ -356,6 +377,15 @@ final class SessionSupervisor {
         if snapshot.phase == .terminalClosed {
             return askToEndAgent(of: snapshot)
         }
+        // No window to raise: what is above a run is the program that started it, and the
+        // one thing a click can do for the run is end it (ADR-0021).
+        if snapshot.hostKind == .headless {
+            guard let ending = headlessRunEnding(of: snapshot) else {
+                onNotableEvent("\(Self.label(snapshot)) · a headless run, and nothing here can end it")
+                return .nothingRaised
+            }
+            return .asksToEndAgent(ending)
+        }
         // Asked at the click as well as on a scan, because a click is exactly when a person
         // wants the answer.
         if let marked = markTerminalClosed(snapshot) {
@@ -400,11 +430,17 @@ final class SessionSupervisor {
         return .asksToEndAgent(ending)
     }
 
-    /// Ends the agent of a broken session, once the person who clicked has said yes, and
-    /// takes its row away when the session closes.
+    /// Ends the agent of a broken session or a headless run, once the person who clicked has
+    /// said yes, and takes its row away when the session closes.
     func endAgent(ofSessionWithID id: String) {
         guard let snapshot = engine.snapshots[id] else {
             onNotableEvent("\(Self.label(sessionID: id)) · the session was gone before the answer; nothing was done")
+            return
+        }
+        if snapshot.hostKind == .headless {
+            if terminateRun(of: snapshot) {
+                engine.removeWhenClosed(id: id)
+            }
             return
         }
         guard snapshot.phase == .terminalClosed else {
@@ -602,6 +638,21 @@ final class SessionSupervisor {
             onNotableEvent("\(Self.label(snapshot)) · its agent no longer hangs without a terminal; nothing was done")
             return false
         }
+    }
+
+    /// Asks a headless run to stop, once its process is still the run's. The row is not
+    /// touched here: the run's `SessionEnd`, or the watch on its process, closes it.
+    private func terminateRun(of snapshot: SessionSnapshot) -> Bool {
+        guard case let .terminate(processID)? = headlessRunEnding(of: snapshot) else {
+            onNotableEvent("\(Self.label(snapshot)) · the run has ended or its process is gone; nothing was sent")
+            return false
+        }
+        let sent = terminate(processID)
+        onNotableEvent(
+            sent
+                ? "\(Self.label(snapshot)) · asked the run (\(processID)) to stop with SIGTERM"
+                : "\(Self.label(snapshot)) · could not send SIGTERM to the run (\(processID))")
+        return sent
     }
 
     /// Ends an agent that hangs without its terminal by discarding the output it waits on.

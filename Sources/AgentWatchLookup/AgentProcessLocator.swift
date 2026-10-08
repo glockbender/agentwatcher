@@ -29,6 +29,11 @@ public enum AgentProcessLocator {
         source.processRules.agentProcessID(among: ancestorSnapshots())
     }
 
+    /// The process of the headless run the hook running this code belongs to.
+    public static func currentHeadlessRunProcessID(for source: AgentSource) -> Int32? {
+        source.processRules.headlessRunProcessID(among: ancestorSnapshots())
+    }
+
     /// Returns a host kind only when process ancestry makes it trustworthy.
     /// Executable paths stay in this process; the ingress protocol receives the
     /// resulting enum value only.

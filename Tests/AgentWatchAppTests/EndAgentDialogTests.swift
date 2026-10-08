@@ -10,7 +10,7 @@ import XCTest
 @MainActor
 final class EndAgentDialogTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
-    private let ending = ClosedTerminalEnding.discardOutput(devicePath: "/dev/ttys012")
+    private let ending = AgentEnding.discardOutput(devicePath: "/dev/ttys012")
 
     func testAClickOnABrokenSessionAsksOverTheWholeWidget() throws {
         var ended: [String] = []
@@ -66,7 +66,7 @@ final class EndAgentDialogTests: XCTestCase {
     /// A question whose yes could no longer do anything closes the next time the widget is
     /// drawn, as the menu's does: the session is still broken, but nothing here can end it.
     func testTheQuestionClosesWhenNothingCanEndTheAgentAnyMore() throws {
-        var ending: ClosedTerminalEnding? = self.ending
+        var ending: AgentEnding? = self.ending
         let (controller, broken) = try makeController(ended: { _ in }, reach: { _ in .closedTerminal(ending) })
         try click(broken, in: controller)
         XCTAssertNotNil(controller.visibleDialog)
@@ -202,6 +202,27 @@ final class EndAgentDialogTests: XCTestCase {
         XCTAssertTrue(EndAgentDialog.explanation(naming: nil).hasPrefix("This session"))
     }
 
+    /// A headless run is at work, not broken, and its click puts the same question about it.
+    func testAClickOnAHeadlessRunAsksAndYesEndsIt() throws {
+        var ended: [String] = []
+        let ending = AgentEnding.terminate(processID: 7220)
+        let run = testSession(
+            index: 0, title: "Nightly check", phase: .executing, clientKind: .headless, lastObservedAt: now)
+        let (controller, _) = try makeController(
+            ended: { ended.append($0) }, reach: { _ in .headlessRun(ending) }, session: run,
+            focus: { _ in .asksToEndAgent(ending) })
+
+        try click(run, in: controller)
+        let dialog = try XCTUnwrap(controller.visibleDialog, "the click asked nothing")
+        XCTAssertEqual(dialog.sessionID, run.id)
+        XCTAssertEqual(ended, [])
+
+        dialog.endButton.performClick(nil)
+
+        XCTAssertEqual(ended, [run.id])
+        controller.shutdown()
+    }
+
     // MARK: - Scaffolding
 
     private func click(_ session: SessionSnapshot, in controller: HUDPanelController) throws {
@@ -210,14 +231,17 @@ final class EndAgentDialogTests: XCTestCase {
 
     private func makeController(
         ended: @escaping (String) -> Void,
-        reach: ((SessionSnapshot) -> SessionReach)? = nil
+        reach: ((SessionSnapshot) -> SessionReach)? = nil,
+        session: SessionSnapshot? = nil,
+        focus: ((SessionSnapshot) -> SessionClick)? = nil
     ) throws -> (HUDPanelController, SessionSnapshot) {
         let preferences = try isolatedPreferences()
         let frameStore = HUDFrameStore(preferences: preferences)
         preferences.seed(frameStore.defaultValues)
         let controller = HUDPanelController(
             reach: reach ?? { [ending] _ in .closedTerminal(ending) },
-            focus: { [ending] snapshot in snapshot.phase == .terminalClosed ? .asksToEndAgent(ending) : .raised },
+            focus: focus ?? { [ending] snapshot in snapshot.phase == .terminalClosed ? .asksToEndAgent(ending) : .raised
+            },
             remove: { _ in },
             endAgent: ended,
             background: .graphite,
@@ -228,7 +252,8 @@ final class EndAgentDialogTests: XCTestCase {
             rowLayouts: RowLayoutStore(preferences: preferences)
         )
         controller.showWindow(nil)
-        let broken = testSession(index: 0, title: "Документация проекта", phase: .terminalClosed, lastObservedAt: now)
+        let broken =
+            session ?? testSession(index: 0, title: "Документация проекта", phase: .terminalClosed, lastObservedAt: now)
         controller.render(WidgetState(sessions: [broken]))
         return (controller, broken)
     }

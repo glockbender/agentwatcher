@@ -76,6 +76,8 @@ public enum SessionDescriptionResolver {
     /// What must stay out is the internal session ChatGPT.app runs to name the thread. It has
     /// no transcript (`transcript_path` is null), so only the index could admit it, and it
     /// never enters the index.
+    ///
+    /// A `codex exec` run is admitted as a headless one: the app decides whether to show it.
     public static func resolveCodexSession(
         payload: JSONValue,
         indexPath: String = SessionDescriptionResolver.codexSessionIndexPath(),
@@ -96,23 +98,33 @@ public enum SessionDescriptionResolver {
         }
         guard
             let transcriptPath = string("transcript_path", in: payload),
-            isCodexUserThread(transcriptPath: transcriptPath, fileSystem: fileSystem)
+            let starter = codexThreadStarter(transcriptPath: transcriptPath, fileSystem: fileSystem)
         else {
             return CodexSessionResolution(isAdmitted: false, description: nil)
         }
         return CodexSessionResolution(
             isAdmitted: true,
+            isHeadlessRun: starter == .headlessRun,
             description: SessionDescription(title: nil, projectName: projectName)
         )
     }
 
-    /// Whether the transcript opens with the `session_meta` of a thread a person started.
+    /// Who started a Codex thread a person is behind, as its transcript's first record says.
+    enum CodexThreadStarter: Equatable {
+        /// In a window: the terminal or the desktop application.
+        case person
+        /// `codex exec`, measured on Codex 0.153.4 to say `source: "exec"` and
+        /// `originator: "codex_exec"` with `thread_source` still `user`. None of these enters
+        /// the index.
+        case headlessRun
+    }
+
+    /// How the transcript's `session_meta` says the thread started, when a person is behind it.
     ///
-    /// Anything short of that answers no: a file not there yet, a first record still being
+    /// Anything short of that answers `nil`: a file not there yet, a first record still being
     /// written, an older Codex whose record has no `thread_source`. Each of those leaves the
-    /// session to the index alone, which is how every Codex session was judged before this
-    /// check existed — so a failure here can delay a row, never add one.
-    static func isCodexUserThread(transcriptPath: String, fileSystem: TitleFileSystem) -> Bool {
+    /// session to the index alone, so a failure here can delay a row, never add one.
+    static func codexThreadStarter(transcriptPath: String, fileSystem: TitleFileSystem) -> CodexThreadStarter? {
         guard
             let head = fileSystem.readHead(transcriptPath, codexSessionMetaByteCount),
             let newline = head.firstIndex(of: UInt8(ascii: "\n")),
@@ -123,14 +135,12 @@ public enum SessionDescriptionResolver {
             // Subagents say `subagent`, the reviewer of approval requests `guardian_review`.
             case .string("user")? = meta["thread_source"]
         else {
-            return false
+            return nil
         }
-        // `codex exec` runs say `user` too, but none of them enters the index, so none has ever
-        // had a row. Admitting them would be a new decision, not this fix.
         if case .string("exec")? = meta["source"] {
-            return false
+            return .headlessRun
         }
-        return true
+        return .person
     }
 
     /// The directory's own name. The path that leads to it never leaves this process.
@@ -311,10 +321,13 @@ public enum SessionDescriptionResolver {
 /// name is separate because a thread can be admitted before it is named.
 public struct CodexSessionResolution: Equatable, Sendable {
     public let isAdmitted: Bool
+    /// A `codex exec` run: its row is `SessionClientKind.headless`.
+    public let isHeadlessRun: Bool
     public let description: SessionDescription?
 
-    public init(isAdmitted: Bool, description: SessionDescription?) {
+    public init(isAdmitted: Bool, isHeadlessRun: Bool = false, description: SessionDescription?) {
         self.isAdmitted = isAdmitted
+        self.isHeadlessRun = isHeadlessRun
         self.description = description
     }
 }

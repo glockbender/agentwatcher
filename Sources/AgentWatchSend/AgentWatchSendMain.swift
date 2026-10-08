@@ -143,6 +143,7 @@ enum AgentWatchSendMain {
 
     private static func makeRequest(options: Options, payload: JSONValue) -> RedactedHookIngressRequest? {
         let description: SessionDescription?
+        var isHeadlessCodexRun = false
         if options.source == .codex {
             let codexSession = SessionDescriptionResolver.resolveCodexSession(payload: payload)
             // ChatGPT.app also runs the configured hooks for the internal session that names a
@@ -151,15 +152,21 @@ enum AgentWatchSendMain {
                 return nil
             }
             description = codexSession.description
+            isHeadlessCodexRun = codexSession.isHeadlessRun
         } else {
             description = SessionDescriptionResolver.resolve(source: options.source, payload: payload)
         }
+        // Codex says it is `codex exec` in its transcript, which is surer than its arguments:
+        // they take options with values before the word. Such a run is its process's only
+        // thread, so its process can be named where a Codex hook names none.
         return RedactedHookIngressRequest.make(
             source: options.source,
             declaredEvent: options.event,
             payload: payload,
-            agentProcessID: AgentProcessLocator.currentAgentProcessID(for: options.source),
-            clientKind: AgentProcessLocator.currentClientKind(for: options.source),
+            agentProcessID: isHeadlessCodexRun
+                ? AgentProcessLocator.currentHeadlessRunProcessID(for: .codex)
+                : AgentProcessLocator.currentAgentProcessID(for: options.source),
+            clientKind: isHeadlessCodexRun ? .headless : AgentProcessLocator.currentClientKind(for: options.source),
             description: description,
             // On every hook, not only the start: the app may not have been running when the
             // copy started, and the first event it hears has to be the one that says so.

@@ -1,7 +1,8 @@
 import AppKit
 
 /// The question a click on a broken session puts: its terminal is gone, its agent runs on,
-/// and whether to end the agent is for the person who clicked (ADR-0013).
+/// and whether to end the agent is for the person who clicked (ADR-0013). A headless run's
+/// click puts the same question about the run (ADR-0021).
 ///
 /// Drawn over the whole widget rather than as a window of its own. The panel never becomes
 /// key, and a window here would take the focus from whatever is being worked in; an alert
@@ -19,22 +20,25 @@ final class EndAgentDialog: NSView {
     let sessionID: String
     let style: WidgetStyle
     private let card = NSView()
-    private let heading = NSTextField(labelWithString: "Broken session")
+    private let heading: NSTextField
     private let explanation: NSTextField
-    private let shortQuestion = NSTextField(labelWithString: "Broken session. End it?")
+    private let shortQuestion: NSTextField
     let cancelButton: EndAgentDialogButton
     let endButton: EndAgentDialogButton
 
     init(
         sessionID: String,
         sessionName: String?,
+        reason: EndAgentReason = .closedTerminal,
         style: WidgetStyle,
         onCancel: @escaping () -> Void,
         onEnd: @escaping () -> Void
     ) {
         self.sessionID = sessionID
         self.style = style
-        explanation = NSTextField(wrappingLabelWithString: Self.explanation(naming: sessionName))
+        heading = NSTextField(labelWithString: Self.heading(for: reason))
+        explanation = NSTextField(wrappingLabelWithString: Self.explanation(naming: sessionName, reason: reason))
+        shortQuestion = NSTextField(labelWithString: "\(Self.heading(for: reason)). End it?")
         // One answer to a question: its buttons stay on screen while it fades, and a second
         // press on End would end the agent twice.
         let answer = OneAnswer()
@@ -76,12 +80,24 @@ final class EndAgentDialog: NSView {
         nil
     }
 
+    static func heading(for reason: EndAgentReason) -> String {
+        switch reason {
+        case .closedTerminal: "Broken session"
+        case .headlessRun: "Headless run"
+        }
+    }
+
     /// Short on purpose, and it names the session: the dialog covers the row that was
-    /// clicked. The conversation is said to be kept, because "end" is otherwise read as
-    /// losing it.
-    static func explanation(naming name: String?) -> String {
-        let subject = name.map { "“\($0)”" } ?? "This session"
-        return "\(subject): its terminal is gone, but the agent still runs. End it? The conversation is kept."
+    /// clicked. What is kept is said, because "end" is otherwise read as losing it.
+    static func explanation(naming name: String?, reason: EndAgentReason = .closedTerminal) -> String {
+        switch reason {
+        case .closedTerminal:
+            let subject = name.map { "“\($0)”" } ?? "This session"
+            return "\(subject): its terminal is gone, but the agent still runs. End it? The conversation is kept."
+        case .headlessRun:
+            let subject = name.map { "“\($0)”" } ?? "This run"
+            return "\(subject): a program started it, and it has no window. End it? Its transcript is kept."
+        }
     }
 
     /// Whether this size shows the one line over the buttons rather than the heading and the

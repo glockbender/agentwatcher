@@ -480,7 +480,7 @@ final class StatusMenuTests: XCTestCase {
 
     private func openMenuWithABrokenSession() throws -> (StatusMenu, FakeAppHost, WidgetSettingsStore) {
         let (menu, host, settings) = try makeMenu()
-        let ending = ClosedTerminalEnding.discardOutput(devicePath: "/dev/ttys004")
+        let ending = AgentEnding.discardOutput(devicePath: "/dev/ttys004")
         host.sessions = [session(0, "Session", .terminalClosed)]
         host.reaches = ["claude:session-0": .closedTerminal(ending)]
         host.clicks = ["claude:session-0": .asksToEndAgent(ending)]

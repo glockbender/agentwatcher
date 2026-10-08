@@ -58,8 +58,12 @@ final class SessionHostRegistry {
         key.hasSuffix(viewerWatchSuffix) ? String(key.dropLast(viewerWatchSuffix.count)) : nil
     }
 
+    /// A Codex row has a process to watch only as a headless run, the one Codex process that
+    /// holds a single session.
     func associate(_ snapshot: SessionSnapshot) {
-        guard snapshot.source == .claude, let agentProcessID = snapshot.agentProcessID else {
+        guard snapshot.source == .claude || snapshot.clientKind == .headless,
+            let agentProcessID = snapshot.agentProcessID
+        else {
             return
         }
         if hosts[snapshot.id]?.agentProcessID != agentProcessID {
@@ -487,7 +491,9 @@ final class SessionHostRegistry {
         // walk, and not from memory either. The memory is the trap: a hover while a terminal
         // still showed the session remembered that terminal's application, and once the
         // terminal was gone the card promised to bring it forward while the click attached.
-        guard snapshot.hostKind != .background else {
+        // A headless run has none either: above it is the program that started it, and that
+        // program shows no conversation to bring forward.
+        guard snapshot.hostKind != .background, snapshot.hostKind != .headless else {
             return nil
         }
         // From the process the session is read in: its own, or the terminal showing a

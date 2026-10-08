@@ -22,9 +22,9 @@ struct MenuSessionLine: Equatable {
 /// person who knows where a row sits in the widget finds its line in the same place. A closed
 /// session is never listed, whatever the setting names (ADR-0002).
 ///
-/// `reach` is asked only about a session whose terminal was closed. It is the one session
-/// whose line reads differently for the answer, and asking walks the process tree — once per
-/// line, every time the menu opens, would be a cost with nothing to show for it.
+/// `reach` is asked only about a session whose terminal was closed and about a headless run:
+/// their lines read differently for the answer, and asking about the others walks the process
+/// tree — once per line, every time the menu opens, would be a cost with nothing to show for it.
 func menuSessionLines(
     for sessions: [SessionSnapshot],
     listing attentions: Set<SessionAttention>,
@@ -36,6 +36,25 @@ func menuSessionLines(
             return nil
         }
         let name = menuSessionName(for: snapshot)
+        if snapshot.hostKind == .headless {
+            guard case .headlessRun(.some) = reach(snapshot) else {
+                return MenuSessionLine(
+                    sessionID: snapshot.id,
+                    attention: attention,
+                    phase: snapshot.phase,
+                    title: "\(name) — headless run, nothing here can end it",
+                    isEnabled: false
+                )
+            }
+            return MenuSessionLine(
+                sessionID: snapshot.id,
+                attention: attention,
+                phase: snapshot.phase,
+                title: "\(name) — headless run; end it…",
+                isEnabled: true,
+                leadsToQuestion: true
+            )
+        }
         guard snapshot.phase == .terminalClosed else {
             return MenuSessionLine(
                 sessionID: snapshot.id, attention: attention, phase: snapshot.phase, title: name, isEnabled: true)

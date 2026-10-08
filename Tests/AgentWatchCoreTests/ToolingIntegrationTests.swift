@@ -178,6 +178,67 @@ final class ToolingIntegrationTests: XCTestCase {
         XCTAssertEqual(asked.intersection(declined), [], "a declined event must stay declined")
     }
 
+    /// The same rule for Claude, whose catalogue is twice the size and grows between releases:
+    /// `Elicitation` sat in it unasked while a row said `working` over an MCP server's question.
+    ///
+    /// Measured on Claude Code 2.1.293: the catalogue is the list of hook names in its
+    /// executable, read without running it.
+    func testClaudeIsAskedForEveryEventClaudeOffersAndDeclinesOnlyOnPurpose() {
+        let offered: Set<String> = [
+            "SessionStart", "SessionEnd", "Setup",
+            "UserPromptSubmit", "UserPromptExpansion", "Stop", "StopFailure",
+            "PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch",
+            "PermissionRequest", "PermissionDenied", "Notification",
+            "SubagentStart", "SubagentStop", "TeammateIdle", "TaskCreated", "TaskCompleted",
+            "PreCompact", "PostCompact", "PreModelSwitch", "PostModelSwitch",
+            "Elicitation", "ElicitationResult",
+            "ConfigChange", "InstructionsLoaded", "CwdChanged", "FileChanged", "DirectoryAdded",
+            "WorktreeCreate", "WorktreeRemove", "MessageDisplay",
+        ]
+        let declined: Set<String> = [
+            // A process launch per tool call, or per batch of them, to close what the
+            // transcript and the end of the turn already close.
+            "PostToolUse", "PostToolBatch",
+            // A launch per few streamed lines, and no tool name in it.
+            "MessageDisplay",
+            // Its kinds known to matter to a row repeat hooks asked for here:
+            // `permission_prompt` is `PermissionRequest`, `elicitation_dialog` is
+            // `Elicitation`, and `idle_prompt` comes after `Stop` has ended the turn. The
+            // newer `agent_needs_input` and `worker_permission_prompt` are not measured yet:
+            // `docs/implementation-plan.md`.
+            "Notification",
+            // Which command or MCP prompt a prompt was expanded from; the turn starts on
+            // `UserPromptSubmit` either way.
+            "UserPromptExpansion",
+            // The model is read from the transcript, turn by turn.
+            "PreModelSwitch", "PostModelSwitch",
+            // Runs only when Claude Code is started with `--init` or `--maintenance`, before
+            // the session's work begins.
+            "Setup",
+            // An agent team and its task list, which a row does not show.
+            "TeammateIdle", "TaskCreated", "TaskCompleted",
+            // About files and directories around the session, not about its work. A row's
+            // directory is the one the session started in, wherever its shell goes later.
+            "ConfigChange", "InstructionsLoaded", "CwdChanged", "FileChanged", "DirectoryAdded",
+            // Not a report but a provider: a `WorktreeCreate` hook creates the worktree in
+            // git's place and prints its path, and the sender prints nothing.
+            "WorktreeCreate", "WorktreeRemove",
+        ]
+        let asked = Set(ToolingHooks.hooks(for: .claude))
+
+        XCTAssertEqual(
+            offered.subtracting(declined).subtracting(asked),
+            [],
+            "Claude Code reports these and nobody is listening"
+        )
+        XCTAssertEqual(
+            asked.subtracting(offered),
+            [],
+            "asking for an event Claude Code does not have pays a process launch for nothing"
+        )
+        XCTAssertEqual(asked.intersection(declined), [], "a declined event must stay declined")
+    }
+
     /// The plugin carries the whole registration. Claude Code loads a personal plugin from
     /// `~/.claude/skills/`, hooks included, so nothing has to be written into the settings
     /// file a person maintains by hand.

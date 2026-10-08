@@ -213,11 +213,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// The question, as tall as it needs to be at the menu's width, with the rest of the
     /// menu around it.
     private func questionItem(for session: SessionSnapshot) -> NSMenuItem {
-        let item = NSMenuItem(title: "Broken session", action: nil, keyEquivalent: "")
+        let reason = EndAgentReason(for: session)
+        let item = NSMenuItem(title: EndAgentDialog.heading(for: reason), action: nil, keyEquivalent: "")
         let id = session.id
         item.view = MenuEndAgentQuestionView(
             sessionID: id,
             sessionName: EndAgentQuestion.name(of: session),
+            reason: reason,
             onCancel: { [weak self] in
                 self?.askingAbout = nil
                 self?.refreshSessions()
@@ -233,7 +235,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         return item
     }
 
-    /// A broken session's line, which stays open for the question its click leads to.
+    /// A broken session's or a headless run's line, which stays open for the question its
+    /// click leads to.
     func chooseBrokenLine(_ line: MenuSessionLine) {
         guard case .asksToEndAgent = host?.focusSession(id: line.sessionID) else {
             refreshSessions()

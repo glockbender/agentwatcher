@@ -11,6 +11,13 @@ public struct CodexProcessRules: AgentProcessRules {
         nil
     }
 
+    /// The nearest `codex` above the hook. Measured on Codex 0.153.4: a hook of `codex exec`
+    /// is that process's child, or its shell's. Wherever the program is installed — the copy
+    /// inside ChatGPT.app runs `codex exec` too — because only a run's hook asks.
+    public func headlessRunProcessID(among ancestors: [ProcessSnapshot]) -> Int32? {
+        ancestors.first { $0.executableName.lowercased() == "codex" }?.processID
+    }
+
     public func clientKind(
         among ancestors: [ProcessSnapshot],
         argumentsOfProcess: (Int32) -> [String]?

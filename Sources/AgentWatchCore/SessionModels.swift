@@ -19,6 +19,14 @@ public enum SessionClientKind: String, Codable, Sendable {
     /// measured, with no application anywhere above it. Its click opens a terminal tab with
     /// `claude attach` instead (`BackgroundSessionAttach`).
     case background
+    /// A run with no conversation anywhere: `claude -p`, an Agent SDK run, `codex exec`. A
+    /// program usually starts it, takes its answer and lets it exit.
+    ///
+    /// A place of its own for the same reason as `background`: there is no window to bring
+    /// forward and no door like `claude attach` to open one, so its click offers to end the
+    /// run instead. A question it asks goes to the program that started it, not to a window
+    /// of the agent's, which is what lets its rows be hidden by default (ADR-0021).
+    case headless
 }
 
 /// How much of the context window a session is carrying.

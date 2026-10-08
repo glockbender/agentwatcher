@@ -16,6 +16,7 @@ extension SessionClientKind {
         case .desktop: "Desktop"
         case .cli: "CLI"
         case .background: "Background"
+        case .headless: "Headless"
         }
     }
 }
@@ -473,6 +474,9 @@ func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
     if case let .closedTerminal(ending) = reach {
         return closedTerminalHint(ending)
     }
+    if case let .headlessRun(ending) = reach {
+        return headlessRunHint(ending)
+    }
     // Nobody asked where the session is, or an application holds it — and an application that
     // can be brought forward is the ordinary case, which says nothing.
     guard reach == .nowhere else {
@@ -492,7 +496,7 @@ func focusHint(_ reach: SessionReach?, runsWithoutAWindow: Bool) -> String? {
 ///
 /// The command is on the card because the card cannot be selected: it takes no mouse events,
 /// so a command a person wants to run somewhere else has to be readable, not copyable.
-func closedTerminalHint(_ ending: ClosedTerminalEnding?) -> String {
+func closedTerminalHint(_ ending: AgentEnding?) -> String {
     switch ending {
     case nil:
         return "Nothing here can end it: none of the agent's descriptors names its terminal"
@@ -509,7 +513,22 @@ func closedTerminalHint(_ ending: ClosedTerminalEnding?) -> String {
             By hand:
             \(ClosedTerminal.hangUpCommand(processIDs: processIDs))
             """
+    case .terminate:
+        return headlessRunHint(ending)
     }
+}
+
+/// What a click on a headless run offers, said before it is made: there is no window, and the
+/// click asks whether to end the run.
+func headlessRunHint(_ ending: AgentEnding?) -> String {
+    guard case let .terminate(processID)? = ending else {
+        return "Nothing here can end it: the run's process is not known, or has gone"
+    }
+    return """
+        A click asks to end it: a headless run has no window to bring forward.
+        By hand:
+        \(HeadlessRun.terminateCommand(processID: processID))
+        """
 }
 
 /// Whose thread a row is, when it is not a person's.

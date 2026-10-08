@@ -853,12 +853,13 @@ public struct SessionStateEngine: Sendable {
 
     /// Takes away each row whose session closed after a person asked to end its agent,
     /// whichever way the close arrived, and answers which went. A row back at work is no
-    /// longer the one the person asked about, and is not taken away later.
+    /// longer the one the person asked about, and is not taken away later — except a headless
+    /// run's: it was at work when it was asked about, and only its end answers the question.
     public mutating func takeRowsEndedAsAsked() -> [SessionSnapshot] {
         var taken: [SessionSnapshot] = []
         for id in rowsLeavingOnClose.sorted() {
             let row = snapshots[id]
-            if row?.phase == .terminalClosed {
+            if row?.phase == .terminalClosed || (row?.isHeadlessRun == true && row?.phase != .sessionClosed) {
                 continue
             }
             rowsLeavingOnClose.remove(id)
