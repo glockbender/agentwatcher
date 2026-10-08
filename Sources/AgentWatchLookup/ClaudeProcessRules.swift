@@ -27,12 +27,25 @@ public struct ClaudeProcessRules: AgentProcessRules {
         ancestors.first(where: isAgentProcess)?.processID
     }
 
+    public func headlessRunProcessID(among ancestors: [ProcessSnapshot]) -> Int32? {
+        agentProcessID(among: ancestors)
+    }
+
     public func clientKind(
         among ancestors: [ProcessSnapshot],
         argumentsOfProcess: (Int32) -> [String]?
     ) -> SessionClientKind? {
         guard let agentIndex = ancestors.firstIndex(where: isAgentProcess) else {
             return nil
+        }
+        // Asked first, of the agent's own process and nothing above it: a run's parent is
+        // whatever program started it, and `claude -p` typed by a session's shell tool would
+        // otherwise take that session's kind — background under a pty host, desktop by the
+        // `entrypoint` it inherits from Claude.app (measured on Claude Code 2.1.293).
+        let agent = ancestors[agentIndex]
+        let record = registry.record(ofLiveProcess: agent.processID)
+        if Self.isHeadlessRun(argumentsOfProcess(agent.processID) ?? []) || record?.isHeadlessRun == true {
+            return .headless
         }
         // The same process this hook will report as the session's, asked what it is, and
         // then everything above it. A background session has one of the agent's own
@@ -57,15 +70,21 @@ public struct ClaudeProcessRules: AgentProcessRules {
             return .background
         }
         // Claude.app runs each of its sessions as a process of its own and says so in that
-        // process's record, the record `isAgentProcess` has just read for it: its path is no
+        // process's record, the record `isAgentProcess` has read for it too: its path is no
         // `versions/` one, so the record is how it was recognised at all. Asked of the record
         // rather than of `Claude.app` above it in the tree, because `claude` typed into the
         // app's own terminal pane would run under the app too, in a terminal it can lose.
         // Measured on Claude Code 2.1.289: `docs/agent-processes.md`, «Десктопные приложения».
-        if registry.record(ofLiveProcess: ancestors[agentIndex].processID)?.isDesktopSession == true {
+        if record?.isDesktopSession == true {
             return .desktop
         }
         return .cli
+    }
+
+    /// Whether these are the arguments of `claude -p`: `-p` or `--print` among the words, up
+    /// to a `--`, after which every word is the prompt's.
+    static func isHeadlessRun(_ arguments: [String]) -> Bool {
+        commandWords(arguments).prefix { $0 != "--" }.contains { $0 == "-p" || $0 == "--print" }
     }
 
     /// Reads the original out of a fork's arguments: `--fork-session` says the process is a

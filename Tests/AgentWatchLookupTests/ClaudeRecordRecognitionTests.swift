@@ -176,6 +176,90 @@ final class ClaudeRecordRecognitionTests: XCTestCase {
         )
     }
 
+    /// `claude -p` run by a Claude.app session's shell tool inherits the app's
+    /// `CLAUDE_CODE_ENTRYPOINT`: its record says `claude-desktop` with no `hostSessionId`, as
+    /// measured on Claude Code 2.1.293. Its own `-p` is what says it is a run.
+    func testClaudeMinusPRunFromAClaudeAppSessionIsHeadless() throws {
+        let ancestors = [
+            ProcessSnapshot(processID: 900, executableName: "sh", executablePath: "/bin/sh"),
+            ProcessSnapshot(
+                processID: 400, executableName: "2.1.293", executablePath: "/private/opaque/claude/versions/2.1.293"),
+            ProcessSnapshot(processID: 300, executableName: "zsh", executablePath: "/bin/zsh"),
+            ProcessSnapshot(
+                processID: 8864, executableName: "claude",
+                executablePath:
+                    "/Users/someone/Library/Application Support/Claude/claude-code/2.1.289/ee67e3f1ea60/claude.app/Contents/MacOS/claude"
+            ),
+        ]
+        let rules = try rules(recording: [400, 8864], fields: #""entrypoint":"claude-desktop""#)
+        let arguments: [Int32: [String]] = [
+            400: ["/Users/someone/.local/bin/claude", "-p", "--model", "haiku", "Reply with the single word: ok"]
+        ]
+
+        XCTAssertEqual(rules.clientKind(among: ancestors, argumentsOfProcess: { arguments[$0] }), .headless)
+    }
+
+    /// The same run with no `-p` in sight, as the Agent SDK starts one: its record is what
+    /// is left. `sdk-cli` is what `claude -p` wrote with nothing inherited, on Claude Code
+    /// 2.1.293.
+    func testARunIsHeadlessByItsRecordWhenItsArgumentsDoNotSay() throws {
+        let ancestors = [
+            ProcessSnapshot(
+                processID: 400, executableName: "2.1.293", executablePath: "/private/opaque/claude/versions/2.1.293")
+        ]
+
+        for entrypoint in ["sdk-cli", "sdk-ts", "sdk-py"] {
+            XCTAssertEqual(
+                try rules(recording: [400], fields: #""entrypoint":"\#(entrypoint)""#)
+                    .clientKind(among: ancestors, argumentsOfProcess: { _ in nil }),
+                .headless,
+                entrypoint
+            )
+        }
+    }
+
+    /// A run started by a background session's shell tool has the pty host above it, which
+    /// would make it background, and a click would open `claude attach` for a job it is not.
+    func testClaudeMinusPUnderABackgroundSessionIsHeadless() throws {
+        let ancestors = [
+            ProcessSnapshot(
+                processID: 400, executableName: "2.1.293", executablePath: "/private/opaque/claude/versions/2.1.293"),
+            ProcessSnapshot(processID: 350, executableName: "zsh", executablePath: "/bin/zsh"),
+            ProcessSnapshot(
+                processID: 300, executableName: "2.1.293", executablePath: "/private/opaque/claude/versions/2.1.293"),
+            ProcessSnapshot(
+                processID: 200, executableName: "claude",
+                executablePath: "/Applications/ClaudeCode.app/Contents/MacOS/claude"),
+        ]
+        let arguments: [Int32: [String]] = [
+            400: ["claude", "--print", "summarise the diff"],
+            300: ["/private/opaque/claude/versions/2.1.293", "--fork-session", "--resume", "a.jsonl"],
+            200: ["/Applications/ClaudeCode.app/Contents/MacOS/claude", "--bg-pty-host", "3345bfdf"],
+        ]
+
+        XCTAssertEqual(
+            ClaudeProcessRules.byPathAlone.clientKind(among: ancestors, argumentsOfProcess: { arguments[$0] }),
+            .headless
+        )
+        XCTAssertEqual(
+            ClaudeProcessRules.byPathAlone.clientKind(
+                among: Array(ancestors.dropFirst(2)), argumentsOfProcess: { arguments[$0] }),
+            .background,
+            "the session that started it stays background"
+        )
+    }
+
+    /// The flag and nothing that merely looks like it: a prompt is one argument, and after
+    /// `--` every word is the prompt's.
+    func testOnlyThePrintFlagMakesARun() {
+        XCTAssertTrue(ClaudeProcessRules.isHeadlessRun(["claude", "-p", "hi"]))
+        XCTAssertTrue(ClaudeProcessRules.isHeadlessRun(["claude", "--model", "haiku", "--print", "hi"]))
+        XCTAssertFalse(ClaudeProcessRules.isHeadlessRun(["claude", "explain -p"]))
+        XCTAssertFalse(ClaudeProcessRules.isHeadlessRun(["claude", "--", "-p"]))
+        XCTAssertFalse(ClaudeProcessRules.isHeadlessRun(["claude", "--permission-prompt-tool", "stdio"]))
+        XCTAssertFalse(ClaudeProcessRules.isHeadlessRun(["claude"]))
+    }
+
     private func rules(recording processIDs: [Int32], fields: String? = nil) throws -> ClaudeProcessRules {
         let extra = fields.map { "," + $0 } ?? ""
         for processID in processIDs {

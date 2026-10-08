@@ -192,7 +192,6 @@ final class SessionDescriptionResolverTests: XCTestCase {
         let refused: [(String, Data?)] = [
             ("approval reviewer", Self.sessionMeta(source: guardian, threadSource: "guardian_review")),
             ("subagent", Self.sessionMeta(source: spawned, threadSource: "subagent")),
-            ("codex exec", Self.sessionMeta(source: "exec", threadSource: "user")),
             ("an older Codex", Self.sessionMeta(source: "vscode", threadSource: nil)),
             ("no transcript yet", nil),
             ("first record still being written", Data(#"{"type":"session_meta","payload":{"thread_sou"#.utf8)),
@@ -208,6 +207,44 @@ final class SessionDescriptionResolverTests: XCTestCase {
             )
 
             XCTAssertFalse(resolution.isAdmitted, name)
+        }
+    }
+
+    /// `codex exec` says `user` like a thread typed into a window, and `exec` where the window
+    /// would be. It is admitted as what it is, and the app decides whether to show it.
+    func testACodexExecRunIsAdmittedAsAHeadlessRun() {
+        let fileSystem = TitleFileSystem(
+            readTail: { _, _ in Data() },
+            readHead: { _, _ in Self.sessionMeta(source: "exec", threadSource: "user") }
+        )
+
+        let resolution = SessionDescriptionResolver.resolveCodexSession(
+            payload: Self.codexPayload(sessionID: "exec-run"),
+            indexPath: "/tmp/session_index.jsonl",
+            fileSystem: fileSystem
+        )
+
+        XCTAssertTrue(resolution.isAdmitted)
+        XCTAssertTrue(resolution.isHeadlessRun)
+        XCTAssertEqual(resolution.description?.projectName, "agent-watch")
+    }
+
+    /// A thread typed into a window is no headless run, whichever window it was.
+    func testAThreadTypedIntoAWindowIsNoHeadlessRun() {
+        for source in ["vscode", "cli"] {
+            let fileSystem = TitleFileSystem(
+                readTail: { _, _ in Data() },
+                readHead: { _, _ in Self.sessionMeta(source: source, threadSource: "user") }
+            )
+
+            let resolution = SessionDescriptionResolver.resolveCodexSession(
+                payload: Self.codexPayload(sessionID: "typed"),
+                indexPath: "/tmp/session_index.jsonl",
+                fileSystem: fileSystem
+            )
+
+            XCTAssertTrue(resolution.isAdmitted, source)
+            XCTAssertFalse(resolution.isHeadlessRun, source)
         }
     }
 

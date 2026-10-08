@@ -16,6 +16,7 @@ extension SessionClientKind {
         case .desktop: "Desktop"
         case .cli: "CLI"
         case .background: "Background"
+        case .headless: "Headless"
         }
     }
 }
