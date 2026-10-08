@@ -50,9 +50,9 @@ Codex богаче. У Claude прерванный ход не порождае�
 поставить (у Claude Code это хуки и статус-строка, у Codex только хуки). Третий агент — две
 записи в одном файле `AgentWatchCore/ToolingIntegration.swift`.
 
-Окно `Tooling` — проекция этой таблицы, а не список, написанный руками: `ToolingReport.sections`
+Страница `Tooling` — проекция этой таблицы, а не список, написанный руками: `ToolingReport.sections`
 обходит `AgentSource.allCases`, а каждая строка несёт в себе интеграцию, которой управляет.
-Закреплено тестом `testTheWindowIsAProjectionOfTheAgentsAndTheirIntegrations`: без него агент,
+Закреплено тестом `testThePageIsAProjectionOfTheAgentsAndTheirIntegrations`: без него агент,
 добавленный в таблицу, оказался бы устанавливаемым и невидимым.
 
 У установщика по одной точке входа на операцию — `hookState(for:)`, `installHooks(for:…)`,

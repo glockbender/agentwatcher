@@ -1,6 +1,6 @@
 import AgentWatchCore
 
-/// One integration, as the tooling window describes it.
+/// One integration, as the Tooling page describes it.
 struct ToolingReportRow: Equatable {
     let title: String
     /// Whether the thing this row is about is running, when that is a question at all.
@@ -33,9 +33,7 @@ struct ToolingReportAction: Equatable {
     /// answer still on its way. The button stays in place rather than vanishing: a button
     /// that is not there says nothing, and a row that loses one moves under the hand.
     let isEnabled: Bool
-    /// Why it is off, shown on hover. A disabled `NSButton` does show it — checked on a live
-    /// window, because AppKit is not consistent about disabled controls and a tooltip nobody
-    /// sees is worse than none.
+    /// Why it is off, as the button's help tag.
     ///
     /// Never the only place a reason is given for something a person has to act on: a pointer
     /// resting on a button is not how anybody discovers anything.
@@ -49,11 +47,11 @@ struct ToolingReportAction: Equatable {
     }
 }
 
-/// What a button in this window does.
+/// What a button on the Tooling page does.
 ///
 /// An agent's integration is a pair — which agent, which of its integrations — and the IDE
 /// plugin is neither: the IDE installs it, and all Agent Watch can do is open a page or ask a
-/// question. Naming both kinds in one type is what lets one window hold both without the
+/// question. Naming both kinds in one type is what lets one page hold both without the
 /// agent rows learning anything about IDEs.
 enum ToolingPress: Hashable {
     case integration(ToolingIntegration)
@@ -76,7 +74,7 @@ struct IDEPluginReading: Equatable {
     let presence: IDEPluginPresence
 }
 
-/// The tooling window as data, so that what it says can be tested without opening a window.
+/// The Tooling page as data, so that what it says can be tested without drawing it.
 ///
 /// A projection of the agents and the integrations each of them declares, walked rather than
 /// named: a third agent has to be a new entry in `ToolingIntegrations`, never a new branch
@@ -127,6 +125,21 @@ enum ToolingReport {
         ]
     }
 
+    /// The program every entry runs, shown only when the stable link to it could not be made.
+    /// In the ordinary case its path is an internal detail; this is the case where it matters,
+    /// because the entries stop working when this copy of the app goes away.
+    static func senderNote(senderPath: String, isTiedToThisBuild: Bool) -> ToolingReportRow? {
+        guard isTiedToThisBuild else { return nil }
+        return ToolingReportRow(
+            title: "Sender",
+            status: nil,
+            state: "The hooks name this copy of Agent Watch directly.",
+            details: [senderPath],
+            nextStep: "! They stop working if it is moved or deleted.",
+            actions: []
+        )
+    }
+
     private static func hooksRow(
         source: AgentSource,
         state: ToolingInstallationState,
@@ -171,7 +184,7 @@ enum ToolingReport {
         )
     }
 
-    /// The IDE half of the window: one plugin, every IDE it could be in, and the two ways it
+    /// The IDE half of the page: one plugin, every IDE it could be in, and the two ways it
     /// gets there.
     ///
     /// A section rather than a screen of its own, and that is a decision: the person does the

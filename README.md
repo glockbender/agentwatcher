@@ -66,7 +66,7 @@ shape.
    appears in the widget.
 
 Nothing is written into an agent's configuration until you press an install button. Connect the
-other agent later in **Settings… → Tooling → Open Tooling…**. For Claude, **Connect Status Line** adds the
+other agent later in **Settings… → Tooling**. For Claude, **Connect Status Line** adds the
 context size and account usage to the widget; your own status-line command keeps running.
 
 <details>
@@ -164,7 +164,7 @@ newer, classic and reworked terminals), and needs the Agent Watch app.
 1. Download `agent-watch-ide-<version>.zip` from the same
    [Releases](https://github.com/glockbender/agentwatcher/releases) page.
 2. In the IDE: **Settings → Plugins → ⚙ → Install Plugin from Disk**, select the ZIP, restart if asked.
-3. In Agent Watch: **Settings… → Tooling → Open Tooling…**, press **Check** beside the IDE.
+3. In Agent Watch: **Settings… → Tooling**, press **Check** beside the IDE.
 
 ## Privacy
 
@@ -181,7 +181,7 @@ Details: [installing into the agents](docs/agent-install.md), [architecture](doc
 
 ## Uninstall
 
-1. **Settings… → Tooling → Open Tooling…**: press **Remove** for each agent and **Disconnect** for
+1. **Settings… → Tooling**: press **Remove** for each agent and **Disconnect** for
    the status line. This takes out everything the app wrote into the agents.
 2. Quit Agent Watch and move it to the Trash. To forget settings and sessions too, move
    `~/Library/Application Support/AgentWatch/` to the Trash.

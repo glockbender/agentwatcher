@@ -48,9 +48,131 @@ final class SettingsRenderProbe: XCTestCase {
         _ = host
     }
 
+    /// The Tooling page with one of each interesting state on screen at once: an agent that is
+    /// installed and delivering, one whose records have never fired, a status line somebody
+    /// else's command already holds, and three IDEs that stand in three different places. Then
+    /// the same page with the IDE section reading this machine — the one part no fixture can
+    /// check: whether the search finds the IDEs a person has, and whether the plugin's reply is
+    /// read back. Drawn at the window's default width and at its narrowest.
+    func testDrawTheToolingPage() throws {
+        let requested = ProcessInfo.processInfo.environment["SETTINGS_RENDER_DIR"]
+        try XCTSkipIf(requested == nil, "a drawing probe, not a check: set SETTINGS_RENDER_DIR")
+        let directory = try XCTUnwrap(requested)
+
+        let fixture = ToolingModel(
+            facts: { [idePlugins] in
+                ToolingFacts(
+                    hookState: { $0 == .claude ? .installed : .unheard },
+                    statusLineState: .theirs(command: "~/bin/my-status-line.sh"),
+                    hooksPath: {
+                        switch $0 {
+                        case .claude: "/Users/someone/.claude/skills/agent-watch/hooks.json"
+                        case .codex: "/Users/someone/.codex/hooks.json"
+                        }
+                    },
+                    statusLinePath: "/Users/someone/.claude/settings.json",
+                    senderPath: "/Users/someone/Library/Application Support/AgentWatch/AgentWatchSend",
+                    senderIsTiedToThisBuild: true,
+                    idePlugins: idePlugins(),
+                    stagedPlugin: StagedIDEPlugin(fileName: "agent-watch-ide-0.1.3.zip", version: "0.1.3"),
+                    idePluginDirectoryPath: "/Users/someone/Library/Application Support/AgentWatch/ide-plugin",
+                    agentPaths: [.claude: "/Users/someone/.local/bin/claude"],
+                    lastError: "Could not change the integration: the file is locked"
+                )
+            },
+            act: { _ in }
+        )
+        try draw(AnyView(ToolingPane(tooling: fixture)), height: 1700, named: "settings-tooling", in: directory)
+        // The settings window's narrowest: 680 points less a 170-point sidebar.
+        try draw(
+            AnyView(ToolingPane(tooling: fixture)), height: 1900, width: 510, named: "settings-tooling-narrow",
+            in: directory)
+
+        let staged = IDEPluginFiles.staged()
+        let isDaemonInstalled = JetBrainsInstallation.isDaemonInstalled()
+        let readings = JetBrainsIDEs.installed().map { ide in
+            IDEPluginReading(
+                ide: ide,
+                presence: IDEPluginInstallation.presence(
+                    productScheme: ide.productScheme,
+                    isDaemonInstalled: isDaemonInstalled,
+                    reply: IDEPluginFiles.reply(forDataDirectoryName: ide.product.dataDirectoryName),
+                    check: .notAsked
+                )
+            )
+        }
+        let here = ToolingModel(
+            facts: {
+                ToolingFacts(
+                    hookState: { _ in .installed },
+                    statusLineState: .connected,
+                    hooksPath: { _ in "—" },
+                    statusLinePath: "—",
+                    senderPath: "—",
+                    senderIsTiedToThisBuild: false,
+                    idePlugins: readings,
+                    stagedPlugin: staged?.plugin,
+                    idePluginDirectoryPath: IDEPluginFiles.pluginDirectory()?.path ?? ""
+                )
+            },
+            act: { _ in }
+        )
+        try draw(AnyView(ToolingPane(tooling: here)), height: 1700, named: "settings-tooling-here", in: directory)
+    }
+
+    /// Three IDEs standing in the three places that read differently: one running with an
+    /// older plugin in it, one running that has never answered, and one that is not running
+    /// at all and so cannot be asked anything.
+    private func idePlugins() -> [IDEPluginReading] {
+        [
+            IDEPluginReading(
+                ide: ide("GoLand", version: "2026.1.4", directory: "GoLand2026.1", scheme: "goland", running: true),
+                presence: .answeredEarlier(
+                    IDEPluginReply(
+                        token: "kh2l0bfzomrpl7o4",
+                        pluginVersion: "0.1.2",
+                        ideBuild: "GO-261.26222.72",
+                        answeredAt: Date(timeIntervalSince1970: 100_000)
+                    )
+                )
+            ),
+            IDEPluginReading(
+                ide: ide("PyCharm", version: "2026.1.4", directory: "PyCharm2026.1", scheme: "pycharm", running: true),
+                presence: .neverAnswered
+            ),
+            IDEPluginReading(
+                ide: ide(
+                    "IntelliJ IDEA",
+                    version: "2026.1.1",
+                    directory: "IntelliJIdea2026.1",
+                    scheme: "idea",
+                    running: false
+                ),
+                presence: .neverAnswered
+            ),
+        ]
+    }
+
+    private func ide(
+        _ name: String,
+        version: String,
+        directory: String,
+        scheme: String,
+        running: Bool
+    ) -> InstalledJetBrainsIDE {
+        InstalledJetBrainsIDE(
+            product: JetBrainsProduct(name: name, version: version, dataDirectoryName: directory),
+            bundlePath: "/Users/someone/Applications/\(name).app",
+            productScheme: scheme,
+            isRunning: running
+        )
+    }
+
     /// 570 points: the settings window opens 760 wide, and its sidebar takes about 190 of them.
-    private func draw(_ root: AnyView, height: CGFloat, named name: String, in directory: String) throws {
-        let size = NSSize(width: 570, height: height)
+    private func draw(
+        _ root: AnyView, height: CGFloat, width: CGFloat = 570, named name: String, in directory: String
+    ) throws {
+        let size = NSSize(width: width, height: height)
         let hosting = NSHostingView(rootView: root.formStyle(.grouped))
         hosting.frame = NSRect(origin: .zero, size: size)
         let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)

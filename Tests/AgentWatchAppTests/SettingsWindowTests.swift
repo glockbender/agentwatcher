@@ -38,6 +38,35 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertEqual(controller.model.page, .theme)
     }
 
+    /// The settings window lets go of its pages when it closes; a guide followed beside a
+    /// terminal is still on its step when the window opens again.
+    func testTheGuideOutlivesTheClosedWindow() throws {
+        let preferences = try isolatedPreferences()
+        let settings = WidgetSettingsStore(preferences: preferences)
+        let host = FakeAppHost()
+        host.toolingReading = ToolingFacts(
+            hookState: { _ in .absent }, statusLineState: .notSet, hooksPath: { _ in "" }, statusLinePath: "",
+            senderPath: "", senderIsTiedToThisBuild: false, idePlugins: [], stagedPlugin: nil,
+            idePluginDirectoryPath: "")
+        addTeardownBlock { _ = host }
+        let controller = SettingsWindowController(
+            themes: ThemeStore(preferences: preferences, folder: nil), settings: settings,
+            rowLayouts: RowLayoutStore(preferences: preferences),
+            shortcuts: FakeShortcutRegistrar.controller(for: settings), host: host, version: nil)
+        controller.buildPages()
+        controller.model.go(.tooling)
+        controller.model.tooling.pageOpened()
+        controller.model.tooling.choose(.claude)
+
+        controller.windowWillClose(Notification(name: NSWindow.willCloseNotification))
+        nextTurn()
+        XCTAssertFalse(controller.hasPages)
+        controller.buildPages()
+
+        XCTAssertEqual(controller.model.tooling.journey?.step, .connect)
+        XCTAssertEqual(controller.model.tooling.journey?.source, .claude)
+    }
+
     /// The button may go with its page before anything tells it to stop; the combination it
     /// muted is heard again all the same.
     func testARecordingWhoseButtonWentLeavesNothingMuted() throws {

@@ -55,7 +55,7 @@ that no longer exists.
 **Why:** The file has an error, for example invalid JSON. Agent Watch does not change a file it
 cannot read, so it cannot damage your settings.
 
-**What to do:** Fix or move the file that Tooling names, then reopen Tooling.
+**What to do:** Fix or move the file that **Settings… → Tooling** names, then open that page again.
 
 **Checked on:** not recorded.
 

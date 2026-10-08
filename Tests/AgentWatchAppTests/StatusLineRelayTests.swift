@@ -98,7 +98,6 @@ final class StatusLineRelayTests: XCTestCase {
         let route = [
             StatusMenu.settingsItemTitle,
             SettingsPage.tooling.title,
-            ToolingPane.openToolingTitle,
             ToolingReport.statusLineTitle,
         ].joined(separator: " -> ")
 

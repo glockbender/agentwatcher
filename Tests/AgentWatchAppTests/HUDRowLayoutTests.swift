@@ -223,7 +223,7 @@ final class HUDRowLayoutTests: XCTestCase {
     /// The tooling window is the only place a person can see how far Agent Watch got into
     /// their tooling, so each answer has to be a different sentence — and the two that mean
     /// something is wrong have to name what, not just that.
-    func testTheToolingWindowSaysWhichStateEachIntegrationIsIn() {
+    func testTheToolingPageSaysWhichStateEachIntegrationIsIn() {
         let titles = [
             toolingHookStateText(state: .absent),
             toolingHookStateText(state: .installed),

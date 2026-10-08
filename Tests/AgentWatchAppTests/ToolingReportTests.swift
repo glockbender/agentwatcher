@@ -9,7 +9,7 @@ import XCTest
 /// and Codex in source, so a third agent would have been installable and invisible.
 @MainActor
 final class ToolingReportTests: XCTestCase {
-    func testTheWindowIsAProjectionOfTheAgentsAndTheirIntegrations() {
+    func testThePageIsAProjectionOfTheAgentsAndTheirIntegrations() {
         let sections = report()
 
         XCTAssertEqual(

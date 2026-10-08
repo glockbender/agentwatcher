@@ -49,7 +49,7 @@ func toolingHookNextStep(state: ToolingInstallationState, source: AgentSource, p
     case .unreadable:
         // The one state where the app offers nothing: its only repair is a write, and this is
         // where writing over contents nobody can state is what must not happen.
-        return "Agent Watch does not change a file it cannot read. Fix or move \(path), then reopen this window."
+        return "Agent Watch does not change a file it cannot read. Fix or move \(path), then open this page again."
     case .absent, .installed, .incomplete, .stale:
         return nil
     }
@@ -311,7 +311,7 @@ func toolingComplaint(states: [ToolingInstallationState]) -> String? {
     }
     // Ahead of the advice below, and it replaces it: the hooks are installed, so installing
     // them is the one thing that cannot help. Where to go next differs by agent, and the
-    // Tooling window is where that is said.
+    // Tooling page is where that is said.
     if states.contains(.unheard) {
         return "Hooks are installed, but no event has arrived. See Tooling."
     }

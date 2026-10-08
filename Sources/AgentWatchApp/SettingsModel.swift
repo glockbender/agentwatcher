@@ -12,7 +12,10 @@ protocol SettingsHost: AnyObject {
     var isReadingTranscripts: Bool { get }
     var transcriptFaultedSessionCount: Int { get }
     func toggleWidget()
-    func showTooling()
+    /// One reading of what the Tooling page shows. See `ToolingFacts`.
+    func toolingFacts() -> ToolingFacts
+    func pressTooling(_ press: ToolingPress)
+    func forgetToolingError()
     func toggleEventDebug()
     func checkForUpdates()
     func resetWidgetPosition()
@@ -35,6 +38,8 @@ final class SettingsModel: ObservableObject {
     let rowLayouts: RowLayoutStore
     let shortcuts: WidgetShortcutController
     let version: String?
+    /// The Tooling page's state. Here rather than in the page, which goes when the window closes.
+    let tooling: ToolingModel
     private weak var host: SettingsHost?
 
     @Published private(set) var revision = 0
@@ -55,6 +60,8 @@ final class SettingsModel: ObservableObject {
     private var forward: [SettingsPage] = []
 
     var canGoBack: Bool { !back.isEmpty }
+    /// Whether anything the Tooling page shows is on screen to go stale.
+    var isShowingTooling: Bool { isShown && page == .tooling }
     var canGoForward: Bool { !forward.isEmpty }
 
     /// Where the window goes next, remembered as System Settings does: back and forward walk
@@ -96,6 +103,11 @@ final class SettingsModel: ObservableObject {
         self.shortcuts = shortcuts
         self.host = host
         self.version = version
+        tooling = ToolingModel(
+            facts: { [weak host] in host?.toolingFacts() ?? .unavailable },
+            act: { [weak host] press in host?.pressTooling(press) },
+            forgetLastError: { [weak host] in host?.forgetToolingError() }
+        )
         listedParts = RowPartList.listed(for: rowLayouts.layout)
     }
 
@@ -331,10 +343,6 @@ final class SettingsModel: ObservableObject {
         guard let folder = themes.folder else { return }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         NSWorkspace.shared.open(folder)
-    }
-
-    func showTooling() {
-        host?.showTooling()
     }
 
     var isEventLogVisible: Bool {

@@ -101,8 +101,7 @@ Agent Watch — локальное приложение, а не облачны�
   переживает перезапуск. Не импортирует AppKit и не открывает сокетов, поэтому проверяется тестами
   без запущенного приложения. Менять состояние можно только через `SessionStateEngine`
   ([ADR-0004](adr/0004-one-door-into-session-state.md)).
-- `AgentWatchApp` — жизнь приложения в macOS и всё, что видно: виджет, меню, окна настроек и
-  тулинга. Приём хуков (`HookIngressController`), наблюдение за живыми сессиями
+- `AgentWatchApp` — жизнь приложения в macOS и всё, что видно: виджет, меню, окно настроек. Приём хуков (`HookIngressController`), наблюдение за живыми сессиями
   (`SessionSupervisor`, [ADR-0007](adr/0007-the-session-supervisor-stays-in-the-app.md)), встраивание
   в агентов (`ToolingCoordinator`) и меню (`StatusMenu`) отделены от `AppDelegate`, который только
   собирает их вместе.

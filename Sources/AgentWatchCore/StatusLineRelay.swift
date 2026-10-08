@@ -42,7 +42,7 @@ public enum StatusLineRelay {
         # beside this file. If Agent Watch is stopped, removed or broken, your status line
         # still works: the line that hands the payload over cannot fail this script.
         #
-        # To undo: Agent Watch menu -> Settings… -> Tooling -> Open Tooling… -> Status line.
+        # To undo: Agent Watch menu -> Settings… -> Tooling -> Status line.
         # Or put your own command back into "statusLine" in ~/.claude/settings.json by hand.
 
         payload="$(cat)"

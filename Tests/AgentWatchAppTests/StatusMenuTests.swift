@@ -595,7 +595,10 @@ final class FakeAppHost: StatusMenuHost, SettingsHost {
     func showShortcut(on item: NSMenuItem) { calls.append("showShortcut") }
     func toggleWidget() { calls.append("toggleWidget") }
     func showWidgetSettings() { calls.append("showWidgetSettings") }
-    func showTooling() { calls.append("showTooling") }
+    var toolingReading = ToolingFacts.unavailable
+    func toolingFacts() -> ToolingFacts { toolingReading }
+    func pressTooling(_ press: ToolingPress) { calls.append("pressTooling") }
+    func forgetToolingError() { calls.append("forgetToolingError") }
     func toggleEventDebug() { calls.append("toggleEventDebug") }
     func checkForUpdates() { calls.append("checkForUpdates") }
     func resetWidgetPosition() { calls.append("resetWidgetPosition") }

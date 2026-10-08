@@ -46,12 +46,12 @@ final class ToolingCoordinator {
             .resolvingSymlinksInPath()
     }
 
-    /// Everything the tooling window shows, read in one go. See `ToolingWindowFacts`.
-    var facts: ToolingWindowFacts {
+    /// Everything the Tooling page shows, read in one go. See `ToolingFacts`.
+    var facts: ToolingFacts {
         let sender = senderLink()
         let staged = IDEPluginFiles.staged()
         let hookStates = Dictionary(uniqueKeysWithValues: AgentSource.allCases.map { ($0, hookState(for: $0)) })
-        return ToolingWindowFacts(
+        return ToolingFacts(
             hookState: { hookStates[$0] ?? .unreadable },
             statusLineState: installer.statusLineState(),
             hooksPath: { [installer] in installer.hooksPath(for: $0).path },
@@ -69,7 +69,7 @@ final class ToolingCoordinator {
         )
     }
 
-    /// A failure belongs to the attempt that produced it. A new visit to the window starts
+    /// A failure belongs to the attempt that produced it. A new visit to the page starts
     /// without it; the rows already say what is wrong now, and another press says it again.
     func forgetLastError() {
         lastError = nil
@@ -121,8 +121,8 @@ final class ToolingCoordinator {
 
     /// Every JetBrains IDE on this machine and where the plugin stands in each.
     ///
-    /// Found again on every reading rather than kept: an IDE updated between two openings of
-    /// the window keeps its settings in a different directory, so a remembered answer would
+    /// Found again on every reading rather than kept: an IDE updated between two visits to
+    /// the page keeps its settings in a different directory, so a remembered answer would
     /// describe a plugin the new version never loaded.
     private func idePluginReadings() -> [IDEPluginReading] {
         let isDaemonInstalled = JetBrainsInstallation.isDaemonInstalled()
@@ -172,7 +172,7 @@ final class ToolingCoordinator {
             return
         }
         ideChecks[dataDirectoryName] = .waiting(token: token)
-        // The window shows the wait as it starts; the answer, when it comes, is another change.
+        // The page shows the wait as it starts; the answer, when it comes, is another change.
         onChange()
         _ = NSWorkspace.shared.open(url)
         Task { [weak self] in
@@ -246,13 +246,13 @@ final class ToolingCoordinator {
         }
     }
 
-    /// The same question as `refreshSenderLink` without the announcement, for the window that
-    /// shows the answer rather than acting on it. A line in the debug log every time a window
+    /// The same question as `refreshSenderLink` without the announcement, for the page that
+    /// shows the answer rather than acting on it. A line in the debug log every time a page
     /// is redrawn would bury the one that means something: a link that could not be made
     /// while installing.
     private func senderLink() -> SenderPath {
         // `current` and not `refresh`: this is the reporting path. The link is claimed at
-        // launch and by `refreshSenderLink()`, and a window that describes what was written
+        // launch and by `refreshSenderLink()`, and a page that describes what was written
         // must not be one of the things that writes it.
         return sender.current(forExecutableAt: executableURL)
     }

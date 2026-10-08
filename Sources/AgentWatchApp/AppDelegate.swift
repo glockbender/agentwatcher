@@ -39,29 +39,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.onLog = { [weak self] message in
             self?.recordDebug(message)
         }
-        // One change, everything that shows it. The widget's complaint and the window that
+        // One change, everything that shows it. The widget's complaint and the page that
         // describes the same installation used to be refreshed by whoever remembered to.
         coordinator.onChange = { [weak self] in
-            self?.refreshToolingComplaint()
-            self?.toolingController.rebuild()
+            guard let self else { return }
+            refreshToolingComplaint()
+            // A page that is not on screen reads the disk when it next is.
+            if settingsWindow.model.isShowingTooling {
+                settingsWindow.model.tooling.reread()
+            }
         }
         return coordinator
     }()
-    private lazy var toolingController = ToolingWindowController(
-        facts: { [weak self] in
-            guard let self else {
-                return ToolingWindowFacts.unavailable
-            }
-            var facts = tooling.facts
-            if case let .active(shortcut) = shortcuts.status {
-                facts.widgetShortcut = shortcut.displayed
-            }
-            return facts
-        },
-        act: { [weak self] press in
-            self?.tooling.press(press)
-        }
-    )
 
     private lazy var supervisor: SessionSupervisor = SessionSupervisor(
         settings: settings,
@@ -105,8 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rowLayouts: rowLayouts
         )
         controller.openSetup = { [weak self] in
-            self?.toolingController.startSetup()
-            self?.toolingController.present()
+            self?.showSetupGuide()
         }
         // The order the menu shows too — see `SessionOrderBook`.
         controller.order = { [orderBook] sessions, now in
@@ -137,8 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ingest: { [weak self] request in
             guard let self else { return nil }
             let event = self.supervisor.ingest(request)
-            if self.toolingController.isShowing {
-                self.toolingController.receivedEvents(self.tooling.receivedSources)
+            if self.settingsWindow.model.isShowingTooling {
+                self.settingsWindow.model.tooling.receivedEvents(self.tooling.receivedSources)
             }
             return event
         },
@@ -598,9 +586,28 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         settingsWindow.present()
     }
 
-    func showTooling() {
+    /// `Connect Agent →` in the empty widget: the settings window, on the Tooling page, at the
+    /// guide's first step.
+    func showSetupGuide() {
+        settingsWindow.model.tooling.startSetup()
+        settingsWindow.model.go(.tooling)
+        settingsWindow.present()
+    }
+
+    func toolingFacts() -> ToolingFacts {
+        var facts = tooling.facts
+        if case let .active(shortcut) = shortcuts.status {
+            facts.widgetShortcut = shortcut.displayed
+        }
+        return facts
+    }
+
+    func pressTooling(_ press: ToolingPress) {
+        tooling.press(press)
+    }
+
+    func forgetToolingError() {
         tooling.forgetLastError()
-        toolingController.present()
     }
 
     func toggleEventDebug() {

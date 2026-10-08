@@ -1,75 +1,110 @@
 import AgentWatchCore
 import AppKit
+import SwiftUI
 import XCTest
 
 @testable import AgentWatchApp
 
 @MainActor
 final class ToolingSetupTests: XCTestCase {
-    func testRestartAndNavigationDoNotChangeAnyIntegration() throws {
+    func testRestartAndNavigationDoNotChangeAnyIntegration() {
         var writes: [ToolingPress] = []
-        let controller = ToolingWindowController(facts: { self.facts() }, act: { writes.append($0) })
-        controller.startSetup()
-        let content = try XCTUnwrap(controller.window?.contentView)
-        try button("Set Up Claude Code", in: content).performClick(nil)
-        XCTAssertEqual(controller.journey?.step, .connect)
-        try button("Continue →", in: content).performClick(nil)
-        XCTAssertEqual(controller.journey?.step, .ready)
-        controller.startSetup()
-        XCTAssertEqual(controller.journey?.step, .choose)
-        try button("Finish Later · Open Tooling", in: content).performClick(nil)
-        XCTAssertNil(controller.journey)
+        let tooling = ToolingModel(facts: { self.facts() }, act: { writes.append($0) })
+        tooling.pageOpened()
+        XCTAssertNil(tooling.journey, "with something connected, the page opens on the overview")
+
+        tooling.startSetup()
+        tooling.choose(.claude)
+        XCTAssertEqual(tooling.journey?.step, .connect)
+        tooling.continueToVerification()
+        XCTAssertEqual(tooling.journey?.step, .ready, "an agent heard from already is past waiting")
+        tooling.back()
+        tooling.startSetup()
+        XCTAssertEqual(tooling.journey?.step, .choose)
+        tooling.finishSetup()
+
+        XCTAssertNil(tooling.journey)
         XCTAssertTrue(writes.isEmpty)
     }
 
-    func testInstallIsExplicitAndExistingHooksCannotBeRemovedByTheGuide() throws {
+    func testInstallIsExplicitAndExistingHooksCannotBeRemovedByTheGuide() {
         var reading = facts(hooks: .absent)
         var presses: [ToolingPress] = []
-        let controller = ToolingWindowController(facts: { reading }, act: { presses.append($0) })
-        controller.startSetup()
-        let content = try XCTUnwrap(controller.window?.contentView)
-        try button("Set Up Codex", in: content).performClick(nil)
-        XCTAssertFalse(try button("Continue →", in: content).isEnabled)
+        let tooling = ToolingModel(facts: { reading }, act: { presses.append($0) })
+        tooling.pageOpened()
+        tooling.choose(.codex)
+        XCTAssertFalse(tooling.canContinue)
+        tooling.continueToVerification()
+        XCTAssertEqual(tooling.journey?.step, .connect, "nothing to try before the hooks are written")
         XCTAssertTrue(presses.isEmpty)
-        try button("Install Connection", in: content).performClick(nil)
-        XCTAssertEqual(presses, [.install(.init(source: .codex, kind: .hooks))])
+
+        tooling.connect()
+        tooling.connectStatusLine()
+
+        XCTAssertEqual(
+            presses,
+            [.install(.init(source: .codex, kind: .hooks)), .install(.init(source: .claude, kind: .statusLine))],
+            "the guide only ever installs; a remove is a press on the overview")
         reading = facts(hooks: .unheard)
-        controller.rebuild()
-        XCTAssertFalse(buttons(in: content).contains { $0.title == "Remove" || $0.title == "Install Connection" })
-        try button("Continue →", in: content).performClick(nil)
-        XCTAssertEqual(controller.journey?.step, .verify)
+        tooling.reread()
+        XCTAssertTrue(tooling.canContinue)
+        tooling.continueToVerification()
+        XCTAssertEqual(tooling.journey?.step, .verify)
     }
 
-    /// Centred the first time, then where the person put it: the guide is followed beside a
-    /// terminal, and a window that jumped back to the middle at every visit would cover it.
-    func testTheWindowOpensWhereItWasLeft() throws {
-        let controller = ToolingWindowController(facts: { self.facts() }, act: { _ in })
-        defer { controller.window?.orderOut(nil) }
-        let window = try XCTUnwrap(controller.window)
-        controller.present()
-        // Down to the Dock and no further: macOS 26 moves a window shown under the Dock back
-        // above it, measured on macOS 26.6.2, and on the CI machine's 768-point screen this one
-        // has 35 points to spare.
-        let visible = try XCTUnwrap(window.screen?.visibleFrame)
-        let moved = NSPoint(x: window.frame.minX + 40, y: visible.minY)
-        window.setFrameOrigin(moved)
-        window.orderOut(nil)
+    /// With nothing connected the overview is a column of `Install` buttons, so a visit starts the
+    /// guide; a visit to a page somebody has already set up does not.
+    func testAVisitStartsTheGuideOnlyWhenNothingIsConnected() {
+        let empty = ToolingModel(facts: { self.facts(hooks: .absent) }, act: { _ in })
+        empty.pageOpened()
+        XCTAssertEqual(empty.journey?.step, .choose)
 
-        controller.present()
+        let connected = ToolingModel(facts: { self.facts(hooks: .unheard) }, act: { _ in })
+        connected.pageOpened()
+        XCTAssertNil(connected.journey)
+    }
 
-        XCTAssertEqual(window.frame.origin, moved)
+    /// A failure belongs to the press that produced it, so the next visit starts without it.
+    func testAVisitForgetsTheLastPressesError() {
+        var forgotten = 0
+        let tooling = ToolingModel(facts: { self.facts() }, act: { _ in }, forgetLastError: { forgotten += 1 })
+        tooling.pageOpened()
+        tooling.reread()
+        XCTAssertEqual(forgotten, 1, "a reread after a press keeps the error it is about")
+    }
+
+    /// The first event moves a waiting guide on without anything pressed; later ones change
+    /// nothing on the page and are not worth a look at the disk.
+    func testTheFirstEventMovesAWaitingGuideOn() {
+        var reading = facts(hooks: .unheard)
+        var reads = 0
+        let tooling = ToolingModel(
+            facts: {
+                reads += 1
+                return reading
+            }, act: { _ in })
+        tooling.pageOpened()
+        tooling.startSetup()
+        tooling.choose(.claude)
+        tooling.continueToVerification()
+        XCTAssertEqual(tooling.journey?.step, .verify)
+
+        reading = facts()
+        tooling.receivedEvents([.claude, .codex])
+        XCTAssertEqual(tooling.journey?.step, .ready)
+        let readsAfterTheFirst = reads
+        tooling.receivedEvents([.claude, .codex])
+        XCTAssertEqual(reads, readsAfterTheFirst)
     }
 
     /// The sender's path is an internal detail until the entries name this very copy of the
     /// app, and then it is the one thing about to break: shown in that case only.
     func testTheSenderIsShownOnlyWhenTheHooksNameThisCopy() throws {
-        let linked = ToolingWindowController(facts: { self.facts() }, act: { _ in })
-        let tied = ToolingWindowController(facts: { self.facts(senderIsTiedToThisBuild: true) }, act: { _ in })
-
-        XCTAssertFalse(texts(in: try XCTUnwrap(linked.window?.contentView)).contains("Sender"))
-        let shown = texts(in: try XCTUnwrap(tied.window?.contentView))
-        XCTAssertTrue(shown.contains("Sender"))
-        XCTAssertTrue(shown.contains { $0.contains("moved or deleted") }, "and says what that costs")
+        XCTAssertNil(ToolingReport.senderNote(senderPath: "/Applications/AgentWatch.app", isTiedToThisBuild: false))
+        let note = try XCTUnwrap(
+            ToolingReport.senderNote(senderPath: "/Applications/AgentWatch.app", isTiedToThisBuild: true))
+        XCTAssertEqual(note.details, ["/Applications/AgentWatch.app"])
+        XCTAssertTrue(note.nextStep?.contains("moved or deleted") == true, "and says what that costs")
     }
 
     /// The guide prints the combination only while it works, as the menu does.
@@ -143,33 +178,37 @@ final class ToolingSetupTests: XCTestCase {
         XCTAssertEqual(panel.frame, frame, "Opening setup must not move the widget")
     }
 
+    /// Every step of the guide and the overview, as the settings window shows them; the README
+    /// shows the connection step.
     func testRenderSetupForDocumentation() throws {
         guard let directory = ProcessInfo.processInfo.environment["SETUP_RENDER_DIR"] else {
             throw XCTSkip("Set SETUP_RENDER_DIR to render the setup guide")
         }
         try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         var reading = facts(hooks: .absent)
-        let controller = ToolingWindowController(facts: { reading }, act: { _ in })
-        controller.window?.appearance = NSAppearance(named: .aqua)
-        controller.startSetup()
-        let content = try XCTUnwrap(controller.window?.contentView)
-        try draw(content, name: "setup-choose", directory: directory)
-        try button("Set Up Claude Code", in: content).performClick(nil)
-        try draw(content, name: "setup-connect", directory: directory)
+        let tooling = ToolingModel(facts: { reading }, act: { _ in })
+        let page = ToolingPane(tooling: tooling)
+        tooling.pageOpened()
+        // Each step as tall as its content, so its buttons sit under it rather than a page away.
+        try draw(page, height: 540, name: "setup-choose", directory: directory)
+        tooling.choose(.claude)
+        try draw(page, height: 540, name: "setup-connect", directory: directory)
         reading = facts(hooks: .unheard)
-        controller.rebuild()
-        try button("Continue →", in: content).performClick(nil)
-        try draw(content, name: "setup-try", directory: directory)
+        tooling.reread()
+        tooling.continueToVerification()
+        try draw(page, height: 620, name: "setup-try", directory: directory)
         reading = facts()
-        controller.rebuild()
-        try draw(content, name: "setup-ready", directory: directory)
+        tooling.reread()
+        try draw(page, height: 620, name: "setup-ready", directory: directory)
+        tooling.finishSetup()
+        try draw(page, height: 720, name: "setup-overview", directory: directory)
     }
 
     private func facts(
         hooks: ToolingInstallationState = .installed,
         senderIsTiedToThisBuild: Bool = false
-    ) -> ToolingWindowFacts {
-        ToolingWindowFacts(
+    ) -> ToolingFacts {
+        ToolingFacts(
             hookState: { _ in hooks }, statusLineState: .notSet,
             hooksPath: { $0 == .claude ? "~/.claude/skills/agent-watch/hooks/hooks.json" : "~/.codex/hooks.json" },
             statusLinePath: "~/.claude/settings.json", senderPath: "AgentWatchSend",
@@ -177,10 +216,6 @@ final class ToolingSetupTests: XCTestCase {
             idePlugins: [], stagedPlugin: nil, idePluginDirectoryPath: "",
             agentPaths: [.claude: "~/.local/bin/claude", .codex: "/opt/homebrew/bin/codex"],
             receivedSources: hooks == .installed ? [.claude, .codex] : [])
-    }
-
-    private func texts(in view: NSView) -> [String] {
-        ((view as? NSTextField).map { [$0.stringValue] } ?? []) + view.subviews.flatMap { texts(in: $0) }
     }
 
     private func buttons(in view: NSView) -> [NSButton] {
@@ -191,14 +226,21 @@ final class ToolingSetupTests: XCTestCase {
         try XCTUnwrap(buttons(in: view).first { $0.title == title }, "Button: \(title)")
     }
 
-    private func draw(_ view: NSView, name: String, directory: String) throws {
-        if let scroll = view as? NSScrollView {
-            scroll.drawsBackground = true
-            scroll.backgroundColor = .windowBackgroundColor
-        }
-        view.layoutSubtreeIfNeeded()
-        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-        view.cacheDisplay(in: view.bounds, to: bitmap)
+    /// 570 points: the settings window opens 760 wide, and its sidebar takes about 190 of them.
+    private func draw(_ page: ToolingPane, height: CGFloat, name: String, directory: String) throws {
+        // As `SettingsView` shows a page: the forms on the window's own background, which the
+        // buttons under the guide share. Without it they sit on nothing, transparent in the PNG.
+        let hosting = NSHostingView(
+            rootView: page.formStyle(.grouped).scrollContentBackground(.hidden)
+                .background(Color(nsColor: .windowBackgroundColor)))
+        hosting.appearance = NSAppearance(named: .aqua)
+        hosting.frame = NSRect(x: 0, y: 0, width: 570, height: height)
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = hosting
+        // SwiftUI fills a form in over a few turns of the run loop.
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+        let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
         let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
         try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("\(name).png"))
     }

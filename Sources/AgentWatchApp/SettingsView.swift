@@ -71,7 +71,7 @@ struct SettingsView: View {
                 case .themes: ThemesPane(model: model)
                 case .menuBar: MenuBarPane(model: model)
                 case .general: GeneralPane(model: model)
-                case .tooling: ToolingPane(model: model)
+                case .tooling: ToolingPane(tooling: model.tooling)
                 case .diagnostics: DiagnosticsPane(model: model)
                 }
             }
