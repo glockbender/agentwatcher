@@ -136,6 +136,9 @@ final class TranscriptWatcher {
     private var lastHookAt: Date?
     /// Guards against a slow disk stacking one tick on top of the last.
     private var isReading = false
+    /// Rows a catch-up was declined for because another read was running, asked again when
+    /// that read ends. See `catchUp`.
+    private var declinedCatchUpIDs: Set<String> = []
 
     private let settings: WidgetSettingsStore
     private let home: URL
@@ -321,6 +324,13 @@ final class TranscriptWatcher {
             return []
         }
         guard !isReading else {
+            // Asked again when the running read ends, because nothing else may ask soon. At
+            // launch this is always the case for a row found by its process: the restored
+            // sessions' own catch-up is the read in the way, and the next scan comes with the
+            // menu, a wake or a sweep — none of which happens while no session works. Four
+            // such rows stayed nameless until a session started a turn. The waits are not
+            // kept: the caller settles a declined one at once, so only the name is left.
+            declinedCatchUpIDs.formUnion(restored.map(\.id))
             return []
         }
         let moment = now()
@@ -428,6 +438,19 @@ final class TranscriptWatcher {
             )
         }
         onUpdates(merge(updates, withSilenceAt: moment))
+        askDeclinedCatchUpsAgain()
+    }
+
+    /// Only the rows still in the list, as they are now: a row can leave, or change the file it
+    /// is read from, while the read that was in the way runs.
+    private func askDeclinedCatchUpsAgain() {
+        let declined = declinedCatchUpIDs
+        declinedCatchUpIDs = []
+        let rows = sessions.filter { declined.contains($0.id) }
+        guard !rows.isEmpty else {
+            return
+        }
+        catchUp(sessions: rows)
     }
 
     /// The tick when nothing needed reading — every watched session is between locate

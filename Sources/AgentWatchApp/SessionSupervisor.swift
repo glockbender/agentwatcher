@@ -875,11 +875,12 @@ final class SessionSupervisor {
     /// `DiscoveredAgentProcess` means by never guessing one.
     ///
     /// Every one of them on every scan, not only the rows this scan added, because a
-    /// catch-up can be declined — the reader takes one read at a time, and at launch the
-    /// restored sessions are already being read when the scan runs. Nothing else would ever
-    /// ask again: a row whose silence is expected gets no scheduled reads, so a declined
-    /// catch-up would leave it nameless for the whole launch. A row that was read already
-    /// holds a watch, and the reader passes over it.
+    /// catch-up can be declined. A row whose silence is expected gets no scheduled reads, so
+    /// a declined catch-up would leave it nameless for the whole launch. The reader asks
+    /// again by itself when it declined for a read already running — at launch the restored
+    /// sessions are always being read when the scan runs — but not when reading was turned
+    /// off, and this is what asks once it is back on. A row that was read already holds a
+    /// watch, and the reader passes over it.
     ///
     /// Called after publishing, never before: the reader drops every watch the published
     /// list does not contain, so a read asked for ahead of the list it belongs to is a read

@@ -611,6 +611,43 @@ final class TranscriptWatcherTests: XCTestCase {
         XCTAssertTrue(inbox.isEmpty, "and nothing is reported about a file nobody opened")
     }
 
+    /// The reader takes one read at a time, so a catch-up asked for while another runs is
+    /// declined — and asked again the moment that read ends. At launch the restored sessions'
+    /// own catch-up is always the read in the way, and the rows found by their process right
+    /// after it stayed nameless until the next scan, which does not come while no session
+    /// works.
+    func testACatchUpDeclinedWhileAnotherReadRunsIsAskedAgainWhenItEnds() async throws {
+        try write(toolResult(id: "call-old"))
+        let foundUUID = "6f1c2b9a-3d4e-4f50-8a71-92b3c4d5e6f7"
+        try Data(
+            #"{"type":"custom-title","customTitle":"what the found session is about","sessionId":"\#(foundUUID)"}"#
+                .utf8
+        ).write(to: projectDirectory.appendingPathComponent("\(foundUUID).jsonl"))
+        let restoredRow = restored()
+        let foundRow = SessionSnapshot(
+            id: SessionSnapshot.id(
+                source: .claude, sessionLabel: HookCaptureRedactor.label(forRawIdentifier: foundUUID)),
+            source: .claude,
+            arrivalIndex: 1,
+            phase: .disconnected,
+            lastObservedAt: start - 3_600
+        )
+        let watcher = try makeWatcher()
+        watcher.update(sessions: [restoredRow, foundRow])
+        let bothRead = expectation(description: "the read in the way, then the one asked again")
+        bothRead.expectedFulfillmentCount = 2
+        arrival = bothRead
+        inbox = []
+
+        XCTAssertEqual(watcher.catchUp(sessions: [restoredRow]), [restoredRow.id])
+        XCTAssertEqual(watcher.catchUp(sessions: [foundRow]), [], "a read is running")
+        await fulfillment(of: [bothRead], timeout: 2)
+        arrival = nil
+
+        XCTAssertEqual(inbox.map(\.sessionID), [foundRow.id])
+        XCTAssertEqual(inbox.first?.description?.title, "what the found session is about")
+    }
+
     /// Catching up leaves the reader where an ordinary first read would have left it: at the
     /// end. Otherwise the session's next real read would replay its whole history.
     func testCatchingUpLeavesTheReaderAtTheEndOfTheFile() async throws {
