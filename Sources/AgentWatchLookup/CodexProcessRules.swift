@@ -6,9 +6,17 @@ import Foundation
 public struct CodexProcessRules: AgentProcessRules {
     public init() {}
 
-    /// Codex's hooks carry no process number in any form, so there is nothing to name.
+    /// The nearest `codex` above the hook, for a thread in a terminal. Measured on Codex
+    /// 0.161.0: a hook of the interactive program is that process's child, as a hook of
+    /// `codex exec` is.
+    ///
+    /// Nothing under the desktop application. It holds every thread in one process, so the
+    /// number would be the same for all of them and would close them all together.
     public func agentProcessID(among ancestors: [ProcessSnapshot]) -> Int32? {
-        nil
+        guard !ancestors.contains(where: Self.isDesktopProcess) else {
+            return nil
+        }
+        return ancestors.first(where: Self.isCLIProcess)?.processID
     }
 
     /// The nearest `codex` above the hook. Measured on Codex 0.153.4: a hook of `codex exec`
@@ -33,11 +41,10 @@ public struct CodexProcessRules: AgentProcessRules {
         nil
     }
 
-    /// Nothing, and that is a measured limit rather than an omission. Codex's desktop
-    /// application hosts many threads in one process, so a process says nothing about how
-    /// many sessions it holds; and its hooks report no process number at all, so a row built
-    /// from a process could never be joined to the session it belongs to and would stand
-    /// beside it forever. Measured on Codex, version not recorded. See
+    /// Nothing. Codex's desktop application hosts many threads in one process, so a process
+    /// says nothing about how many sessions it holds — measured on Codex, version not
+    /// recorded. A `codex` in a terminal holds one thread at a time and its hooks name it, but
+    /// what would name its thread before any hook has not been looked for. See
     /// `docs/agent-processes.md`, «Почему живой агент находится только у Claude».
     public func liveSessions() -> [DiscoveredAgentProcess] {
         []

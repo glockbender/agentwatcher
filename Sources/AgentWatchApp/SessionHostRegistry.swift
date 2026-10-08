@@ -58,10 +58,11 @@ final class SessionHostRegistry {
         key.hasSuffix(viewerWatchSuffix) ? String(key.dropLast(viewerWatchSuffix.count)) : nil
     }
 
-    /// A Codex row has a process to watch only as a headless run, the one Codex process that
-    /// holds a single session.
+    /// A Codex row has a process to watch only where the process is its own: a headless run,
+    /// or the program in a terminal. Never under the desktop application, whose one process
+    /// holds every thread.
     func associate(_ snapshot: SessionSnapshot) {
-        guard snapshot.source == .claude || snapshot.clientKind == .headless,
+        guard snapshot.source == .claude || snapshot.clientKind == .headless || snapshot.clientKind == .cli,
             let agentProcessID = snapshot.agentProcessID
         else {
             return

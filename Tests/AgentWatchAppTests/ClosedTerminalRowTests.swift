@@ -360,6 +360,39 @@ final class ClosedTerminalRowTests: XCTestCase {
         XCTAssertTrue(notes.contains { $0.contains("Ghostty holds 5 terminals and shows 4") }, "\(notes)")
     }
 
+    /// Each agent writes its own tab titles, so only its own rows can show that titles carry
+    /// names. A Claude tab carrying its name says nothing of a Codex whose
+    /// `[tui].terminal_title` leaves the thread's name out, and taken as proof it would have
+    /// the click offer to end a Codex that is fine.
+    func testOnlyRowsOfTheSameAgentShowThatTitlesCarryNames() throws {
+        var seen: [String]?
+        let supervisor = makeSupervisor(
+            terminalState: { _ in .attached },
+            focusHost: { _, names in
+                seen = names
+                return SessionHostRegistry.FocusOutcome(raised: true, tab: .asked)
+            }
+        )
+        supervisor.start()
+        defer { supervisor.stop() }
+        supervisor.ingest(
+            testRequest(
+                event: "SessionStart", sessionID: "claude-one", agentProcessID: agent, clientKind: .cli,
+                description: SessionDescription(title: "A Claude session")))
+        for (sessionID, processID, title) in [
+            ("codex-one", agent + 1, "A Codex thread"), ("codex-two", agent + 2, "Another thread"),
+        ] {
+            supervisor.ingest(
+                HookIngressRequest(
+                    source: .codex, declaredEvent: "SessionStart", payload: .object(["session_id": .string(sessionID)]),
+                    agentProcessID: processID, clientKind: .cli, description: SessionDescription(title: title)))
+        }
+
+        supervisor.focus(try XCTUnwrap(supervisor.sessions.first { $0.title == "A Codex thread" }))
+
+        XCTAssertEqual(seen, ["Another thread"])
+    }
+
     /// The card is drawn on hover, and a hover sends Ghostty nothing: which ending applies is
     /// read from the kernel, where the agent still has its terminal.
     func testTheCardOfARowWhoseTabIsGoneOffersAHangUp() throws {

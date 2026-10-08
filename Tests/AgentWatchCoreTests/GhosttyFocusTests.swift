@@ -139,6 +139,57 @@ final class GhosttyFocusTests: XCTestCase {
         XCTAssertEqual(decision, .ask(terminalID: "0CE0F8D7-20D4-4B91-AD78-BE4A9E9BF687"))
     }
 
+    /// Codex writes the thread's name as one part of a title joined with ` | `, the project's
+    /// folder after it — measured on Codex 0.161.0 — so a suffix never finds it.
+    func testACodexTabCarriesTheThreadNameAsOneOfItsParts() {
+        for title in [
+            "Reply with ok | work",
+            "⠋ Reply with ok | work",
+            "[ ! ] Action Required | Reply with ok | work",
+        ] {
+            let codexTabs = tabs + [GhosttyTerminal(id: "0CE0F8D7-20D4-4B91-AD78-BE4A9E9BF687", name: title)]
+
+            XCTAssertEqual(
+                GhosttyFocus.decision(among: codexTabs, sessionName: "Reply with ok"),
+                .ask(terminalID: "0CE0F8D7-20D4-4B91-AD78-BE4A9E9BF687"),
+                title
+            )
+        }
+    }
+
+    /// A whole part, not a piece of one: a short name would otherwise be found in every
+    /// longer one that starts with it.
+    func testACodexPartMustBeTheWholeName() {
+        let codexTab = [GhosttyTerminal(id: "0CE0F8D7-20D4-4B91-AD78-BE4A9E9BF687", name: "Fix the build | work")]
+
+        XCTAssertEqual(GhosttyFocus.decision(among: codexTab, sessionName: "Fix"), .decline(.noTabMatches))
+    }
+
+    /// Before Codex has named the thread its title is only a spinner and the folder, and
+    /// there is nothing in it to find.
+    func testACodexTabBeforeTheThreadIsNamedCarriesNoName() {
+        let unnamed = [GhosttyTerminal(id: "0CE0F8D7-20D4-4B91-AD78-BE4A9E9BF687", name: "⠙ work")]
+
+        XCTAssertEqual(GhosttyFocus.decision(among: unnamed, sessionName: "Reply with ok"), .decline(.noTabMatches))
+    }
+
+    /// Codex cuts a long name in the title, and the widget shows it whole.
+    func testACodexNameCutShortInTheTitleIsStillFound() {
+        let name = "При входе в личную админку не выбрать другую организацию"
+        let shown = String(name.prefix(45)) + "..."
+        let codexTab = [GhosttyTerminal(id: "0CE0F8D7-20D4-4B91-AD78-BE4A9E9BF687", name: "\(shown) | devx")]
+
+        XCTAssertEqual(
+            GhosttyFocus.decision(among: codexTab, sessionName: name),
+            .ask(terminalID: "0CE0F8D7-20D4-4B91-AD78-BE4A9E9BF687")
+        )
+        XCTAssertEqual(
+            GhosttyFocus.decision(among: codexTab, sessionName: String(name.prefix(45))),
+            .decline(.noTabMatches),
+            "a name short enough to be shown whole is not matched by the beginning of a longer one"
+        )
+    }
+
     /// The identifier is the one thing that ever reaches a script, so its shape is checked.
     /// The tab's name never does, which is why an agent's output cannot become a command.
     func testOnlyAUUIDCanBeWrittenIntoAScript() {

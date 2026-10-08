@@ -158,7 +158,8 @@ enum AgentWatchSendMain {
         }
         // Codex says it is `codex exec` in its transcript, which is surer than its arguments:
         // they take options with values before the word. Such a run is its process's only
-        // thread, so its process can be named where a Codex hook names none.
+        // thread, so its process is named wherever the program is installed — even the copy
+        // inside ChatGPT.app, whose other hooks name none.
         return RedactedHookIngressRequest.make(
             source: options.source,
             declaredEvent: options.event,

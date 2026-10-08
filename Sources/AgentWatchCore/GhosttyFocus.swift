@@ -13,7 +13,7 @@ public struct GhosttyTerminal: Equatable, Sendable {
 
 /// Why Agent Watch will not ask Ghostty to bring a tab forward.
 public enum GhosttyFocusRefusal: Equatable, Sendable {
-    /// The session has no name yet. Claude writes the name into the tab title itself, so
+    /// The session has no name yet. The agent writes the name into the tab title itself, so
     /// until it has one there is nothing on either side to match on. Temporary, and it
     /// resolves itself within the first minutes of a session.
     case sessionHasNoName
@@ -35,9 +35,9 @@ public enum GhosttyFocusRefusal: Equatable, Sendable {
 
 /// Bringing a Ghostty tab forward by the name the agent wrote into it.
 ///
-/// The whole key is that Claude titles the terminal itself, with the session name that Agent
-/// Watch already shows in the widget — so the two sides agree on a string neither had to
-/// invent. See `docs/research/session-focus.md`.
+/// The whole key is that Claude and Codex title the terminal themselves, with the session name
+/// that Agent Watch already shows in the widget — so the two sides agree on a string neither
+/// had to invent. See `docs/research/session-focus.md`.
 ///
 /// Everything here is a rule over values somebody else read, which is why it is in the core:
 /// the terminals come from an Apple event and the answer is decided without a disk, an app,
@@ -51,9 +51,7 @@ public enum GhosttyFocus {
 
     /// Which terminal is this session's, if exactly one is.
     ///
-    /// **Ends with, not equals.** Claude puts a glyph for its own state in front of the name
-    /// — `◑` and `✳` in the two samples taken, and the set belongs to the agent, so listing
-    /// it here would be a copy that goes stale. The suffix is the part both sides agree on.
+    /// **Carries, not equals** — in the shape each agent writes, `carries(_:_:)`.
     ///
     /// **Exactly one, or nothing.** Two matches mean the name has stopped identifying a
     /// session, and choosing one of them would move a person to a tab that is not theirs —
@@ -95,8 +93,42 @@ public enum GhosttyFocus {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// Whether a tab's title carries the name, in either shape an agent writes it. One rule
+    /// for both, so the names of other rows can be looked for without knowing whose they are.
+    ///
+    /// **Claude: at the end.** It puts a glyph for its own state in front of the name — `◑`
+    /// and `✳` in the two samples taken, and the set belongs to the agent, so listing it here
+    /// would be a copy that goes stale. The suffix is the part both sides agree on.
+    ///
+    /// **Codex: as a whole part.** It joins its title from parts with ` | ` — by default what
+    /// it is doing, the thread's name and the project's folder: `Reply with ok | work` once
+    /// a turn has ended, a spinner frame in front while it works, a blinking `Action Required`
+    /// in front while it waits (measured on Codex 0.161.0). A part, not a piece of one: a
+    /// thread called `Fix` is not the one in `Fix the build | work`.
     private static func carries(_ terminal: GhosttyTerminal, _ name: String) -> Bool {
-        terminal.name.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(name)
+        let title = terminal.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.hasSuffix(name)
+            || title.components(separatedBy: " | ").contains { codexPart($0, carries: name) }
+    }
+
+    /// Codex shortens a name of more than 48 characters to its first 45 and `...` — read in
+    /// its source rather than seen on a screen.
+    private static func codexPart(_ part: String, carries name: String) -> Bool {
+        let shown = String(part.drop { $0 == " " || isSpinnerFrame($0) })
+        if shown == name {
+            return true
+        }
+        guard name.count > codexNameLimit, shown.count == codexNameLimit, shown.hasSuffix("...") else {
+            return false
+        }
+        return name.hasPrefix(shown.dropLast(3))
+    }
+
+    private static let codexNameLimit = 48
+
+    /// Codex's spinner is drawn with Braille dots.
+    private static func isSpinnerFrame(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { (0x2800...0x28FF).contains($0.value) }
     }
 
     /// Whether this identifier can be written into a script.

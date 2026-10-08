@@ -23,7 +23,7 @@ GROUPS = (
     ("Claude Code", ("Claude Code", "Claude.app")),
     ("Codex", ("Codex Desktop", "Codex", "ChatGPT.app")),
     ("Ghostty", ("Ghostty",)),
-    ("JetBrains IDE", ("GoLand", "IntelliJ IDEA", "PyCharm")),
+    ("JetBrains IDE", ("GoLand", "IntelliJ IDEA", "PyCharm", "RustRover")),
     ("macOS", ("macOS",)),
 )
 SUBJECTS = tuple(subject for _, subjects in GROUPS for subject in subjects)
