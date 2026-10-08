@@ -15,8 +15,9 @@ import Foundation
 /// A process is never *guessed* into a transcript file, and that was measured: `claude` does
 /// not hold its transcript open, only three of eight processes were alone in their directory,
 /// and a session can be days older than the process now running it — so a match made from
-/// directories and timestamps would be a guess dressed as a fact. The one honest match is a
-/// pairing the agent itself once stated, in a hook: `knownSessionLabel`.
+/// directories and timestamps would be a guess dressed as a fact. The honest matches are the
+/// ones the agent itself states, and there are two: a pairing it once sent in a hook, and the
+/// record Claude Code keeps of each of its processes. Either becomes `knownSessionLabel`.
 public struct DiscoveredAgentProcess: Codable, Equatable, Sendable {
     public let source: AgentSource
     public let processID: Int32
@@ -27,7 +28,7 @@ public struct DiscoveredAgentProcess: Codable, Equatable, Sendable {
     /// ADR-0001.
     public let projectName: String?
     /// Which session this process is, when a hook has said so before — see
-    /// `RememberedAgentProcess`. A row that knows it is a session by name can be asked the
+    /// `RememberedAgentProcess` — or Claude Code's record of the process says so. A row that knows it is a session by name can be asked the
     /// same questions any other session can: which file it writes, and therefore what it is
     /// called.
     public let knownSessionLabel: String?
@@ -117,13 +118,14 @@ public struct DiscoveredAgentProcess: Codable, Equatable, Sendable {
 /// Which session a live agent process is, as one of that session's hooks once said.
 ///
 /// The pairing is a fact, not a match: the agent stated its own identifier in the same
-/// message that carried its process number, and nothing else on this machine ties the two
-/// together — measured, and recorded in `DiscoveredAgentProcess`.
+/// message that carried its process number. Only Claude Code's own record of the process ties
+/// the two together as well — measured, and recorded in `DiscoveredAgentProcess`.
 ///
 /// Worth keeping because the two halves outlive each other. A session's record leaves the
 /// app's memory long before its agent stops running: the row is dismissed by hand, or swept
-/// after a silence. What is left is a process, and without this pairing all it can become is
-/// a row with no name, for a session whose name is sitting in its transcript the whole time.
+/// after a silence. What is left is a process, and without this pairing — or that record,
+/// which not every session gets — all it can become is a row with no name, for a session
+/// whose name is sitting in its transcript the whole time.
 public struct RememberedAgentProcess: Codable, Equatable, Sendable {
     public let source: AgentSource
     public let processID: Int32

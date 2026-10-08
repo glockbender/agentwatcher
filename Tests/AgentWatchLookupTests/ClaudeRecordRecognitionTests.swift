@@ -1,3 +1,4 @@
+import AgentWatchCore
 import Foundation
 import XCTest
 
@@ -189,6 +190,67 @@ final class ClaudeRecordRecognitionTests: XCTestCase {
             ClaudeProcessRules.byPathAlone.clientKind(among: ancestors, argumentsOfProcess: { _ in nil }),
             .cli
         )
+    }
+
+    /// A Claude.app session opened while this app was not running, and quiet since, is found
+    /// by its process. Its record names the session, so the row is that session: it reads its
+    /// name from the transcript, and a click opens the session rather than raising the app.
+    /// Seen on four such processes on 2026-10-08, each one a `[still no name]` row that only
+    /// raised Claude.app.
+    func testAProcessFoundRunningIsTheSessionItsRecordNames() throws {
+        let sessionID = "b328413e-5219-4a09-a31d-fa7339d39d6e"
+        let rules = try rules(
+            recording: [8864],
+            fields: #"""
+                "sessionId":"\#(sessionID)","entrypoint":"claude-desktop",
+                "hostSessionId":"local_3f2a9c1e-8b47-4d05-a6e2-91c0d7b4e5f8"
+                """#)
+        let agent = ProcessSnapshot(
+            processID: 8864, executableName: "claude",
+            executablePath:
+                "/Users/someone/Library/Application Support/Claude/claude-code/2.1.289/ee67e3f1ea60/claude.app/Contents/MacOS/claude"
+        )
+
+        let found = rules.session(
+            processID: 8864, startedAt: started, projectName: "agent-watch",
+            ancestors: [agent], argumentsOfProcess: { _ in nil })
+        let row = found.row(arrivalIndex: 0)
+
+        let label = HookCaptureRedactor.label(forRawIdentifier: sessionID)
+        XCTAssertEqual(found.knownSessionLabel, label)
+        XCTAssertEqual(row.id, SessionSnapshot.id(source: .claude, sessionLabel: label), "the row a hook would build")
+        XCTAssertEqual(row.clientKind, .desktop)
+        let record = try XCTUnwrap(rules.registry.record(ofLiveProcess: 8864))
+        XCTAssertEqual(
+            DesktopSessionLink.claude(record: record, sessionLabel: row.transcriptLabel)?.absoluteString,
+            "claude://code/continue?session=local_3f2a9c1e-8b47-4d05-a6e2-91c0d7b4e5f8"
+        )
+    }
+
+    /// A record outlives its process, and the number then comes back on a stranger. The
+    /// stranger must not take the recorded session: its row would show that name, and a click
+    /// on it would open that session. A process with no record, or a record naming no session,
+    /// is found by its process alone, as before.
+    func testOnlyALiveProcessesOwnRecordNamesItsSession() throws {
+        let recorded = #"{"pid":400,"procStart":"Mon Sep 14 15:06:01 2026","sessionId":"b328413e-0000"}"#
+        try Data(recorded.utf8).write(to: directory.appendingPathComponent("400.json"))
+        let stranger = started + 3_600
+        let handedOutAgain = ClaudeProcessRules(
+            registry: ClaudeSessionRegistry(directory: directory, startTime: { _ in stranger }))
+        let unnamed = try rules(recording: [401])
+
+        for (rules, processID, startedAt) in [
+            (handedOutAgain, Int32(400), stranger),
+            (unnamed, 401, started),
+            (ClaudeProcessRules.byPathAlone, 402, started),
+        ] {
+            let found = rules.session(
+                processID: processID, startedAt: startedAt, projectName: "agent-watch",
+                ancestors: [], argumentsOfProcess: { _ in nil })
+
+            XCTAssertNil(found.knownSessionLabel, "process \(processID)")
+            XCTAssertEqual(found.sessionLabel, found.processLabel, "process \(processID)")
+        }
     }
 
     /// `claude -p` run by a Claude.app session's shell tool inherits the app's

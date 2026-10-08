@@ -896,6 +896,10 @@ final class SessionSupervisor {
 
     /// The same process, told which session it is when a hook has said so before.
     ///
+    /// A hook's pairing is put over the session the scan read from Claude Code's record, should
+    /// the two ever differ. They have not been seen to (`ClaudeProcessRules.session`), so this
+    /// keeps what a pairing always did rather than choosing between them.
+    ///
     /// The source has to match as well as the number: the pairing's label is half of a
     /// session identifier, and pinning it to the wrong agent would invent an identifier for
     /// a session that does not exist.

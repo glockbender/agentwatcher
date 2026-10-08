@@ -142,18 +142,41 @@ public struct ClaudeProcessRules: AgentProcessRules {
                 guard let startedAt = AgentProcessLocator.startTime(of: processID) else {
                     return nil
                 }
-                return DiscoveredAgentProcess(
-                    source: .claude,
+                return session(
                     processID: processID,
                     startedAt: startedAt,
                     projectName: AgentProcessScanner.workingDirectoryName(of: processID),
-                    clientKind: clientKind(
-                        among: AgentProcessLocator.ancestorSnapshots(startingAt: processID),
-                        argumentsOfProcess: AgentProcessLocator.commandArguments(of:)
-                    )
+                    ancestors: AgentProcessLocator.ancestorSnapshots(startingAt: processID),
+                    argumentsOfProcess: AgentProcessLocator.commandArguments(of:)
                 )
             }
             .sorted { $0.processID < $1.processID }
+    }
+
+    /// One live process as `liveSessions` describes it, from what the machine said about it.
+    ///
+    /// Which session it runs comes from the process's own record, when it has one: the fact a
+    /// hook states, written by the same process, with a start that refuses a number handed out
+    /// again. Without it a session the app was not running for stays `[still no name]` until
+    /// its next turn, and a click on a Claude.app one raises only the app, since the link is
+    /// checked against the row's session. The record and a hook's pairing named the same
+    /// session on all thirteen live processes that had both, measured on Claude Code 2.1.281,
+    /// 2.1.282, 2.1.283, 2.1.284, 2.1.289, 2.1.291 and 2.1.292.
+    func session(
+        processID: Int32,
+        startedAt: Date,
+        projectName: String?,
+        ancestors: [ProcessSnapshot],
+        argumentsOfProcess: (Int32) -> [String]?
+    ) -> DiscoveredAgentProcess {
+        DiscoveredAgentProcess(
+            source: .claude,
+            processID: processID,
+            startedAt: startedAt,
+            projectName: projectName,
+            knownSessionLabel: registry.record(ofLiveProcess: processID)?.sessionLabel,
+            clientKind: clientKind(among: ancestors, argumentsOfProcess: argumentsOfProcess)
+        )
     }
 
     /// Whether some Claude process was started with exactly these words after the program —

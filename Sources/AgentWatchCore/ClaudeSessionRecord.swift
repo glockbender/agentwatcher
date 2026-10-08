@@ -32,6 +32,12 @@ public struct ClaudeSessionRecord: Equatable, Sendable {
     /// name it in a scheme of its own.
     public let desktopSessionID: String?
 
+    /// The session the process runs, as the label a row and a hook know it by: the identifier
+    /// redacted the way it crosses the socket, never the identifier itself (ADR-0001).
+    public var sessionLabel: String? {
+        sessionID.map(HookCaptureRedactor.label(forRawIdentifier:))
+    }
+
     /// How far the record's start may be from the kernel's and still be the same process. The
     /// kernel's own reading in the record matched `ps` to the second on the three records
     /// compared; Claude Code's clock is 0–3 s later.

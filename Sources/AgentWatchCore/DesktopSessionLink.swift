@@ -32,8 +32,7 @@ public enum DesktopSessionLink {
     public static func claude(record: ClaudeSessionRecord, sessionLabel: String) -> URL? {
         guard
             record.isDesktopSession,
-            let sessionID = record.sessionID,
-            HookCaptureRedactor.label(forRawIdentifier: sessionID) == sessionLabel,
+            record.sessionLabel == sessionLabel,
             let desktopSessionID = record.desktopSessionID
         else {
             return nil
