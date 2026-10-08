@@ -110,6 +110,17 @@ Rows**, open the menu beside **Counters** and tick **MCP server questions**.
 **Checked on:** Claude Code 2.1.293, with a test MCP server: after Repair and the tick, a new
 session's question showed the question mark on its row until it was answered.
 
+## A `claude -p` or `codex exec` run has no row
+
+**Why:** Agent Watch hides headless runs by default: `claude -p`, Agent SDK runs and `codex exec`.
+A program usually starts them, and the session that started one shows the work in its own row. A
+question such a run asks goes to that program, not to you.
+
+**What to do:** To see them, open Settings → General and turn on **Show headless runs**. Runs that
+are already going appear at once.
+
+**Checked on:** Claude Code 2.1.293, Codex 0.153.4.
+
 ## A Claude app session appears as soon as you open it
 
 **Why:** The Claude desktop app runs each of its sessions as a separate Claude Code process, and it

@@ -36,6 +36,13 @@ struct GeneralPane: View {
             } footer: {
                 Footnote(model.shortcutStatus)
             }
+            Section {
+                Toggle("Show headless runs", isOn: showsHeadlessRuns)
+            } header: {
+                Text("Headless runs")
+            } footer: {
+                Footnote("claude -p, Agent SDK runs and codex exec: a program starts them, and they have no window.")
+            }
             Section("Closed sessions") {
                 Picker("Closed sessions", selection: retention) {
                     ForEach(WidgetSettingsStore.offeredClosedSessionRetentions, id: \.seconds) { retention in
@@ -77,6 +84,13 @@ struct GeneralPane: View {
         Binding(
             get: { model.isWidgetVisible },
             set: { model.isWidgetVisible = $0 }
+        )
+    }
+
+    private var showsHeadlessRuns: Binding<Bool> {
+        Binding(
+            get: { model.settings.showsHeadlessRuns },
+            set: { on in model.update { model.settings.setShowsHeadlessRuns(on) } }
         )
     }
 

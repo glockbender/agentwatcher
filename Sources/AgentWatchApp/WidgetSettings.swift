@@ -34,6 +34,7 @@ enum WidgetSetting {
     case menuBarIcon
     case menuSessions
     case sessionOrder
+    case headlessRuns
 }
 
 /// Widget preferences that are not about colour.
@@ -123,6 +124,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let sessionBlockOrder = "sessionBlockOrder"
         static let showsWidget = "showsWidget"
         static let showsFullScreenDot = "showsFullScreenDot"
+        static let showsHeadlessRuns = "showsHeadlessRuns"
     }
 
     /// Something waiting for the person, and something finished for them to look at: the two
@@ -155,6 +157,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.sessionBlockOrder: .array(SessionBlock.defaultOrder.map { .string($0.rawValue) }),
             Key.showsWidget: .bool(true),
             Key.showsFullScreenDot: .bool(true),
+            Key.showsHeadlessRuns: .bool(false),
         ]
     }
 
@@ -280,6 +283,18 @@ final class WidgetSettingsStore: PreferenceDefaults {
     func setShowsFullScreenDot(_ isShown: Bool) {
         preferences.set(isShown, forKey: Key.showsFullScreenDot)
         onChange?(.menuBarIcon)
+    }
+
+    /// Whether `claude -p`, Agent SDK runs and `codex exec` get rows, in the widget, the menu
+    /// and the icon's counts alike. Off until asked: a program starts them, and the session
+    /// that started one usually has a row of its own already (ADR-0021).
+    var showsHeadlessRuns: Bool {
+        preferences.flag(forKey: Key.showsHeadlessRuns) ?? false
+    }
+
+    func setShowsHeadlessRuns(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsHeadlessRuns)
+        onChange?(.headlessRuns)
     }
 
     /// The states the icon counts, in either of its drawn styles. All four until a person

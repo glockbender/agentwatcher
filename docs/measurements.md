@@ -19,6 +19,8 @@
 
 | Версия | Что замерено | Где |
 | --- | --- | --- |
+| Claude Code 2.1.293 | - **Его вопрос уходит программе, а не человеку.** `claude -p` отменяет вопрос MCP-сервера сразу, а `codex exec` на этой машине работал с `approval: never`. | [0021-a-headless-run-is-hidden-until-asked-for.md, «Почему скрыт по умолчанию»](adr/0021-a-headless-run-is-hidden-until-asked-for.md#почему-скрыт-по-умолчанию) |
+| Claude Code 2.1.293 | A `claude -p` or `codex exec` run has no row | [TROUBLESHOOTING.md, «A `claude -p` or `codex exec` run has no row»](../TROUBLESHOOTING.md#a-claude--p-or-codex-exec-run-has-no-row) |
 | Claude Code 2.1.293 | No question mark on the row while an MCP server asks you something | [TROUBLESHOOTING.md, «No question mark on the row while an MCP server asks you something»](../TROUBLESHOOTING.md#no-question-mark-on-the-row-while-an-mcp-server-asks-you-something) |
 | Claude Code 2.1.293 | Claude Code предлагает 33 события. | [agent-events.md, «Claude — 15»](agent-events.md#claude--15) |
 | Claude Code 2.1.293 | - **Запись сессии, пока вопрос на экране, говорит `status: waiting` и `waitingFor: "input needed"`.** Замерено на 2.1.293 в интерактивной сессии с человеком, три раза подряд: запись оставалась такой всё время, пока форма висела (дольше… | [agent-events.md, «Вопрос MCP-сервера: `Elicitation`»](agent-events.md#вопрос-mcp-сервера-elicitation) |
@@ -189,6 +191,8 @@
 | Codex 0.162.0-alpha.2 | Measured on Codex 0.162.0-alpha.2: ChatGPT.app writes a new thread there only once the thread is named, seconds into its first turn, and that turn's first hooks come earlier. | `Sources/AgentWatchLookup/SessionDescriptionResolver.swift` |
 | Codex 0.162.0-alpha.2 | Measured on Codex 0.162.0-alpha.2: a transcript opens with `session_meta`, which carries the instructions the thread started with, 23 KB on this machine. | `Sources/AgentWatchLookup/SessionDescriptionResolver.swift` |
 | Codex 0.162.0-alpha.2 | Measured on Codex 0.162.0-alpha.2 inside ChatGPT.app 26.1002.52244. | `Tests/AgentWatchAppTests/SessionSupervisorTests.swift` |
+| Codex 0.153.4 | - **Его вопрос уходит программе, а не человеку.** `claude -p` отменяет вопрос MCP-сервера сразу, а `codex exec` на этой машине работал с `approval: never`. | [0021-a-headless-run-is-hidden-until-asked-for.md, «Почему скрыт по умолчанию»](adr/0021-a-headless-run-is-hidden-until-asked-for.md#почему-скрыт-по-умолчанию) |
+| Codex 0.153.4 | A `claude -p` or `codex exec` run has no row | [TROUBLESHOOTING.md, «A `claude -p` or `codex exec` run has no row»](../TROUBLESHOOTING.md#a-claude--p-or-codex-exec-run-has-no-row) |
 | Codex 0.153.4 | **Codex требует доверия к каждому хуку, и доверие привязано к позиции записи.** Замерено на 0.140 и 0.153.4: `~/.codex/config.toml` держит таблицу `[hooks.state]`, где у каждого хука лежит `trusted_hash`, а ключ имеет вид… | [agent-install.md, «Доверие к хукам у Codex»](agent-install.md#доверие-к-хукам-у-codex) |
 | Codex 0.153.4 | **Номер процесса у запуска есть и у Codex.** Обычный хук Codex номера не несёт, но `codex exec` держит один тред и больше ничего, а его хук — дочерний процесс самого `codex exec` или его оболочки. | [agent-processes.md, «Запуски без окна»](agent-processes.md#запуски-без-окна) |
 | Codex 0.153.4 | Первая запись транскрипта `codex exec` говорит `source: "exec"` и `originator: "codex_exec"` при `thread_source: "user"` — «Приём сеансов Codex, и открытый вопрос про `/clear`». | [agent-processes.md, «Запуски без окна»](agent-processes.md#запуски-без-окна) |

@@ -390,7 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessions: [SessionSnapshot]? = nil,
         usageLimits: [AgentUsageLimits]? = nil
     ) {
-        let shown = sessions ?? supervisor.sessions
+        let shown = (sessions ?? supervisor.sessions).shown(includingHeadlessRuns: settings.showsHeadlessRuns)
         hudController.render(
             WidgetState(
                 sessions: shown,
@@ -439,6 +439,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hudController.refreshSettings()
             statusMenu?.refreshSessions()
         case .menuSessions:
+            statusMenu?.refreshSessions()
+        case .headlessRuns:
+            renderWidget()
             statusMenu?.refreshSessions()
         }
     }
@@ -549,7 +552,7 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
     }
 
     var sessions: [SessionSnapshot] {
-        orderBook.order(supervisor.sessions, now: .now)
+        orderBook.order(supervisor.sessions.shown(includingHeadlessRuns: settings.showsHeadlessRuns), now: .now)
     }
 
     func reach(for snapshot: SessionSnapshot) -> SessionReach {

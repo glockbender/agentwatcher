@@ -201,6 +201,23 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(announced, 2)
     }
 
+    /// Off until asked, and announced, because three places draw from the same answer.
+    func testHeadlessRunsAreHiddenUntilAskedAndTheChangeIsAnnounced() throws {
+        let store = try makeStore()
+        var announced = 0
+        store.onChange = { setting in
+            if case .headlessRuns = setting {
+                announced += 1
+            }
+        }
+
+        XCTAssertFalse(store.showsHeadlessRuns)
+        store.setShowsHeadlessRuns(true)
+
+        XCTAssertTrue(store.showsHeadlessRuns)
+        XCTAssertEqual(announced, 1)
+    }
+
     /// On, and for the two states where a person has a next move: something is waiting for
     /// them, or something is finished for them to look at.
     func testTheMenuListsSessionsThatNeedYouOrAreDoneUntilAskedOtherwise() throws {

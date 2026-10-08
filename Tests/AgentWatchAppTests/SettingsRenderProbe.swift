@@ -6,7 +6,7 @@ import XCTest
 @testable import AgentWatchApp
 
 /// Draws settings pages into PNG files, for a person to look at: the ones that show a theme,
-/// and the two whose switches say beside them why one is greyed.
+/// the two whose switches say beside them why one is greyed, and `General`.
 ///
 /// Skipped unless `SETTINGS_RENDER_DIR` names a directory. Drawn in a window that is never
 /// shown, so nothing appears on screen and nothing takes the focus from whoever is working.
@@ -44,6 +44,7 @@ final class SettingsRenderProbe: XCTestCase {
         try draw(AnyView(ThemesPane(model: model)), height: 400, named: "settings-themes", in: directory)
         try draw(AnyView(RowPane(model: model)), height: 900, named: "settings-rows", in: directory)
         try draw(AnyView(MenuBarPane(model: model)), height: 820, named: "settings-menu-bar", in: directory)
+        try draw(AnyView(GeneralPane(model: model)), height: 900, named: "settings-general", in: directory)
         _ = host
     }
 
