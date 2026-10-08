@@ -20,11 +20,14 @@
 | Версия | Что замерено | Где |
 | --- | --- | --- |
 | Claude Code 2.1.293 | No question mark on the row while an MCP server asks you something | [TROUBLESHOOTING.md, «No question mark on the row while an MCP server asks you something»](../TROUBLESHOOTING.md#no-question-mark-on-the-row-while-an-mcp-server-asks-you-something) |
+| Claude Code 2.1.293 | Claude Code предлагает 33 события. | [agent-events.md, «Claude — 15»](agent-events.md#claude--15) |
 | Claude Code 2.1.293 | - **Запись сессии, пока вопрос на экране, говорит `status: waiting` и `waitingFor: "input needed"`.** Замерено на 2.1.293 в интерактивной сессии с человеком, три раза подряд: запись оставалась такой всё время, пока форма висела (дольше… | [agent-events.md, «Вопрос MCP-сервера: `Elicitation`»](agent-events.md#вопрос-mcp-сервера-elicitation) |
 | Claude Code 2.1.293 | - **Ответа может не прийти.** Если вопрос перехватил чужой хук и ответил сам, диалога на экране нет и `ElicitationResult` не приходит — прочитано в коде. | [agent-events.md, «Вопрос MCP-сервера: `Elicitation`»](agent-events.md#вопрос-mcp-сервера-elicitation) |
 | Claude Code 2.1.293 | Конец соседнего вызова во время вопроса ожидание не снял. | [agent-events.md, «Вопрос MCP-сервера: `Elicitation`»](agent-events.md#вопрос-mcp-сервера-elicitation) |
 | Claude Code 2.1.293 | Прогон неинтерактивный (`claude -p`), и там вопрос отменяется сразу, без человека: | [agent-events.md, «Вопрос MCP-сервера: `Elicitation`»](agent-events.md#вопрос-mcp-сервера-elicitation) |
+| Claude Code 2.1.293 | Открыто: у `Notification` есть виды `agent_needs_input` и `worker_permission_prompt`, а когда они приходят, не замерено. | [implementation-plan.md, «Десктопные клиенты — аудит 2026-10-07»](implementation-plan.md#десктопные-клиенты--аудит-2026-10-07) |
 | Claude Code 2.1.293 | The order is the one measured on Claude Code 2.1.293 with a server whose tool asks a question: `PreToolUse` for the server's tool, `Elicitation`, `ElicitationResult`, then the tool's own `PostToolUse`. | `Tests/AgentWatchCoreTests/ElicitationTests.swift` |
+| Claude Code 2.1.293 | Measured on Claude Code 2.1.293: the catalogue is the list of hook names in its executable, read without running it. | `Tests/AgentWatchCoreTests/ToolingIntegrationTests.swift` |
 | Claude Code 2.1.289 | A Claude app session appears as soon as you open it | [TROUBLESHOOTING.md, «A Claude app session appears as soon as you open it»](../TROUBLESHOOTING.md#a-claude-app-session-appears-as-soon-as-you-open-it) |
 | Claude Code 2.1.289 | В ней два поля, которых нет у терминальных сессий: `entrypoint: "claude-desktop"` и `hostSessionId: "local_…"` — идентификатор сессии в самом приложении. | [agent-processes.md, «Claude.app»](agent-processes.md#claudeapp) |
 | Claude Code 2.1.289 | Выход из приложения останавливает все его сессии. | [agent-processes.md, «Claude.app»](agent-processes.md#claudeapp) |
