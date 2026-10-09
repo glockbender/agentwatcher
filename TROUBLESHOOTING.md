@@ -137,6 +137,19 @@ transcript, and without one Agent Watch cannot tell it from the session Codex ru
 
 **Checked on:** Claude Code 2.1.293, Codex 0.153.4; `--ephemeral`: Codex 0.162.0.
 
+## A click on a Codex session brings Ghostty forward, but not its tab
+
+**Why:** Agent Watch finds a Ghostty tab by the thread's name, which Codex writes into the tab
+title, as in `Fix the build | my-project`. Codex names a thread only after its first answer, and
+sometimes not at all. Until then the title shows only the project folder, so no tab can be told
+apart, and the click brings forward all Ghostty windows instead. A `[tui].terminal_title` setting
+in `~/.codex/config.toml` without `thread-name` leaves the name out of the title for good.
+
+**What to do:** Wait for the first answer, then click again. If you set `[tui].terminal_title`,
+keep `thread-name` in it; without the setting, Codex includes it.
+
+**Checked on:** Codex 0.161.0.
+
 ## A Claude app session appears as soon as you open it
 
 **Why:** The Claude desktop app runs each of its sessions as a separate Claude Code process, and it

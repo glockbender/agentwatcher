@@ -652,7 +652,30 @@ final class SessionLifecycleTests: XCTestCase {
         XCTAssertNotNil(engine.snapshots["claude:alpha"])
     }
 
-    /// Codex reports no process number at all, so nothing it sends can retire anything.
+    /// Codex in a terminal names its process too, and the rule is the same for it: a thread
+    /// that closed moments before another started in the same `codex` has nothing left to
+    /// show in that terminal.
+    func testACodexThreadClosedJustBeforeAnotherStartsInItsTerminalLeaves() throws {
+        var engine = SessionStateEngine()
+        try engine.ingest(
+            envelope(
+                id: "first", source: .codex, kind: .sessionStarted, at: start, clientKind: .cli, agentProcessID: 701)
+        )
+        try engine.ingest(
+            envelope(
+                id: "first", source: .codex, kind: .sessionEnded, at: start.addingTimeInterval(30), clientKind: .cli,
+                agentProcessID: 701)
+        )
+
+        let next = envelope(
+            id: "next", source: .codex, kind: .sessionStarted, at: start.addingTimeInterval(31), clientKind: .cli,
+            agentProcessID: 701)
+
+        XCTAssertEqual(try engine.receive(next).rowsThatLeft(.itsProcessNowRunsAnother).map(\.id), ["codex:first"])
+    }
+
+    /// Codex in its desktop application reports no process number at all, so nothing it
+    /// sends can retire anything.
     func testAnEventWithNoProcessNumberRetiresNothing() throws {
         var engine = SessionStateEngine()
         try engine.ingest(envelope(id: "alpha", kind: .sessionStarted, at: start, agentProcessID: 501))

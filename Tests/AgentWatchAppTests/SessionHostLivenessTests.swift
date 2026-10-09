@@ -70,6 +70,29 @@ final class SessionHostLivenessTests: XCTestCase {
         )
     }
 
+    /// A Codex thread in a terminal is vouched for by its `codex`, the way a Claude session is
+    /// by its agent: only the desktop application is asked instead of its process.
+    func testACodexThreadInATerminalIsVouchedForByItsProcess() {
+        var thread = testSession(source: .codex, clientKind: .cli, lastObservedAt: moment)
+        thread.agentProcessID = 4_242
+
+        XCTAssertTrue(
+            SessionHostRegistry.isHostAlive(
+                thread,
+                processStartedAt: { _ in self.moment - 3_600 },
+                isApplicationRunning: { _ in false }
+            )
+        )
+        XCTAssertFalse(
+            SessionHostRegistry.isHostAlive(
+                thread,
+                processStartedAt: { _ in nil },
+                isApplicationRunning: { _ in true }
+            ),
+            "the desktop application running says nothing about a thread in a terminal"
+        )
+    }
+
     /// Nothing to ask, so nothing is claimed. A row the app cannot vouch for is worse than a
     /// missing one: it says a session is there, and nothing will ever take it away.
     func testASessionWithNothingToVouchForItIsNotRestored() {
@@ -87,12 +110,13 @@ final class SessionHostLivenessTests: XCTestCase {
     /// `watchedSessionIDs` is the registry's record of which sessions have a process-exit
     /// watch, and the engine reads it as "somebody will report this one's death" — so a
     /// session in it is one `markUnwatchedSessionsDisconnected` leaves alone. `associate`
-    /// declines a Codex session, because a PID cannot vouch for a client whose application
-    /// hosts many threads in one process. A hover that created the record anyway would put
-    /// that session into the set with nothing watching it, and nothing left to retire it.
+    /// declines a Codex desktop session, because a PID cannot vouch for a client whose
+    /// application hosts many threads in one process. A hover that created the record anyway
+    /// would put that session into the set with nothing watching it, and nothing left to
+    /// retire it.
     func testHoveringASessionTheRegistryDeclinedDoesNotGiveItAWatchItDoesNotHave() {
         let registry = SessionHostRegistry { _ in }
-        var codex = testSession(source: .codex, clientKind: .cli, lastObservedAt: Date())
+        var codex = testSession(source: .codex, clientKind: .desktop, lastObservedAt: Date())
         // A number this process really holds, so the tree above it is walkable and the first
         // branch of `application(for:)` is actually taken.
         codex.agentProcessID = getpid()
@@ -212,6 +236,18 @@ final class SessionHostLivenessTests: XCTestCase {
 
         XCTAssertEqual(registry.watchedSessionIDs, [run.id])
         XCTAssertEqual(registry.reach(for: run), .nowhere)
+    }
+
+    /// A Codex thread in a terminal has a process of its own, as a run does: the `codex` its
+    /// hooks run under. Its exit ends the thread and is watched like a Claude agent's.
+    func testACodexThreadInATerminalIsWatchedByItsProcess() {
+        let registry = SessionHostRegistry { _ in }
+        var thread = testSession(source: .codex, clientKind: .cli, lastObservedAt: Date())
+        thread.agentProcessID = getpid()
+
+        registry.associate(thread)
+
+        XCTAssertEqual(registry.watchedSessionIDs, [thread.id])
     }
 
     /// A `~/.claude` of this test's own, with the `sessions` folder Claude Code keeps there.

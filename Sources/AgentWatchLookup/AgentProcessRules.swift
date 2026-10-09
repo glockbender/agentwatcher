@@ -7,9 +7,9 @@ import AgentWatchCore
 /// another; `AgentProcessLocator` asks the kernel and knows no agent. Every conformance
 /// answers in the same shared terms — a process number, a `SessionClientKind`, a
 /// `DiscoveredAgentProcess` — and an agent that cannot tell something answers with nothing
-/// rather than the question being left out. Codex's hooks carry no process number and its
-/// processes do not count sessions; that is said once, in `CodexProcessRules`, instead of as
-/// an `if source == .claude` at every caller.
+/// rather than the question being left out. Codex's desktop hooks carry no process number and
+/// its processes do not count sessions; that is said once, in `CodexProcessRules`, instead of
+/// as an `if source == .claude` at every caller.
 ///
 /// The same rules serve the hook sender and the app's scanner, and have to: a row the scanner
 /// builds and the row its first hook builds must agree about which process is the session's.
@@ -17,7 +17,7 @@ import AgentWatchCore
 /// «Где это живёт в коде».
 public protocol AgentProcessRules: Sendable {
     /// The process a hook names as its session's, found among the hook's ancestors — nearest
-    /// first — or `nil` when this agent's hooks carry no process number.
+    /// first — or `nil` where the process would not tell this session from others.
     func agentProcessID(among ancestors: [ProcessSnapshot]) -> Int32?
 
     /// The process of a headless run, which holds that one session and nothing else — named

@@ -727,11 +727,15 @@ final class SessionSupervisor {
         return sent
     }
 
-    /// What the other live rows are called: a tab title carrying one of them is what shows
-    /// that titles carry session names on this machine at all.
+    /// What the other live rows of the same agent are called: a tab title carrying one of
+    /// them is what shows that this agent's titles carry session names on this machine at all.
+    ///
+    /// The same agent's only, because each agent writes its own titles. A Claude tab carrying
+    /// its name says nothing of a Codex whose `[tui].terminal_title` leaves the thread's name
+    /// out, and taken as proof it would have the click offer to end a Codex that is fine.
     private func otherSessionNames(than snapshot: SessionSnapshot) -> [String] {
         engine.snapshots.values
-            .filter { $0.id != snapshot.id && $0.phase != .sessionClosed }
+            .filter { $0.id != snapshot.id && $0.source == snapshot.source && $0.phase != .sessionClosed }
             .compactMap { $0.title?.nonEmpty }
     }
 
