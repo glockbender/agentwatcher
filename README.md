@@ -9,7 +9,7 @@ A menu bar app for Apple Silicon Macs with macOS 14 or newer. Alpha: used every 
 [Download](https://github.com/glockbender/agentwatcher/releases) · [Install](#install) ·
 [What it works with](#what-it-works-with) · [Troubleshooting](TROUBLESHOOTING.md)
 
-<img src="docs/images/clip-start.avif" alt="A new terminal starts a Claude Code session, which asks before it runs a command; its row in the widget, the menu bar icon and the menu all turn orange, and choosing it in the menu opens the question" width="800">
+<img src="docs/images/clip-start.avif" alt="A terminal fills the screen with the widget in its top right corner. One session starts a long task while another waits to run a command; hovering its row opens a card that says what it waits for, a click on the row opens its terminal tab at the question, and once answered the row turns done" width="800">
 
 Every agent session gets a lamp that says what it is doing: working, waiting for you, done. A small
 floating widget lists the sessions with their lamps, the menu bar icon sums them up, and its menu
@@ -24,15 +24,6 @@ lists the sessions too, so one look tells you where you are needed, and one clic
 Every session is one row in a small floating window that stays above your other windows. Click a
 row to go back to that session's terminal tab; hover it for details. `⌥⌘W` shows or hides the
 widget.
-
-<img src="docs/images/clip-hero.avif" alt="A session waits for approval; a click on its row in the widget opens its terminal tab at the question, and once answered the row turns done" width="800">
-
-<details>
-<summary>Hover a row for its details</summary>
-
-<img src="docs/images/card.png" alt="Hover card: name, agent, model, project and branch, last event, running work and context size" width="231">
-
-</details>
 
 #### What the lamps mean
 
@@ -60,14 +51,14 @@ sessions in the widget's order — by default only those that need you and the f
 choosing one is the same as clicking its row. **Show Widget** or **Hide Widget** stays at the same
 place in the menu. The picture lists all four groups, as chosen in **Settings… → Menu Bar**.
 
-<img src="docs/images/clip-menu.avif" alt="The menu shows who needs you; choosing that session opens its terminal tab, and after the answer the menu shows it done" width="640">
+<img src="docs/images/clip-menu.avif" alt="The menu shows who needs you; choosing that session opens its terminal tab, and after the answer the menu shows it done" width="800">
 
 ## The menu bar icon
 
 The icon changes colour as soon as a session starts waiting for you, so you notice it even with
 the widget hidden.
 
-<img src="docs/images/clip-icon.avif" alt="The menu bar sphere turns orange when a session starts waiting for you" width="640">
+<img src="docs/images/clip-icon.avif" alt="A terminal right below the menu bar: the sphere turns blue while the session works, orange while it asks for approval, and green once it is done" width="640">
 
 It comes in two styles, chosen in **Settings… → Menu Bar**:
 
@@ -75,10 +66,12 @@ It comes in two styles, chosen in **Settings… → Menu Bar**:
 |---|---|
 | <img src="docs/images/menubar-sphere.png" alt="Sphere icon with a patch of colour for each state" width="38"> | <img src="docs/images/menubar-counts.png" alt="Counts icon: 2 need you, 3 working, 1 done, 1 idle" width="67"> |
 
-<img src="docs/images/clip-counts.avif" alt="Choosing Counts as the icon style in Settings changes the menu bar icon at once" width="800">
+<img src="docs/images/clip-counts.avif" alt="The same scene with the Counts icon: the one session moves from done to working, to needs you, and back to done" width="640">
 
 On a full-screen display, where the menu bar is hidden, a small dot in a top corner shows while a
 session needs you or works.
+
+<img src="docs/images/clip-fullscreen.avif" alt="A terminal fills the screen and the menu bar is hidden; a dot in the top right corner turns blue while a session works and orange when it asks; the menu bar slides down with the icon, and the dot goes out once the session is done" width="800">
 
 ## What it works with
 
@@ -181,7 +174,7 @@ Rows**, tick a part and drag it into place.
 <img src="docs/images/row-minimal.png" alt="Rows with only a lamp and a name" width="260">
 <img src="docs/images/row-full.png" alt="Rows with most parts: time, lamp, agent, name, project, branch, model, running work and context" width="620">
 
-<img src="docs/images/clip-branch.avif" alt="Ticking Branch among the row parts adds the branch, main, to every row" width="800">
+<img src="docs/images/clip-rows.avif" alt="Unticking row parts one by one leaves every row with a lamp and a name; ticking Branch and Model then adds the branch and the model" width="800">
 
 ### Order
 

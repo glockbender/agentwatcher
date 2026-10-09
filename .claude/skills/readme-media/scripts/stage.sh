@@ -30,6 +30,9 @@ up)
   for pid in $(pgrep -x AgentWatch); do
     die "Agent Watch runs ($(ps -o comm= -p $pid)): quit it, or the menu bar shows two icons"
   done
+  # A terminal closed by stage.sh down or by a take stays on screen a moment longer: up refused twice
+  # on a Ghostty window that was already closing.
+  for i in {1..20}; do [[ -z $($AW onscreen) ]] && break; sleep 0.25; done
   others=$($AW onscreen | sort -u | tr '\n' ' ')
   [[ -z $others ]] || die "this desktop is not empty: $others"
 
@@ -103,7 +106,7 @@ EOF
   # one session's events, and another that stops to ask on its own — Opus asked to run a command to
   # read a file — must not stand in for it.
   say_step "opening prompts"
-  prompts=('Run `task --list` and tell me in one line how many tasks there are.'
+  prompts=('Run `task --list` and tell me in one line which task runs the unit tests.'
     "List the targets in Package.swift in one line." "Reply with one word: ready.")
   IDS=()
   for i in 2 3 1; do

@@ -23,7 +23,6 @@ final class DocumentationRenderProbe: XCTestCase {
         let afternoon = ReadmeShowcase.sessions()
         let byState = ordered(afternoon, by: .attention)
         try write(widget(byState, width: 380, usage: ReadmeShowcase.usageLimits), "widget", in: root)
-        try write(hoverCard(for: afternoon[2]), "card", in: root)
 
         // The looks: one theme in its two modes, and a theme of somebody's own.
         let four = Array(byState.prefix(4))
@@ -134,29 +133,6 @@ final class DocumentationRenderProbe: XCTestCase {
             sessionCount: sessions.count, usageLimits: usage, background: background, style: style)
         place(list, size: NSSize(width: width, height: height))
         return list
-    }
-
-    /// Built the way `SessionHoverCard` builds it.
-    private func hoverCard(for snapshot: SessionSnapshot) -> NSView {
-        let style = WidgetStyle.standard
-        let label = NSTextField(
-            labelWithString: hoverCardText(for: snapshot, now: now, layout: .standard, reach: .anApplication))
-        label.font = style.secondaryFont
-        label.lineBreakMode = .byWordWrapping
-        label.maximumNumberOfLines = 0
-        let padding = style.hoverCardPadding
-        let available = style.hoverCardMaximumWidth - 2 * padding
-        label.preferredMaxLayoutWidth = available
-        let size = label.sizeThatFits(NSSize(width: available, height: CGFloat.greatestFiniteMagnitude))
-        let card = NSView(
-            frame: NSRect(x: 0, y: 0, width: size.width + 2 * padding, height: size.height + 2 * padding))
-        card.wantsLayer = true
-        card.layer?.backgroundColor = NSColor(calibratedWhite: 0.13, alpha: 1).cgColor
-        card.layer?.cornerRadius = WidgetStyle.panelCornerRadius
-        label.frame = NSRect(x: padding, y: padding, width: size.width, height: size.height)
-        card.addSubview(label)
-        place(card, size: card.frame.size)
-        return card
     }
 
     /// The status item's drawing on a strip the colour of a dark menu bar.

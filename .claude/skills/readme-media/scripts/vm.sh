@@ -1,5 +1,5 @@
 #!/bin/zsh
-# vm.sh stand | grant | up [bare] | sync | run <take> | fetch | down | sh <command>
+# vm.sh stand | grant | up [bare] | sync | shoot [step] | run <take> | fetch | down | sh <command>
 #
 # Takes the README clips in a clean macOS inside a Tart virtual machine: nothing of this Mac's
 # desktop gets into a frame, and a take's clicks and keys stay inside the machine. vm.md tells the
@@ -10,10 +10,11 @@
 #   up      clone aw-stand into aw-take and put the stage up there, as stage.sh up does here;
 #           `up bare` stops before the stage, for takes/setup.sh, which needs nothing open
 #   sync    give the running aw-take this skill's files again, after a script changed here
-#   run     run a take inside aw-take: vm.sh run takes/hero.sh
+#   shoot   every take in order, on a copy from `up bare`; `shoot menu` goes on from that step
+#   run     run one take inside aw-take: vm.sh run takes/start.sh
 #   fetch   copy aw-take's new recordings and marks into this Mac's cache, where cut.py looks;
-#           `fetch hero menu` copies those takes whatever is here
-#   down    stop aw-take and move it to the Trash
+#           `fetch start menu` copies those takes whatever is here
+#   down    stop aw-take and delete it
 #   sh      run a command inside aw-take, or inside the machine AW_VM names
 set -e
 
@@ -29,8 +30,11 @@ VM=${AW_VM:-$TAKE_VM}
 # The token Claude Code signs in with. Its owner put it into this Mac's keychain (vm.md); it goes
 # into a machine's keychain through a pipe and never into a command line, a file or a log.
 TOKEN=agent-watch-vm-claude-token
-# The screen the takes were laid out on, in points: a 16-inch MacBook Pro's.
-SCREEN=(1728 1117)
+# The screen the takes are laid out on, in points. A clip shows what happens on it and nothing
+# around, with the camera standing still; shown 800 wide, the whole screen puts the interface at
+# about 70 % of its size. The windows macOS places itself, the settings window among them, land
+# beside the widget here.
+SCREEN=(1152 720)
 G_REPO=/Users/admin/CommonProjects/agent-watch
 G_SCRIPTS=$G_REPO/.claude/skills/readme-media/scripts
 G_WORK=/Users/admin/Library/Caches/agent-watch-media
@@ -153,6 +157,9 @@ stand)
   # Auto is already light, and choosing Light in the settings take changed nothing on screen. It
   # takes effect at the next login, and every copy starts with one.
   in $STAND "defaults write -g AppleInterfaceStyle -string Dark"
+  # Out of the frame: a take that shows the whole screen would show its row of icons too. The
+  # takes keep the pointer above the bottom edge, which would bring it back.
+  in $STAND "defaults write com.apple.dock autohide -bool true && killall Dock"
   say_step "ffmpeg"
   in $STAND 'brew list ffmpeg > /dev/null 2>&1 || HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 brew install --quiet ffmpeg'
 
@@ -163,12 +170,10 @@ stand)
     in $STAND "{ [[ ! -e /Applications/Ghostty.app ]] || sudo trash /Applications/Ghostty.app } && sudo ditto '$G_SHARE/Ghostty.app' /Applications/Ghostty.app"
   fi
   # This Mac's look, and no updates: a new copy asks in its title bar whether to check for them,
-  # and the button stays there through every take. Every new window opens at this place and size —
-  # points from the top left below the menu bar, and cells — so a take opens a terminal on camera
-  # without it jumping (Ghostty 1.3.1). The file may end without a newline: it starts one.
+  # and the button stays there through every take (Ghostty 1.3.1). The file may end without a
+  # newline: it starts one. Where a new window opens is the setup take's to say.
   cp ~/Library/Application\ Support/com.mitchellh.ghostty/config $SHARE/ghostty-config
-  print -- '\nauto-update = off\nwindow-position-x = 620\nwindow-position-y = 150\nwindow-width = 88\nwindow-height = 27' \
-    >> $SHARE/ghostty-config
+  print -- '\nauto-update = off' >> $SHARE/ghostty-config
   in $STAND "mkdir -p ~/Library/Application\ Support/com.mitchellh.ghostty && cp '$G_SHARE/ghostty-config' ~/Library/Application\ Support/com.mitchellh.ghostty/config"
 
   # Claude.app for its icon alone, never started: a row shows the app's logo, and without the app a
@@ -303,6 +308,28 @@ up)
   [[ ${2:-} == bare ]] || in $TAKE_VM "$(stage_env) ./stage.sh up"
   ;;
 
+shoot)
+  # Each take needs the one before it: setup on a bare copy, then a stage, default settings before
+  # the settings take and after it, and counts last, since it leaves the icon in that style. Stops
+  # at the first take that fails; `shoot <that step>` goes on from there.
+  steps=(setup stage start menu settings fullscreen icon counts)
+  from=${steps[(Ie)${2:-setup}]}
+  (( from )) || die "vm.sh shoot [${(j:|:)steps}]"
+  for step in $steps[$from,-1]; do
+    say_step "shoot: $step"
+    case $step in
+      # A stage left by an earlier try goes first; with none up, down does nothing.
+      stage) cmds=("./stage.sh down" "./stage.sh up") ;;
+      settings|fullscreen) cmds=("./stage.sh reset-settings" ./takes/$step.sh) ;;
+      counts) cmds=("./takes/icon.sh counts") ;;
+      *) cmds=(./takes/$step.sh) ;;
+    esac
+    for cmd in $cmds; do
+      in $VM "$(stage_env) $cmd" || die "shoot stopped at $step: vm.sh shoot $step goes on from there"
+    done
+  done
+  ;;
+
 run)
   shift
   [[ -n ${1:-} ]] || die "vm.sh run <take> [arguments]"
@@ -339,13 +366,12 @@ fetch)
 down)
   if running $TAKE_VM; then
     in $TAKE_VM "$(stage_env) ./stage.sh down" || true
-    # The Trash keeps the clone until it is emptied, and its keychain with it.
-    scrub_account $TAKE_VM
     tart stop $TAKE_VM
   fi
-  # The Trash keeps the clone's own blocks until it is emptied; the rest it shares with the stand.
-  [[ ! -e ~/.tart/vms/$TAKE_VM ]] || trash ~/.tart/vms/$TAKE_VM
-  say_step "$TAKE_VM is in the Trash"
+  # Deleted at once, its keychain with the token along: clones of 30 GB each waiting in the Trash
+  # needed watching (the owner's choice, 2026-10-10).
+  ! tart get $TAKE_VM > /dev/null 2>&1 || tart delete $TAKE_VM
+  say_step "$TAKE_VM is deleted"
   ;;
 
 sync)
@@ -364,7 +390,7 @@ sh)
   ;;
 
 *)
-  sed -n '2,14p' $0
+  awk 'NR > 1 && /^set -e/ { exit } NR > 1 { print }' $0
   exit 2
   ;;
 esac

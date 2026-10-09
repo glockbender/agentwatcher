@@ -1,8 +1,0 @@
-# time x y width, in stage pixels; between two different lines the frame moves, eased
-@long-task-1.1  0   0 2080   # the whole window
-@long-task+0.8  0   0 2080
-@long-task+1.5  980 0 1100   # onto the widget
-@click+0.1      980 0 1100
-@click+0.8      0   0 2080   # back out: the terminal shows the question
-@done           0   0 2080
-@done+0.7       980 0 1100   # the row is done

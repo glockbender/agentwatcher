@@ -4,7 +4,7 @@
 # never installed and nothing is open: vm.sh up bare, this take, then stage.sh up (vm.md).
 set -e
 source ${0:A:h}/../lib.sh
-STAGE=(460 0 1268 810)
+STAGE=(0 0 $($AW screen | awk '{ print $3, $4 }'))
 PLUGIN=~/.claude/skills/agent-watch
 # It ends every Claude Code process and quits Ghostty when it is done.
 [[ $(sysctl -n kern.hv_vmm_present) == 1 ]] || die "takes/setup.sh runs only inside the virtual machine (vm.md): it ends every claude and quits Ghostty"
@@ -17,7 +17,14 @@ others=$($AW onscreen | sort -u | tr '\n' ' ')
 [[ ! -e $SUPPORT ]] || trash $SUPPORT
 rm -f $STATE
 DEMO_PID=""
-$AW glide 1250 760
+# The terminal opens on camera where it stays: Ghostty puts a new window where its configuration
+# says, in points below the menu bar and in cells of open_terminal's font (Ghostty 1.3.1). Its
+# bottom meets the settings window's, which macOS centres at 59–619 on this screen, measured on
+# macOS 15.7.7: the clip ends there (clips/setup.keys).
+print -- '\nwindow-position-x = 330\nwindow-position-y = 299\nwindow-width = 80\nwindow-height = 14' \
+  >> ~/Library/Application\ Support/com.mitchellh.ghostty/config
+# Below the clip, and above the edge that would bring up the Dock.
+$AW glide 1060 680
 sleep 1
 
 take_begin setup $STAGE
@@ -35,7 +42,7 @@ for i in {1..20}; do [[ -f $PLUGIN/hooks/hooks.json ]] && break; sleep 0.25; don
 [[ -f $PLUGIN/hooks/hooks.json ]] || take_abort "the guide did not install the hooks"
 sleep 0.3; click findc "Continue" continue
 # Out of the way: the next page has "Finish Later" right under the pointer.
-sleep 0.3; $AW glide 1500 620
+sleep 0.3; $AW glide 1060 560
 
 # The terminal opens over the guide; the widget floats above both.
 started=$(count_events sessionStarted)

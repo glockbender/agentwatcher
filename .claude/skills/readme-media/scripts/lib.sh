@@ -137,20 +137,57 @@ widget_shown() { $AW ax windows $DEMO_PID | awk 'NF == 4 { found = 1 } END { exi
 show_widget() { widget_shown || { $AW ax press $DEMO_PID toggleWidget; sleep 0.6 } }
 hide_widget() { ! widget_shown || { $AW ax press $DEMO_PID toggleWidget; sleep 0.6 } }
 
+# end_other_sessions: every stage session but "Check the task list" ends. The full-screen dot and
+# the menu bar icon show every session the copy counts, each for its share: with the others done or
+# quiet the dot was mostly green while one asked. An ended session is not counted.
+end_other_sessions() {
+  local ended=$(count_events sessionEnded) others=0 i
+  for i in 2 3; do
+    (( $(count_events sessionEnded $IDS[i]) == 0 )) || continue
+    say $NAMES[i] /exit
+    others=$(( others + 1 ))
+  done
+  for i in {1..120}; do (( $(count_events sessionEnded) >= ended + others )) && return 0; sleep 0.25; done
+  die "the other sessions did not end"
+}
+
+# warm_menu <icon x>: open the menu and close it before the take records. A copy's first menu once
+# never showed: the click started the menu, macOS set up its menus for the first time, and nothing
+# came. It is a race the takes lost once in several runs (measured on macOS 15.7.7 in the virtual
+# machine). Off camera, a second click costs nothing.
+warm_menu() {
+  local half=$(( $($AW screen | awk '{ print $4 }') / 2 )) item i
+  for i in 1 2; do
+    $AW glide $1 $(( BAR / 2 )) click
+    for _ in {1..30}; do
+      # A closed menu's items sit at the screen's bottom left; an open one hangs from the bar.
+      item=($($AW ax find $DEMO_PID "Quit Agent Watch" 2> /dev/null))
+      (( ${item[2]:-$half} < half )) && break
+      sleep 0.1
+    done
+    $AW key 53
+    sleep 0.5
+    (( ${item[2]:-$half} < half )) && return 0
+  done
+  die "The menu did not open"
+}
+
 # MARK: - A take
 
 # take_begin <name> <stage x y w h, in points>: start recording the screen and the marks file.
 # Marks are in the recording's own time: T0 is the wall time of its first frame, which the
-# recorder writes down as soon as that frame arrives.
+# recorder writes down as soon as that frame arrives. The cut blurs the menu bar on one's own
+# screen; a virtual machine's holds nothing of the person's, and stays sharp.
 take_begin() {
   TAKE=$1; shift
   STAGE_RECT=($@)
   MARKS=$WORK/$TAKE.marks
   local screen=($($AW screen))
+  [[ $(sysctl -n kern.hv_vmm_present) != 1 ]] || TAKE_BAR=0
   {
     print "stage $*"
     print "scale ${screen[1]}"
-    print "bar ${screen[2]}"
+    print "bar ${TAKE_BAR:-${screen[2]}}"
   } > $MARKS
   rm -f $WORK/$TAKE.t0
   # Rows of sessions that started since the stage went up, and banners that would land in it. A
@@ -169,8 +206,9 @@ take_begin() {
   # often ours — then goes behind it. A stage that holds the menu bar waits for the indicator and
   # stops at once if the icon is gone. Measured on macOS 15.3. Only a notch hides anything, and a
   # menu bar is taller under one (38 points against 25), so elsewhere the take does not wait; a
-  # virtual machine shows no indicator at all, the icon stayed put through a 75 s take, measured on
-  # macOS 15.7.7. The wait is bounded all the same, for an indicator that never comes.
+  # virtual machine shows only a purple dot beside the Control Center icon, and the icon stayed put
+  # through a 75 s take, measured on macOS 15.7.7. The wait is bounded all the same, for an
+  # indicator that never comes.
   if (( $2 < ${screen[2]} && ${screen[2]} > 30 )) && [[ -n ${DEMO_PID:-} ]]; then
     while (( EPOCHREALTIME - T0 < 15 )); do
       icon_x=$($AW bar | awk -v p=$DEMO_PID '$3 == p { print $1; exit }')
@@ -203,8 +241,8 @@ mark() { printf "@ %.3f %s\n" $(( EPOCHREALTIME - T0 )) "$*" >> $MARKS }
 # click <find|findc> <text> <mark>: glide to the element and click it; the mark carries its frame.
 # An element is found before it is on screen: a menu item, while its menu is still opening, has a
 # frame at the screen's bottom left, and a click there opened the Dock's Finder. So the click looks
-# again, 20 times, until the element is inside the stage: two seconds here, about 30 in a virtual
-# machine, where one search takes about 1.5 s.
+# again, 20 times, until the element is inside the stage: about four seconds in the virtual machine
+# while it records, where one search took 0.1 s (measured on macOS 15.7.7).
 click() {
   local r parts i
   for i in {1..20}; do

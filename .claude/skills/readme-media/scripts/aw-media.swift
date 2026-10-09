@@ -17,6 +17,7 @@
 //   ax windows <pid>              frame and title of every window
 //   ax close <pid> <title>        press the close button of the window whose title ends with it
 //   ax move <pid> <title|-> x y w h   set a window's frame; "-" is the untitled one (the widget)
+//   ax fullscreen <pid> <title|-> on|off   enter or leave the window's own full-screen space
 //   activate <pid>                bring an app forward
 //   glide x y [click]             move the pointer along an eased path, then click if asked
 //   key <code> [cmd,opt,ctrl,shift]  press and release one key (53 is Escape, 13 is W)
@@ -86,6 +87,18 @@ func frame(_ element: AXUIElement) -> CGRect? {
 func ax(_ args: [String]) {
     guard args.count >= 2, let pid = pid_t(args[1]) else { fail("ax <command> <pid> …") }
     let app = AXUIElementCreateApplication(pid)
+    // A window by the end of its title; "-" is the untitled one (the widget).
+    func window(_ title: String) -> AXUIElement {
+        let want = title == "-" ? "" : title
+        let windows = attribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []
+        guard
+            let window = windows.first(where: {
+                let title = (attribute($0, kAXTitleAttribute) as? String) ?? ""
+                return want.isEmpty ? title.isEmpty : title.hasSuffix(want)
+            })
+        else { fail("no window: \(title)") }
+        return window
+    }
     switch args[0] {
     case "find", "findc", "findm":
         guard args.count == 3 else { fail("ax find <pid> <text>") }
@@ -154,18 +167,21 @@ func ax(_ args: [String]) {
         guard args.count == 7, let x = Double(args[3]), let y = Double(args[4]), let w = Double(args[5]),
             let h = Double(args[6])
         else { fail("ax move <pid> <title|-> x y w h") }
-        let want = args[2] == "-" ? "" : args[2]
-        let windows = attribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []
-        guard
-            let window = windows.first(where: {
-                let title = (attribute($0, kAXTitleAttribute) as? String) ?? ""
-                return want.isEmpty ? title.isEmpty : title.hasSuffix(want)
-            })
-        else { fail("no window: \(args[2])") }
+        let target = window(args[2])
         var size = CGSize(width: w, height: h)
         var point = CGPoint(x: x, y: y)
-        AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, AXValueCreate(.cgSize, &size)!)
-        AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, AXValueCreate(.cgPoint, &point)!)
+        // The place first: a size that does not fit on the screen from where the window stands is cut
+        // to fit, measured on macOS 15.7.7 on a 1152-point screen. Placed again after, in case the
+        // new size moved it.
+        AXUIElementSetAttributeValue(target, kAXPositionAttribute as CFString, AXValueCreate(.cgPoint, &point)!)
+        AXUIElementSetAttributeValue(target, kAXSizeAttribute as CFString, AXValueCreate(.cgSize, &size)!)
+        AXUIElementSetAttributeValue(target, kAXPositionAttribute as CFString, AXValueCreate(.cgPoint, &point)!)
+    case "fullscreen":
+        guard args.count == 4, ["on", "off"].contains(args[3]) else { fail("ax fullscreen <pid> <title|-> on|off") }
+        // The window's green button does the same; a key would depend on the focus and the app's bindings.
+        let done = AXUIElementSetAttributeValue(
+            window(args[2]), "AXFullScreen" as CFString, (args[3] == "on") as CFBoolean)
+        guard done == .success else { fail("AXFullScreen refused: \(done.rawValue)") }
     default:
         fail("ax: unknown \(args[0])")
     }

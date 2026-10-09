@@ -1,11 +1,12 @@
 # One clip a line: name, take, in, out, width, height, keyframes. In and out are marks of the take
-# (`@mark±seconds`); the size is twice the width the README shows it at.
-clip-start   start     @open-1.0       @done+2.5     1600 1022  clips/start.keys
-clip-hero    hero      @long-task-1.1  @done+3.0     1600 1004  clips/hero.keys
-clip-icon    menu      @waiting-2.2    @waiting+2.6  1280 720   clips/icon.keys
-clip-menu    menu      @open-menu-1.2  @escape-0.1   1280 1072  clips/menu.keys
-clip-order   settings  @state-2.1      @state+2.1    1600 900   clips/order.keys
-clip-light   settings  @light-1.8      @light+2.4    1600 900   clips/light.keys
-clip-branch  settings  @branch-1.8     @branch+2.2   1600 900   clips/branch.keys
-clip-counts  settings  @counts-1.9     @counts+2.7   1600 900   clips/counts.keys
-clip-setup   setup     @launch-0.6     @ready+2.4    1600 1022  clips/setup.keys
+# (`@mark±seconds`); the size is twice the width the README shows it at. One keyframe is a camera
+# that stands still: a clip shows its whole scene at once.
+clip-start      start       @long-task-1.2  @done+2.5      1600 1000  clips/start.keys
+clip-menu       menu        @open-menu-1.2  @escape-0.1    1600 1000  clips/menu.keys
+clip-icon       icon        @ask-1.0        @done+2.2      1280 800   clips/icon.keys
+clip-counts     counts      @ask-1.0        @done+2.2      1280 800   clips/icon.keys
+clip-order      settings    @state-2.1      @state+2.1     1600 1000  clips/settings.keys
+clip-light      settings    @light-1.8      @light+2.4     1600 1000  clips/settings.keys
+clip-rows       settings    @rows-0.8       @on-model+2.2  1600 1000  clips/settings.keys
+clip-setup      setup       @launch-0.6     @ready+2.4     1600 1054  clips/setup.keys
+clip-fullscreen fullscreen  @ask-1.2        @done+2.0      1600 1000  clips/fullscreen.keys

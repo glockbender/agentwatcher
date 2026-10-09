@@ -7,7 +7,8 @@ other pauses still cuts in the right place. Positions are stage pixels from the 
 stage the menu bar is blurred, except the Agent Watch icon at the frames the take sampled.
 
   --sheet     also tile every half second of each clip into <name>-sheet.png, to check by eye
-  --publish   copy the clips into docs/images
+  --publish   copy the clips into docs/images, then name the clips the README and clips.txt
+              disagree on, and print the size of them all
   ENCODE_ONLY=1  reuse the frames of the last run: another CRF costs seconds, not a minute
   CRF=46         quality, lower is larger; 46 kept small terminal text intact (svt-av1 4.1)
 """
@@ -142,15 +143,32 @@ def cut(name, take, start_at, end_at, width, height, keys_file, sheet):
             "-frames:v", "1", "-y", WORK / f"{name}-sheet.png")
 
 
+def check_published(listed):
+    """A clip renamed or dropped left its old file behind in docs/images, and the README's sizes
+    went stale: say both rather than leave them to be noticed."""
+    images = REPO / "docs/images"
+    readme = set(re.findall(r"docs/images/(clip-[\w-]+)\.avif", (REPO / "README.md").read_text()))
+    present = {f.stem for f in images.glob("clip-*.avif")}
+    for name, what in ((present - listed, "in docs/images but not in clips.txt: git rm it"),
+                       (listed - readme, "in clips.txt but not in the README"),
+                       (readme - listed, "in the README but not in clips.txt")):
+        for clip in sorted(name):
+            print(f"{clip}: {what}")
+    total = sum((images / f"{clip}.avif").stat().st_size for clip in listed & present)
+    print(f"all {len(listed & present)} clips in docs/images: {total // 1024} KB")
+
+
 def main():
     args = sys.argv[1:]
     sheet, publish = "--sheet" in args, "--publish" in args
     wanted = [a for a in args if not a.startswith("--")]
-    clips = []
+    clips, listed = [], set()
     for line in (SCRIPTS / "clips.txt").read_text().splitlines():
         fields = line.split("#")[0].split()
-        if len(fields) == 7 and (not wanted or fields[0] in wanted):
-            clips.append(fields)
+        if len(fields) == 7:
+            listed.add(fields[0])
+            if not wanted or fields[0] in wanted:
+                clips.append(fields)
 
     def one(fields):
         name, take, start, end, width, height, keys = fields
@@ -166,6 +184,8 @@ def main():
     with ThreadPoolExecutor(max_workers=4) as pool:
         for done in [pool.submit(one, fields) for fields in clips]:
             done.result()
+    if publish:
+        check_published(listed)
 
 
 if __name__ == "__main__":

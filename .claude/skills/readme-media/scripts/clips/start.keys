@@ -1,12 +1,1 @@
-# time x y width, in stage pixels; between two different lines the frame moves, eased
-@open-1.0     0   0   2256   # the whole desk: the widget, the icon, no terminal yet
-@claude-0.9   0   0   2256   # a terminal has opened
-@claude-0.1   0   350 1676   # onto it: `claude`, then the question
-@ask+0.6      0   350 1676
-@ask+1.4      0   0   2256   # out: the new row starts working
-@waiting      0   0   2256
-@waiting+0.7  940 0   1316   # the row, the icon, then the menu ask for you
-@choose+0.2   940 0   1316
-@choose+0.9   0   350 1676   # the question in the terminal
-@done         0   350 1676
-@done+0.7     940 0   1316   # the row is done
+@long-task  0 0 2304   # the whole screen
