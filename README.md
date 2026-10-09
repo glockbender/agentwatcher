@@ -7,18 +7,34 @@
 
 A menu bar app for Apple Silicon Macs with macOS 14 or newer. Alpha: used every day, still changing.
 [Download](https://github.com/glockbender/agentwatcher/releases) · [Install](#install) ·
-[Troubleshooting](TROUBLESHOOTING.md)
+[What it works with](#what-it-works-with) · [Troubleshooting](TROUBLESHOOTING.md)
 
-<img src="docs/images/clip-hero.avif" alt="A session waits for approval; a click on its row in the widget opens its terminal tab at the question, and once answered the row turns done" width="800">
+<img src="docs/images/clip-start.avif" alt="A new terminal starts a Claude Code session, which asks before it runs a command; its row in the widget, the menu bar icon and the menu all turn orange, and choosing it in the menu opens the question" width="800">
+
+Every agent session gets a lamp that says what it is doing: working, waiting for you, done. A small
+floating widget lists the sessions with their lamps, the menu bar icon sums them up, and its menu
+lists the sessions too, so one look tells you where you are needed, and one click takes you there.
+
+## Two ways to watch your sessions
+
+### The widget
 
 <img src="docs/images/widget.png" alt="The widget with seven sessions: two need you, three are working, one is done and one is quiet" width="380">
 
-Every agent session is one row in a small floating widget. The lamp at the start of a row says
-what the session is doing, so one look tells you where you are needed. Click a row to go back
-to that session's terminal tab; hover it for details. `⌥⌘W` shows or hides the widget. Without
-the widget, the menu bar lists the same sessions and does the same.
+Every session is one row in a small floating window that stays above your other windows. Click a
+row to go back to that session's terminal tab; hover it for details. `⌥⌘W` shows or hides the
+widget.
 
-## What the lamps mean
+<img src="docs/images/clip-hero.avif" alt="A session waits for approval; a click on its row in the widget opens its terminal tab at the question, and once answered the row turns done" width="800">
+
+<details>
+<summary>Hover a row for its details</summary>
+
+<img src="docs/images/card.png" alt="Hover card: name, agent, model, project and branch, last event, running work and context size" width="231">
+
+</details>
+
+#### What the lamps mean
 
 <img src="docs/images/lamps.gif" alt="One row per lamp, each blinking at its real speed: working, planning, waiting for a subagent, needs your answer, done, started, failed, usage limit reached, no signal, terminal closed, closed" width="324">
 
@@ -35,12 +51,54 @@ A black ring means the session closed; it leaves the list after the time set in 
 General**. Colour is never the only sign: the ring, the pause sign and the menu's marks differ by
 shape.
 
-<details>
-<summary>Hover a row for its details</summary>
+### The menu
 
-<img src="docs/images/card.png" alt="Hover card: name, agent, model, project and branch, last event, running work and context size" width="231">
+<img src="docs/images/menu.png" alt="The menu: a summary line, seven sessions with their state marks, Show Widget, Settings and Quit" width="282">
 
-</details>
+If you would rather not have a window on screen, hide the widget: the menu bar icon's menu lists the
+sessions in the widget's order — by default only those that need you and the finished ones — and
+choosing one is the same as clicking its row. **Show Widget** or **Hide Widget** stays at the same
+place in the menu. The picture lists all four groups, as chosen in **Settings… → Menu Bar**.
+
+<img src="docs/images/clip-menu.avif" alt="The menu shows who needs you; choosing that session opens its terminal tab, and after the answer the menu shows it done" width="640">
+
+## The menu bar icon
+
+The icon changes colour as soon as a session starts waiting for you, so you notice it even with
+the widget hidden.
+
+<img src="docs/images/clip-icon.avif" alt="The menu bar sphere turns orange when a session starts waiting for you" width="640">
+
+It comes in two styles, chosen in **Settings… → Menu Bar**:
+
+| Sphere (default) | Counts |
+|---|---|
+| <img src="docs/images/menubar-sphere.png" alt="Sphere icon with a patch of colour for each state" width="38"> | <img src="docs/images/menubar-counts.png" alt="Counts icon: 2 need you, 3 working, 1 done, 1 idle" width="67"> |
+
+<img src="docs/images/clip-counts.avif" alt="Choosing Counts as the icon style in Settings changes the menu bar icon at once" width="800">
+
+On a full-screen display, where the menu bar is hidden, a small dot in a top corner shows while a
+session needs you or works.
+
+## What it works with
+
+Claude Code and Codex, in a terminal or in their desktop apps. Every session gets its lamp wherever
+it runs; what differs is where a click on its row takes you.
+
+| Where the session runs | A click on its row |
+|---|---|
+| **Claude Code or Codex in Ghostty** | Brings forward the exact tab. macOS asks once for Automation permission. A Codex tab is found once Codex has named the thread, after its first answer |
+| **Claude Code or Codex in a JetBrains IDE terminal**, with the [plugin](#jetbrains-ide-plugin) | Brings forward the exact terminal tab |
+| **Claude desktop app** | Opens that session in the app |
+| **Codex in the ChatGPT desktop app** | Opens that thread in the app |
+| **Claude Code sent to the background** (`/bg`) | Opens `claude attach` for it in a new Ghostty tab |
+| **Claude Code or Codex in any other terminal or IDE**: Terminal, iTerm2, VS Code, a JetBrains IDE without the plugin | Brings that app forward with all its windows, not the exact tab |
+
+If a terminal was closed and its agent kept running, the click asks whether to end that agent.
+
+Runs without a window — `claude -p`, Agent SDK runs and `codex exec` — are hidden by default,
+because the program that started one usually shows it already. **Settings… → General → Show
+headless runs** lists them; a click on one offers to end it.
 
 ## Install
 
@@ -59,11 +117,13 @@ shape.
    **System Settings → Privacy & Security → Open Anyway** also exists, but does not work on every
    Mac for such apps; the command above always does.
 
-3. Open Agent Watch. The empty widget offers **Connect Agent →**. Choose Claude Code or Codex
-   and press **Install Connection**.
+3. Open Agent Watch. The empty widget offers **Connect Agent →**, which opens a short guide in
+   **Settings… → Tooling**. Choose Claude Code or Codex and press **Install Connection**.
 4. **Claude Code:** run `/reload-plugins` in a running session, or start a new one.
    **Codex:** accept its trust prompt for the hooks. Then send a short request; the session
    appears in the widget.
+
+<img src="docs/images/clip-setup.avif" alt="First start: the empty widget offers Connect Agent, the guide installs the Claude Code connection, a new session in the terminal appears in the widget, and the guide confirms that the agent has reported" width="800">
 
 Nothing is written into an agent's configuration until you press an install button. Connect the
 other agent later in **Settings… → Tooling**. For Claude, **Connect Status Line** adds the
@@ -76,47 +136,35 @@ context size and account usage to the widget; your own status-line command keeps
 
 </details>
 
-## Where a click takes you
-
-| Where the agent runs | A click on its row |
-|---|---|
-| Ghostty | Brings forward the exact tab. macOS asks once for Automation permission |
-| A JetBrains IDE terminal, with the [plugin](#jetbrains-ide-plugin) | Brings forward the exact terminal tab |
-| Claude desktop app; Codex in the ChatGPT desktop app | Opens that session in the app |
-| A Claude Code session sent to the background (`/bg`) | Opens `claude attach` for it in a new Ghostty tab |
-| Any other terminal or IDE | Brings the app forward with all its windows |
-
-If a terminal was closed and its agent kept running, the click asks whether to end that agent.
-
-## Without the widget
-
-<img src="docs/images/menu.png" alt="The menu: a summary line, seven sessions with their state marks, Show Widget, Settings and Quit" width="282">
-
-The menu lists your sessions in the widget's order, and choosing one is the same as clicking its
-row. **Show Widget** or **Hide Widget** stays at the same place. By default it lists the sessions
-that need you and the finished ones; the picture lists all four groups, as chosen in
-**Settings… → Menu Bar**.
-
-<img src="docs/images/clip-menu.avif" alt="The menu shows who needs you; choosing that session opens its terminal tab, and after the answer the menu shows it done" width="640">
-
-<img src="docs/images/clip-icon.avif" alt="The menu bar sphere turns orange when a session starts waiting for you" width="640">
-
-| Sphere (default) | Counts |
-|---|---|
-| <img src="docs/images/menubar-sphere.png" alt="Sphere icon with a patch of colour for each state" width="38"> | <img src="docs/images/menubar-counts.png" alt="Counts icon: 2 need you, 3 working, 1 done, 1 idle" width="67"> |
-
-<img src="docs/images/clip-counts.avif" alt="Choosing Counts as the icon style in Settings changes the menu bar icon at once" width="800">
-
-On a full-screen display, where the menu bar is hidden, a small dot in a top corner shows while a
-session needs you or works.
-
 ## Make it yours
 
-Every setting is in one window: **Settings…** in the menu, or `⌘,` while the menu is open.
+Everything Agent Watch draws can be changed: every colour and every animation of the widget, the
+menu bar icon and the menu, separately for light and dark mode — and what a row shows, the order
+of the rows and the size. It is all in one window: **Settings…** in the menu, or `⌘,` while the
+menu is open. Every change shows at once, on the widget itself.
 
-**Themes.** A theme holds every colour and animation: the panel, each lamp, the menu bar icon and
-the menu's marks, for light and dark mode. On macOS 26 the panel can be Liquid Glass. Edit a
-theme with live examples, export it, or import one somebody shared.
+### Themes
+
+A theme holds every colour and animation. The built-in one is called Default; the first change
+you make copies it into a theme of your own, so Default stays as it was.
+
+<img src="docs/images/settings-theme.png" alt="Theme editor: background, material and opacity of the widget, then for each lamp its colour, motion, second colour and cycle length, with a live row beside each" width="570">
+
+The theme editor changes:
+
+- **The widget's panel:** background colour, material — glass or clear glass on macOS 26, frosted
+  or solid — and opacity.
+- **Each of the eleven lamps:** its colour, its motion (none, dim, or a fade into a second colour)
+  and how long one cycle takes.
+- **The menu bar icon and the menu's marks:** their own colours and motion, or matched to the
+  lamps; for the sphere, its halo, sway and swell.
+- **Other colours:** the timers, the highlight outline, secondary text and warnings.
+- **Timing:** how long the highlight lasts, how soon a row's card opens, how far lamps dim, and
+  where the full-screen dot sits and how big it is.
+
+A change goes into light mode, dark mode, or both. A theme is a JSON file: **Export…** one to
+share it, **Import…** one somebody shared, or edit the file by hand. Glass chosen on an older macOS
+is drawn frosted.
 
 | Default, dark mode | Default, light mode | A theme of your own |
 |---|---|---|
@@ -124,16 +172,20 @@ theme with live examples, export it, or import one somebody shared.
 
 <img src="docs/images/clip-light.avif" alt="Choosing Light in Appearance recolours the widget at once" width="800">
 
-**Rows.** Choose and reorder what a row shows: elapsed time, lamp, agent, name, project, branch,
-model, running work, context size, where it runs.
+### Rows
+
+Choose and reorder what a row shows: elapsed time, lamp, agent, a problem mark, name, project,
+branch, model, where it runs, which Codex subagent it is, running work and context size. In **Settings… → Widget →
+Rows**, tick a part and drag it into place.
 
 <img src="docs/images/row-minimal.png" alt="Rows with only a lamp and a name" width="260">
-<img src="docs/images/row-full.png" alt="Rows with every part: time, lamp, agent, name, project, branch, model, running work and context" width="620">
+<img src="docs/images/row-full.png" alt="Rows with most parts: time, lamp, agent, name, project, branch, model, running work and context" width="620">
 
 <img src="docs/images/clip-branch.avif" alt="Ticking Branch among the row parts adds the branch, main, to every row" width="800">
 
-**Order.** Arrival (rows never move by themselves), by state, by blocks you arrange, or by recent
-activity.
+### Order
+
+Arrival (rows never move by themselves), by state, by blocks you arrange, or by recent activity.
 
 | Arrival | By state | By blocks |
 |---|---|---|
@@ -141,18 +193,19 @@ activity.
 
 <img src="docs/images/clip-order.avif" alt="Choosing By state puts the session that needs you first" width="800">
 
-**Size** goes from 50% to 200%; here at 75% and 150%.
+### Size
+
+From 50% to 200%; here at 75% and 150%.
 
 <img src="docs/images/size-75.png" alt="The widget at 75%" width="270">
 <img src="docs/images/size-150.png" alt="The widget at 150%" width="450">
 
 <details>
-<summary>The settings pages</summary>
+<summary>The other settings pages</summary>
 
 <img src="docs/images/settings-rows.png" alt="Rows page: a preview and the list of parts to tick and drag" width="570">
 <img src="docs/images/settings-order.png" alt="Order page: a playing preview, the four orders and the blocks" width="570">
 <img src="docs/images/settings-menu-bar.png" alt="Menu Bar page: icon style, the states it shows, what the menu lists, the full-screen dot" width="570">
-<img src="docs/images/settings-theme.png" alt="Theme editor: panel colour, material, opacity, and colour, motion and speed of each lamp" width="570">
 
 </details>
 
