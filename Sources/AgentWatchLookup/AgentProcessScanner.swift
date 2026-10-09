@@ -13,8 +13,12 @@ import Foundation
 public enum AgentProcessScanner {
     /// Every live agent session that can be found from processes, as much as a row can
     /// honestly say about one.
-    public static func liveAgentProcesses() -> [DiscoveredAgentProcess] {
-        AgentSource.allCases.flatMap { $0.processRules.liveSessions() }
+    ///
+    /// - Parameter folders: where each agent keeps its own records of its processes. Claude's
+    ///   say which process is which session, and a Claude run from a listed folder keeps them
+    ///   there rather than in the default one.
+    public static func liveAgentProcesses(in folders: AgentFolders) -> [DiscoveredAgentProcess] {
+        AgentSource.allCases.flatMap { $0.processRules(in: folders).liveSessions() }
     }
 
     static func allProcessIDs() -> [Int32] {

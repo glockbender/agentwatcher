@@ -35,7 +35,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let history = SessionHistoryStore()
     private lazy var orderBook = SessionOrderBook(settings: settings)
     private lazy var tooling: ToolingCoordinator = {
-        let coordinator = ToolingCoordinator(installer: installer, heard: heard)
+        let coordinator = ToolingCoordinator(
+            installer: installer,
+            heard: heard,
+            extraFolders: { [weak self] in self?.settings.extraAgentFolders ?? [:] },
+            setExtraFolders: { [weak self] source, paths in self?.settings.setExtraFolders(paths, for: source) },
+            chooseFolder: { [weak self] source in self?.chooseAgentFolder(for: source) }
+        )
         coordinator.onLog = { [weak self] message in
             self?.recordDebug(message)
         }
@@ -54,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private lazy var supervisor: SessionSupervisor = SessionSupervisor(
         settings: settings,
+        extraAgentFolders: { [weak self] in self?.settings.extraAgentFolders ?? [:] },
         heard: heard,
         history: history,
         onChange: { [weak self] sessions, usageLimits in
@@ -431,7 +438,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .headlessRuns:
             renderWidget()
             statusMenu?.refreshSessions()
+        case .agentFolders:
+            // The rows of the Tooling page and the widget's complaint both count folders. The
+            // sessions read the list where they use it, so nothing else needs a poke.
+            refreshToolingComplaint()
+            if settingsWindow.model.isShowingTooling {
+                settingsWindow.model.tooling.reread()
+            }
         }
+    }
+
+    /// Asks for a folder an agent is started with, beginning in the home folder and showing
+    /// what is hidden there: every agent's folder is a dot-folder, which the panel otherwise
+    /// leaves out.
+    private func chooseAgentFolder(for source: AgentSource) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.showsHiddenFiles = true
+        panel.directoryURL = AgentWatchPaths.homeDirectory()
+        panel.prompt = "Add"
+        panel.message =
+            "Choose the folder \(AgentIcon.name(for: source)) is started with as "
+            + "\(AgentFolders.variableName(for: source))."
+        NSApp.activate(ignoringOtherApps: true)
+        return panel.runModal() == .OK ? panel.url : nil
     }
 
     /// The theme in use, drawn everywhere it shows.

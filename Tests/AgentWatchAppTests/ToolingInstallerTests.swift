@@ -344,6 +344,34 @@ final class ToolingInstallerTests: XCTestCase {
         )
     }
 
+    /// An agent started with its variable reads hooks from that folder only — measured on
+    /// Codex 0.153.4 and 0.161.0 and Claude Code 2.1.294 — so that is where they go, in the
+    /// same shape as in the default folder, and the default folder is left as it was.
+    func testHooksGoIntoTheFolderTheyAreInstalledInAndNowhereElse() throws {
+        let home = try makeHome()
+        let sender = try makeSender(in: home)
+        let installer = ToolingInstaller(home: home)
+        let codexWork = home.appendingPathComponent(".codex-work", isDirectory: true)
+        let claudeWork = home.appendingPathComponent(".claude-work", isDirectory: true)
+
+        for (source, folder) in [(AgentSource.codex, codexWork), (.claude, claudeWork)] {
+            try installer.installHooks(
+                for: source, in: folder, senderPath: sender.path, hooks: ToolingHooks.hooks(for: source))
+
+            XCTAssertEqual(installer.hookState(for: source, in: folder, delivery: .arrived), .installed)
+            XCTAssertEqual(installer.hookState(for: source, delivery: .arrived), .absent, "\(source)'s default folder")
+        }
+        XCTAssertEqual(installer.hooksPath(for: .codex, in: codexWork).path, codexWork.path + "/hooks.json")
+        XCTAssertEqual(
+            installer.hooksPath(for: .claude, in: claudeWork).path,
+            claudeWork.path + "/skills/agent-watch/hooks/hooks.json")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".codex").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".claude").path))
+
+        try installer.removeHooks(for: .claude, in: claudeWork)
+        XCTAssertEqual(installer.hookState(for: .claude, in: claudeWork, delivery: .arrived), .absent)
+    }
+
     private func makeHome() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("AgentWatchToolingTests.\(UUID().uuidString)", isDirectory: true)

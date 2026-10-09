@@ -19,6 +19,12 @@ final class ToolingCoordinator {
     private let heard: AgentHeardStore
     private let sender: SenderLink
     private let executableURL: URL
+    /// The folders a person listed beside each agent's default one, and how to change the list.
+    private let extraFolders: () -> [AgentSource: [String]]
+    private let setExtraFolders: (AgentSource, [String]) -> Void
+    /// Asks the person for a folder. Injected because it is a window, and because a test has
+    /// to be able to answer it.
+    private let chooseFolder: (AgentSource) -> URL?
     /// What this sitting has asked of each IDE, by its settings directory name. Never read
     /// from disk and never remembered past a launch: it is the difference between "the file
     /// says the plugin was here" and "it answered me a moment ago".
@@ -36,14 +42,25 @@ final class ToolingCoordinator {
         installer: ToolingInstaller = ToolingInstaller(),
         heard: AgentHeardStore,
         sender: SenderLink = SenderLink(),
-        executableURL: URL? = nil
+        executableURL: URL? = nil,
+        extraFolders: @escaping () -> [AgentSource: [String]] = { [:] },
+        setExtraFolders: @escaping (AgentSource, [String]) -> Void = { _, _ in },
+        chooseFolder: @escaping (AgentSource) -> URL? = { _ in nil }
     ) {
         self.installer = installer
         self.heard = heard
         self.sender = sender
+        self.extraFolders = extraFolders
+        self.setExtraFolders = setExtraFolders
+        self.chooseFolder = chooseFolder
         self.executableURL =
             (executableURL ?? Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0]))
             .resolvingSymlinksInPath()
+    }
+
+    /// Every folder each agent keeps its hooks in: the installer's defaults and the person's list.
+    var agentFolders: AgentFolders {
+        installer.agentFolders(extra: extraFolders())
     }
 
     /// Everything the Tooling page shows, read in one go. See `ToolingFacts`.
@@ -51,6 +68,22 @@ final class ToolingCoordinator {
         let sender = senderLink()
         let staged = IDEPluginFiles.staged()
         let hookStates = Dictionary(uniqueKeysWithValues: AgentSource.allCases.map { ($0, hookState(for: $0)) })
+        let folders = agentFolders
+        let folderReadings = Dictionary(
+            uniqueKeysWithValues: AgentSource.allCases.map { source in
+                (
+                    source,
+                    folders.folders(for: source).map { folder in
+                        ToolingFolderReading(
+                            folder: folder.path,
+                            isDefault: folders.isDefault(folder, for: source),
+                            exists: FileManager.default.fileExists(atPath: folder.path),
+                            state: hookState(for: source, in: folder, folders: folders),
+                            hooksPath: installer.hooksPath(for: source, in: folder).path
+                        )
+                    }
+                )
+            })
         return ToolingFacts(
             hookState: { hookStates[$0] ?? .unreadable },
             statusLineState: installer.statusLineState(),
@@ -64,6 +97,7 @@ final class ToolingCoordinator {
             agentPaths: AgentSource.allCases.reduce(into: [:]) { paths, source in
                 paths[source] = AgentInstallationLookup.executable(for: source)
             },
+            folders: folderReadings,
             receivedSources: receivedSources,
             lastError: lastError
         )
@@ -75,20 +109,39 @@ final class ToolingCoordinator {
         lastError = nil
     }
 
+    /// The agents something has arrived from, from any of their folders: what moves the guide
+    /// on is that the agent reports at all.
     var receivedSources: Set<AgentSource> {
-        Set(AgentSource.allCases.filter { heard.delivery(for: $0) == .arrived })
+        Set(AgentSource.allCases.filter(heard.hasHeard(from:)))
     }
 
     /// What the widget says instead of "No active sessions" when nothing can report to it,
-    /// or `nil` when something can.
+    /// or `nil` when something can. Every folder counts: a person who only ever starts Codex
+    /// from a listed folder has a working setup with nothing in the default one.
     func complaint() -> String? {
-        toolingComplaint(states: AgentSource.allCases.map(hookState(for:)))
+        let folders = agentFolders
+        return toolingComplaint(
+            states: AgentSource.allCases.flatMap { source in
+                folders.folders(for: source).map { hookState(for: source, in: $0, folders: folders) }
+            })
     }
 
-    /// How far Agent Watch got into one agent, including the half no configuration can state:
-    /// whether anything has ever arrived from it.
+    /// How far Agent Watch got into one agent's default folder, including the half no
+    /// configuration can state: whether anything has ever arrived from it.
     func hookState(for source: AgentSource) -> ToolingInstallationState {
         installer.hookState(for: source, delivery: heard.delivery(for: source))
+    }
+
+    /// The same for any of the agent's folders, with what has arrived from that folder alone.
+    private func hookState(for source: AgentSource, in folder: URL, folders: AgentFolders) -> ToolingInstallationState {
+        installer.hookState(
+            for: source, in: folder,
+            delivery: heard.delivery(for: source, folder: heardFolder(folder, for: source, in: folders)))
+    }
+
+    /// How the heard store keeps one of an agent's folders.
+    private func heardFolder(_ folder: URL, for source: AgentSource, in folders: AgentFolders) -> HeardFolder {
+        folders.isDefault(folder, for: source) ? .default : .listed(label: AgentFolders.label(of: folder))
     }
 
     func press(_ press: ToolingPress) {
@@ -101,6 +154,11 @@ final class ToolingCoordinator {
             }
         case .idePluginsPage(let dataDirectoryName): openIDEPluginsPage(dataDirectoryName: dataDirectoryName)
         case .idePluginCheck(let dataDirectoryName): checkIDEPlugin(dataDirectoryName: dataDirectoryName)
+        case let .folderHooks(source, folder):
+            toggleHooks(for: source, in: URL(fileURLWithPath: folder, isDirectory: true))
+        case let .addFolder(source): addFolder(for: source)
+        case let .forgetFolder(source, folder):
+            forgetFolder(URL(fileURLWithPath: folder, isDirectory: true), for: source)
         }
     }
 
@@ -208,28 +266,86 @@ final class ToolingCoordinator {
         }
     }
 
-    private func toggleHooks(for source: AgentSource, allowRemoval: Bool = true) {
+    /// Installs or removes an agent's hooks in one of its folders — the default one unless
+    /// another is named.
+    private func toggleHooks(for source: AgentSource, in folder: URL? = nil, allowRemoval: Bool = true) {
         perform {
-            let state = hookState(for: source)
+            let folders = agentFolders
+            let folder = folder ?? folders.defaultFolder(for: source)
+            let key = heardFolder(folder, for: source, in: folders)
+            let listed: String? = key == .default ? nil : folder.path
+            let state = hookState(for: source, in: folder, folders: folders)
             guard state != .unreadable else {
-                throw ToolingInstallerError.unreadable(installer.hooksPath(for: source))
+                throw ToolingInstallerError.unreadable(installer.hooksPath(for: source, in: folder))
             }
             if state.wantsInstalling {
+                // A listed folder that is not there is a mistyped or removed path. The default
+                // folder may simply not exist yet, and installing into it is what it always did.
+                if listed != nil, !FileManager.default.fileExists(atPath: folder.path) {
+                    throw ToolingInstallerError.missingFolder(folder)
+                }
                 try installer.installHooks(
                     for: source,
+                    in: folder,
                     senderPath: refreshSenderLink(),
                     hooks: ToolingHooks.hooks(for: source)
                 )
                 // After the write, so a failed install claims nothing. From here silence from
-                // this agent is a fact about records this app put there, which is the only
+                // this folder is a fact about records this app put there, which is the only
                 // silence it is entitled to report.
-                heard.recordInstall(source)
-                onLog(hooksInstalledMessage(for: source))
+                heard.recordInstall(source, folder: key)
+                onLog(hooksInstalledMessage(for: source, folder: listed))
             } else if allowRemoval {
-                try installer.removeHooks(for: source)
-                heard.forgetInstall(source)
-                onLog("\(AgentIcon.name(for: source)) hooks removed")
+                try installer.removeHooks(for: source, in: folder)
+                heard.forgetInstall(source, folder: key)
+                onLog("\(AgentIcon.name(for: source)) hooks removed" + (listed.map { " from \($0)" } ?? ""))
             }
+        }
+    }
+
+    /// Lists another folder this agent is started with. Nothing is written into it: the folder
+    /// gets a row of its own, and installing there is a press of its own.
+    private func addFolder(for source: AgentSource) {
+        guard let chosen = chooseFolder(source) else {
+            return
+        }
+        let canonical = AgentFolders.canonicalPath(of: chosen)
+        if agentFolders.folders(for: source).contains(where: { AgentFolders.canonicalPath(of: $0) == canonical }) {
+            onLog("\(chosen.path) is already one of \(AgentIcon.name(for: source))'s folders")
+        } else {
+            setExtraFolders(source, (extraFolders()[source] ?? []) + [chosen.path])
+            onLog("Listed \(chosen.path) as a \(AgentIcon.name(for: source)) folder")
+        }
+        onChange()
+    }
+
+    /// Takes a listed folder off the list, and Agent Watch's hooks out of it first: hooks left
+    /// in a folder nobody lists would keep reporting from a folder no row describes. A removal
+    /// that fails leaves the folder listed, so the row that says what went wrong stays.
+    private func forgetFolder(_ folder: URL, for source: AgentSource) {
+        let folders = agentFolders
+        guard !folders.isDefault(folder, for: source) else {
+            return
+        }
+        perform {
+            switch hookState(for: source, in: folder, folders: folders) {
+            case .absent:
+                break
+            // Never written over, as everywhere: the folder leaves the list and the file stays
+            // as it was, which the log says.
+            case .unreadable:
+                onLog("\(installer.hooksPath(for: source, in: folder).path) cannot be read — left as it is")
+            case .installed, .unheard, .incomplete, .stale:
+                try installer.removeHooks(for: source, in: folder)
+            }
+            heard.forgetInstall(source, folder: heardFolder(folder, for: source, in: folders))
+            let canonical = AgentFolders.canonicalPath(of: folder)
+            setExtraFolders(
+                source,
+                (extraFolders()[source] ?? []).filter {
+                    AgentFolders.canonicalPath(of: URL(fileURLWithPath: $0, isDirectory: true)) != canonical
+                })
+            onLog("\(folder.path) is no longer a \(AgentIcon.name(for: source)) folder")
         }
     }
 

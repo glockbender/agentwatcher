@@ -172,7 +172,8 @@ public struct RedactedHookIngressRequest: Sendable {
         agentProcessID: Int32? = nil,
         clientKind: SessionClientKind? = nil,
         description: SessionDescription? = nil,
-        forkedFromSessionID: String? = nil
+        forkedFromSessionID: String? = nil,
+        agentFolderLabel: String? = nil
     ) -> RedactedHookIngressRequest? {
         var payload = payload
         if let forkedFromSessionID, case var .object(fields) = payload {
@@ -197,7 +198,8 @@ public struct RedactedHookIngressRequest: Sendable {
                 clientKind: clientKind,
                 description: description,
                 toolRunsInBackground: runsInBackground(in: payload),
-                backgroundWork: backgroundWork(in: payload)
+                backgroundWork: backgroundWork(in: payload),
+                agentFolderLabel: agentFolderLabel
             )
         )
     }

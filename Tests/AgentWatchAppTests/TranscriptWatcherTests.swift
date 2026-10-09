@@ -728,6 +728,29 @@ final class TranscriptWatcherTests: XCTestCase {
         XCTAssertEqual(updates.first?.description?.title, "Realtime Voice Chat")
     }
 
+    /// A Codex started with `CODEX_HOME` writes its transcript into that folder (measured on
+    /// Codex 0.161.0), so the name is read from the index beside the transcript, not from the
+    /// default folder's. Where the index lies in such a folder is not measured: Codex writes
+    /// it only once a model has answered, and the probe had none.
+    func testCatchingUpTakesTheNameFromTheIndexOfTheFolderTheThreadLivesIn() async throws {
+        let work = home.appendingPathComponent(".codex-work", isDirectory: true)
+        let day = work.appendingPathComponent("sessions/2026/09/05", isDirectory: true)
+        try FileManager.default.createDirectory(at: day, withIntermediateDirectories: true)
+        try Data("\(Self.codexOpening)\n".utf8)
+            .write(to: day.appendingPathComponent("rollout-2026-09-05T00-00-00-\(codexSessionUUID).jsonl"))
+        try Data(#"{"id":"\#(codexSessionUUID)","thread_name":"Work thread"}\#n"#.utf8)
+            .write(to: work.appendingPathComponent("session_index.jsonl"))
+        try writeCodexThreadIndex(naming: "A thread of the default folder")
+        let watcher = makeWatcher(settings: try makeSettings(), extraAgentFolders: [.codex: [work.path]])
+
+        var restoredCodex = workingCodex()
+        restoredCodex.phase = .disconnected
+
+        let updates = try await catchUp(watcher, sessions: [restoredCodex])
+
+        XCTAssertEqual(updates.first?.description?.title, "Work thread")
+    }
+
     /// The same session as `working()`, in the state a restart leaves it in.
     private func restored() -> SessionSnapshot {
         var session = working()
@@ -755,10 +778,14 @@ final class TranscriptWatcherTests: XCTestCase {
         makeWatcher(settings: try makeSettings())
     }
 
-    private func makeWatcher(settings: WidgetSettingsStore) -> TranscriptWatcher {
+    private func makeWatcher(
+        settings: WidgetSettingsStore,
+        extraAgentFolders: [AgentSource: [String]] = [:]
+    ) -> TranscriptWatcher {
         let watcher = TranscriptWatcher(
             settings: settings,
             home: home,
+            extraAgentFolders: { extraAgentFolders },
             now: { [weak self] in self?.clock ?? Date() },
             onUpdates: { [weak self] updates in
                 self?.inbox = updates

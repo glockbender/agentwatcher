@@ -37,14 +37,30 @@ func toolingHookStateText(state: ToolingInstallationState) -> String {
 /// This is what the menu line had no room for. Both cases are facts about somebody else's
 /// product rather than about this app, and both look exactly like a broken installation to
 /// the person who does not know them.
-func toolingHookNextStep(state: ToolingInstallationState, source: AgentSource, path: String) -> String? {
+///
+/// - Parameter folder: a folder a person listed, or `nil` for the agent's default one. Only an
+///   agent started with that folder reads these hooks, so the step says how to start it.
+func toolingHookNextStep(
+    state: ToolingInstallationState,
+    source: AgentSource,
+    path: String,
+    folder: String? = nil
+) -> String? {
     switch state {
     case .unheard:
-        switch source {
-        case .claude:
+        switch (source, folder) {
+        case (.claude, nil):
             return "Claude Code loads a plugin once per session. Run /reload-plugins, or start a new session."
-        case .codex:
+        case let (.claude, folder?):
+            return "Claude Code loads a plugin once per session. Start a new session with "
+                + "\(AgentFolders.variableName(for: .claude))=\(folder), or run /reload-plugins in one."
+        case (.codex, nil):
             return "Open Codex and accept its prompt to trust these hooks. Until then they do not run."
+        case let (.codex, folder?):
+            // Codex keeps its trust in each folder separately, so approving the default
+            // folder's hooks says nothing about these.
+            return "Start Codex with \(AgentFolders.variableName(for: .codex))=\(folder) and accept its prompt "
+                + "to trust these hooks. Until then they do not run."
         }
     case .unreadable:
         // The one state where the app offers nothing: its only repair is a write, and this is
@@ -53,6 +69,26 @@ func toolingHookNextStep(state: ToolingInstallationState, source: AgentSource, p
     case .absent, .installed, .incomplete, .stale:
         return nil
     }
+}
+
+/// The row of a folder a person listed, named by the folder: every agent's rows say `Hooks`,
+/// and the folder is what tells two of them apart.
+func toolingFolderHooksTitle(folder: String) -> String {
+    "Hooks in \((folder as NSString).abbreviatingWithTildeInPath)"
+}
+
+let toolingMissingFolderText = "The folder is not there. Check the path, or forget the folder."
+let toolingForgetFolderTitle = "Forget Folder"
+let toolingForgetFolderHint = "Takes Agent Watch's hooks out of this folder too, then takes it off the list."
+let toolingOtherFoldersTitle = "Other folders"
+let toolingAddFolderTitle = "Add Folder…"
+
+/// Why an agent can need more than one row of hooks. The variable is named because that is
+/// what a person typed into their shell, and the folder is where its hooks then have to be.
+@MainActor
+func toolingOtherFoldersText(source: AgentSource) -> String {
+    "\(AgentIcon.name(for: source)) started with \(AgentFolders.variableName(for: source))=<folder> "
+        + "reads hooks from that folder only. Add the folder to install them there too."
 }
 
 /// The one press a hook row offers, if it offers one.
@@ -326,8 +362,17 @@ func toolingComplaint(states: [ToolingInstallationState]) -> String? {
 /// Claude Code needs the extra half-sentence and Codex needs a different one, and both are
 /// facts about somebody else's product rather than about the menu — so they live here with the
 /// rest of the wording instead of inside the action that happens to print them.
-func hooksInstalledMessage(for source: AgentSource) -> String {
-    switch source {
+func hooksInstalledMessage(for source: AgentSource, folder: String? = nil) -> String {
+    // A listed folder's hooks reach only an agent started with that folder, which is the one
+    // thing a person who has just pressed Install may not have in mind.
+    if let folder {
+        let start = "\(AgentFolders.variableName(for: source))=\(folder)"
+        switch source {
+        case .claude: return "Claude hooks installed in \(folder) — start a new session with \(start)"
+        case .codex: return "Codex hooks installed in \(folder) — start Codex with \(start) and approve them"
+        }
+    }
+    return switch source {
     // Not obvious, and it looks like a failure otherwise: a plugin Claude Code has already
     // loaded does not pick up new hooks by itself.
     case .claude: "Claude hooks installed — run /reload-plugins or start a new session"

@@ -61,6 +61,23 @@ enum ToolingPress: Hashable {
     case idePluginsPage(dataDirectoryName: String)
     /// Ask this IDE whether the plugin is loaded in it, now.
     case idePluginCheck(dataDirectoryName: String)
+    /// Install or remove an agent's hooks in a folder a person listed beside its default one.
+    case folderHooks(source: AgentSource, folder: String)
+    /// Choose another folder this agent is started with, and list it.
+    case addFolder(AgentSource)
+    /// Take a listed folder off the list, and Agent Watch's hooks out of it.
+    case forgetFolder(source: AgentSource, folder: String)
+}
+
+/// One of an agent's folders and where its hooks stand there, read in one go.
+struct ToolingFolderReading: Equatable {
+    let folder: String
+    let isDefault: Bool
+    /// Whether the folder is on disk at all. A listed folder that is not is a mistyped or
+    /// removed path, and installing would create a folder no agent reads.
+    let exists: Bool
+    let state: ToolingInstallationState
+    let hooksPath: String
 }
 
 struct ToolingReportSection: Equatable {
@@ -98,6 +115,7 @@ enum ToolingReport {
         hookState: (AgentSource) -> ToolingInstallationState,
         statusLineState: () -> StatusLineState,
         hooksPath: (AgentSource) -> String,
+        folders: (AgentSource) -> [ToolingFolderReading] = { _ in [] },
         statusLinePath: String,
         idePlugins: [IDEPluginReading],
         stagedPlugin: StagedIDEPlugin?,
@@ -106,12 +124,16 @@ enum ToolingReport {
         let agents = AgentSource.allCases.map { source in
             ToolingReportSection(
                 title: AgentIcon.name(for: source),
-                rows: ToolingIntegrations.kinds(for: source).map { kind in
+                rows: ToolingIntegrations.kinds(for: source).flatMap { kind in
                     switch kind {
                     case .hooks:
-                        hooksRow(source: source, state: hookState(source), path: hooksPath(source))
+                        [hooksRow(source: source, state: hookState(source), path: hooksPath(source))]
+                            + folders(source).filter { !$0.isDefault }.map {
+                                folderHooksRow(source: source, reading: $0)
+                            }
+                            + [otherFoldersRow(source: source)]
                     case .statusLine:
-                        statusLineRow(source: source, state: statusLineState(), path: statusLinePath)
+                        [statusLineRow(source: source, state: statusLineState(), path: statusLinePath)]
                     }
                 }
             )
@@ -159,6 +181,48 @@ enum ToolingReport {
                     )
                 ]
             } ?? []
+        )
+    }
+
+    /// Hooks in a folder a person listed: the same states and the same press as the default
+    /// folder's row, and a second press to take the folder off the list.
+    ///
+    /// A folder that is not on disk keeps its row and its buttons. Installing is off, because
+    /// it would create a folder no agent reads; forgetting stays on, because that is the repair.
+    private static func folderHooksRow(source: AgentSource, reading: ToolingFolderReading) -> ToolingReportRow {
+        let install = toolingHookActionTitle(state: reading.state).map {
+            ToolingReportAction(
+                title: $0,
+                press: .folderHooks(source: source, folder: reading.folder),
+                isEnabled: reading.exists || !reading.state.wantsInstalling,
+                hint: reading.exists ? nil : toolingMissingFolderText
+            )
+        }
+        let forget = ToolingReportAction(
+            title: toolingForgetFolderTitle,
+            press: .forgetFolder(source: source, folder: reading.folder),
+            hint: toolingForgetFolderHint
+        )
+        return ToolingReportRow(
+            title: toolingFolderHooksTitle(folder: reading.folder),
+            status: nil,
+            state: reading.exists ? toolingHookStateText(state: reading.state) : "! \(toolingMissingFolderText)",
+            details: ["Writes \(reading.hooksPath)"],
+            nextStep: toolingHookNextStep(
+                state: reading.state, source: source, path: reading.hooksPath, folder: reading.folder),
+            actions: [install].compactMap { $0 } + [forget]
+        )
+    }
+
+    /// Where a person learns that one agent can have more than one folder, and adds one.
+    private static func otherFoldersRow(source: AgentSource) -> ToolingReportRow {
+        ToolingReportRow(
+            title: toolingOtherFoldersTitle,
+            status: nil,
+            state: toolingOtherFoldersText(source: source),
+            details: [],
+            nextStep: nil,
+            actions: [ToolingReportAction(title: toolingAddFolderTitle, press: .addFolder(source))]
         )
     }
 

@@ -1045,6 +1045,60 @@ final class SessionSupervisorTests: XCTestCase {
         XCTAssertEqual(supervisor.transcriptOfSession(snapshot)?.lastPathComponent, transcript.lastPathComponent)
     }
 
+    /// A Codex started with `CODEX_HOME` writes its transcript into that folder, and a click
+    /// on its row needs the thread's identifier from that file's name — the default folder has
+    /// nothing for it. Measured on Codex 0.161.0: the transcript is written there even before
+    /// the first answer.
+    func testAClickFindsTheTranscriptOfAThreadInAListedFolder() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let thread = "01a11d91-6307-7ef1-aa3e-39996a1841b3"
+        let work = directory.appendingPathComponent(".codex-work", isDirectory: true)
+        let day = work.appendingPathComponent("sessions/2026/10/09", isDirectory: true)
+        try FileManager.default.createDirectory(at: day, withIntermediateDirectories: true)
+        let transcript = day.appendingPathComponent("rollout-2026-10-09T01-10-29-\(thread).jsonl")
+        try Data("{}\n".utf8).write(to: transcript)
+        let supervisor = try makeSupervisor(home: directory, extraAgentFolders: { [.codex: [work.path]] })
+
+        supervisor.ingest(
+            HookIngressRequest(
+                source: .codex,
+                declaredEvent: "SessionStart",
+                payload: .object(["session_id": .string(try senderSideSessionID(thread))])
+            ))
+        let snapshot = try XCTUnwrap(supervisor.sessions.first)
+
+        XCTAssertEqual(supervisor.transcriptOfSession(snapshot)?.lastPathComponent, transcript.lastPathComponent)
+    }
+
+    /// Codex wants its hooks approved in every folder separately, so an event is remembered for
+    /// the folder it came from. The default folder's label, or none from an older sender, is
+    /// the default folder.
+    func testAnEventIsHeardForTheFolderItCameFrom() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let work = directory.appendingPathComponent(".codex-work", isDirectory: true)
+        let heard = AgentHeardStore(directoryURL: directory)
+        let supervisor = try makeSupervisor(heard: heard, home: directory, extraAgentFolders: { [.codex: [work.path]] })
+        let workLabel = AgentFolders.label(of: work)
+
+        supervisor.ingest(
+            HookIngressRequest(
+                source: .codex, declaredEvent: "SessionStart",
+                payload: .object(["session_id": .string("id_work")]), agentFolderLabel: workLabel))
+
+        XCTAssertEqual(heard.delivery(for: .codex, folder: .listed(label: workLabel)), .arrived)
+        XCTAssertEqual(heard.delivery(for: .codex), .unknown)
+
+        supervisor.ingest(
+            HookIngressRequest(
+                source: .codex, declaredEvent: "SessionStart",
+                payload: .object(["session_id": .string("id_home")]),
+                agentFolderLabel: AgentFolders.label(of: directory.appendingPathComponent(".codex"))))
+
+        XCTAssertEqual(heard.delivery(for: .codex), .arrived)
+    }
+
     /// A home with one Claude transcript in it, named the way Claude names them.
     private func makeTranscript(named sessionUUID: String, in directory: URL) throws -> URL {
         let projects = directory.appendingPathComponent(".claude/projects/p", isDirectory: true)
@@ -1654,6 +1708,7 @@ final class SessionSupervisorTests: XCTestCase {
         history: SessionHistoryStore? = nil,
         settings: WidgetSettingsStore? = nil,
         home: URL? = nil,
+        extraAgentFolders: @escaping () -> [AgentSource: [String]] = { [:] },
         workspaceNotifications: NotificationCenter = NotificationCenter(),
         // Nothing by default, and never the real scanner: a test that started the app would
         // otherwise find whatever agents happen to be running on the machine it runs on.
@@ -1672,6 +1727,7 @@ final class SessionSupervisorTests: XCTestCase {
         return SessionSupervisor(
             settings: settings,
             home: home ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
+            extraAgentFolders: extraAgentFolders,
             heard: heard
                 ?? AgentHeardStore(
                     directoryURL: FileManager.default.temporaryDirectory

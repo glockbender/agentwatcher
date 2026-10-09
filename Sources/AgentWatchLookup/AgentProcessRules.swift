@@ -52,4 +52,16 @@ extension AgentSource {
         case .codex: CodexProcessRules()
         }
     }
+
+    /// The same rules reading the records of every folder the app was told about, for the app
+    /// rather than a hook: a hook runs inside its agent and finds that agent's folder in its
+    /// own environment, the app has no such environment to read.
+    public func processRules(in folders: AgentFolders) -> any AgentProcessRules {
+        switch self {
+        case .claude:
+            ClaudeProcessRules(
+                registry: ClaudeSessionRegistry(directories: ClaudeSessionRegistry.directories(in: folders)))
+        case .codex: CodexProcessRules()
+        }
+    }
 }

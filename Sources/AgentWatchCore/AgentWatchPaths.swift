@@ -35,12 +35,30 @@ public enum AgentWatchPaths {
         return fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
     }
 
+    /// The home folder each agent keeps its own folder in by default.
+    ///
+    /// A debug build takes `AGENT_WATCH_HOME_DIR` instead when it is set, for the reason
+    /// `AGENT_WATCH_SUPPORT_DIR` exists: a test copy that installs hooks must install them into
+    /// a scratch home, not into the agents a person is working with. `HOME` cannot stand in for
+    /// it — Foundation names the account's home whatever the environment says (measured on
+    /// macOS 15.3), while both agents follow `HOME`. A release build ignores the variable for
+    /// the same reason it ignores the other one.
+    public static func homeDirectory(fileManager: FileManager = .default) -> URL {
+        #if DEBUG
+            let sandbox = ProcessInfo.processInfo.environment["AGENT_WATCH_HOME_DIR"]
+            if let sandbox, !sandbox.isEmpty {
+                return URL(fileURLWithPath: sandbox, isDirectory: true)
+            }
+        #endif
+        return fileManager.homeDirectoryForCurrentUser
+    }
+
     /// Agent Watch's own folder under the user's Application Support, or `nil` when the
     /// system will not name one.
     ///
     /// The two steps above in one, because eleven callers were taking them by hand and each
-    /// copy is a chance to take only the first — which is how the one debug substitution this
-    /// app has ended up honoured by ten places and skipped by the eleventh.
+    /// copy is a chance to take only the first — which is how the debug substitution of this
+    /// folder ended up honoured by ten places and skipped by the eleventh.
     public static func supportDirectory(fileManager: FileManager = .default) -> URL? {
         applicationSupportDirectory(fileManager: fileManager)
             .map { supportDirectory(inApplicationSupport: $0) }

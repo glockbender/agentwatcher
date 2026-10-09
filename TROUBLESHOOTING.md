@@ -41,6 +41,21 @@ prompt to trust the hooks. Then send a request.
 
 **Checked on:** not recorded.
 
+## No session appears for an agent started with `CODEX_HOME` or `CLAUDE_CONFIG_DIR`
+
+**Why:** An agent started with one of these variables reads hooks only from the folder it names,
+not from `~/.codex` or `~/.claude`. Agent Watch installs its hooks only into the folders it knows:
+the default one and the ones you add.
+
+**What to do:** In **Settings… → Tooling**, press **Add Folder…** in that agent's **Other folders**
+row, choose the folder, then press **Install** in its new row. Codex: start it with that folder and
+accept its prompt to trust the hooks; trust given in `~/.codex` does not count for another folder.
+Claude Code: start a new session with that folder.
+
+**Checked on:** Codex 0.153.4, 0.161.0 and 0.162.0, Claude Code 2.1.294 (`claude -p` only). Not
+checked: trusting the hooks through Codex's own prompt. The check ran them with
+`--dangerously-bypass-hook-trust`.
+
 ## No session appears, and Tooling says "Hooks missing" or "Points to a program that is gone"
 
 **Why:** Agent Watch's entries in the agent's configuration are incomplete, or point to a program
@@ -117,9 +132,10 @@ A program usually starts them, and the session that started one shows the work i
 question such a run asks goes to that program, not to you.
 
 **What to do:** To see them, open Settings → General and turn on **Show headless runs**. Runs that
-are already going appear at once.
+are already going appear at once. A `codex exec --ephemeral` run has no row even then: it writes no
+transcript, and without one Agent Watch cannot tell it from the session Codex runs to name a thread.
 
-**Checked on:** Claude Code 2.1.293, Codex 0.153.4.
+**Checked on:** Claude Code 2.1.293, Codex 0.153.4; `--ephemeral`: Codex 0.162.0.
 
 ## A Claude app session appears as soon as you open it
 

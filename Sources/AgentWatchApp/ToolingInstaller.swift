@@ -18,74 +18,91 @@ final class ToolingInstaller {
     ///   none, its own folder is the app's, wherever the app keeps it.
     init(home: URL? = nil) {
         self.ownHome = home != nil
-        self.home = home ?? FileManager.default.homeDirectoryForCurrentUser
+        self.home = home ?? AgentWatchPaths.homeDirectory()
+    }
+
+    /// Every folder of each agent: the defaults under this installer's home and the ones listed.
+    func agentFolders(extra: [AgentSource: [String]]) -> AgentFolders {
+        AgentFolders(home: home, extra: extra)
+    }
+
+    /// The folder an agent uses when nothing in its environment names another, under this
+    /// installer's home. Every hook operation works on it unless it is given a folder.
+    func defaultFolder(for source: AgentSource) -> URL {
+        AgentFolders.defaultFolder(for: source, home: home)
     }
 
     // MARK: - Claude hooks, which live in a plugin of our own
 
-    /// The folder Claude Code loads a personal plugin from.
-    private var claudePluginDirectory: URL {
-        home
-            .appendingPathComponent(".claude", isDirectory: true)
+    /// The folder Claude Code loads a personal plugin from: `skills/` in whichever folder it
+    /// was started with — measured on Claude Code 2.1.294, a Claude started with
+    /// `CLAUDE_CONFIG_DIR` loads the plugins there and none under `~/.claude`.
+    private func claudePluginDirectory(in folder: URL) -> URL {
+        folder
             .appendingPathComponent("skills", isDirectory: true)
             .appendingPathComponent(ClaudeHookPlugin.name, isDirectory: true)
     }
 
-    private var claudeManifestURL: URL {
-        claudePluginDirectory
+    private func claudeManifestURL(in folder: URL) -> URL {
+        claudePluginDirectory(in: folder)
             .appendingPathComponent(".claude-plugin", isDirectory: true)
             .appendingPathComponent("plugin.json")
     }
 
-    private var claudeHooksURL: URL {
-        claudePluginDirectory
+    private func claudeHooksURL(in folder: URL) -> URL {
+        claudePluginDirectory(in: folder)
             .appendingPathComponent("hooks", isDirectory: true)
             .appendingPathComponent("hooks.json")
     }
 
     // MARK: - By agent, so the caller does not have to know which
 
-    /// The three hook operations, keyed by agent.
+    /// The three hook operations, keyed by agent and done in one of its folders — the default
+    /// one when none is named.
     ///
     /// Each is a switch over two genuinely different mechanisms — a folder we own for Claude
     /// Code, a merge into somebody else's file for Codex — and the point is that the switch
     /// happens once, here, instead of at every call site.
     /// - Parameter delivery: what is known about these records ever having run. Not readable
     ///   from any configuration, so it is handed in by whoever remembers.
-    func hookState(for source: AgentSource, delivery: HookDelivery) -> ToolingInstallationState {
+    func hookState(for source: AgentSource, in folder: URL? = nil, delivery: HookDelivery) -> ToolingInstallationState {
+        let folder = folder ?? defaultFolder(for: source)
         switch source {
-        case .claude: claudeHookState(delivery: delivery)
-        case .codex: codexHookState(delivery: delivery)
+        case .claude: return claudeHookState(in: folder, delivery: delivery)
+        case .codex: return codexHookState(in: folder, delivery: delivery)
         }
     }
 
-    func installHooks(for source: AgentSource, senderPath: String, hooks: [String]) throws {
+    func installHooks(for source: AgentSource, in folder: URL? = nil, senderPath: String, hooks: [String]) throws {
+        let folder = folder ?? defaultFolder(for: source)
         switch source {
-        case .claude: try installClaudeHooks(senderPath: senderPath, hooks: hooks)
-        case .codex: try installCodexHooks(senderPath: senderPath, hooks: hooks)
+        case .claude: try installClaudeHooks(in: folder, senderPath: senderPath, hooks: hooks)
+        case .codex: try installCodexHooks(in: folder, senderPath: senderPath, hooks: hooks)
         }
     }
 
-    func removeHooks(for source: AgentSource) throws {
+    func removeHooks(for source: AgentSource, in folder: URL? = nil) throws {
+        let folder = folder ?? defaultFolder(for: source)
         switch source {
-        case .claude: try removeClaudeHooks()
-        case .codex: try removeCodexHooks()
+        case .claude: try removeClaudeHooks(in: folder)
+        case .codex: try removeCodexHooks(in: folder)
         }
     }
 
     /// Where this agent's hook file lives, for a message that has to name it. A person told
     /// only that "the configuration cannot be read" has to guess which of three files is meant.
-    func hooksPath(for source: AgentSource) -> URL {
+    func hooksPath(for source: AgentSource, in folder: URL? = nil) -> URL {
+        let folder = folder ?? defaultFolder(for: source)
         switch source {
-        case .claude: claudeHooksURL
-        case .codex: codexHooksURL
+        case .claude: return claudeHooksURL(in: folder)
+        case .codex: return codexHooksURL(in: folder)
         }
     }
 
-    private func claudeHookState(delivery: HookDelivery) -> ToolingInstallationState {
+    private func claudeHookState(in folder: URL, delivery: HookDelivery) -> ToolingInstallationState {
         let document: JSONValue?
         do {
-            document = try read(claudeHooksURL)
+            document = try read(claudeHooksURL(in: folder))
         } catch {
             return .unreadable
         }
@@ -100,13 +117,13 @@ final class ToolingInstaller {
         )
     }
 
-    private func installClaudeHooks(senderPath: String, hooks: [String]) throws {
+    private func installClaudeHooks(in folder: URL, senderPath: String, hooks: [String]) throws {
         // The mirror of the guard on removal, and the reason that guard needs one: writing a
         // manifest into somebody else's folder of the same name would make it look like ours,
         // and removal trusts the manifest — so the next uninstall would delete their work.
-        try refuseAFolderThatIsNotOurs()
-        try write(ClaudeHookPlugin.manifest(), to: claudeManifestURL)
-        try write(ClaudeHookPlugin.hooksDocument(senderPath: senderPath, hooks: hooks), to: claudeHooksURL)
+        try refuseAFolderThatIsNotOurs(in: folder)
+        try write(ClaudeHookPlugin.manifest(), to: claudeManifestURL(in: folder))
+        try write(ClaudeHookPlugin.hooksDocument(senderPath: senderPath, hooks: hooks), to: claudeHooksURL(in: folder))
     }
 
     /// Takes the plugin away, folder and all.
@@ -115,41 +132,45 @@ final class ToolingInstaller {
     /// person's `~/.claude`, and a person may well have a skill of their own by this name —
     /// removing that would be destroying their work, not uninstalling ours. The manifest is
     /// the proof: it is written by the installer and names the plugin.
-    private func removeClaudeHooks() throws {
-        guard fileManager.fileExists(atPath: claudePluginDirectory.path) else {
+    private func removeClaudeHooks(in folder: URL) throws {
+        let pluginDirectory = claudePluginDirectory(in: folder)
+        guard fileManager.fileExists(atPath: pluginDirectory.path) else {
             return
         }
-        try refuseAFolderThatIsNotOurs()
-        try fileManager.removeItem(at: claudePluginDirectory)
+        try refuseAFolderThatIsNotOurs(in: folder)
+        try fileManager.removeItem(at: pluginDirectory)
     }
 
     /// Throws unless the plugin folder is absent or carries our own manifest.
     ///
     /// The manifest is the proof, because the installer is the only thing that writes one.
-    private func refuseAFolderThatIsNotOurs() throws {
-        guard fileManager.fileExists(atPath: claudePluginDirectory.path) else {
+    private func refuseAFolderThatIsNotOurs(in folder: URL) throws {
+        let pluginDirectory = claudePluginDirectory(in: folder)
+        guard fileManager.fileExists(atPath: pluginDirectory.path) else {
             return
         }
         guard
-            let data = try? Data(contentsOf: claudeManifestURL),
+            let data = try? Data(contentsOf: claudeManifestURL(in: folder)),
             case let .object(manifest)? = try? JSONDecoder().decode(JSONValue.self, from: data),
             case let .string(name)? = manifest["name"],
             name == ClaudeHookPlugin.name
         else {
-            throw ToolingInstallerError.notOurs(claudePluginDirectory)
+            throw ToolingInstallerError.notOurs(pluginDirectory)
         }
     }
 
     // MARK: - Codex hooks, which live in Codex's own file
 
-    private var codexHooksURL: URL {
-        home.appendingPathComponent(".codex", isDirectory: true).appendingPathComponent("hooks.json")
+    /// `hooks.json` in whichever folder Codex was started with — measured on Codex 0.153.4 and
+    /// 0.161.0, a Codex started with `CODEX_HOME` reads this file there and no other.
+    private func codexHooksURL(in folder: URL) -> URL {
+        folder.appendingPathComponent("hooks.json")
     }
 
-    private func codexHookState(delivery: HookDelivery) -> ToolingInstallationState {
+    private func codexHookState(in folder: URL, delivery: HookDelivery) -> ToolingInstallationState {
         let document: JSONValue?
         do {
-            document = try read(codexHooksURL)
+            document = try read(codexHooksURL(in: folder))
         } catch {
             return .unreadable
         }
@@ -166,8 +187,8 @@ final class ToolingInstaller {
     /// Codex has no plugin mechanism, so unlike Claude this is somebody else's file that we
     /// add to rather than a folder we own. Whatever else is in it keeps its place, and the
     /// file is saved before it is changed.
-    private func installCodexHooks(senderPath: String, hooks: [String]) throws {
-        try changeCodexHooks {
+    private func installCodexHooks(in folder: URL, senderPath: String, hooks: [String]) throws {
+        try changeCodexHooks(in: folder) {
             ToolingInstallation.addingOurHooks(
                 to: $0,
                 source: .codex,
@@ -177,18 +198,19 @@ final class ToolingInstaller {
         }
     }
 
-    private func removeCodexHooks() throws {
-        try changeCodexHooks { ToolingInstallation.removingOurHooks(from: $0, source: .codex) }
+    private func removeCodexHooks(in folder: URL) throws {
+        try changeCodexHooks(in: folder) { ToolingInstallation.removingOurHooks(from: $0, source: .codex) }
     }
 
-    private func changeCodexHooks(_ change: (JSONValue) -> JSONValue) throws {
-        let existing = try read(codexHooksURL) ?? .object([:])
+    private func changeCodexHooks(in folder: URL, _ change: (JSONValue) -> JSONValue) throws {
+        let url = codexHooksURL(in: folder)
+        let existing = try read(url) ?? .object([:])
         let changed = change(existing)
         guard changed != existing else {
             return
         }
-        try backUp(codexHooksURL)
-        try write(changed, to: codexHooksURL)
+        try backUp(url)
+        try write(changed, to: url)
     }
 
     // MARK: - The status line, the one slot Claude Code allows only one of
@@ -318,8 +340,11 @@ final class ToolingInstaller {
         claudeSettingsURL
     }
 
+    /// Only the default folder's: the relay and the command it wraps are kept once, in this
+    /// app's own folder, so one slot is all they can stand in for. A Claude started from a
+    /// listed folder keeps its own status line.
     private var claudeSettingsURL: URL {
-        home.appendingPathComponent(".claude", isDirectory: true).appendingPathComponent("settings.json")
+        defaultFolder(for: .claude).appendingPathComponent("settings.json")
     }
 
     private func readClaudeSettings() throws -> JSONValue? {
@@ -387,4 +412,6 @@ enum ToolingInstallerError: Error {
     case unreadable(URL)
     /// The status line cannot be given back because the file holding what it was is gone.
     case missingOriginalCommand(URL)
+    /// A listed folder that is not on disk. Installing would create a folder no agent reads.
+    case missingFolder(URL)
 }
