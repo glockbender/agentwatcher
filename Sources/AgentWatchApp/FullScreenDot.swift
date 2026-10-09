@@ -187,10 +187,8 @@ final class FullScreenDot {
         return NSPoint(x: right ? area.maxX - inset - diameter : area.minX + inset, y: area.midY - diameter / 2)
     }
 
-    /// The screen another application's window covers edge to edge, which is what a full-screen
-    /// space looks like from outside — below the notch where the screen has one: measured on
-    /// macOS 26.5, a full-screen window there starts under the 33-point band. Window bounds are
-    /// readable without screen-recording rights.
+    /// The screen another application's windows cover edge to edge, which is what a full-screen
+    /// space looks like from outside. Window bounds are readable without screen-recording rights.
     static func fullScreenDisplay() -> NSScreen? {
         guard
             let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
@@ -200,27 +198,48 @@ final class FullScreenDot {
             return nil
         }
         let ownProcess = ProcessInfo.processInfo.processIdentifier
-        let covered: [CGRect] = windows.compactMap { window in
+        let others: [(owner: pid_t, bounds: CGRect)] = windows.compactMap { window in
             guard
                 window[kCGWindowLayer as String] as? Int == 0,
-                window[kCGWindowOwnerPID as String] as? Int32 != ownProcess,
+                let owner = window[kCGWindowOwnerPID as String] as? pid_t, owner != ownProcess,
                 let bounds = window[kCGWindowBounds as String] as? [String: CGFloat],
                 let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary)
             else {
                 return nil
             }
-            return rect
+            return (owner, rect)
         }
         return NSScreen.screens.first { screen in
-            let frame = screen.frame
-            let top = primaryHeight - frame.maxY
-            let bottom = primaryHeight - frame.minY
-            return covered.contains { window in
-                abs(window.minX - frame.minX) < 1 && abs(window.width - frame.width) < 1
-                    && abs(window.maxY - bottom) < 1
-                    && window.minY - top <= screen.safeAreaInsets.top + 1
-                    && window.height >= frame.height - screen.safeAreaInsets.top - 1
+            isCovered(screen.frame, topInset: screen.safeAreaInsets.top, primaryHeight: primaryHeight, by: others)
+        }
+    }
+
+    /// Whether one application's windows, taken together, cover the screen edge to edge and top
+    /// to bottom — below the notch where the screen has one: measured on macOS 26.5, a
+    /// full-screen window there starts under the 33-point band. Together, because a full-screen
+    /// window with tabs or a toolbar is two: measured on macOS 15.7.7 with Ghostty 1.3.1, the tab
+    /// bar was a window 72 points tall at the top and the terminal another from 28 points down,
+    /// and neither covered the screen alone. `frame` is in AppKit's coordinates, the windows'
+    /// bounds in the window server's, from the top left of the primary screen.
+    static func isCovered(
+        _ frame: CGRect, topInset: CGFloat, primaryHeight: CGFloat, by windows: [(owner: pid_t, bounds: CGRect)]
+    ) -> Bool {
+        let top = primaryHeight - frame.maxY
+        let bottom = primaryHeight - frame.minY
+        let spanning = windows.filter { window in
+            abs(window.bounds.minX - frame.minX) < 1 && abs(window.bounds.width - frame.width) < 1
+                && window.bounds.minY >= top - 1 && window.bounds.maxY <= bottom + 1
+        }
+        return Set(spanning.map(\.owner)).contains { owner in
+            // How far down the screen is covered so far; above the notch's band it need not be.
+            var reach = top + topInset
+            for window in spanning.filter({ $0.owner == owner }).sorted(by: { $0.bounds.minY < $1.bounds.minY }) {
+                guard window.bounds.minY <= reach + 1 else {
+                    break
+                }
+                reach = max(reach, window.bounds.maxY)
             }
+            return reach >= bottom - 1
         }
     }
 }

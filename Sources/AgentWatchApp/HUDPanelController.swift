@@ -295,6 +295,10 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         }
 
         resizeIfSelfSizing(panel)
+        // The shadow of a window that is not opaque is cut from what it shows, and new content
+        // at the same size does not cut a new one: measured on macOS 15.7.7, the first empty
+        // state stayed readable through the backdrop under the row that replaced it.
+        panel.invalidateShadow()
         panel.updateHighlightOverlay()
         updateFreshnessTimer()
         updateDismissalTimer(now: clock())

@@ -43,6 +43,21 @@ final class HUDRenderTests: XCTestCase {
         )
     }
 
+    /// The shadow of a window that is not opaque is cut from what the window shows, and the
+    /// window server does not cut it again when the content changes at the same size. The first
+    /// empty state, replaced by a row at the same 340×56, stayed readable through the backdrop
+    /// under that row.
+    func testAChangeOfContentAsksForANewShadow() throws {
+        let controller = try makeController()
+        controller.render(WidgetState(complaint: "Install hooks from Tooling in Settings."))
+        let panel = try XCTUnwrap(controller.window as? HUDPanel)
+        let before = panel.shadowsRemade
+
+        controller.render(WidgetState(sessions: [testSession(title: "Сессия", lastObservedAt: now)]))
+
+        XCTAssertGreaterThan(panel.shadowsRemade, before, "the content changed, and the shadow stayed the old one")
+    }
+
     /// The guard that keeps the row under the pointer alive: a report that changes nothing
     /// must not rebuild anything.
     func testAStateThatChangedNothingKeepsTheRowItAlreadyBuilt() throws {

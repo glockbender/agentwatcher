@@ -118,6 +118,7 @@ final class HUDContentContainer: NSView {
         self.dialog = nil
         guard animated else {
             dialog.removeFromSuperview()
+            window?.invalidateShadow()
             return
         }
         NSAnimationContext.runAnimationGroup { context in
@@ -128,6 +129,8 @@ final class HUDContentContainer: NSView {
             // on the main thread; AppKit calls it there all the same.
             MainActor.assumeIsolated {
                 dialog.removeFromSuperview()
+                // A shadow cut while the dialog was open would keep its text under the rows.
+                self.window?.invalidateShadow()
             }
         }
     }

@@ -22,6 +22,15 @@ final class HUDPanel: NSPanel {
         false
     }
 
+    /// How many times the shadow was asked for again. The shadow is drawn by the window server,
+    /// out of a test's reach, so this is what a test can see of it.
+    private(set) var shadowsRemade = 0
+
+    override func invalidateShadow() {
+        super.invalidateShadow()
+        shadowsRemade += 1
+    }
+
     /// Has to be called again after every style-mask change, not only at creation: the frame
     /// view AppKit builds for the new mask brings its own buttons, already visible.
     func hideStandardButtons() {
