@@ -3,8 +3,8 @@
 
 One line per 0.1 s step that differs from the step before: the take's time, the bounding box of the
 change in stage pixels, and how many pixels changed (at a quarter of the size). Use it to check a
-mark against the screen — a click's mark should sit within a tenth of a second of its change — and
-to find a target the take did not mark.
+mark against the screen — a click's change should follow its mark within 0.3 s — and to find a
+target the take did not mark.
 """
 import subprocess
 import sys

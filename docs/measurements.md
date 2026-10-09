@@ -19,6 +19,10 @@
 
 | Версия | Что замерено | Где |
 | --- | --- | --- |
+| Claude Code 2.1.294 | A starting session rewrites its tab's title, and for a moment the name is not there: measured on Claude Code 2.1.294 in a virtual machine, right after all three tabs had shown theirs. | `.claude/skills/readme-media/scripts/lib.sh` |
+| Claude Code 2.1.294 | Three sessions starting at once in a virtual machine took longer than 20 s to name all three, measured on Claude Code 2.1.294. | `.claude/skills/readme-media/scripts/stage.sh` |
+| Claude Code 2.1.294 | Claude Code keeps a record of a start until the process exits, and counts a record it finds left over as a failed start of its fullscreen renderer; after a few it draws the plain one with a notice on every screen (measured on Claude Code… | `.claude/skills/readme-media/scripts/vm.sh` |
+| Claude Code 2.1.294 | Its footer says "manual mode on", as the stage's sessions do, instead of "auto mode on", the default measured on Claude Code 2.1.294. | `.claude/skills/readme-media/scripts/vm.sh` |
 | Claude Code 2.1.293 | `SIGTERM` — обычная просьба завершиться, и Claude Code отвечает на неё своим обычным выходом с `SessionEnd`. | [0021-a-headless-run-is-hidden-until-asked-for.md, «Почему клик спрашивает и почему `SIGTERM`»](adr/0021-a-headless-run-is-hidden-until-asked-for.md#почему-клик-спрашивает-и-почему-sigterm) |
 | Claude Code 2.1.293 | - **Его вопрос уходит программе, а не человеку.** `claude -p` отменяет вопрос MCP-сервера сразу, а `codex exec` на этой машине работал с `approval: never`. | [0021-a-headless-run-is-hidden-until-asked-for.md, «Почему скрыт по умолчанию»](adr/0021-a-headless-run-is-hidden-until-asked-for.md#почему-скрыт-по-умолчанию) |
 | Claude Code 2.1.293 | A `claude -p` or `codex exec` run has no row | [TROUBLESHOOTING.md, «A `claude -p` or `codex exec` run has no row»](../TROUBLESHOOTING.md#a-claude--p-or-codex-exec-run-has-no-row) |
@@ -289,6 +293,11 @@
 | 26.5 | The screen another application's window covers edge to edge, which is what a full-screen space looks like from outside — below the notch where the screen has one: measured on macOS 26.5, a full-screen window there starts under the… | `Sources/AgentWatchApp/FullScreenDot.swift` |
 | 26.5 | The chosen colour goes into the glass as a layer of its own rather than as the glass's `tintColor`: measured on macOS 26.5, a tint left Midnight and Graphite the same grey. | `Sources/AgentWatchApp/WidgetBackdrop.swift` |
 | 15 | On a screen of one pixel per point — the CI machine, `1.0x`, measured on macOS 15 — the badge lands on the mark's own bottom edge and covers the whole of it: mark 50–54, badge 50–59, where this machine has the mark at 59–63 and the badge… | `Tests/AgentWatchAppTests/HUDOverflowTests.swift` |
+| 15.7.7 | Every pause in a virtual machine lasted at least about 50 ms, whatever was asked: 45 steps of 14 ms took 2.8 s instead of 0.63 (measured on macOS 15.7.7 under Tart 2.40.1). | `.claude/skills/readme-media/scripts/aw-media.swift` |
+| 15.7.7 | ScreenCaptureKit, not ffmpeg's avfoundation input: in a virtual machine, which has no hardware encoder, that input delivered about 22 frames a second at any size and a stream 57, and of the software encoders only ProRes kept 30 frames a… | `.claude/skills/readme-media/scripts/aw-media.swift` |
+| 15.7.7 | Tart's --display sets the virtual screen, but a guest stayed at the 1024×768 at 2x it chose before, whatever was asked, measured on macOS 15.7.7 under Tart 2.40.1. | `.claude/skills/readme-media/scripts/aw-media.swift` |
+| 15.7.7 | Only a notch hides anything, and a menu bar is taller under one (38 points against 25), so elsewhere the take does not wait; a virtual machine shows no indicator at all, the icon stayed put through a 75 s take, measured on macOS 15.7.7. | `.claude/skills/readme-media/scripts/lib.sh` |
+| 15.7.7 | Finding a button in the copy's Accessibility tree took about 1.5 s in a virtual machine, measured on macOS 15.7.7, on a screen that stands still meanwhile: the pauses before a click are short. | `.claude/skills/readme-media/scripts/takes/setup.sh` |
 | 15.3 | Close is the action its × performs (measured on macOS 15.3); Press would open the app instead. | `.claude/skills/readme-media/scripts/aw-media.swift` |
 | 15.3 | Measured on macOS 15.3: these are asked of the process that macOS holds responsible for this one — for Claude Code that is the inner claude.app, not Claude.app. | `.claude/skills/readme-media/scripts/aw-media.swift` |
 | 15.3 | Measured on macOS 15.3. | `.claude/skills/readme-media/scripts/lib.sh` |

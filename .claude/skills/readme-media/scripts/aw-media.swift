@@ -11,6 +11,7 @@
 //   clear-notifications           close every notification on screen, by its own Close action
 //   ax find|findc <pid> <text>    first element whose text ends with / contains <text>:
 //                                 centre x y, then x y w h, in points from the top left
+//   ax findm <pid> <text>         as find, inside a menu only
 //   ax press <pid> <text>         press the first element whose identifier or title is <text>
 //   ax dismiss <pid> [keep …]     press every row's "×" except on rows whose text holds a kept name
 //   ax windows <pid>              frame and title of every window
@@ -22,10 +23,17 @@
 //   space left|right              Control-arrow: the next desktop
 //   zoom <stage dir> <keys> <out dir> <width> <height> <fps>
 //                                 render s0001.png… through moving crop rects into f0001.png…
+//   record <out.mov> <t0 file>    the main screen at its own pixels, 30 frames a second, until
+//                                 SIGINT; the wall time of the first frame goes to <t0 file>
+//   display <width> <height>      switch the main screen to that size in points at 2x, for good
+//   type <text> [seconds a key]   type into whatever has the focus, key by key (U.S. layout)
+//   wallpaper <image>             the desktop picture of every screen
+import AVFoundation
 import AppKit
 import ApplicationServices
 import CoreImage
 import ImageIO
+import ScreenCaptureKit
 import UniformTypeIdentifiers
 
 func fail(_ message: String) -> Never {
@@ -45,6 +53,16 @@ func walk(_ element: AXUIElement, depth: Int = 0, _ visit: (AXUIElement) -> Bool
     guard depth < 40 else { return false }
     for child in attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? [] {
         if walk(child, depth: depth + 1, visit) { return true }
+    }
+    return false
+}
+
+func inMenu(_ element: AXUIElement) -> Bool {
+    var current: AnyObject? = element
+    while let e = current {
+        let element = e as! AXUIElement
+        if attribute(element, kAXRoleAttribute) as? String == kAXMenuRole { return true }
+        current = attribute(element, kAXParentAttribute)
     }
     return false
 }
@@ -69,7 +87,7 @@ func ax(_ args: [String]) {
     guard args.count >= 2, let pid = pid_t(args[1]) else { fail("ax <command> <pid> …") }
     let app = AXUIElementCreateApplication(pid)
     switch args[0] {
-    case "find", "findc":
+    case "find", "findc", "findm":
         guard args.count == 3 else { fail("ax find <pid> <text>") }
         var hit: CGRect?
         _ = walk(app) { element in
@@ -77,6 +95,8 @@ func ax(_ args: [String]) {
             guard args[0] == "findc" ? t.contains(args[2]) : t.hasSuffix(args[2]), let f = frame(element) else {
                 return false
             }
+            // A session's row is in the widget as well as in the menu, and the widget comes first.
+            if args[0] == "findm" && !inMenu(element) { return false }
             hit = f
             return true
         }
@@ -158,11 +178,21 @@ func post(_ type: CGEventType, _ at: CGPoint) {
 }
 
 /// An eased path: a jump straight to the target can miss a hover state the click depends on.
+// Every pause in a virtual machine lasted at least about 50 ms, whatever was asked: 45 steps of
+// 14 ms took 2.8 s instead of 0.63 (measured on macOS 15.7.7 under Tart 2.40.1). So motion and
+// typing follow the clock, and a late pause shortens the next one instead of adding up.
+func pause(until deadline: Date) {
+    let wait = deadline.timeIntervalSinceNow
+    if wait > 0 { usleep(useconds_t(wait * 1_000_000)) }
+}
+
 func glide(to target: CGPoint, click: Bool) {
     let start = CGEvent(source: nil)!.location
-    let steps = 45
-    for i in 1...steps {
-        let t = Double(i) / Double(steps)
+    let began = Date()
+    let duration = 0.63
+    var t = 0.0
+    while t < 1 {
+        t = min(1, Date().timeIntervalSince(began) / duration)
         let e = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
         post(.mouseMoved, CGPoint(x: start.x + (target.x - start.x) * e, y: start.y + (target.y - start.y) * e))
         usleep(14_000)
@@ -197,6 +227,48 @@ func press(_ code: CGKeyCode, flags: CGEventFlags = []) {
     }
 }
 
+/// Key codes of the U.S. layout, the virtual machine's, for every character a take types; `true`
+/// holds Shift. Keys rather than a pasted string, because a terminal shows a paste at once and a
+/// TUI may take it for one.
+let usKeys: [Character: (CGKeyCode, Bool)] = {
+    var keys: [Character: (CGKeyCode, Bool)] = [:]
+    let plain: [(String, CGKeyCode)] = [
+        ("a", 0), ("s", 1), ("d", 2), ("f", 3), ("h", 4), ("g", 5), ("z", 6), ("x", 7), ("c", 8), ("v", 9),
+        ("b", 11), ("q", 12), ("w", 13), ("e", 14), ("r", 15), ("y", 16), ("t", 17), ("1", 18), ("2", 19),
+        ("3", 20), ("4", 21), ("6", 22), ("5", 23), ("=", 24), ("9", 25), ("7", 26), ("-", 27), ("8", 28),
+        ("0", 29), ("]", 30), ("o", 31), ("u", 32), ("[", 33), ("i", 34), ("p", 35), ("l", 37), ("j", 38),
+        ("'", 39), ("k", 40), (";", 41), ("\\", 42), (",", 43), ("/", 44), ("n", 45), ("m", 46), (".", 47),
+        (" ", 49), ("`", 50),
+    ]
+    let shifted: [(String, CGKeyCode)] = [
+        ("!", 18), ("@", 19), ("#", 20), ("$", 21), ("%", 23), ("^", 22), ("&", 26), ("*", 28), ("(", 25),
+        (")", 29), ("_", 27), ("+", 24), ("{", 33), ("}", 30), ("|", 42), (":", 41), ("\"", 39), ("<", 43),
+        (">", 47), ("?", 44), ("~", 50),
+    ]
+    for (character, code) in plain {
+        keys[Character(character)] = (code, false)
+        if character.first!.isLetter { keys[Character(character.uppercased())] = (code, true) }
+    }
+    for (character, code) in shifted { keys[Character(character)] = (code, true) }
+    return keys
+}()
+
+/// Types at about `interval` seconds a key, unevenly, as a person does.
+func type(_ text: String, interval: Double) {
+    var next = Date()
+    for (index, character) in text.enumerated() {
+        guard let (code, shift) = usKeys[character] else { fail("no U.S. key for \(character)") }
+        pause(until: next)
+        for down in [true, false] {
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)!
+            event.flags = shift ? .maskShift : []
+            event.post(tap: .cghidEventTap)
+        }
+        let jitter = 0.6 + 0.8 * abs(sin(Double(index) * 12.9898)).truncatingRemainder(dividingBy: 1)
+        next += interval * jitter
+    }
+}
+
 // MARK: - Windows
 
 func windowList() -> [[String: Any]] {
@@ -219,9 +291,12 @@ func zoom(_ args: [String]) throws {
     guard args.count == 6, let outW = Double(args[3]), let outH = Double(args[4]), let fps = Double(args[5]) else {
         fail("zoom <stage dir> <keys> <out dir> <width> <height> <fps>")
     }
-    let keys: [Key] = try String(contentsOfFile: args[1], encoding: .utf8)
-        .split(separator: "\n")
-        .map { $0.split(separator: "#", omittingEmptySubsequences: false)[0].split(separator: " ").compactMap { Double($0) } }
+    let lines: [Substring] = try String(contentsOfFile: args[1], encoding: .utf8).split(separator: "\n")
+    let numbers: [[Double]] = lines.map { line in
+        let code: Substring = line.split(separator: "#", omittingEmptySubsequences: false)[0]
+        return code.split(separator: " ").compactMap { Double($0) }
+    }
+    let keys: [Key] = numbers
         .filter { $0.count == 4 }
         .map { Key(t: $0[0], x: $0[1], y: $0[2], w: $0[3]) }
     guard !keys.isEmpty else { fail("no keyframes in \(args[1])") }
@@ -260,6 +335,112 @@ func zoom(_ args: [String]) throws {
         guard CGImageDestinationFinalize(destination) else { fail("cannot write \(url.path)") }
     }
     print("\(frames.count) frames")
+}
+
+// MARK: - Recording
+
+/// ScreenCaptureKit, not ffmpeg's avfoundation input: in a virtual machine, which has no hardware
+/// encoder, that input delivered about 22 frames a second at any size and a stream 57, and of the
+/// software encoders only ProRes kept 30 frames a second at 3456×2234, measured on macOS 15.7.7.
+/// H.264 dropped some frames there and HEVC half.
+final class Recorder: NSObject, SCStreamOutput {
+    let writer: AVAssetWriter
+    let input: AVAssetWriterInput
+    let t0File: URL
+    var started = false
+    var dropped = 0
+    var last: CMSampleBuffer?
+
+    init(out: URL, t0File: URL, width: Int, height: Int) throws {
+        try? FileManager.default.removeItem(at: out)
+        writer = try AVAssetWriter(outputURL: out, fileType: .mov)
+        input = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: [AVVideoCodecKey: AVVideoCodecType.proRes422, AVVideoWidthKey: width, AVVideoHeightKey: height])
+        input.expectsMediaDataInRealTime = true
+        writer.add(input)
+        self.t0File = t0File
+    }
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        // A still screen sends idle frames with no picture; the movie simply holds the last one.
+        guard let info = (CMSampleBufferGetSampleAttachmentsArray(buffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]])?.first,
+            let status = info[.status] as? Int, SCFrameStatus(rawValue: status) == .complete
+        else { return }
+        let time = buffer.presentationTimeStamp
+        if !started {
+            guard writer.startWriting() else { fail("cannot write: \(String(describing: writer.error))") }
+            writer.startSession(atSourceTime: time)
+            // The frame was taken before it arrived: its wall time is now less its age.
+            let age = CMTimeGetSeconds(CMTimeSubtract(CMClockGetTime(CMClockGetHostTimeClock()), time))
+            try? String(format: "%.6f", Date().timeIntervalSince1970 - age).write(to: t0File, atomically: true, encoding: .utf8)
+            started = true
+        }
+        if input.isReadyForMoreMediaData && input.append(buffer) { last = buffer } else { dropped += 1 }
+    }
+
+    /// A still screen sends no frames, so a movie ended at the screen's last change rather than at
+    /// the stop: the setup take lost the three seconds that hold its last picture. That picture is
+    /// written again at the moment of the stop.
+    func holdLastFrame() {
+        guard let last else { return }
+        var timing = CMSampleTimingInfo(
+            duration: .invalid, presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()), decodeTimeStamp: .invalid)
+        var copy: CMSampleBuffer?
+        guard CMSampleBufferCreateCopyWithNewTiming(
+            allocator: nil, sampleBuffer: last, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &copy)
+            == noErr, let copy
+        else { return }
+        for _ in 0..<100 where !input.isReadyForMoreMediaData { usleep(10_000) }
+        if !input.append(copy) { dropped += 1 }
+    }
+}
+
+/// What the recording's callbacks need alive once `record` has handed the thread to `dispatchMain`.
+nonisolated(unsafe) var recording: [AnyObject] = []
+
+func record(_ args: [String]) -> Never {
+    guard args.count == 2, let screen = NSScreen.main else { fail("record <out.mov> <t0 file>") }
+    let scale = Int(screen.backingScaleFactor)
+    // A movie stopped without finishing has no index and cannot be read: SIGINT finishes it.
+    signal(SIGINT, SIG_IGN)
+    SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
+        guard let display = content?.displays.first(where: { $0.displayID == CGMainDisplayID() }) else {
+            fail("no display to record: \(String(describing: error))")
+        }
+        let config = SCStreamConfiguration()
+        config.width = display.width * scale
+        config.height = display.height * scale
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+        config.showsCursor = true
+        if #available(macOS 15.0, *) { config.showMouseClicks = true }
+        config.queueDepth = 8
+        do {
+            let recorder = try Recorder(
+                out: URL(fileURLWithPath: args[0]), t0File: URL(fileURLWithPath: args[1]), width: config.width,
+                height: config.height)
+            let stream = SCStream(filter: SCContentFilter(display: display, excludingWindows: []), configuration: config, delegate: nil)
+            let frames = DispatchQueue(label: "frames")
+            try stream.addStreamOutput(recorder, type: .screen, sampleHandlerQueue: frames)
+            let stop = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+            stop.setEventHandler {
+                stream.stopCapture { _ in
+                    frames.sync { recorder.holdLastFrame() }
+                    recorder.input.markAsFinished()
+                    recorder.writer.finishWriting {
+                        if recorder.dropped > 0 { FileHandle.standardError.write("dropped \(recorder.dropped) frames\n".data(using: .utf8)!) }
+                        exit(recorder.writer.status == .completed ? 0 : 1)
+                    }
+                }
+            }
+            stop.resume()
+            recording = [stream, recorder, stop]
+            stream.startCapture { error in
+                if let error { fail("cannot record: \(error)") }
+            }
+        } catch { fail("cannot record \(args[0]): \(error)") }
+    }
+    dispatchMain()
 }
 
 // MARK: - Main
@@ -342,6 +523,36 @@ case "space":
     press(args[1] == "left" ? 123 : 124, flags: [.maskControl, .maskSecondaryFn, .maskNumericPad])
 case "zoom":
     try zoom(Array(args.dropFirst()))
+case "record":
+    record(Array(args.dropFirst()))
+case "type":
+    guard args.count >= 2 else { fail("type <text> [seconds a key]") }
+    type(args[1], interval: args.count > 2 ? Double(args[2]) ?? 0.07 : 0.07)
+case "display":
+    // Tart's --display sets the virtual screen, but a guest stayed at the 1024×768 at 2x it chose
+    // before, whatever was asked, measured on macOS 15.7.7 under Tart 2.40.1.
+    guard args.count == 3, let width = Int(args[1]), let height = Int(args[2]) else { fail("display <width> <height>") }
+    let display = CGMainDisplayID()
+    let all = CGDisplayCopyAllDisplayModes(display, [kCGDisplayShowDuplicateLowResolutionModes: true] as CFDictionary)
+    let modes = all as? [CGDisplayMode] ?? []
+    guard let mode = modes.first(where: { $0.width == width && $0.height == height && $0.pixelWidth == 2 * width }) else {
+        fail("no \(width)×\(height) at 2x; the virtual screen must be at least \(2 * width)×\(2 * height) pixels")
+    }
+    var config: CGDisplayConfigRef?
+    CGBeginDisplayConfiguration(&config)
+    CGConfigureDisplayWithDisplayMode(config, display, mode, nil)
+    guard CGCompleteDisplayConfiguration(config, .permanently) == .success else { fail("the screen refused \(width)×\(height)") }
+    print(width, height)
+case "wallpaper":
+    // Through NSWorkspace: an AppleScript to System Events would first ask a person for permission.
+    guard args.count == 2 else { fail("wallpaper <image>") }
+    for screen in NSScreen.screens {
+        do {
+            try NSWorkspace.shared.setDesktopImageURL(URL(fileURLWithPath: args[1]), for: screen, options: [:])
+        } catch {
+            fail("wallpaper: \(error.localizedDescription)")
+        }
+    }
 default:
-    fail("aw-media check|screen|onscreen|bar|quit|backdrop|clear-notifications|ax|activate|glide|key|space|zoom — see the top of aw-media.swift")
+    fail("aw-media check|screen|onscreen|bar|quit|backdrop|clear-notifications|ax|activate|glide|key|space|zoom|record|display|type|wallpaper — see the top of aw-media.swift")
 }

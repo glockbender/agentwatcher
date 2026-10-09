@@ -10,13 +10,13 @@ show_widget
 place_widget 1026 158
 $AW glide 1250 712
 sleep 1
-asking=$(last_id userInputRequired)
+asking=$ASKER
 answered=$(count_events turnCompleted $asking)
 
 take_begin hero $STAGE
 sleep 2
 started=$(count_events turnStarted)
-mark long-task; say $NAMES[3] "Read docs/architecture.md and explain it in about 600 words."
+mark long-task; say $NAMES[3] "Read docs/architecture.md with the Read tool, no commands, and explain it in about 600 words."
 wait_events turnStarted $started 5 || take_abort "the long task did not start"
 explaining=$(last_id turnStarted)
 explained=$(count_events turnCompleted $explaining)

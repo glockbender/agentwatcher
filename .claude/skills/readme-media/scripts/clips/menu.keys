@@ -1,7 +1,7 @@
 @open-menu-1.2  0   0 1760
 @open-menu-0.6  0   0 1760
-@open-menu+0.1  704 0 880    # onto the menu
-@choose-0.2     704 0 880
+@open-menu+0.1  880 0 880    # onto the menu
+@choose-0.2     880 0 880
 @choose+0.5     0   0 1760   # the terminal with its question
 @reopen-0.5     0   0 1760
-@reopen+0.2     704 0 880    # the menu again: done
+@reopen+0.2     880 0 880    # the menu again: done

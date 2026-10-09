@@ -4,18 +4,20 @@
 set -e
 source ${0:A:h}/../lib.sh
 STAGE=(560 0 1152 640)
-place_sessions 0 38 540 600
+place_sessions 0 $BAR 540 $(( 638 - BAR ))
 show_widget
 $AW ax press $DEMO_PID showWidgetSettings
 sleep 1.5
 title=$($AW ax windows $DEMO_PID | awk 'NF > 4 { $1 = $2 = $3 = $4 = ""; sub(/^ +/, ""); print; exit }')
 [[ -n $title ]] || die "the settings window did not open"
-$AW ax move $DEMO_PID "$title" 560 38 745 600
+$AW ax move $DEMO_PID "$title" 560 $BAR 745 $(( 638 - BAR ))
 r=($($AW ax find $DEMO_PID Widget)); $AW glide $r[1] $r[2] click
-place_widget 1318 80
+place_widget 1318 $(( BAR + 42 ))
 # Black behind the widget, so the desktop picture does not show around it.
-$AW backdrop 1305 38 423 602 &
+$AW backdrop 1305 $BAR 423 $(( 640 - BAR )) &
 backdrop=$!
+# Gone with the take, however it ends: left running, it held `tart exec` open for 20 minutes.
+AT_EXIT+=('kill $backdrop 2> /dev/null')
 $AW activate $DEMO_PID
 $AW glide 1000 520
 sleep 1

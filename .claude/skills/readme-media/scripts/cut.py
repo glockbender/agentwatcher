@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -91,7 +92,10 @@ def stage_filter(head, icons, start, end):
         return graph + f",fps={FPS}[o]"
     spans = sharp_spans(icons, scale, x, w, start, end)
     labels = "".join(f"[p{i}]" for i in range(len(spans)))
-    graph += f",split={len(spans) + 2}[base][b]{labels};[b]crop={w}:{bar}:0:0,boxblur=14:3[blur];"
+    # boxblur's radius may not pass half the colour plane's height, a quarter of the bar's: a menu
+    # bar without a notch is 25 points, and 14 was too much for it.
+    radius = min(14, bar // 4)
+    graph += f",split={len(spans) + 2}[base][b]{labels};[b]crop={w}:{bar}:0:0,boxblur={radius}:3[blur];"
     graph += "[base][blur]overlay=0:0[o0]"
     for i, (a, b, x0, x1) in enumerate(spans):
         graph += f";[p{i}]crop={x1 - x0}:{bar}:{x0}:0[q{i}];"
@@ -142,14 +146,26 @@ def main():
     args = sys.argv[1:]
     sheet, publish = "--sheet" in args, "--publish" in args
     wanted = [a for a in args if not a.startswith("--")]
+    clips = []
     for line in (SCRIPTS / "clips.txt").read_text().splitlines():
         fields = line.split("#")[0].split()
-        if len(fields) != 7 or (wanted and fields[0] not in wanted):
-            continue
+        if len(fields) == 7 and (not wanted or fields[0] in wanted):
+            clips.append(fields)
+
+    def one(fields):
         name, take, start, end, width, height, keys = fields
         cut(name, take, start, end, int(width), int(height), keys, sheet)
         if publish:
             shutil.copy(WORK / f"{name}.avif", REPO / "docs/images" / f"{name}.avif")
+
+    # Built once here: four clips starting together would each find the binary older than its
+    # source and write it at the same time.
+    run(SCRIPTS / "aw-media", "screen", quiet=True)
+    # One after another, nine clips took about 16 minutes. A clip is a chain of other programs, so
+    # threads are enough to run several at once.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for done in [pool.submit(one, fields) for fields in clips]:
+            done.result()
 
 
 if __name__ == "__main__":
