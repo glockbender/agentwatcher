@@ -26,7 +26,10 @@ IDE не выпускает: у него `publish-plugin.yml` и свой тек
 
 ## Перед началом — только чтение
 
-- `git status` чист, ветка `main`; после `git fetch origin` она совпадает с `origin/main`.
+- `git status` чист. После `git fetch origin` и `origin/main`, и локальный `main` входят в `HEAD`
+  (`git merge-base --is-ancestor <ref> HEAD`): релиз продолжает `main`, ничего из него не теряя.
+  `HEAD` — сам `main` или ветка worktree, в которую `main` влит; сессия в worktree приложения не
+  может работать с git общего checkout, поэтому релиз идёт оттуда, где она есть.
 - `gh secret list --repo glockbender/agentwatcher` содержит `SPARKLE_PRIVATE_KEY`, а
   `Resources/Info.plist` — `SUPublicEDKey`. Нет — `docs/distribution.md`, «Ключ подписи
   обновлений»: это делает владелец.
@@ -77,7 +80,8 @@ IDE не выпускает: у него `publish-plugin.yml` и свой тек
 3. `task release` — zip и образ; zip распаковывается и проходит `codesign --verify --strict`,
    как его проверят установленные 0.3.0. Предупреждение о `SPARKLE_PRIVATE_KEY` здесь ожидаемо:
    фид подписывает CI. Затем `./scripts/release-notes.sh X.Y.Z` должен отработать без ошибки.
-4. `git push origin main` — проверка пуша `task verify-all`; `git-guard` спросит владельца.
+4. `git push origin HEAD:main` — одинаково с `main` и с ветки worktree. Проверка пуша —
+   `task verify-all`; `git-guard` спросит владельца.
 5. `git tag -a vX.Y.Z -m "Agent Watch X.Y.Z"`, затем `git push origin vX.Y.Z`.
 6. `release.yml`: id из `gh run list --workflow release.yml --limit 1`, затем
    `gh run watch <id> --exit-status`.
@@ -96,6 +100,8 @@ IDE не выпускает: у него `publish-plugin.yml` и свой тек
   адресам.
 - `./scripts/e2e-update.sh --from <прошлый тег>` — прошлый релиз в чистой машине находит новый на
   GitHub и ставит его.
+- Релиз шёл с ветки worktree — локальный `main` общего checkout отстал. Дать владельцу одну
+  команду для того checkout: `git merge --ff-only origin/main`.
 
 Красное здесь значит, что копии людей уже видят сломанный релиз. Предложить владельцу вернуть его
 в черновик — `gh release edit vX.Y.Z --draft=true`: тогда и `/releases/latest`, и фид снова
