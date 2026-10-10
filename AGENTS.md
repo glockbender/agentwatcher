@@ -17,11 +17,9 @@ Two gates, both installed by `task setup`:
 
 - **commit** — `task verify`: format, the document checks, tests, debug and release builds, app
   bundle. Does not cover `ide-plugin/`.
-- **push** — `task verify-all`: the above plus the IDE plugin (`task plugin-check`), the network
-  probe of a published release (`task probe-update`) and the end-to-end update
-  (`task e2e-update`), about a minute. The plugin is skipped where no JetBrains IDE is installed;
-  the end-to-end part is skipped under `CI` or with `SKIP_E2E=1`, because it opens dialogs on
-  screen and answers them. A tag or a deletion is pushed without the gate.
+- **push** — `task verify-all`: the above plus the IDE plugin (`task plugin-check`) and the
+  network probe of the published release (`task probe-update`). The plugin is skipped where no
+  JetBrains IDE is installed. A tag or a deletion is pushed without the gate.
 
 Both gates check the working tree and refuse to run when it is not exactly what goes out: a commit
 with unstaged or untracked files beside it, a push with uncommitted changes, or a push of a branch
@@ -57,13 +55,15 @@ can be tested in `AgentWatchCoreTests` without launching an application.
   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer task verify`.
 - **A click on the widget is checked with a real mouse event, not by calling `mouseDown`:** one
   press can both reach a see-through view and drag the widget, and a test that calls `mouseDown`
-  cannot see the drag. Run a debug copy with `AGENT_WATCH_SUPPORT_DIR` pointing at a scratch
-  directory (the end-to-end script shows the launch), find its widget among the process's windows
-  (it is not always window 1) and post the click with `CGEventPost`; System Events' `click at`
-  does not reach the row.
-- **`task e2e-update` runs a throwaway copy beside yours and presses its dialogs itself.** It needs
-  your own Agent Watch running — otherwise the release build it installs would run against your real
-  state — and Accessibility permission for the terminal.
+  cannot see the drag. Start a debug copy with
+  `open --env AGENT_WATCH_SUPPORT_DIR=<scratch directory> -n <bundle>` — started straight from a
+  shell, it never registers with Launch Services and Accessibility cannot see its windows — find
+  its widget among the process's windows (it is not always window 1) and post the click with
+  `CGEventPost`; System Events' `click at` does not reach the row.
+- **`task e2e-update` updates a copy in a clean macOS, failures included.** It runs in a throwaway
+  clone of the Tart machine `aw-golden` (`.claude/skills/readme-media/vm.md` sets it up) and puts
+  nothing on this screen. It takes a few minutes, so the push gate leaves it out and the release
+  skill runs it before every tag.
 - **The README's pictures are drawn from code; redraw them in the change that alters what they
   show.** `task readme-images` draws them offscreen from the invented sessions in
   `ReadmeShowcase`. `task readme-menu` opens a real menu for a second and takes only its window,
@@ -92,6 +92,9 @@ between documents, the opening, a limit of 500 lines and the status line of ever
   comment. `docs/measurements.md` is generated from these by `task measurements`; never edit it.
 - **A closed study** moves to `docs/research/` with an archive banner. An article in
   `docs/articles/` is a snapshot of its date. Neither is updated afterwards.
+- **`CHANGELOG.md`** is written at release time by the `release` skill, from the commits since the
+  last tag. Only a change the person has to act on after updating goes into `[Unreleased]` at once,
+  in the commit that makes it.
 - **`README.md`** is for somebody installing the app: short, describing the latest commit — no
   version numbers, no "coming in the next release". Developer notes belong in this file.
 - **`TROUBLESHOOTING.md`** is for the same reader: something that looks wrong while the app works as

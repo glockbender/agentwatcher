@@ -42,6 +42,12 @@ cp "$bin_path/AgentWatch" "$contents_path/MacOS/AgentWatch"
 # path that stays valid, and the app registers the sender sitting next to itself — which is
 # this file in an installed bundle and the build directory's own copy in development.
 cp "$bin_path/AgentWatchSend" "$contents_path/MacOS/AgentWatchSend"
+# SwiftPM fetches Sparkle and links the app against it, but puts nothing into a bundle — that
+# is Xcode's job for its own app targets, and this script's here. `ditto`, because the framework
+# is versioned through symlinks and `cp` would turn them into copies. Sparkle's own signature
+# stays: the framework is sealed by its authors, and the bundle's signature below covers it.
+mkdir -p "$contents_path/Frameworks"
+ditto "$bin_path/Sparkle.framework" "$contents_path/Frameworks/Sparkle.framework"
 cp "$project_root/Resources/Info.plist" "$contents_path/Info.plist"
 # One version in the repository, two keys in the bundle. `CFBundleShortVersionString` is the
 # one a person reads and the one a release is named after; `CFBundleVersion` is what macOS

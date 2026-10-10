@@ -32,6 +32,24 @@ jobs:
             exit 1
           fi
 
+      # What changed has to be written before anything is built: the draft's notes and the
+      # update window both read this section, and a release without it has nothing to say.
+      - name: Check that CHANGELOG.md describes this version
+        run: python3 scripts/changelog.py check "${GITHUB_REF_NAME#v}"
+
+      # Installed copies accept a build only when its EdDSA signature matches the key they carry,
+      # so a release without the key, or with a key the bundle does not know, reaches nobody.
+      - name: Check that the update signing key is set up
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
+            echo "the SPARKLE_PRIVATE_KEY secret is not set — docs/distribution.md, «Ключ подписи обновлений»" >&2
+            exit 1
+          fi
+          plutil -extract SUPublicEDKey raw -o - Resources/Info.plist >/dev/null \
+            || { echo "Resources/Info.plist has no SUPublicEDKey" >&2; exit 1; }
+
       - name: Install Task
         run: brew install go-task
 
@@ -40,7 +58,10 @@ jobs:
       - name: Verify
         run: task verify
 
+      # Also signs the archive and writes appcast.xml, after checking the key against the bundle.
       - name: Package
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: task release
 
       # A draft, not a published release. What is in the notes and whether the world sees it
@@ -50,41 +71,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          checksums="$(cat "dist/AgentWatch-$version.dmg.sha256" "dist/AgentWatch-$version.zip.sha256")"
-          cat > dist/notes.md <<NOTES
-          ## Install
-
-          1. Download \`AgentWatch-$version.dmg\`, open it and drag Agent Watch to the
-             Applications folder beside it.
-          2. Remove the quarantine flag macOS puts on anything downloaded:
-
-          \`\`\`sh
-          xattr -dr com.apple.quarantine /Applications/AgentWatch.app
-          \`\`\`
-
-          The second step is needed because this build is signed ad-hoc rather than with an
-          Apple Developer ID certificate, so macOS cannot check who made it. Without the step
-          it refuses to open the app.
-
-          SHA-256, in the format \`shasum -a 256 -c\` reads:
-
-          \`\`\`
-          $checksums
-          \`\`\`
-
-          The \`.zip\` holds the same app. It is the file the app downloads when it updates itself.
-
-          Then open the app's Tooling window and install the hooks for whichever agents you
-          use. Nothing is written to any agent's configuration until you press install there.
-
-          ## JetBrains IDE plugin
-
-          The \`agent-watch-ide-*.zip\` attached here, when one is, is optional: it makes a
-          click on a row land on the terminal tab a session runs in rather than on the IDE window.
-          Install it inside the IDE — Settings → Plugins → the gear → Install Plugin from Disk.
-          The Tooling window lists every JetBrains IDE it finds and opens that page for the one
-          you pick, with the file's path already copied.
-          NOTES
+          ./scripts/release-notes.sh "$version" > dist/notes.md
           gh release create "$GITHUB_REF_NAME" \
             --draft \
             --title "Agent Watch $version" \
@@ -92,4 +79,5 @@ jobs:
             "dist/AgentWatch-$version.dmg" \
             "dist/AgentWatch-$version.dmg.sha256" \
             "dist/AgentWatch-$version.zip" \
-            "dist/AgentWatch-$version.zip.sha256"
+            "dist/AgentWatch-$version.zip.sha256" \
+            dist/appcast.xml

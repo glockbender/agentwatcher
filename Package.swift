@@ -15,12 +15,31 @@ let package = Package(
         .library(name: "AgentWatchSender", targets: ["AgentWatchSender"]),
         .library(name: "AgentWatchLookup", targets: ["AgentWatchLookup"]),
     ],
+    // The one dependency: the update window, its progress and its list of changes. Pinned to an
+    // exact version because it replaces the running app, and a minor release of the code that
+    // does that is a change to review, not to pick up on the next resolve.
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")
+    ],
     targets: [
         .target(name: "AgentWatchCore"),
         .executableTarget(
             name: "AgentWatchApp",
-            dependencies: ["AgentWatchCore", "AgentWatchIngress", "AgentWatchSender", "AgentWatchLookup"],
-            swiftSettings: [.define("AGENT_WATCH_DEBUG_CAPTURE", .when(configuration: .debug))]
+            dependencies: [
+                "AgentWatchCore", "AgentWatchIngress", "AgentWatchSender", "AgentWatchLookup",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
+            swiftSettings: [.define("AGENT_WATCH_DEBUG_CAPTURE", .when(configuration: .debug))],
+            // Where Sparkle.framework is found: in the bundle (`build-app.sh` copies it there),
+            // and beside the executable in a build folder. SwiftPM adds the second by itself and
+            // Xcode does not — its Run passes the folder in DYLD_FRAMEWORK_PATH instead, so the
+            // executable it builds failed to start from a terminal (measured on Xcode 16.4).
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path",
+                ])
+            ]
         ),
         .executableTarget(
             name: "AgentWatchSend",

@@ -1,188 +1,116 @@
 #!/bin/bash
-
-# Updates a copy of the app end to end: builds an older version, lets it find a published
-# release, presses the buttons a person would press, and checks what ended up on disk.
+# Updates a copy of the app end to end in a clean macOS: Sparkle's windows, a real download, a
+# real replacement of the bundle — and every way the download can fail before that.
 #
-# Everything happens in a throwaway folder, beside the copy you actually use. The app keeps
-# all of its state under one directory, and a debug build takes that directory from
-# `AGENT_WATCH_SUPPORT_DIR` — so the test copy has its own socket and never argues with yours.
+#     ./scripts/e2e-update.sh
 #
-#     ./scripts/e2e-update.sh [tag] [starting-version]
+# Runs before every release (the release skill calls it) rather than on every push: it takes a few
+# minutes and needs the Tart machine `aw-golden` that the README clips use
+# (.claude/skills/readme-media/vm.md says how it was made). Nothing happens on this Mac's screen:
+# the windows open and the buttons are pressed inside a throwaway clone of that machine, which is
+# deleted at the end with `tart delete` — a machine never goes to the Trash.
 #
-# One thing to expect: after installing, the app opens the new copy with `open`, which passes
-# no environment. That copy therefore looks in the real directory, finds your running Agent
-# Watch and exits after asking it to show itself — so your widget may flash on screen once.
-# That is also why your own Agent Watch has to be running: with none there, the installed
-# copy — a release build, with no override to point elsewhere — would take the real lock and
-# run against your real state until this script killed it.
+# What runs there is this working tree, built in debug: an old copy (0.9.0) and a new one (0.9.2),
+# both signed ad-hoc like a release, and a local server playing GitHub with feeds that behave well
+# or badly. The copies carry a throwaway EdDSA key made for this run, never the release key.
+# scripts/update-test/machine.sh lists the cases; out/result.txt has one line per case.
 
 set -euo pipefail
 
-tag="${1:-v0.1.0}"
-old_version="${2:-0.0.9}"
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+here="$project_root/scripts/update-test"
+vm="aw-update"
+golden="aw-golden"
+port=8123
+export PATH="$HOME/.local/bin:$PATH"
 
-# Darwin socket names have 104 bytes including their terminator. The per-user TMPDIR plus
-# support/AgentWatch/agent-watch.sock can exceed that even though each path component is valid.
-python3 "$project_root/scripts/e2e-sandbox-cleanup.py"
-sandbox="$(mktemp -d "/private/tmp/agent-watch-e2e.XXXXXX")"
-printf '%s\n' "$$" > "$sandbox/.agentwatch-e2e-owner"
-sandbox_name="$(basename "$sandbox")"
-support="$sandbox/support"
-app="$sandbox/AgentWatch.app"
-mkdir -p "$support"
-
-say() { printf '\n== %s\n' "$1"; }
-fail() {
-    printf '\nFAILED: %s\n' "$1" >&2
-    for diagnostic in app-stderr.log accessibility-last-error.log; do
-        if [[ -s "$sandbox/$diagnostic" ]]; then
-            printf '\n%s:\n' "$diagnostic" >&2
-            tail -30 "$sandbox/$diagnostic" >&2
-        fi
-    done
-    # The files stay for inspection; the process does not — a copy left running with a modal
-    # alert on screen is what every retry would add one more of.
-    pkill -f "$sandbox_name" 2>/dev/null || true
-    printf 'the sandbox is left for inspection: %s\n' "$sandbox" >&2
+command -v tart >/dev/null || { echo "no tart: see .claude/skills/readme-media/vm.md" >&2; exit 1; }
+tart get "$golden" >/dev/null 2>&1 || { echo "no $golden machine: see .claude/skills/readme-media/vm.md" >&2; exit 1; }
+if tart get "$vm" >/dev/null 2>&1; then
+    echo "$vm exists already, left by a run that did not finish: tart delete $vm" >&2
     exit 1
-}
-
-# A button of the app's own alert, pressed by name rather than by position, so the test does
-# not care where the window is or what else is on screen.
-#
-# The process is addressed by its number, never by its name: the person running this test very
-# likely has their own Agent Watch running, `process "AgentWatch"` then resolves to whichever
-# one System Events picks, and the test quietly looks at the wrong copy's windows.
-#
-# Every window is tried, not the first: the widget is a window too, and it is already up.
-press() {
-    local label="$1" seconds="${2:-60}" waited=0
-    local target="(first application process whose unix id is $started_pid)"
-    # The process is named in full on every line rather than kept in a variable: a reference
-    # saved with `set target to …` stops resolving as a container, and `window 1 of target`
-    # then finds nothing while the same query written out finds the button. Measured.
-    until osascript \
-        -e "tell application \"System Events\"" \
-        -e "set failureMessage to \"No windows containing $label\"" \
-        -e "repeat with i from 1 to (count of windows of $target)" \
-        -e "try" \
-        -e "click button \"$label\" of window i of $target" \
-        -e "return \"pressed\"" \
-        -e "on error errorMessage number errorNumber" \
-        -e "set failureMessage to errorMessage & \" (\" & errorNumber & \")\"" \
-        -e "end try" \
-        -e "end repeat" \
-        -e "error failureMessage" \
-        -e "end tell" >/dev/null 2>"$sandbox/accessibility-last-error.log"; do
-        sleep 1
-        waited=$((waited + 1))
-        if [[ "$waited" -ge "$seconds" ]]; then
-            return 1
-        fi
-    done
-    printf '   pressed: %s (after %ss)\n' "$label" "$waited"
-}
-
-version_of() {
-    plutil -extract CFBundleShortVersionString raw -o - "$1/Contents/Info.plist" 2>/dev/null || true
-}
-
-# A debug copy using a different support directory does not protect the real state when the
-# downloaded release relaunches. Require the real directory's lock to be open by AgentWatch.
-# SingleInstanceCoordinator keeps this descriptor only after it successfully acquires flock.
-require_real_instance() {
-    local instance_lock="$HOME/Library/Application Support/AgentWatch/instance.lock"
-    lsof -a -c AgentWatch -t -- "$instance_lock" >/dev/null 2>&1 \
-        || fail "start Agent Watch against its normal support directory first — see the header"
-}
-require_real_instance
-
-say "Building the copy to be updated ($old_version)"
-"$project_root/scripts/build-app.sh" debug "$app" >/dev/null
-plutil -replace CFBundleShortVersionString -string "$old_version" "$app/Contents/Info.plist"
-plutil -replace CFBundleVersion -string "$old_version" "$app/Contents/Info.plist"
-# Editing `Info.plist` breaks the seal on the bundle, so it is signed again. Ad-hoc is enough:
-# nothing downloads this copy, so nothing quarantines it.
-codesign --force --sign - "$app/Contents/MacOS/AgentWatchSend" >/dev/null 2>&1
-codesign --force --sign - "$app" >/dev/null 2>&1
-printf '   %s is %s\n' "$app" "$(version_of "$app")"
-
-# Started through `open`, not by running the executable: a process launched straight from a
-# shell never registers with Launch Services, and System Events then cannot see its windows at
-# all — measured, the process list simply does not contain it. `--env` is what makes that
-# possible while still pointing the copy at its own state directory.
-say "Starting it against $tag"
-open --env "AGENT_WATCH_SUPPORT_DIR=$support" \
-    --env "AGENT_WATCH_RELEASE_URL=https://api.github.com/repos/glockbender/agentwatcher/releases/tags/$tag" \
-    --env "AGENT_WATCH_UPDATE_DIAGNOSTICS=1" \
-    --stdout "$sandbox/app-stdout.log" --stderr "$sandbox/app-stderr.log" \
-    -n "$app"
-started_pid=""
-for _ in $(seq 1 20); do
-    # Matched on the sandbox's own name, not on the path this script holds: `open` starts the
-    # process under the canonical path (`/private/var/...`), so the two strings differ.
-    # `|| true` because pgrep exits 1 when it finds nothing, and this loop exists precisely to
-    # wait for something that is not there yet — `set -e` would end the run on the first turn.
-    started_pid="$(pgrep -f "$sandbox_name" | head -1 || true)"
-    if [[ -n "$started_pid" ]]; then
-        break
-    fi
-    sleep 1
-done
-[[ -n "$started_pid" ]] || fail "the copy under test never started"
-printf '   pid %s, state in %s\n' "$started_pid" "$support"
-
-say "Answering the dialogs"
-press "Download" 60 || fail "could not press Download within a minute; see updater and Accessibility diagnostics"
-require_real_instance
-press "Install and Relaunch" 120 || fail "could not press Install and Relaunch; see diagnostics"
-
-say "Waiting for the bundle to change"
-installed=""
-for _ in $(seq 1 60); do
-    installed="$(version_of "$app")"
-    if [[ -n "$installed" && "$installed" != "$old_version" ]]; then
-        break
-    fi
-    sleep 1
-done
-[[ -n "$installed" && "$installed" != "$old_version" ]] || fail "the bundle is still $old_version"
-printf '   the bundle on disk is now %s\n' "$installed"
-
-# The copy that was running has to be gone: it replaced itself and asked to be restarted.
-for _ in $(seq 1 20); do
-    kill -0 "$started_pid" 2>/dev/null || break
-    sleep 1
-done
-if kill -0 "$started_pid" 2>/dev/null; then
-    fail "the old process is still running"
 fi
-printf '   the old process exited\n'
 
-# What was installed is a release build, and a release build ignores `AGENT_WATCH_SUPPORT_DIR`
-# on purpose — so it cannot be started here without competing for the real socket with the
-# copy the person actually uses. What can be checked is that a working app landed on disk.
-say "Checking what was installed"
-codesign --verify --strict "$app" 2>/dev/null || fail "the installed bundle is not properly signed"
-for executable in AgentWatch AgentWatchSend; do
-    if [[ ! -x "$app/Contents/MacOS/$executable" ]]; then
-        fail "the installed bundle has no $executable"
-    fi
-done
-printf '   signature intact, both executables in place\n'
-pkill -f "$sandbox_name" 2>/dev/null || true
-# The relaunched release may still be shutting down after SIGTERM. Only exit status 1
-# from pgrep proves absence; keep the files if a process remains or the probe fails.
-probe_status=0
-for _ in $(seq 1 20); do
-    probe_status=0
-    pgrep -f "$sandbox_name" >/dev/null 2>&1 || probe_status=$?
-    [[ "$probe_status" -eq 1 ]] && break
-    sleep 1
-done
-[[ "$probe_status" -eq 1 ]] || fail "a test process remains or its absence could not be checked"
+work="$HOME/Library/Caches/agent-watch-update-test/$(date +%Y%m%d-%H%M%S)"
+share="$work/share"
+mkdir -p "$share/serve/feeds" "$share/old" "$share/new"
+say() { printf '\n== %s\n' "$1"; }
 
-say "PASSED: $old_version → $installed"
-/usr/bin/trash "$sandbox"
-printf 'the successful test directory was moved to Trash; empty Trash to reclaim space\n'
+say "Building the copies"
+AGENT_WATCH_SIGNING_IDENTITY=- "$project_root/scripts/build-app.sh" debug "$work/build/AgentWatch.app" >"$work/build.log" 2>&1 \
+    || { echo "build failed: $work/build.log" >&2; exit 1; }
+public_key="$(swift "$here/testkey.swift" "$work")"
+# Editing Info.plist breaks the bundle's seal, so each copy is signed again — ad-hoc, as a
+# release is, so the test meets the same signature check a release does.
+make_copy() { # <version> <destination>
+    ditto "$work/build/AgentWatch.app" "$2"
+    local plist="$2/Contents/Info.plist"
+    plutil -replace CFBundleShortVersionString -string "$1" "$plist"
+    plutil -replace CFBundleVersion -string "$1" "$plist"
+    plutil -replace SUPublicEDKey -string "$public_key" "$plist"
+    codesign --force --sign - "$2" >/dev/null 2>&1
+    codesign --verify --strict "$2"
+}
+make_copy 0.9.0 "$share/old/AgentWatch.app"
+make_copy 0.9.2 "$share/new/AgentWatch.app"
+
+say "Signing the new copy and writing the feeds"
+tools="$("$project_root/scripts/sparkle-tools.sh")"
+archive="AgentWatch-0.9.2.zip"
+ditto -c -k --keepParent "$share/new/AgentWatch.app" "$share/serve/$archive"
+signature="$("$tools/sign_update" --ed-key-file "$work/private.key" "$share/serve/$archive")"
+# The real length with the signature of another file: the archive arrives whole and is refused.
+printf 'not the archive' >"$work/other"
+wrong="sparkle:edSignature=\"$("$tools/sign_update" --ed-key-file "$work/private.key" -p "$work/other")\" ${signature#* }"
+cat >"$work/CHANGELOG.md" <<'CHANGES'
+# Changelog
+
+## [0.9.2] - 2026-10-12
+
+### Added
+
+- PROBE-NEWEST: a line only the offered version has, with `code` in it.
+
+## [0.9.1] - 2026-10-11
+
+### Fixed
+
+- PROBE-SKIPPED: a line from a version the person never installed.
+
+## [0.9.0] - 2026-10-10
+
+- PROBE-INSTALLED: a line the running version already has, never shown.
+CHANGES
+feed() { # <name> <archive mode> <signature>
+    python3 "$project_root/scripts/appcast.py" 0.9.2 "http://127.0.0.1:$port/zip/$2/$archive" "$3" \
+        "$work/CHANGELOG.md" >"$share/serve/feeds/$1.xml"
+}
+feed good ok "$signature"
+feed drop drop "$signature"
+feed stall stall "$signature"
+feed error error "$signature"
+feed badsig ok "$wrong"
+swiftc -O -target arm64-apple-macos14 -o "$share/ax" "$here/ax.swift"
+cp "$here/server.py" "$here/machine.sh" "$share/"
+
+say "Running the cases in a clone of $golden"
+tart clone "$golden" "$vm"
+cleanup() { tart stop "$vm" >/dev/null 2>&1 || true; tart delete "$vm" >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+nohup tart run --dir="aw:$share" --no-graphics "$vm" >"$work/tart.log" 2>&1 &
+in_vm() { tart exec "$vm" zsh -lc "$1"; }
+for _ in $(seq 1 90); do in_vm 'pgrep -x Dock' >/dev/null 2>&1 && break; sleep 2; done
+in_vm 'pgrep -x Dock' >/dev/null 2>&1 || { echo "the machine did not start: $work/tart.log" >&2; exit 1; }
+# The desktop needs a moment after the Dock; a window opened before it can land behind.
+sleep 5
+in_vm "zsh '/Volumes/My Shared Files/aw/machine.sh'" || true
+
+say "Result"
+cat "$share/out/result.txt"
+if grep -q ' FAILED' "$share/out/result.txt" || [[ ! -s "$share/out/result.txt" ]]; then
+    echo "what each window said and showed is in $share/out" >&2
+    exit 1
+fi
+# Kept on failure for inspection; on success it goes to the Trash with the copies in it.
+/usr/bin/trash "$work"
+echo "PASSED; the test folder was moved to the Trash"

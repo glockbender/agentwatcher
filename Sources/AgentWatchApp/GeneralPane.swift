@@ -70,7 +70,7 @@ struct GeneralPane: View {
                         Button("Check Now") { model.checkForUpdates() }
                     }
                 }
-                Toggle("Check for updates on launch", isOn: checksOnLaunch)
+                Toggle("Check for updates automatically", isOn: checksOnLaunch)
             }
         }
     }

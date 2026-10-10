@@ -12,7 +12,8 @@ tasks:
       # The sender is an executable the tests look for on disk, so it is built first — and
       # by the task that owns that command, rather than by a second copy of it here.
       - task: build-sender
-      - python3 scripts/test-e2e-sandbox-cleanup.py
+      - python3 scripts/test-changelog.py
+      - python3 scripts/test-appcast.py
       - python3 scripts/test-check-troubleshooting.py
       - python3 scripts/test-check-docs.py
       - python3 scripts/test-measurements.py
@@ -61,7 +62,7 @@ tasks:
       - ./scripts/build-app.sh release
 
   release:
-    desc: Package the release zip and disk image, each with its checksum, from the app bundle
+    desc: Package the release zip and disk image with their checksums, and the update feed when SPARKLE_PRIVATE_KEY is set
     cmds:
       # Signs with AGENT_WATCH_RELEASE_IDENTITY when it names a Developer ID certificate and
       # ad-hoc when it does not — never with the local development certificate, which means
@@ -73,10 +74,9 @@ tasks:
     cmds:
       - task: verify
       - task: probe-update
-      # Without an IDE installed here the plugin build would download one, and the end-to-end
-      # update needs a screen and Accessibility permission. Neither is right for every machine
-      # that clones this repository, so each says why it is skipped rather than failing the run.
-      # The same four paths `build.gradle.kts` looks at, kept in step by hand.
+      # Without an IDE installed here the plugin build would download one, which is not right for
+      # every machine that clones this repository, so it says why it is skipped rather than
+      # failing the run. The same four paths `build.gradle.kts` looks at, kept in step by hand.
       - |
         if [ -d "$HOME/Applications/GoLand.app" ] || [ -d "/Applications/GoLand.app" ] \
           || [ -d "$HOME/Applications/IntelliJ IDEA.app" ] || [ -d "/Applications/IntelliJ IDEA.app" ]; then
@@ -84,14 +84,6 @@ tasks:
         else
           echo "skipped: no JetBrains IDE installed here — 'task plugin-download' builds against"
           echo "         one Gradle fetches, which costs about two gigabytes the first time"
-        fi
-      - |
-        if [ -n "${CI:-}" ]; then
-          echo "skipped: the end-to-end update needs a screen and Accessibility permission"
-        elif [ -n "${SKIP_E2E:-}" ]; then
-          echo "skipped: SKIP_E2E is set"
-        else
-          task e2e-update
         fi
 
   readme-images:
@@ -109,19 +101,18 @@ tasks:
       - MENU_RENDER_DIR=docs/images swift test --filter ReadmeMenuProbe
 
   probe-update:
-    desc: Download the published release and unpack it, to check the half no unit test reaches
+    desc: Download the published release as installed copies will, to check the half no unit test reaches
     cmds:
       # Talks to GitHub, so it is not part of `task verify`: that gate must pass on a machine
       # with no network.
-      - UPDATE_PROBE_DIR="$(mktemp -d)" swift test --filter AppUpdateProbe
+      - ./scripts/probe-release.sh
 
   e2e-update:
-    desc: Update a throwaway copy of the app end to end, dialogs included
+    desc: Update a copy of the app end to end in a clean macOS, failures included — before a release
     cmds:
-      # Builds an older version in a temporary folder, starts it against a published release,
-      # presses the buttons through the accessibility tree, and checks what landed on disk.
-      # Needs the terminal to have Accessibility permission — macOS asks once.
-      - ./scripts/e2e-update.sh {{.CLI_ARGS}}
+      # A few minutes, in a throwaway clone of the Tart machine aw-golden; nothing opens on this
+      # Mac's screen. Not in verify-all for that reason: the release skill runs it before a tag.
+      - ./scripts/e2e-update.sh
 
   plugin-check:
     desc: Build and test the JetBrains IDE plugin without staging it (the push gate's half)
