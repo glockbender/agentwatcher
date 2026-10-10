@@ -1,3 +1,4 @@
+import AgentWatchCore
 import AppKit
 
 /// The changes since the running version, set as text for Sparkle's update window.
@@ -12,8 +13,7 @@ enum ChangelogText {
         let body = NSFont.systemFont(ofSize: NSFont.systemFontSize)
         let bold = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
         var first = true
-        for raw in markdown.components(separatedBy: "\n") {
-            let line = raw.trimmingCharacters(in: .whitespaces)
+        for line in Changelog.logicalLines(of: markdown) {
             guard !line.isEmpty else {
                 continue
             }

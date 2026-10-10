@@ -30,6 +30,22 @@ public enum Changelog {
         return joined.isEmpty ? nil : joined
     }
 
+    /// The lines as Markdown reads them, trimmed: an indented line that follows text continues it,
+    /// so a bullet wrapped over several lines comes back as one. The update window sets each line
+    /// as a paragraph of its own, and `CHANGELOG.md` wraps its bullets at 100 columns.
+    public static func logicalLines(of text: String) -> [String] {
+        var lines: [String] = []
+        for raw in text.components(separatedBy: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if raw.first?.isWhitespace == true, !line.isEmpty, let previous = lines.last, !previous.isEmpty {
+                lines[lines.count - 1] = previous + " " + line
+            } else {
+                lines.append(line)
+            }
+        }
+        return lines
+    }
+
     /// `0.4.0` out of `## [0.4.0] - 2026-10-12`; nothing for `## [Unreleased]` or a heading that
     /// names no version.
     private static func sectionVersion(of heading: String) -> String? {

@@ -119,7 +119,8 @@ cat >"$work/CHANGELOG.md" <<'CHANGES'
 
 ### Fixed
 
-- PROBE-SKIPPED: a line from a version the person never installed.
+- PROBE-SKIPPED: a line from a version the person never installed, wrapped
+  onto a second line as CHANGELOG.md wraps its bullets.
 
 ## [0.9.0] - 2026-10-10
 

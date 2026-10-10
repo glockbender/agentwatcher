@@ -169,6 +169,8 @@ if wait_for $pid 'Install Update' 30; then
   notes=""
   grep -q PROBE-NEWEST "$out/offer.txt" || notes+="newest version missing; "
   grep -q PROBE-SKIPPED "$out/offer.txt" || notes+="skipped version missing; "
+  # One grep line holds one paragraph of the window: the whole phrase means the bullet stayed whole.
+  grep -q 'never installed, wrapped onto a second line' "$out/offer.txt" || notes+="a wrapped bullet broke in two; "
   grep -q PROBE-INSTALLED "$out/offer.txt" && notes+="the installed version shown; "
   grep -q -i 'Automatically download' "$out/offer.txt" && notes+="automatic install offered; "
   [[ -z $notes ]] && result changes-listed passed "the two unseen versions, not the installed one" \

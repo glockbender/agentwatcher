@@ -72,6 +72,31 @@ final class ChangelogTests: XCTestCase {
             Changelog.unseen(in: tenth, installed: "0.1.9", offered: "0.1.10"), "## [0.1.10] - 2026-12-01\n\n- Ten.")
     }
 
+    /// Left as written, the second half of a wrapped bullet would stand in the window as a
+    /// paragraph of its own, cut off mid-sentence.
+    func testAWrappedBulletReadsAsOneLine() {
+        let text = """
+            ### Added
+
+            - The update window lists what changed, with a progress bar and a
+              Cancel button.
+            - Short.
+            """
+
+        let joined = "- The update window lists what changed, with a progress bar and a Cancel button."
+
+        XCTAssertEqual(Changelog.logicalLines(of: text), ["### Added", "", joined, "- Short."])
+    }
+
+    /// Only an indented line continues: a paragraph after a blank line and a new bullet stay apart.
+    func testABlankLineOrANewBulletStartsAnewLine() {
+        let text = "## [0.1.0] - 2026-09-11\n\nFirst public build.\n- One.\n- Two."
+
+        XCTAssertEqual(
+            Changelog.logicalLines(of: text),
+            ["## [0.1.0] - 2026-09-11", "", "First public build.", "- One.", "- Two."])
+    }
+
     /// The caller shows what it would have shown anyway, rather than an empty window.
     func testAFileWithNoMatchingSectionGivesNothing() {
         XCTAssertNil(Changelog.unseen(in: file, installed: "0.5.0", offered: "0.5.0"))
