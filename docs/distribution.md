@@ -119,14 +119,15 @@ Workflow первым делом сверяет тег с этим значен�
 
 Делает владелец, один раз. Инструменты Sparkle скачивает `./scripts/sparkle-tools.sh`; первая
 команда создаёт пару в связке ключей и печатает открытый ключ, вторая кладёт закрытый в секрет
-через временный файл и удаляет его. Пробел в начале второй команды не пускает её в историю `zsh`:
+через файл в новой временной папке и удаляет обоих: `-x` отказывается писать в файл, который уже
+есть, а `mktemp` без `-d` его создаёт. Пробел в начале второй команды не пускает её в историю `zsh`:
 
 ```sh
 .build/sparkle-tools-2.10.0/bin/generate_keys --account agent-watch
 ```
 
 ```sh
- key=$(mktemp) && .build/sparkle-tools-2.10.0/bin/generate_keys --account agent-watch -x "$key" && gh secret set SPARKLE_PRIVATE_KEY --repo glockbender/agentwatcher < "$key"; rm -f "$key"
+ dir=$(mktemp -d) && .build/sparkle-tools-2.10.0/bin/generate_keys --account agent-watch -x "$dir/key" && gh secret set SPARKLE_PRIVATE_KEY --repo glockbender/agentwatcher < "$dir/key"; rm -f "$dir/key"; rmdir "$dir"
 ```
 
 Открытый ключ потом печатает `generate_keys --account agent-watch -p`; он не секрет и идёт в
