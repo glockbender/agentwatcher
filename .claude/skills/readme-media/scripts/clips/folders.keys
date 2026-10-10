@@ -1,0 +1,12 @@
+# The whole screen while the folder dialog is open, since it is nearly as wide as a focus frame;
+# onto the Claude Code rows when a folder's row appears and gets its hooks, and back for the next.
+@add-work-1.6          0 0 2304
+@chosen-work+0.2       0 0 2304
+@chosen-work+1.0       0 380 1600
+@installed-work+1.2    0 380 1600
+@add-personal-0.2      0 380 1600
+@add-personal+0.6      0 0 2304
+@chosen-personal+0.2   0 0 2304
+@chosen-personal+1.0   0 380 1600
+@installed-personal+1.6  0 380 1600
+@installed-personal+2.4  0 0 2304
