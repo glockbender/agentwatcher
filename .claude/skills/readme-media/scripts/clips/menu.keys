@@ -1,1 +1,11 @@
-@open-menu  0 0 2304   # the whole screen
+# The whole screen, then onto the menu while the pointer goes to the icon, the choice inside it, and
+# back out while the terminal turns to the question. The same for the second look at the menu.
+@open-menu-1.2  0 0 2304
+@open-menu-1.0  0 0 2304
+@open-menu-0.2  704 0 1600
+@choose+0.3     704 0 1600
+@choose+1.1     0 0 2304
+@reopen-0.9     0 0 2304
+@reopen-0.1     704 0 1600
+@escape+0.2     704 0 1600
+@escape+1.0     0 0 2304

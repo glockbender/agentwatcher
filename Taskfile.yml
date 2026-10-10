@@ -100,11 +100,6 @@ tasks:
       # The probes refuse to draw unless a Retina display is the main one: pictures drawn at
       # one pixel per point look soft on every Retina screen that opens the README.
       - DOC_RENDER_DIR=docs/images swift test --filter DocumentationRenderProbe
-      # The setup guide draws four steps; the README shows one of them.
-      - |
-        drawn="$(mktemp -d)"
-        SETUP_RENDER_DIR="$drawn" swift test --filter ToolingSetupTests/testRenderSetupForDocumentation
-        cp "$drawn/setup-connect.png" docs/images/
 
   readme-menu:
     desc: Take the README's picture of the menu from a real menu, open on screen for a second

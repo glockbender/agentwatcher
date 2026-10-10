@@ -1,12 +1,17 @@
-# One clip a line: name, take, in, out, width, height, keyframes. In and out are marks of the take
-# (`@mark±seconds`); the size is twice the width the README shows it at. One keyframe is a camera
-# that stands still: a clip shows its whole scene at once.
-clip-start      start       @long-task-1.2  @done+2.5      1600 1000  clips/start.keys
-clip-menu       menu        @open-menu-1.2  @escape-0.1    1600 1000  clips/menu.keys
-clip-icon       icon        @ask-1.0        @done+2.2      1280 800   clips/icon.keys
-clip-counts     counts      @ask-1.0        @done+2.2      1280 800   clips/icon.keys
-clip-order      settings    @state-2.1      @state+2.1     1600 1000  clips/settings.keys
-clip-light      settings    @light-1.8      @light+2.4     1600 1000  clips/settings.keys
-clip-rows       settings    @rows-0.8       @on-model+2.2  1600 1000  clips/settings.keys
-clip-setup      setup       @launch-0.6     @ready+2.4     1600 1054  clips/setup.keys
-clip-fullscreen fullscreen  @ask-1.2        @done+2.0      1600 1000  clips/fullscreen.keys
+# One clip a line: name, take, in, out, width, height, camera keys, and `fade=<seconds>` where the
+# loop would jump from a busy last frame to a calm first one. In and out are marks of the take
+# (`@mark±seconds`); the size is twice the width the README shows it at. The keys hold the whole
+# scene and a focus on what changes; a focus goes no closer than pixel for pixel, but for the
+# full-screen dot, which is 8 points.
+clip-start      start       @scroll-2.2     @done+4.0       1600 1000  clips/start.keys  fade=1
+clip-menu       menu        @open-menu-1.2  @escape+1.4     1600 1000  clips/menu.keys
+clip-icon       icon        @ask-1.0        @done+2.2       1280 800   clips/icon.keys
+clip-counts     counts      @ask-1.0        @done+2.2       1280 800   clips/icon.keys
+clip-fullscreen fullscreen  @ask-1.2        @done+2.0       1600 1000  clips/fullscreen.keys
+clip-order      order       @order-1.0      @drag+3.6       1600 1000  clips/order.keys
+clip-rows       rows        @rows-0.8       @on-model+2.2   1600 1000  clips/rows.keys
+clip-resize     rows        @wider-2.4      @back+1.6       1600 1000  clips/resize.keys
+clip-light      look        @light-1.0      @theme+2.4      1600 1000  clips/look.keys
+clip-size       look        @size-menu-1.0  @size-back+2.0  1600 1000  clips/look.keys
+clip-theme      look        @edit-1.0       @faster+4.2     1600 1000  clips/theme.keys
+clip-setup      setup       @launch-0.6     @ready+2.4      1600 1054  clips/setup.keys

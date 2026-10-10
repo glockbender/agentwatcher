@@ -1,0 +1,7 @@
+# The whole screen for the first part, then onto the parts and the widget together before the second,
+# and back out for the rest.
+@rows-0.8          0 0 2304
+@off-elapsed+0.4   0 0 2304
+@off-elapsed+1.2   460 0 1844
+@off-agent+1.0     460 0 1844
+@off-agent+1.8     0 0 2304

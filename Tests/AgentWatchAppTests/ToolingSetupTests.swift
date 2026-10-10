@@ -178,8 +178,7 @@ final class ToolingSetupTests: XCTestCase {
         XCTAssertEqual(panel.frame, frame, "Opening setup must not move the widget")
     }
 
-    /// Every step of the guide and the overview, as the settings window shows them; the README
-    /// shows the connection step.
+    /// Every step of the guide and the overview, as the settings window shows them, to look at.
     func testRenderSetupForDocumentation() throws {
         guard let directory = ProcessInfo.processInfo.environment["SETUP_RENDER_DIR"] else {
             throw XCTSkip("Set SETUP_RENDER_DIR to render the setup guide")

@@ -1,28 +1,30 @@
 #!/bin/zsh
-# The menu bar icon and the one session it follows, in a small terminal right below it: blue while
-# the session works, orange while it asks, green once it is done. `icon.sh counts` shows the same in
-# the Counts style. Runs after fullscreen.sh, which leaves "Check the task list" the only session.
+# The menu bar icon and the one session it follows, in a terminal right below it: blue while the
+# session works, orange while it asks, green once it is done. `icon.sh counts` shows the same in the
+# Counts style. Runs after fullscreen.sh, which leaves "Check the task list" the only session. The
+# stage has more pixels than the clip, so the camera can close in on the icon without stretching
+# any (clips/icon.keys).
 set -e
 source ${0:A:h}/../lib.sh
 style=${1:-sphere}
 take=icon; [[ $style == sphere ]] || take=$style
 # A question of its own for each take, so the answer does not refer to the one before.
 question='which task redraws the README pictures'; [[ $style == sphere ]] || question='which task sets up the Git hooks'
-STAGE=(512 0 640 400)
+STAGE=(224 0 928 580)
 hide_widget
 end_other_sessions
 if [[ $style == counts ]]; then
   # Off camera, as a person would: Settings, the Menu Bar page, Counts.
   $AW ax press $DEMO_PID showWidgetSettings
   sleep 1.5
-  r=($($AW ax find $DEMO_PID "Menu Bar")); $AW glide $r[1] $r[2] click
+  r=($($AW ax find $DEMO_PID "Menu Bar")); glide_click $r[1] $r[2]
   sleep 1
-  r=($($AW ax find $DEMO_PID Counts)); $AW glide $r[1] $r[2] click
+  r=($($AW ax find $DEMO_PID Counts)); glide_click $r[1] $r[2]
   sleep 1
   $AW ax close $DEMO_PID "Menu Bar"
 fi
 top=$(( BAR + 12 ))
-place_sessions 528 $top 608 $(( 384 - top ))
+place_sessions 240 $top 896 $(( 564 - top ))
 select_tab $NAMES[1]
 $AW glide 760 330
 sleep 1

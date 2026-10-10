@@ -12,6 +12,7 @@
 //   ax find|findc <pid> <text>    first element whose text ends with / contains <text>:
 //                                 centre x y, then x y w h, in points from the top left
 //   ax findm <pid> <text>         as find, inside a menu only
+//   ax findw <pid> <title|-> <text>   as find, inside the window whose title ends with <title>
 //   ax press <pid> <text>         press the first element whose identifier or title is <text>
 //   ax dismiss <pid> [keep …]     press every row's "×" except on rows whose text holds a kept name
 //   ax windows <pid>              frame and title of every window
@@ -19,11 +20,17 @@
 //   ax move <pid> <title|-> x y w h   set a window's frame; "-" is the untitled one (the widget)
 //   ax fullscreen <pid> <title|-> on|off   enter or leave the window's own full-screen space
 //   activate <pid>                bring an app forward
-//   glide x y [click]             move the pointer along an eased path, then click if asked
+//   glide x y [click]             move the pointer along an eased path, then click if asked and
+//                                 print the wall time of the press
+//   drag x y x2 y2 [seconds]      glide to x y, press, move to x2 y2 along an eased path (0.8 s),
+//                                 release; prints the wall time of the press
+//   scroll <points> [seconds] [back]  scroll where the pointer is, at an even speed; positive goes
+//                                 down a list; `back` returns at once, with no stop between
 //   key <code> [cmd,opt,ctrl,shift]  press and release one key (53 is Escape, 13 is W)
 //   space left|right              Control-arrow: the next desktop
-//   zoom <stage dir> <keys> <out dir> <width> <height> <fps>
-//                                 render s0001.png… through moving crop rects into f0001.png…
+//   zoom <stage dir> <keys> <out dir> <width> <height> <fps> [taps]
+//                                 render s0001.png… through moving crop rects into f0001.png…,
+//                                 with a ring at each press in <taps>, "t x y" a line
 //   record <out.mov> <t0 file>    the main screen at its own pixels, 30 frames a second, until
 //                                 SIGINT; the wall time of the first frame goes to <t0 file>
 //   display <width> <height>      switch the main screen to that size in points at 2x, for good
@@ -114,6 +121,17 @@ func ax(_ args: [String]) {
             return true
         }
         guard let f = hit else { fail("none: \(args[2])") }
+        print(Int(f.midX), Int(f.midY), Int(f.minX), Int(f.minY), Int(f.width), Int(f.height))
+    case "findw":
+        // A closed menu keeps its items, with frames at the screen's bottom left: "Closed" found one.
+        guard args.count == 4 else { fail("ax findw <pid> <title|-> <text>") }
+        var hit: CGRect?
+        _ = walk(window(args[2])) { element in
+            guard text(element).hasSuffix(args[3]), let f = frame(element) else { return false }
+            hit = f
+            return true
+        }
+        guard let f = hit else { fail("none in \(args[2]): \(args[3])") }
         print(Int(f.midX), Int(f.midY), Int(f.minX), Int(f.minY), Int(f.width), Int(f.height))
     case "press":
         var found: AXUIElement?
@@ -216,8 +234,58 @@ func glide(to target: CGPoint, click: Bool) {
     guard click else { return }
     usleep(250_000)
     post(.leftMouseDown, target)
+    let pressed = Date().timeIntervalSince1970
     usleep(90_000)
     post(.leftMouseUp, target)
+    print(String(format: "%.3f", pressed))
+}
+
+/// A press, a move with the button held, a release: a slider's knob, a widget's edge, a row
+/// dragged into place. The pauses at both ends let the control see a press before the move and
+/// the last position before the release.
+func drag(from start: CGPoint, to end: CGPoint, seconds: Double) {
+    glide(to: start, click: false)
+    usleep(250_000)
+    post(.leftMouseDown, start)
+    let pressed = Date().timeIntervalSince1970
+    usleep(200_000)
+    let began = Date()
+    var t = 0.0
+    while t < 1 {
+        t = min(1, Date().timeIntervalSince(began) / seconds)
+        let e = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
+        post(.leftMouseDragged, CGPoint(x: start.x + (end.x - start.x) * e, y: start.y + (end.y - start.y) * e))
+        usleep(14_000)
+    }
+    usleep(200_000)
+    post(.leftMouseUp, end)
+    print(String(format: "%.3f", pressed))
+}
+
+/// Pixel deltas in small steps by the clock, as a trackpad sends them, so the list glides on camera.
+/// At an even speed: an eased scroll slowed down at its ends, the pointer stayed on one row of the
+/// widget past the half second that opens the row's card, and the card covered the scrolling. And
+/// with a move of half a point every step: under a pointer that stood still, a row that scrolled
+/// away was never left, and the first row to pass opened its card.
+func scroll(points: Double, seconds: Double) {
+    let start = CGEvent(source: nil)!.location
+    let began = Date()
+    var done = 0.0
+    var t = 0.0
+    var nudge = 0.5
+    while t < 1 {
+        t = min(1, Date().timeIntervalSince(began) / seconds)
+        let step = (points * t - done).rounded()
+        if step != 0 {
+            CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(-step), wheel2: 0, wheel3: 0)!
+                .post(tap: .cghidEventTap)
+            done += step
+        }
+        post(.mouseMoved, CGPoint(x: start.x, y: start.y + nudge))
+        nudge = -nudge
+        usleep(14_000)
+    }
+    post(.mouseMoved, start)
 }
 
 func flags(_ names: String) -> CGEventFlags {
@@ -301,12 +369,48 @@ struct Key {
     let t, x, y, w: Double
 }
 
+/// A press, in clip seconds and stage pixels.
+struct Tap {
+    let t, x, y: Double
+}
+
+/// How long a press's ring lasts.
+let ringSeconds = 0.5
+
+/// A press as a ring that grows and fades, sized for a 2x recording: from 14 to 24 points, a
+/// translucent dark disc with a white edge, which reads on a dark terminal and a light window alike.
+func ring(_ progress: Double) -> CIImage {
+    let eased = 1 - pow(1 - progress, 2)
+    let radius = 28 + 20 * eased
+    let fade = 1 - progress
+    let side = 104
+    let context = CGContext(
+        data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    let disc = CGRect(x: Double(side) / 2 - radius, y: Double(side) / 2 - radius, width: 2 * radius, height: 2 * radius)
+    context.setFillColor(CGColor(gray: 0, alpha: 0.3 * fade))
+    context.fillEllipse(in: disc)
+    context.setStrokeColor(CGColor(gray: 1, alpha: 0.9 * fade))
+    context.setLineWidth(3)
+    context.strokeEllipse(in: disc.insetBy(dx: 1.5, dy: 1.5))
+    return CIImage(cgImage: context.makeImage()!)
+}
+
 /// Keyframes are "t x y w" in stage pixels from the top left; a pair with the same rect is a
 /// hold, and between two different ones the rect moves with smoothstep easing.
 func zoom(_ args: [String]) throws {
-    guard args.count == 6, let outW = Double(args[3]), let outH = Double(args[4]), let fps = Double(args[5]) else {
-        fail("zoom <stage dir> <keys> <out dir> <width> <height> <fps>")
+    guard args.count == 6 || args.count == 7, let outW = Double(args[3]), let outH = Double(args[4]),
+        let fps = Double(args[5])
+    else {
+        fail("zoom <stage dir> <keys> <out dir> <width> <height> <fps> [taps]")
     }
+    let taps: [Tap] =
+        args.count < 7
+        ? []
+        : try String(contentsOfFile: args[6], encoding: .utf8).split(separator: "\n").compactMap { line in
+            let v = line.split(separator: " ").compactMap { Double($0) }
+            return v.count == 3 ? Tap(t: v[0], x: v[1], y: v[2]) : nil
+        }
     let lines: [Substring] = try String(contentsOfFile: args[1], encoding: .utf8).split(separator: "\n")
     let numbers: [[Double]] = lines.map { line in
         let code: Substring = line.split(separator: "#", omittingEmptySubsequences: false)[0]
@@ -332,8 +436,18 @@ func zoom(_ args: [String]) throws {
     let frames = try FileManager.default.contentsOfDirectory(atPath: stage.path)
         .filter { $0.hasPrefix("s") && $0.hasSuffix(".png") }.sorted()
     for (index, file) in frames.enumerated() {
-        guard let source = CIImage(contentsOf: stage.appendingPathComponent(file)) else { fail("unreadable \(file)") }
-        let r = rect(at: Double(index) / fps)
+        guard var source = CIImage(contentsOf: stage.appendingPathComponent(file)) else { fail("unreadable \(file)") }
+        let t = Double(index) / fps
+        // Drawn on the stage, before the crop: a ring grows with the zoom, as the pointer does. Cut
+        // back to the stage, or a ring at its edge would move what the crop below measures from.
+        let extent = source.extent
+        for tap in taps where t >= tap.t && t < tap.t + ringSeconds {
+            let mark = ring((t - tap.t) / ringSeconds)
+            let half = mark.extent.width / 2
+            source = mark.transformed(by: CGAffineTransform(translationX: tap.x - half, y: extent.height - tap.y - half))
+                .composited(over: source).cropped(to: extent)
+        }
+        let r = rect(at: t)
         let h = r.w * outH / outW
         // Translate first, then Lanczos: sub-pixel steps keep a slow move from shimmering, which
         // ffmpeg's zoompan cannot do — it rounds the rect to whole pixels.
@@ -344,7 +458,14 @@ func zoom(_ args: [String]) throws {
         lanczos.setValue(outW / r.w, forKey: kCIInputScaleKey)
         lanczos.setValue(1.0, forKey: kCIInputAspectRatioKey)
         let image = lanczos.outputImage!.cropped(to: CGRect(x: 0, y: 0, width: outW, height: outH))
-        let cg = context.createCGImage(image, from: image.extent, format: .RGBA8, colorSpace: sRGB)!
+        let rendered = context.createCGImage(image, from: image.extent, format: .RGBA8, colorSpace: sRGB)!
+        // Drawn again without alpha: ImageIO wrote some frames as RGB and some as RGBA, and ffmpeg
+        // rebuilds its filters at every such change, which dropped the start of a contact sheet.
+        let opaque = CGContext(
+            data: nil, width: rendered.width, height: rendered.height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: sRGB, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        opaque.draw(rendered, in: CGRect(x: 0, y: 0, width: rendered.width, height: rendered.height))
+        let cg = opaque.makeImage()!
         let url = out.appendingPathComponent(String(format: "f%04d.png", index + 1))
         let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
         CGImageDestinationAddImage(destination, cg, nil)
@@ -428,8 +549,9 @@ func record(_ args: [String]) -> Never {
         config.width = display.width * scale
         config.height = display.height * scale
         config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+        // No showMouseClicks: it drew nothing for the takes' posted clicks, measured on macOS
+        // 15.7.7 in the virtual machine, and the cut draws a ring of its own (zoom's taps).
         config.showsCursor = true
-        if #available(macOS 15.0, *) { config.showMouseClicks = true }
         config.queueDepth = 8
         do {
             let recorder = try Recorder(
@@ -531,6 +653,17 @@ case "activate":
 case "glide":
     guard args.count >= 3, let x = Double(args[1]), let y = Double(args[2]) else { fail("glide x y [click]") }
     glide(to: CGPoint(x: x, y: y), click: args.count > 3 && args[3] == "click")
+case "drag":
+    guard args.count >= 5, let x = Double(args[1]), let y = Double(args[2]), let x2 = Double(args[3]),
+        let y2 = Double(args[4])
+    else { fail("drag x y x2 y2 [seconds]") }
+    drag(from: CGPoint(x: x, y: y), to: CGPoint(x: x2, y: y2), seconds: args.count > 5 ? Double(args[5]) ?? 0.8 : 0.8)
+case "scroll":
+    guard args.count >= 2, let points = Double(args[1]) else { fail("scroll <points> [seconds] [back]") }
+    let seconds = args.count > 2 ? Double(args[2]) ?? 0.8 : 0.8
+    scroll(points: points, seconds: seconds)
+    // In one process: starting another took long enough in the virtual machine for a row's card to open.
+    if args.count > 3 && args[3] == "back" { scroll(points: -points, seconds: seconds) }
 case "key":
     guard args.count >= 2, let code = CGKeyCode(args[1]) else { fail("key <code> [cmd,opt,ctrl,shift]") }
     press(code, flags: args.count > 2 ? flags(args[2]) : [])
@@ -570,5 +703,5 @@ case "wallpaper":
         }
     }
 default:
-    fail("aw-media check|screen|onscreen|bar|quit|backdrop|clear-notifications|ax|activate|glide|key|space|zoom|record|display|type|wallpaper — see the top of aw-media.swift")
+    fail("aw-media check|screen|onscreen|bar|quit|backdrop|clear-notifications|ax|activate|glide|drag|scroll|key|space|zoom|record|display|type|wallpaper — see the top of aw-media.swift")
 }

@@ -1,1 +1,13 @@
-@ask  0 0 2304      # the whole screen: a full-screen terminal's lines start at its left edge
+# The whole screen: a full-screen terminal's lines start at its left edge. Then onto the corner as the
+# dot comes on, blue and orange, with the menu bar sliding over it and away; out for the answer, and
+# in again as the dot goes out. The dot is 8 points: the focus is twice as close and the one that
+# goes past pixel for pixel.
+@ask-1.2      0 0 2304
+@ask-0.2      0 0 2304
+@ask+0.6      1152 0 1152
+@back+1.2     1152 0 1152
+@approve-0.6  0 0 2304
+@approve+0.2  0 0 2304
+@approve+1.0  1152 0 1152
+@done+0.8     1152 0 1152
+@done+1.6     0 0 2304

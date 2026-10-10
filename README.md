@@ -9,7 +9,7 @@ A menu bar app for Apple Silicon Macs with macOS 14 or newer. Alpha: used every 
 [Download](https://github.com/glockbender/agentwatcher/releases) · [Install](#install) ·
 [What it works with](#what-it-works-with) · [Troubleshooting](TROUBLESHOOTING.md)
 
-<img src="docs/images/clip-start.avif" alt="A terminal fills the screen with the widget in its top right corner. One session starts a long task while another waits to run a command; hovering its row opens a card that says what it waits for, a click on the row opens its terminal tab at the question, and once answered the row turns done" width="800">
+<img src="docs/images/clip-start.avif" alt="A terminal fills the screen with the widget in its top right corner, seven sessions in room for four. The list scrolls down and back; one session starts a long task while another waits to run a command; hovering its row opens a card that says what it waits for, a click on the row opens its terminal tab at the question, and once answered the row turns done" width="800">
 
 Every agent session gets a lamp that says what it is doing: working, waiting for you, done. A small
 floating widget lists the sessions with their lamps, the menu bar icon sums them up, and its menu
@@ -122,13 +122,6 @@ Nothing is written into an agent's configuration until you press an install butt
 other agent later in **Settings… → Tooling**. For Claude, **Connect Status Line** adds the
 context size and account usage to the widget; your own status-line command keeps running.
 
-<details>
-<summary>The connection guide</summary>
-
-<img src="docs/images/setup-connect.png" alt="The connection guide: the install button, what the hooks send, and the optional Claude status line" width="480">
-
-</details>
-
 ## Make it yours
 
 Everything Agent Watch draws can be changed: every colour and every animation of the widget, the
@@ -141,7 +134,7 @@ menu is open. Every change shows at once, on the widget itself.
 A theme holds every colour and animation. The built-in one is called Default; the first change
 you make copies it into a theme of your own, so Default stays as it was.
 
-<img src="docs/images/settings-theme.png" alt="Theme editor: background, material and opacity of the widget, then for each lamp its colour, motion, second colour and cycle length, with a live row beside each" width="570">
+<img src="docs/images/clip-theme.avif" alt="In the theme editor, the waiting lamp's second colour is set to red and the working lamp's cycle to the shortest; the widget's two lamps change at once" width="800">
 
 The theme editor changes:
 
@@ -163,44 +156,32 @@ is drawn frosted.
 |---|---|---|
 | <img src="docs/images/look-dark.png" alt="Default theme in dark mode: blue panel" width="250"> | <img src="docs/images/look-light.png" alt="Default theme in light mode: light grey panel" width="250"> | <img src="docs/images/look-own.png" alt="A custom theme: dark navy panel and pastel lamps" width="250"> |
 
-<img src="docs/images/clip-light.avif" alt="Choosing Light in Appearance recolours the widget at once" width="800">
+<img src="docs/images/clip-light.avif" alt="Choosing Light in Appearance recolours the widget at once, and choosing a theme of one's own turns it pink" width="800">
 
 ### Rows
 
 Choose and reorder what a row shows: elapsed time, lamp, agent, a problem mark, name, project,
 branch, model, where it runs, which Codex subagent it is, running work and context size. In **Settings… → Widget →
-Rows**, tick a part and drag it into place.
+Rows**, tick a part and drag it into place. Drag an edge of the widget to make it wider or
+narrower; a name too long for its row is shortened in the middle.
 
-<img src="docs/images/row-minimal.png" alt="Rows with only a lamp and a name" width="260">
-<img src="docs/images/row-full.png" alt="Rows with most parts: time, lamp, agent, name, project, branch, model, running work and context" width="620">
+<img src="docs/images/clip-resize.avif" alt="Dragging the widget's left edge widens it until every name fits; dragging it back shortens the long names again" width="800">
 
 <img src="docs/images/clip-rows.avif" alt="Unticking row parts one by one leaves every row with a lamp and a name; ticking Branch and Model then adds the branch and the model" width="800">
 
 ### Order
 
-Arrival (rows never move by themselves), by state, by blocks you arrange, or by recent activity.
+Three orders are ready to use: arrival (rows never move by themselves), by state, and by recent
+activity. **By blocks** is the one you arrange: drag the Active, Inactive, Broken and Closed blocks
+into the order you want.
 
-| Arrival | By state | By blocks |
-|---|---|---|
-| <img src="docs/images/order-arrival.png" alt="Sessions in the order they arrived" width="250"> | <img src="docs/images/order-state.png" alt="Sessions grouped by state, the ones that need you first" width="250"> | <img src="docs/images/order-blocks.png" alt="Active sessions first, then the quiet one, then the failed one" width="250"> |
-
-<img src="docs/images/clip-order.avif" alt="Choosing By state puts the session that needs you first" width="800">
+<img src="docs/images/clip-order.avif" alt="Choosing By state puts the session that needs you first; choosing By blocks and dragging the Closed block above Active puts the closed session at the top" width="800">
 
 ### Size
 
-From 50% to 200%; here at 75% and 150%.
+From 50% to 200%, in **Settings… → Appearance**.
 
-<img src="docs/images/size-75.png" alt="The widget at 75%" width="270">
-<img src="docs/images/size-150.png" alt="The widget at 150%" width="450">
-
-<details>
-<summary>The other settings pages</summary>
-
-<img src="docs/images/settings-rows.png" alt="Rows page: a preview and the list of parts to tick and drag" width="570">
-<img src="docs/images/settings-order.png" alt="Order page: a playing preview, the four orders and the blocks" width="570">
-<img src="docs/images/settings-menu-bar.png" alt="Menu Bar page: icon style, the states it shows, what the menu lists, the full-screen dot" width="570">
-
-</details>
+<img src="docs/images/clip-size.avif" alt="Choosing 125% makes the widget bigger at once, 75% smaller, and 100% brings it back" width="800">
 
 ## JetBrains IDE plugin
 

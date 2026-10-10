@@ -1,0 +1,7 @@
+# The whole screen through the editor and the colour panel, then onto the widget, whose two lamps
+# now blink as they were set.
+@edit-1.0     0 0 2304
+@faster+0.3   0 0 2304
+@faster+1.1   704 0 1600
+@faster+3.2   704 0 1600
+@faster+4.0   0 0 2304

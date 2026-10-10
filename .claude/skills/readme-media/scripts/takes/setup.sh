@@ -55,7 +55,7 @@ mark started
 sleep 1.5
 settings=($($AW ax windows $DEMO_PID | awk 'NF > 4 { print $1, $2, $3; exit }'))
 (( $#settings == 3 )) || take_abort "no settings window"
-$AW glide $(( settings[1] + settings[3] * 2 / 3 )) $(( settings[2] + 12 )) click; mark front
+glide_click $(( settings[1] + settings[3] * 2 / 3 )) $(( settings[2] + 12 )); mark front
 for i in {1..20}; do $AW ax findc $DEMO_PID "has reported" > /dev/null 2>&1 && break; sleep 0.25; done
 $AW ax findc $DEMO_PID "has reported" > /dev/null 2>&1 && mark ready || mark ready-timeout
 sleep 2.6

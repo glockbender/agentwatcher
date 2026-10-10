@@ -20,12 +20,12 @@ wait_events userInputRequired $asked 60 $ASKER || take_abort "Check the task lis
 mark waiting
 asking=$ASKER
 answered=$(count_events turnCompleted $asking)
-sleep 3.5; $AW glide $icon $(( BAR / 2 )) click; mark open-menu
+sleep 3.5; glide_click $icon $(( BAR / 2 )); mark open-menu
 sleep 1.6; click find $NAMES[1] choose
 sleep 0.5; $AW glide 800 600
 sleep 2.2; mark approve; press_in $NAMES[1] enter
 wait_events turnCompleted $answered 60 $asking && mark done || mark done-timeout
-sleep 1.5; $AW glide $icon $(( BAR / 2 )) click; mark reopen
+sleep 1.5; glide_click $icon $(( BAR / 2 )); mark reopen
 sleep 2.8; mark escape; $AW key 53
 sleep 0.3; $AW glide 800 600
 sleep 1.2

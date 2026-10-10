@@ -1,1 +1,8 @@
-@ask  0 0 1280         # the whole stage: the icon and the small terminal below it
+# The whole stage, then a little closer to the icon and the terminal's top right corner just before
+# the icon turns orange, and back out to the question it asks. An accent only: 1.25 times, as
+# closer in cut every line of the terminal down to its last words.
+@ask-1.0      0 0 1856
+@waiting-1.0  0 0 1856
+@waiting-0.2  372 0 1484
+@waiting+1.0  372 0 1484
+@waiting+1.8  0 0 1856

@@ -1,9 +1,9 @@
 #!/bin/zsh
 # stage.sh up | down | reset-settings | status
 #
-#   up              build a debug copy, start it beside nothing else, open three Claude sessions
+#   up              build a debug copy, start it beside nothing else, open seven Claude sessions
 #                   in one Ghostty window and bring them to the opening state: one waiting for an
-#                   approval, two done. Run it on an empty desktop.
+#                   approval, the others done. Run it on an empty desktop.
 #   down            end the sessions, quit the copy; its support folder goes to the Trash
 #   reset-settings  restart the copy with default settings, for another settings take
 #   status          what is running
@@ -72,6 +72,12 @@ print(f"· {len(hooks)} hooks")
 EOF
 
   [[ -e $SUPPORT ]] && trash $SUPPORT
+  # The opening clip scrolls the list: four rows of seven, a size a person could have dragged the
+  # widget to. reset-settings drops it, and for the settings takes the widget sizes itself again.
+  mkdir -p $SUPPORT/AgentWatch/Themes
+  print '{"widgetWidth": 340, "widgetHeight": 100, "widgetSizeFollowsSessions": false}' > $SUPPORT/AgentWatch/settings.json
+  # A bright theme of the person's own, for the light clip to switch to.
+  cp $SCRIPTS/demo-theme.json $SUPPORT/AgentWatch/Themes/
   say_step "starting the copy"
   start_stage_copy
 
@@ -82,21 +88,21 @@ EOF
   claude_line() { print -- " clear && exec claude --setting-sources project,local --strict-mcp-config --settings $DEMO_SETTINGS --permission-mode default --name '$1'" }
   config() { print -- "{initial working directory:\"$MAIN\", initial input:\"$(claude_line $1)\" & return, environment variables:{\"AGENT_WATCH_SUPPORT_DIR=$SUPPORT\", \"IS_DEMO=1\"}, font size:14}" }
   started=$(count_events sessionStarted)
-  SESSIONS_WID=$(osascript -e "tell application \"Ghostty\"" \
-    -e "set w to new window with configuration $(config $NAMES[1])" \
-    -e "new tab in w with configuration $(config $NAMES[2])" \
-    -e "new tab in w with configuration $(config $NAMES[3])" \
-    -e "return id of w" -e "end tell")
+  script=(-e "tell application \"Ghostty\"" -e "set w to new window with configuration $(config $NAMES[1])")
+  for name in $NAMES[2,-1]; do script+=(-e "new tab in w with configuration $(config $name)"); done
+  SESSIONS_WID=$(osascript $script -e "return id of w" -e "end tell")
   GHOSTTY_PID=$(pgrep -x ghostty | head -1)
   save_state
-  for i in {1..3}; do wait_events sessionStarted $(( started + i - 1 )) 60 || die "session $i did not start"; done
+  for i in {1..$#NAMES}; do wait_events sessionStarted $(( started + i - 1 )) 90 || die "session $i did not start"; done
   # Tabs are found by the title Claude gives them, which carries the session's name. Three sessions
   # starting at once in a virtual machine took longer than 20 s to name all three, measured on
   # Claude Code 2.1.294.
   named=""
-  for i in {1..240}; do
+  for i in {1..480}; do
     titles=$(osascript -e "tell application \"Ghostty\" to get name of every tab of (first window whose id is \"$SESSIONS_WID\")")
-    [[ $titles == *$NAMES[1]* && $titles == *$NAMES[2]* && $titles == *$NAMES[3]* ]] && { named=1; break }
+    named=1
+    for name in $NAMES; do [[ $titles == *$name* ]] || named=""; done
+    [[ -n $named ]] && break
     sleep 0.25
   done
   [[ -n $named ]] || die "the tabs are not named after the sessions yet: $titles"
@@ -107,16 +113,17 @@ EOF
   # read a file — must not stand in for it.
   say_step "opening prompts"
   prompts=('Run `task --list` and tell me in one line which task runs the unit tests.'
-    "List the targets in Package.swift in one line." "Reply with one word: ready.")
+    "List the targets in Package.swift in one line.")
+  for i in {3..$#NAMES}; do prompts[i]="Reply with one word: ready."; done
   IDS=()
-  for i in 2 3 1; do
+  for i in {2..$#NAMES} 1; do
     started=$(count_events turnStarted)
     say $NAMES[i] $prompts[i]
     wait_events turnStarted $started 30 || die "$NAMES[i] did not start its turn"
     IDS[i]=$(last_id turnStarted)
   done
   ASKER=$IDS[1]
-  for i in 2 3; do wait_events turnCompleted 0 120 $IDS[i] || die "$NAMES[i] did not finish its turn"; done
+  for i in {2..$#NAMES}; do wait_events turnCompleted 0 120 $IDS[i] || die "$NAMES[i] did not finish its turn"; done
   wait_events userInputRequired 0 120 $ASKER || die "Check the task list did not ask"
   save_state
   say_step "up: copy $DEMO_PID, sessions in Ghostty window $SESSIONS_WID"
@@ -126,8 +133,9 @@ reset-settings)
   [[ -n $DEMO_PID ]] || die "no stage"
   # An event sent while the copy is down is lost: the end of a turn answered just before the
   # restart was, and its session looked like it was still asking. So the copy restarts only when
-  # every session is done.
-  for i in {1..3}; do
+  # every session is done. One that ended has nothing more to say.
+  live=($(live_sessions))
+  for i in $live; do
     for t in {1..960}; do [[ $(last_turn_event $IDS[i]) == turnCompleted ]] && break; sleep 0.25; done
     [[ $(last_turn_event $IDS[i]) == turnCompleted ]] || die "$NAMES[i] still works or asks: answer it, or stage.sh down and up"
   done
@@ -139,11 +147,11 @@ reset-settings)
   save_state
   # A restarted copy shows a session it has not heard from yet as "no signal", the grey ring the
   # README's lamps call a lost session, until the session's next event: each one takes a short turn.
-  for i in {1..3}; do
+  for i in $live; do
     answered[i]=$(count_events turnCompleted $IDS[i])
     say $NAMES[i] "Reply with one word: ok."
   done
-  for i in {1..3}; do
+  for i in $live; do
     wait_events turnCompleted $answered[i] 60 $IDS[i] || die "$NAMES[i] did not answer after the restart"
   done
   say_step "copy restarted with default settings: $DEMO_PID"

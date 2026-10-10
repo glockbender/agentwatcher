@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """cut.py [--sheet] [--publish] [clip …] — cut the README clips listed in clips.txt.
 
-A clip names a take, an in and an out point, a size and a keyframe file. Times are written against
+A clip names a take, an in and an out point, a size, a keyframe file and, if it fades out, for how
+many seconds (`fade=1`). Times are written against
 the take's marks — `@click+0.1` is a tenth of a second after the click — so a new recording with
 other pauses still cuts in the right place. Positions are stage pixels from the top left. Inside the
-stage the menu bar is blurred, except the Agent Watch icon at the frames the take sampled.
+stage the menu bar is blurred, except the Agent Watch icon at the frames the take sampled. Every
+press the take wrote down gets a ring.
 
   --sheet     also tile every half second of each clip into <name>-sheet.png, to check by eye
   --publish   copy the clips into docs/images, then name the clips the README and clips.txt
@@ -30,7 +32,7 @@ CHANGE_SLACK = 0.4
 
 
 def read_marks(take):
-    head, marks, icons = {}, {}, []
+    head, marks, icons, taps = {}, {}, [], []
     for line in (WORK / f"{take}.marks").read_text().splitlines():
         parts = line.split()
         if not parts:
@@ -39,9 +41,11 @@ def read_marks(take):
             marks[parts[2]] = (float(parts[1]), [float(v) for v in parts[3:7]])
         elif parts[0] == "icon":
             icons.append((float(parts[1]), [float(v) for v in parts[2:4]]))
+        elif parts[0] == "tap":
+            taps.append([float(v) for v in parts[1:4]])
         else:
             head[parts[0]] = [float(v) for v in parts[1:]]
-    return head, marks, icons
+    return head, marks, icons, taps
 
 
 def at(expression, marks):
@@ -111,8 +115,8 @@ def run(*command, quiet=False):
         sys.exit(f"{command[0]} failed: {done.stderr if quiet else ''}")
 
 
-def cut(name, take, start_at, end_at, width, height, keys_file, sheet):
-    head, marks, icons = read_marks(take)
+def cut(name, take, start_at, end_at, width, height, keys_file, fade, sheet):
+    head, marks, icons, taps = read_marks(take)
     start, end = at(start_at, marks), at(end_at, marks)
     frames = WORK / "frames" / name
     keys = frames / "keys.txt"
@@ -126,12 +130,20 @@ def cut(name, take, start_at, end_at, width, height, keys_file, sheet):
             if line:
                 lines.append(f"{at(line[0], marks) - start:.3f} {' '.join(line[1:])}")
         keys.write_text("\n".join(lines) + "\n")
+        scale = head["scale"][0]
+        stage_x, stage_y = head["stage"][0] * scale, head["stage"][1] * scale
+        (frames / "taps.txt").write_text("".join(
+            f"{t - start:.3f} {x * scale - stage_x:.1f} {y * scale - stage_y:.1f}\n" for t, x, y in taps))
         run("ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
             "-i", WORK / f"{take}.mov", "-filter_complex", stage_filter(head, icons, start, end),
             "-map", "[o]", frames / "s%04d.png")
-        run(SCRIPTS / "aw-media", "zoom", frames, keys, frames, width, height, FPS)
+        run(SCRIPTS / "aw-media", "zoom", frames, keys, frames, width, height, FPS, frames / "taps.txt")
     clip = WORK / f"{name}.avif"
-    run("ffmpeg", "-hide_banner", "-loglevel", "error", "-framerate", FPS, "-i", frames / "f%04d.png",
+    # Into black at the end: a loop that jumped from the last frame straight back to the first was
+    # abrupt.
+    duration = len(list(frames.glob("f*.png"))) / FPS
+    fading = ["-vf", f"fade=t=out:st={duration - fade:.3f}:d={fade}"] if fade else []
+    run("ffmpeg", "-hide_banner", "-loglevel", "error", "-framerate", FPS, "-i", frames / "f%04d.png", *fading,
         "-c:v", "libsvtav1", "-crf", os.environ.get("CRF", "46"), "-preset", "4", "-svtav1-params", "scm=1",
         "-pix_fmt", "yuv420p", "-f", "avif", "-y", clip, quiet=True)
     print(f"{name}: {clip.stat().st_size // 1024} KB, {end - start:.1f} s")
@@ -165,14 +177,15 @@ def main():
     clips, listed = [], set()
     for line in (SCRIPTS / "clips.txt").read_text().splitlines():
         fields = line.split("#")[0].split()
-        if len(fields) == 7:
+        if len(fields) in (7, 8):
             listed.add(fields[0])
             if not wanted or fields[0] in wanted:
                 clips.append(fields)
 
     def one(fields):
-        name, take, start, end, width, height, keys = fields
-        cut(name, take, start, end, int(width), int(height), keys, sheet)
+        name, take, start, end, width, height, keys = fields[:7]
+        fade = float(fields[7].removeprefix("fade=")) if len(fields) == 8 else 0
+        cut(name, take, start, end, int(width), int(height), keys, fade, sheet)
         if publish:
             shutil.copy(WORK / f"{name}.avif", REPO / "docs/images" / f"{name}.avif")
 

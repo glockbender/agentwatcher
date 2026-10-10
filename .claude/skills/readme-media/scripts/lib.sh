@@ -15,7 +15,9 @@ LOG=$SUPPORT/AgentWatch/event-debug.log
 DEMO_APP=$WORK/AgentWatch.app
 DEMO_SETTINGS=$WORK/demo-settings.json
 STATE=$WORK/stage.env
-NAMES=("Check the task list" "List the targets" "Explain the architecture")
+# Seven, so the list outgrows a widget sized for four and By state has a crowd to sort.
+NAMES=("Check the task list" "List the targets" "Explain the architecture" "Review the README" "Find the TODOs"
+  "Count the tests" "Sum up the plan")
 mkdir -p $WORK
 [[ -f $STATE ]] && source $STATE
 # The menu bar's height in points: 38 under a notch, 25 on a screen without one, such as a virtual
@@ -74,6 +76,8 @@ wait_events() {
   return 1
 }
 # The session that logged this event last.
+# The stage's sessions that have not ended, by their index in NAMES.
+live_sessions() { local i; for i in {1..$#NAMES}; do (( $(count_events sessionEnded $IDS[i]) )) || print $i; done }
 last_id() { grep -E " · $1( |\$)" $LOG | tail -1 | awk -F' · ' '{ print $2 }' }
 # Where a session's turn stands: turnStarted, userInputRequired or turnCompleted, or nothing yet.
 last_turn_event() { # <session id>
@@ -142,7 +146,7 @@ hide_widget() { ! widget_shown || { $AW ax press $DEMO_PID toggleWidget; sleep 0
 # quiet the dot was mostly green while one asked. An ended session is not counted.
 end_other_sessions() {
   local ended=$(count_events sessionEnded) others=0 i
-  for i in 2 3; do
+  for i in {2..$#NAMES}; do
     (( $(count_events sessionEnded $IDS[i]) == 0 )) || continue
     say $NAMES[i] /exit
     others=$(( others + 1 ))
@@ -158,7 +162,7 @@ end_other_sessions() {
 warm_menu() {
   local half=$(( $($AW screen | awk '{ print $4 }') / 2 )) item i
   for i in 1 2; do
-    $AW glide $1 $(( BAR / 2 )) click
+    glide_click $1 $(( BAR / 2 ))
     for _ in {1..30}; do
       # A closed menu's items sit at the screen's bottom left; an open one hangs from the bar.
       item=($($AW ax find $DEMO_PID "Quit Agent Watch" 2> /dev/null))
@@ -238,6 +242,40 @@ take_begin() {
 
 mark() { printf "@ %.3f %s\n" $(( EPOCHREALTIME - T0 )) "$*" >> $MARKS }
 
+# glide_click x y: glide there and click. While a take records, the press goes into its marks as
+# "tap <seconds> x y", and the cut draws a ring there: macOS draws none for a posted click.
+glide_click() {
+  local pressed=$($AW glide $1 $2 click)
+  [[ -z ${REC:-} ]] || printf "tap %.3f %s %s\n" $(( pressed - T0 )) $1 $2 >> $MARKS
+}
+
+# drag_to x y x2 y2: press at x y, move to x2 y2, release. The press gets a ring, as a click's does.
+drag_to() {
+  local pressed=$($AW drag $@)
+  [[ -z ${REC:-} ]] || printf "tap %.3f %s %s\n" $(( pressed - T0 )) $1 $2 >> $MARKS
+}
+
+# open_settings <page>: the settings window on the left of the stage at <page>, the terminal behind
+# it on the right and the widget over the terminal in the top right corner. A take after the first
+# finds the window open and only moves it again.
+open_settings() {
+  local top=$(( BAR + 12 )) title r
+  place_sessions 330 $top 806 $(( 704 - top ))
+  show_widget
+  title=$($AW ax windows $DEMO_PID | awk 'NF > 4 { $1 = $2 = $3 = $4 = ""; sub(/^ +/, ""); print; exit }')
+  if [[ -z $title ]]; then
+    $AW ax press $DEMO_PID showWidgetSettings
+    sleep 1.5
+    title=$($AW ax windows $DEMO_PID | awk 'NF > 4 { $1 = $2 = $3 = $4 = ""; sub(/^ +/, ""); print; exit }')
+    [[ -n $title ]] || die "the settings window did not open"
+  fi
+  $AW ax move $DEMO_PID "$title" 16 $top 760 $(( 704 - top ))
+  r=($($AW ax find $DEMO_PID $1)); glide_click $r[1] $r[2]
+  place_widget 796 $(( BAR + 16 ))
+  $AW activate $DEMO_PID
+  $AW glide 980 640
+}
+
 # click <find|findc> <text> <mark>: glide to the element and click it; the mark carries its frame.
 # An element is found before it is on screen: a menu item, while its menu is still opening, has a
 # frame at the screen's bottom left, and a click there opened the Dock's Finder. So the click looks
@@ -250,7 +288,7 @@ click() {
     parts=(${=r})
     if [[ -n $r ]] && (( parts[1] >= STAGE_RECT[1] && parts[1] <= STAGE_RECT[1] + STAGE_RECT[3]
       && parts[2] >= STAGE_RECT[2] && parts[2] <= STAGE_RECT[2] + STAGE_RECT[4] )); then
-      $AW glide $parts[1] $parts[2] click
+      glide_click $parts[1] $parts[2]
       mark $3 $parts[3,6]
       return 0
     fi

@@ -1,1 +1,7 @@
-@long-task  0 0 2304   # the whole screen
+# The whole screen, then onto the widget while the pointer travels there, through the scrolling, the
+# waiting row's card and the click, and back out while the terminal turns to the question.
+@scroll-2.2  0 0 2304
+@scroll-1.2  0 0 2304
+@scroll-0.2  704 0 1600
+@click+0.4   704 0 1600
+@click+1.4   0 0 2304

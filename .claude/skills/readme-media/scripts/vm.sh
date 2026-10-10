@@ -309,10 +309,11 @@ up)
   ;;
 
 shoot)
-  # Each take needs the one before it: setup on a bare copy, then a stage, default settings before
-  # the settings take and after it, and counts last, since it leaves the icon in that style. Stops
-  # at the first take that fails; `shoot <that step>` goes on from there.
-  steps=(setup stage start menu settings fullscreen icon counts)
+  # Each take needs the one before it: setup on a bare copy, then a stage, and counts last, since it
+  # leaves the icon in that style. Every take that changes settings, and fullscreen after them,
+  # starts from the defaults, so any one of them can be taken again alone. Stops at the first take
+  # that fails; `shoot <that step>` goes on from there.
+  steps=(setup stage start menu order rows look fullscreen icon counts)
   from=${steps[(Ie)${2:-setup}]}
   (( from )) || die "vm.sh shoot [${(j:|:)steps}]"
   for step in $steps[$from,-1]; do
@@ -320,7 +321,7 @@ shoot)
     case $step in
       # A stage left by an earlier try goes first; with none up, down does nothing.
       stage) cmds=("./stage.sh down" "./stage.sh up") ;;
-      settings|fullscreen) cmds=("./stage.sh reset-settings" ./takes/$step.sh) ;;
+      order|rows|look|fullscreen) cmds=("./stage.sh reset-settings" ./takes/$step.sh) ;;
       counts) cmds=("./takes/icon.sh counts") ;;
       *) cmds=(./takes/$step.sh) ;;
     esac

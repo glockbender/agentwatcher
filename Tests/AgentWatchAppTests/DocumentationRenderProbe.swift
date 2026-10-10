@@ -2,7 +2,6 @@ import AgentWatchCore
 import AgentWatchTestSupport
 import AppKit
 import ImageIO
-import SwiftUI
 import UniformTypeIdentifiers
 import XCTest
 
@@ -29,23 +28,6 @@ final class DocumentationRenderProbe: XCTestCase {
         try write(widget(four, width: 330, look: WidgetTheme.standard.dark), "look-dark", in: root)
         try write(widget(four, width: 330, look: WidgetTheme.standard.light), "look-light", in: root)
         try write(widget(four, width: 330, look: Self.ownTheme), "look-own", in: root)
-        try write(widget(four, width: 270, style: WidgetStyle(scale: 0.75)), "size-75", in: root)
-        try write(widget(four, width: 450, style: WidgetStyle(scale: 1.5)), "size-150", in: root)
-
-        // What a row shows: the least and the most it can.
-        let three = Array(byState.prefix(3))
-        try write(widget(three, width: 260, layout: RowLayout(parts: [.lamp, .name])), "row-minimal", in: root)
-        let everything = RowLayout(
-            parts: [.timer, .lamp, .agent, .name, .project, .branch, .gap, .model, .counters, .context],
-            flexible: .name)
-        try write(widget(three, width: 620, layout: everything), "row-full", in: root)
-
-        // The same afternoon in three of the four orders; the fourth moves on every event.
-        let orders: [(SessionOrder, String)] = [(.arrival, "arrival"), (.attention, "state"), (.blocks, "blocks")]
-        for (order, name) in orders {
-            let rows = RowLayout(parts: [.lamp, .agent, .name])
-            try write(widget(ordered(afternoon, by: order), width: 280, layout: rows), "order-\(name)", in: root)
-        }
 
         for style in MenuBarIconStyle.allCases {
             try write(menuBarIcon(afternoon, style: style), "menubar-\(style.rawValue)", in: root)
@@ -77,26 +59,6 @@ final class DocumentationRenderProbe: XCTestCase {
         XCTAssertTrue(CGImageDestinationFinalize(gif))
     }
 
-    /// The settings pages the README points at, in the light appearance.
-    func testDrawTheSettingsPages() throws {
-        let root = try outputDirectory()
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AgentWatchThemes.\(UUID().uuidString)", isDirectory: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
-        let preferences = try isolatedPreferences()
-        let settings = WidgetSettingsStore(preferences: preferences)
-        let themes = ThemeStore(preferences: preferences, folder: folder) { try FileManager.default.removeItem(at: $0) }
-        let model = SettingsModel(
-            themes: themes, settings: settings, rowLayouts: RowLayoutStore(preferences: preferences),
-            shortcuts: FakeShortcutRegistrar.controller(for: settings), host: FakeAppHost(), version: nil)
-
-        try write(page(AnyView(RowPane(model: model)), height: 1000), "settings-rows", in: root, trimming: true)
-        try write(page(AnyView(OrderPane(model: model)), height: 1000), "settings-order", in: root, trimming: true)
-        try write(page(AnyView(MenuBarPane(model: model)), height: 1000), "settings-menu-bar", in: root, trimming: true)
-        // Down to the lamps: the menu bar's colours below them are a second table of the same kind.
-        try write(page(AnyView(ThemeEditorPane(model: model)), height: 985), "settings-theme", in: root)
-    }
-
     // MARK: - Scenes
 
     /// A dark theme somebody made: its own panel, and its own lamps for planning, work, a
@@ -120,17 +82,16 @@ final class DocumentationRenderProbe: XCTestCase {
         width: CGFloat,
         layout: RowLayout = .standard,
         look: WidgetTheme.Look = WidgetTheme.standard.dark,
-        style: WidgetStyle = .standard,
         usage: [AgentUsageLimits] = []
     ) -> HUDSessionListView {
         let background = look.widgetBackground
         let list = HUDSessionListView(
             models: sessions.map { HUDRowModel(snapshot: $0, now: now, layout: layout) },
             usageLimits: usage, now: now, availableWidth: width, focus: { _ in }, remove: { _ in },
-            background: background, lampScheme: look.lampScheme, backgroundOpacity: 1, style: style,
+            background: background, lampScheme: look.lampScheme, backgroundOpacity: 1, style: .standard,
             restoredScrollOffset: nil, onScroll: { _ in })
         let height = HUDSessionListView.selfSizedHeight(
-            sessionCount: sessions.count, usageLimits: usage, background: background, style: style)
+            sessionCount: sessions.count, usageLimits: usage, background: background, style: .standard)
         place(list, size: NSSize(width: width, height: height))
         return list
     }
@@ -153,16 +114,6 @@ final class DocumentationRenderProbe: XCTestCase {
         strip.addSubview(icon)
         place(strip, size: strip.frame.size)
         return strip
-    }
-
-    /// A settings page, drawn taller than it needs: a form cannot say how tall it is.
-    private func page(_ root: AnyView, height: CGFloat) -> NSView {
-        let hosting = NSHostingView(rootView: root.formStyle(.grouped))
-        hosting.appearance = NSAppearance(named: .aqua)
-        place(hosting, size: NSSize(width: 570, height: height))
-        // SwiftUI fills a form in over a few turns of the run loop.
-        RunLoop.main.run(until: Date().addingTimeInterval(1))
-        return hosting
     }
 
     private func framed(_ view: NSView, padding: CGFloat, color: NSColor) -> NSView {
@@ -190,11 +141,8 @@ final class DocumentationRenderProbe: XCTestCase {
         return URL(fileURLWithPath: directory)
     }
 
-    private func write(_ view: NSView, _ name: String, in root: URL, trimming: Bool = false) throws {
-        var image = try XCTUnwrap(bitmap(view).cgImage)
-        if trimming {
-            image = trimmedBottom(image)
-        }
+    private func write(_ view: NSView, _ name: String, in root: URL) throws {
+        let image = try XCTUnwrap(bitmap(view).cgImage)
         let url = root.appendingPathComponent("\(name).png")
         let png = NSBitmapImageRep(cgImage: image)
         try XCTUnwrap(png.representation(using: .png, properties: [:])).write(to: url)
@@ -210,32 +158,6 @@ final class DocumentationRenderProbe: XCTestCase {
             "drawn at \(view.window?.backingScaleFactor ?? 0)x: run it with a Retina display as the main one")
         view.cacheDisplay(in: view.bounds, to: bitmap)
         return bitmap
-    }
-
-    /// The image without the rows at its bottom that are all the colour of its last pixel, but
-    /// for a margin: the empty strip under a form drawn taller than it is.
-    private func trimmedBottom(_ image: CGImage, margin: Int = 40) -> CGImage {
-        guard image.bitsPerPixel == 32, let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data)
-        else {
-            return image
-        }
-        let rowBytes = image.bytesPerRow
-        let blank = (image.height - 1) * rowBytes
-        func isBlank(_ row: Int) -> Bool {
-            let start = row * rowBytes
-            for offset in stride(from: 0, to: image.width * 4, by: 4) {
-                for channel in 0..<4 where abs(Int(bytes[start + offset + channel]) - Int(bytes[blank + channel])) > 2 {
-                    return false
-                }
-            }
-            return true
-        }
-        var bottom = image.height - 1
-        while bottom > 0, isBlank(bottom) {
-            bottom -= 1
-        }
-        let height = min(image.height, bottom + 1 + margin)
-        return image.cropping(to: CGRect(x: 0, y: 0, width: image.width, height: height)) ?? image
     }
 
     /// A window, because a view outside one lays out against nothing.
