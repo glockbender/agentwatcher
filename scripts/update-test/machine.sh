@@ -2,6 +2,7 @@
 # Runs inside the machine, from the folder `e2e-update.sh` shares with it: every update case
 # against the local server, one line per case in out/result.txt, and what each window said beside
 # it. A case starts from the old copy (0.9.0) installed and Sparkle's memory of it forgotten.
+# `machine.sh published <version>` runs the one case for a published release instead.
 set -u
 share="/Volumes/My Shared Files/aw"
 out="$share/out"
@@ -89,6 +90,58 @@ failed_download() { # <case> <feed url> <seconds to wait for the error>
   why=$(untouched) && result $1 passed "said: $said" || result $1 FAILED "$why"
 }
 
+# Presses Install and Relaunch in the running copy and checks what came back: <version> installed,
+# a new process running it, the bundle whole, and no word from macOS that it stopped the change.
+relaunch_into() { # <case> <version>
+  local old=$pid i blocked
+  if ! wait_for $old 'Install and Relaunch' 120; then
+    shot $1; windows_say $old > "$out/$1.txt"; result $1 FAILED "no Install and Relaunch"; return
+  fi
+  # The press quits the app before Accessibility can answer: gone means pressed.
+  for i in {1..20}; do
+    $ax press $old "Install and Relaunch" 2> /dev/null && break
+    sleep 1
+    kill -0 $old 2> /dev/null || break
+  done
+  for i in {1..60}; do pid=$(app_pid); [[ -n $pid && $pid != $old ]] && break; sleep 1; done
+  sleep 2
+  shot $1
+  # `log show` writes its own command line, the predicate in it, into the log it reads: without
+  # `process != "log"` it finds itself (measured on macOS 15.7.7).
+  blocked=$(/usr/bin/log show --last 5m --style compact \
+    --predicate 'eventMessage CONTAINS[c] "prevented from modifying apps" AND process != "log"' 2> /dev/null \
+    | grep -c -i 'prevented')
+  if [[ $(installed) == $2 && -n $pid && $pid != $old ]] && codesign --verify --strict $copy 2> /dev/null \
+    && [[ $blocked == 0 ]]; then
+    result $1 passed "$2 installed and running, macOS did not block it"
+  else
+    result $1 FAILED "installed $(installed), pid ${pid:-none} (was $old), blocked lines $blocked"
+  fi
+}
+
+# After a release is published: the earlier release in old/, as a person has it, started with
+# nothing pointed anywhere, finds <version> on GitHub and replaces itself with it. Its own updater
+# (0.3.0) offers Download, Sparkle offers Install Update; both end in Install and Relaunch.
+if [[ ${1:-} == published ]]; then
+  : > "$out/result.txt"
+  say "macOS $(sw_vers -productVersion): $(plutil -extract CFBundleShortVersionString raw -o - "$share/old/AgentWatch.app/Contents/Info.plist") to $2"
+  fresh
+  open --stderr "$out/published-stderr.log" $copy
+  pid=""
+  for i in {1..20}; do pid=$(app_pid); [[ -n $pid ]] && break; sleep 0.5; done
+  if [[ -z $pid ]]; then
+    result published FAILED "did not start"
+  elif ! wait_for $pid "$2 is (now )?available" 90; then
+    shot published; windows_say $pid > "$out/published.txt"; result published FAILED "no offer of $2 in 90 s"
+  else
+    windows_say $pid > "$out/offer.txt"
+    $ax press $pid "Install Update" 2> /dev/null || $ax press $pid Download
+    relaunch_into published $2
+  fi
+  quit_app
+  exit 0
+fi
+
 feed() { print "http://127.0.0.1:$port/feed/$1.xml" }
 
 pkill -f "server.py" 2> /dev/null
@@ -120,32 +173,8 @@ if wait_for $pid 'Install Update' 30; then
   grep -q -i 'Automatically download' "$out/offer.txt" && notes+="automatic install offered; "
   [[ -z $notes ]] && result changes-listed passed "the two unseen versions, not the installed one" \
     || result changes-listed FAILED "$notes"
-  old=$pid
   $ax press $pid "Install Update"
-  if wait_for $pid 'Install and Relaunch' 60; then
-    # The press quits the app before Accessibility can answer: gone means pressed.
-    for i in {1..20}; do
-      $ax press $old "Install and Relaunch" 2> /dev/null && break
-      sleep 1
-      kill -0 $old 2> /dev/null || break
-    done
-    for i in {1..60}; do pid=$(app_pid); [[ -n $pid && $pid != $old ]] && break; sleep 1; done
-    sleep 2
-    shot after
-    # `log show` writes its own command line, the predicate in it, into the log it reads: without
-    # `process != "log"` it finds itself (measured on macOS 15.7.7).
-    blocked=$(/usr/bin/log show --last 5m --style compact \
-      --predicate 'eventMessage CONTAINS[c] "prevented from modifying apps" AND process != "log"' 2> /dev/null \
-      | grep -c -i 'prevented')
-    if [[ $(installed) == 0.9.2 && -n $pid && $pid != $old ]] && codesign --verify --strict $copy 2> /dev/null \
-      && [[ $blocked == 0 ]]; then
-      result retry-after-failure passed "0.9.2 installed and running, macOS did not block it"
-    else
-      result retry-after-failure FAILED "installed $(installed), pid ${pid:-none} (was $old), blocked lines $blocked"
-    fi
-  else
-    shot retry; result retry-after-failure FAILED "no Install and Relaunch"
-  fi
+  relaunch_into retry-after-failure 0.9.2
 else
   shot retry; result retry-after-failure FAILED "no offer"
 fi

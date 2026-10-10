@@ -2,7 +2,8 @@
 # Updates a copy of the app end to end in a clean macOS: Sparkle's windows, a real download, a
 # real replacement of the bundle — and every way the download can fail before that.
 #
-#     ./scripts/e2e-update.sh
+#     ./scripts/e2e-update.sh                # this working tree, against a local server
+#     ./scripts/e2e-update.sh --from v0.3.0  # that published release, to the latest on GitHub
 #
 # Runs before every release (the release skill calls it) rather than on every push: it takes a few
 # minutes and needs the Tart machine `aw-golden` that the README clips use
@@ -14,6 +15,10 @@
 # both signed ad-hoc like a release, and a local server playing GitHub with feeds that behave well
 # or badly. The copies carry a throwaway EdDSA key made for this run, never the release key.
 # scripts/update-test/machine.sh lists the cases; out/result.txt has one line per case.
+#
+# With --from, after a release is published: that earlier release, downloaded as a person would
+# have it, finds the new one on GitHub and replaces itself — with its own updater (0.3.0) or with
+# Sparkle — exactly as the copies people run will.
 
 set -euo pipefail
 
@@ -36,7 +41,45 @@ share="$work/share"
 mkdir -p "$share/serve/feeds" "$share/old" "$share/new"
 say() { printf '\n== %s\n' "$1"; }
 
-say "Building the copies"
+# Runs machine.sh with <arguments> in a throwaway clone of the golden machine, prints a line per
+# case, and exits: 1 when a case failed, keeping the folder; 0 after moving it to the Trash.
+run_in_machine() { # [machine.sh arguments]
+    swiftc -O -target arm64-apple-macos14 -o "$share/ax" "$here/ax.swift"
+    cp "$here/server.py" "$here/machine.sh" "$share/"
+    say "Running in a clone of $golden"
+    tart clone "$golden" "$vm"
+    trap cleanup EXIT
+    nohup tart run --dir="aw:$share" --no-graphics "$vm" >"$work/tart.log" 2>&1 &
+    for _ in $(seq 1 90); do in_vm 'pgrep -x Dock' >/dev/null 2>&1 && break; sleep 2; done
+    in_vm 'pgrep -x Dock' >/dev/null 2>&1 || { echo "the machine did not start: $work/tart.log" >&2; exit 1; }
+    # The desktop needs a moment after the Dock; a window opened before it can land behind.
+    sleep 5
+    in_vm "zsh '/Volumes/My Shared Files/aw/machine.sh' $*" || true
+
+    say "Result"
+    cat "$share/out/result.txt"
+    if grep -q ' FAILED' "$share/out/result.txt" || [[ ! -s "$share/out/result.txt" ]]; then
+        echo "what each window said and showed is in $share/out" >&2
+        exit 1
+    fi
+    # Kept on failure for inspection; on success it goes to the Trash with the copies in it.
+    /usr/bin/trash "$work"
+    echo "PASSED; the test folder was moved to the Trash"
+    exit 0
+}
+cleanup() { tart stop "$vm" >/dev/null 2>&1 || true; tart delete "$vm" >/dev/null 2>&1 || true; }
+in_vm() { tart exec "$vm" zsh -lc "$1"; }
+
+if [[ "${1:-}" == "--from" ]]; then
+    from_tag="${2:?usage: e2e-update.sh --from <tag of a published release>}"
+    latest="$(gh release view --repo glockbender/agentwatcher --json tagName --jq .tagName)"
+    [[ "$latest" != "$from_tag" ]] || { echo "$from_tag is the latest release: nothing to update to" >&2; exit 1; }
+    say "Downloading $from_tag, to update to $latest"
+    gh release download "$from_tag" --repo glockbender/agentwatcher --pattern "AgentWatch-${from_tag#v}.zip" --dir "$work"
+    ditto -x -k "$work/AgentWatch-${from_tag#v}.zip" "$share/old"
+    run_in_machine published "${latest#v}"
+fi
+
 AGENT_WATCH_SIGNING_IDENTITY=- "$project_root/scripts/build-app.sh" debug "$work/build/AgentWatch.app" >"$work/build.log" 2>&1 \
     || { echo "build failed: $work/build.log" >&2; exit 1; }
 public_key="$(swift "$here/testkey.swift" "$work")"
@@ -90,27 +133,4 @@ feed drop drop "$signature"
 feed stall stall "$signature"
 feed error error "$signature"
 feed badsig ok "$wrong"
-swiftc -O -target arm64-apple-macos14 -o "$share/ax" "$here/ax.swift"
-cp "$here/server.py" "$here/machine.sh" "$share/"
-
-say "Running the cases in a clone of $golden"
-tart clone "$golden" "$vm"
-cleanup() { tart stop "$vm" >/dev/null 2>&1 || true; tart delete "$vm" >/dev/null 2>&1 || true; }
-trap cleanup EXIT
-nohup tart run --dir="aw:$share" --no-graphics "$vm" >"$work/tart.log" 2>&1 &
-in_vm() { tart exec "$vm" zsh -lc "$1"; }
-for _ in $(seq 1 90); do in_vm 'pgrep -x Dock' >/dev/null 2>&1 && break; sleep 2; done
-in_vm 'pgrep -x Dock' >/dev/null 2>&1 || { echo "the machine did not start: $work/tart.log" >&2; exit 1; }
-# The desktop needs a moment after the Dock; a window opened before it can land behind.
-sleep 5
-in_vm "zsh '/Volumes/My Shared Files/aw/machine.sh'" || true
-
-say "Result"
-cat "$share/out/result.txt"
-if grep -q ' FAILED' "$share/out/result.txt" || [[ ! -s "$share/out/result.txt" ]]; then
-    echo "what each window said and showed is in $share/out" >&2
-    exit 1
-fi
-# Kept on failure for inspection; on success it goes to the Trash with the copies in it.
-/usr/bin/trash "$work"
-echo "PASSED; the test folder was moved to the Trash"
+run_in_machine
