@@ -84,6 +84,37 @@ final class TranscriptLocatorTests: XCTestCase {
         )
     }
 
+    /// A Codex started with `CODEX_HOME` writes into its own folder's `sessions`, and the
+    /// default folder has nothing for it. The search goes on to the next root.
+    func testATranscriptInAListedFolderIsFoundAfterTheDefaultOne() throws {
+        let defaultRoot = try makeRoot(named: [
+            "2026/10/09/rollout-2026-10-09T01-00-00-8e341560-0990-4ff5-89d9-02ad3ae9e315.jsonl"
+        ])
+        let listedRoot = try makeRoot(named: ["2026/10/09/rollout-2026-10-09T01-10-29-\(codexSession).jsonl"])
+
+        let found = TranscriptLocator.locate(
+            sessionLabel: HookCaptureRedactor.label(forRawIdentifier: codexSession),
+            source: .codex,
+            roots: [defaultRoot, listedRoot]
+        )
+
+        XCTAssertEqual(found?.lastPathComponent, "rollout-2026-10-09T01-10-29-\(codexSession).jsonl")
+        XCTAssertEqual(
+            found.flatMap { TranscriptLocator.root(containing: $0, among: [defaultRoot, listedRoot]) }, listedRoot,
+            "the thread index is read beside the root the transcript came from")
+    }
+
+    func testEachFolderKeepsItsTranscriptsWhereItsAgentWritesThem() {
+        let folders = AgentFolders(
+            home: URL(fileURLWithPath: "/Users/someone"), extra: [.codex: ["/Users/someone/.codex-work"]])
+
+        XCTAssertEqual(
+            TranscriptLocator.roots(for: .codex, in: folders).map(\.path),
+            ["/Users/someone/.codex/sessions", "/Users/someone/.codex-work/sessions"])
+        XCTAssertEqual(
+            TranscriptLocator.roots(for: .claude, in: folders).map(\.path), ["/Users/someone/.claude/projects"])
+    }
+
     private func makeRoot(named relativePaths: [String]) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("AgentWatchLocatorTests.\(UUID().uuidString)", isDirectory: true)

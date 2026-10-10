@@ -32,6 +32,9 @@ final class SessionRecordWatcher {
     static let interval: TimeInterval = 0.5
 
     private let claudeHome: URL
+    /// The Claude folders a person added beside the default one, asked on every read so a
+    /// folder added while a dialog is open is read from the next tick.
+    private let extraClaudeFolders: () -> [URL]
     private let onStatus: (String, ClaudeSessionStatus) -> Void
     /// The process each watched row runs on, and the last reading announced for it. The
     /// reading is kept so that a record which has not changed is not announced twice a
@@ -39,8 +42,13 @@ final class SessionRecordWatcher {
     private var watched: [String: (processID: Int32, announced: ClaudeSessionStatus?)] = [:]
     private var timer: Timer?
 
-    init(claudeHome: URL, onStatus: @escaping (String, ClaudeSessionStatus) -> Void) {
+    init(
+        claudeHome: URL,
+        extraClaudeFolders: @escaping () -> [URL] = { [] },
+        onStatus: @escaping (String, ClaudeSessionStatus) -> Void
+    ) {
         self.claudeHome = claudeHome
+        self.extraClaudeFolders = extraClaudeFolders
         self.onStatus = onStatus
     }
 
@@ -101,11 +109,12 @@ final class SessionRecordWatcher {
     /// One read of every watched record. A reading equal to the one already announced is
     /// dropped here rather than in the engine, so the debug log is not a heartbeat.
     func poll() {
+        let folders = [claudeHome] + extraClaudeFolders()
         for (id, entry) in watched {
             guard
-                let contents = try? Data(
-                    contentsOf: BackgroundSessionAttach.sessionRecordURL(
-                        claudeHome: claudeHome, agentProcessID: entry.processID)),
+                let record = BackgroundSessionAttach.sessionRecordURL(
+                    claudeFolders: folders, agentProcessID: entry.processID),
+                let contents = try? Data(contentsOf: record),
                 let status = ClaudeSessionStatus(sessionRecord: contents),
                 status != entry.announced
             else {

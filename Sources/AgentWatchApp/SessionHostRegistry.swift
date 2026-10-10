@@ -19,6 +19,9 @@ final class SessionHostRegistry {
     /// place a background session's job identifier can be read from. A parameter so a test
     /// can point it at a folder of its own.
     private let claudeHome: URL
+    /// The Claude folders a person added beside `claudeHome`. A process keeps its record only
+    /// in the folder it was started with, so every one of them is looked in.
+    private let extraClaudeFolders: () -> [URL]
     /// The transcript the app found for a session, by row — the file a Codex thread is named
     /// by, and so the only place its identifier can be read from on this side of the socket.
     private let transcriptOfSession: (SessionSnapshot) -> URL?
@@ -35,16 +38,21 @@ final class SessionHostRegistry {
     ///   The session runs on; only its window went, so this is reported apart from the
     ///   agent's own exit.
     init(
-        claudeHome: URL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude", isDirectory: true),
+        claudeHome: URL = AgentFolders.defaultFolder(for: .claude, home: AgentWatchPaths.homeDirectory()),
+        extraClaudeFolders: @escaping () -> [URL] = { [] },
         onAgentProcessExit: @escaping (String) -> Void,
         onViewerProcessExit: @escaping (String) -> Void = { _ in },
         transcriptOfSession: @escaping (SessionSnapshot) -> URL? = { _ in nil }
     ) {
         self.claudeHome = claudeHome
+        self.extraClaudeFolders = extraClaudeFolders
         self.transcriptOfSession = transcriptOfSession
         self.onAgentProcessExit = onAgentProcessExit
         self.onViewerProcessExit = onViewerProcessExit
+    }
+
+    private var claudeFolders: [URL] {
+        [claudeHome] + extraClaudeFolders()
     }
 
     /// The viewer's watch shares the watcher with the agent's, under a key of its own.
@@ -222,8 +230,11 @@ final class SessionHostRegistry {
         guard let agentProcessID = snapshot.agentProcessID else {
             return FocusOutcome(raised: false, tab: .missing("no agent process to look the job up by"))
         }
-        let record = BackgroundSessionAttach.sessionRecordURL(claudeHome: claudeHome, agentProcessID: agentProcessID)
-        guard let contents = try? Data(contentsOf: record) else {
+        guard
+            let record = BackgroundSessionAttach.sessionRecordURL(
+                claudeFolders: claudeFolders, agentProcessID: agentProcessID),
+            let contents = try? Data(contentsOf: record)
+        else {
             return FocusOutcome(
                 raised: false, tab: .missing("Claude Code keeps no record of process \(agentProcessID)"))
         }
@@ -244,7 +255,10 @@ final class SessionHostRegistry {
         let decision = BackgroundSessionAttach.decision(
             among: GhosttyScripting.terminals() ?? [],
             jobID: jobID,
-            viewerIsRunning: ClaudeProcessRules().isRunning(withWords: ["attach", jobID])
+            viewerIsRunning: ClaudeProcessRules(
+                registry: ClaudeSessionRegistry(
+                    directories: claudeFolders.map(ClaudeSessionRegistry.directory(inFolder:)))
+            ).isRunning(withWords: ["attach", jobID])
         )
         switch decision {
         case .focus(let terminalID):
@@ -302,8 +316,7 @@ final class SessionHostRegistry {
         guard snapshot.source == .claude, let agentProcessID = snapshot.agentProcessID else {
             return .noTab(.unaddressable)
         }
-        let registry = ClaudeSessionRegistry(
-            directory: claudeHome.appendingPathComponent("sessions", isDirectory: true))
+        let registry = ClaudeSessionRegistry(directories: claudeFolders.map(ClaudeSessionRegistry.directory(inFolder:)))
         guard let record = registry.record(ofLiveProcess: agentProcessID) else {
             return .noTab(.missing("Claude Code keeps no record of process \(agentProcessID)"))
         }

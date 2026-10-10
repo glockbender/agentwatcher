@@ -119,6 +119,41 @@ final class AgentHeardStoreTests: XCTestCase {
         let heard: [String: Double]
     }
 
+    /// Codex asks for its hooks to be approved in every folder separately, so the default
+    /// folder reporting says nothing about a folder whose hooks were never approved.
+    func testEachFolderOfOneAgentIsHeardOnItsOwn() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let work = HeardFolder.listed(label: "id_0123456789abcdef")
+
+        let store = AgentHeardStore(directoryURL: directory)
+        store.recordInstall(.codex, folder: work)
+        store.record(.codex, at: Date(timeIntervalSince1970: 1_000))
+
+        XCTAssertEqual(store.delivery(for: .codex), .arrived)
+        XCTAssertEqual(store.delivery(for: .codex, folder: work), .nothingSinceInstall)
+        XCTAssertTrue(store.hasHeard(from: .codex))
+
+        store.record(.codex, folder: work, at: Date(timeIntervalSince1970: 2_000))
+        XCTAssertEqual(AgentHeardStore(directoryURL: directory).delivery(for: .codex, folder: work), .arrived)
+        XCTAssertFalse(store.hasHeard(from: .claude))
+    }
+
+    /// The file written before folders were told apart keeps its meaning: what it says about
+    /// an agent is what it says about that agent's default folder.
+    func testAFileFromBeforeFoldersReadsAsTheDefaultFolders() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data(#"{"heard":{"codex":1000},"installed":["claude"]}"#.utf8)
+            .write(to: directory.appendingPathComponent("agents-heard.json"))
+
+        let store = AgentHeardStore(directoryURL: directory)
+
+        XCTAssertEqual(store.delivery(for: .codex, folder: .default), .arrived)
+        XCTAssertEqual(store.delivery(for: .claude, folder: .default), .nothingSinceInstall)
+        XCTAssertEqual(store.delivery(for: .codex, folder: .listed(label: "id_0123456789abcdef")), .unknown)
+    }
+
     private func makeDirectory() throws -> URL {
         try FileManager.default.url(
             for: .itemReplacementDirectory,

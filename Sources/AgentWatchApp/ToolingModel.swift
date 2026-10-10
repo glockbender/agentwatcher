@@ -61,6 +61,7 @@ final class ToolingModel: ObservableObject {
             hookState: reading.hookState,
             statusLineState: { reading.statusLineState },
             hooksPath: reading.hooksPath,
+            folders: { reading.folders[$0] ?? [] },
             statusLinePath: reading.statusLinePath,
             idePlugins: reading.idePlugins,
             stagedPlugin: reading.stagedPlugin,
@@ -155,6 +156,8 @@ struct ToolingFacts {
     let stagedPlugin: StagedIDEPlugin?
     let idePluginDirectoryPath: String
     var agentPaths: [AgentSource: String] = [:]
+    /// Every folder of each agent, the default first, and where its hooks stand there.
+    var folders: [AgentSource: [ToolingFolderReading]] = [:]
     var receivedSources: Set<AgentSource> = []
     var lastError: String?
     /// The widget's combination as the menu prints it, only while it is registered and so

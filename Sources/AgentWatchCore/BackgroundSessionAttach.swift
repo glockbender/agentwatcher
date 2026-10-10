@@ -25,6 +25,18 @@ public enum BackgroundSessionAttach {
             .appendingPathComponent("\(agentProcessID).json", isDirectory: false)
     }
 
+    /// The record of a running process in whichever of Claude's folders holds it, or in the
+    /// first folder when none does: a process writes its record only in the folder it was
+    /// started with, and a record not written yet is looked for where most of them are.
+    public static func sessionRecordURL(
+        claudeFolders: [URL],
+        agentProcessID: Int32,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> URL? {
+        let candidates = claudeFolders.map { sessionRecordURL(claudeHome: $0, agentProcessID: agentProcessID) }
+        return candidates.first { fileExists($0.path) } ?? candidates.first
+    }
+
     /// The job identifier in one such record, or `nil` when there is none worth typing.
     ///
     /// An interactive session has a record too and no `jobId` in it, which is the ordinary

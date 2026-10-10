@@ -216,6 +216,14 @@ public struct HookIngressRequest: Codable, Equatable, Sendable {
     /// The app does not trust the count any more than it trusts the rest — `HookEventNormalizer`
     /// caps it, because anything running as this user can write to that socket.
     public let backgroundWork: [BackgroundWorkKind]?
+    /// The folder the agent that ran this hook was started with, as `AgentFolders.label(of:)`
+    /// names it — a label, never a path.
+    ///
+    /// What lets the Tooling page say folder by folder whether hooks there have ever run:
+    /// Codex wants its hooks approved in every folder separately, and a folder whose approval
+    /// is missing stays silent while another folder of the same agent reports. `nil` from a
+    /// sender that predates the field, which is read as the agent's default folder.
+    public let agentFolderLabel: String?
 
     public static let maximumSessionTitleLength = 120
     /// A directory name and a branch name are both short by nature, and a long one is a
@@ -235,7 +243,8 @@ public struct HookIngressRequest: Codable, Equatable, Sendable {
         clientKind: SessionClientKind? = nil,
         description: SessionDescription? = nil,
         toolRunsInBackground: Bool? = nil,
-        backgroundWork: [BackgroundWorkKind]? = nil
+        backgroundWork: [BackgroundWorkKind]? = nil,
+        agentFolderLabel: String? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.source = source
@@ -246,6 +255,23 @@ public struct HookIngressRequest: Codable, Equatable, Sendable {
         self.description = description
         self.toolRunsInBackground = toolRunsInBackground
         self.backgroundWork = backgroundWork
+        self.agentFolderLabel = agentFolderLabel
+    }
+
+    /// The folder label as it arrived when it has a label's shape, and `nil` otherwise.
+    ///
+    /// The field is only ever compared with labels the app computes itself and is never shown,
+    /// but anything can write to the socket, so nothing without the shape is kept.
+    public static func sanitizedFolderLabel(_ raw: String?) -> String? {
+        guard
+            let raw,
+            raw.count == 19,
+            raw.hasPrefix("id_"),
+            raw.dropFirst(3).allSatisfy({ $0.isHexDigit && !$0.isUppercase })
+        else {
+            return nil
+        }
+        return raw
     }
 
     /// Keeps hostile or malformed text from reaching the widget as layout or as an

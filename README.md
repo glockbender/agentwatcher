@@ -122,6 +122,10 @@ Nothing is written into an agent's configuration until you press an install butt
 other agent later in **Settings… → Tooling**. For Claude, **Connect Status Line** adds the
 context size and account usage to the widget; your own status-line command keeps running.
 
+An agent started with `CODEX_HOME` or `CLAUDE_CONFIG_DIR` reads hooks only from that folder. Add
+the folder in **Settings… → Tooling → Other folders** and install the hooks there too; Codex asks
+you to trust them again in each folder.
+
 ## Make it yours
 
 Everything Agent Watch draws can be changed: every colour and every animation of the widget, the
@@ -200,8 +204,9 @@ newer, classic and reworked terminals), and needs the Agent Watch app.
 - For names, branch and context size the app reads the agent's own files on disk, such as the
   Claude transcript and the Codex thread index. **Settings… → General** sets how often.
 - It writes `~/.claude/skills/agent-watch/` for Claude, its own entries in `~/.codex/hooks.json`
-  for Codex, the `statusLine` key in `~/.claude/settings.json` only if you connect the status
-  line, and its state in `~/Library/Application Support/AgentWatch/`.
+  for Codex, the same in every other folder you add, the `statusLine` key in
+  `~/.claude/settings.json` only if you connect the status line, and its state in
+  `~/Library/Application Support/AgentWatch/`.
 - It goes online only to check GitHub for updates and to download a release you chose to install.
 
 Details: [installing into the agents](docs/agent-install.md), [architecture](docs/architecture.md).

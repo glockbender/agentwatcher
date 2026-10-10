@@ -35,6 +35,7 @@ enum WidgetSetting {
     case menuSessions
     case sessionOrder
     case headlessRuns
+    case agentFolders
 }
 
 /// Widget preferences that are not about colour.
@@ -125,6 +126,15 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let showsWidget = "showsWidget"
         static let showsFullScreenDot = "showsFullScreenDot"
         static let showsHeadlessRuns = "showsHeadlessRuns"
+        static let claudeFolders = "claudeFolders"
+        static let codexFolders = "codexFolders"
+    }
+
+    private static func folderKey(for source: AgentSource) -> String {
+        switch source {
+        case .claude: Key.claudeFolders
+        case .codex: Key.codexFolders
+        }
     }
 
     /// Something waiting for the person, and something finished for them to look at: the two
@@ -158,6 +168,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.showsWidget: .bool(true),
             Key.showsFullScreenDot: .bool(true),
             Key.showsHeadlessRuns: .bool(false),
+            Key.claudeFolders: .array([]),
+            Key.codexFolders: .array([]),
         ]
     }
 
@@ -432,5 +444,19 @@ final class WidgetSettingsStore: PreferenceDefaults {
     func setClosedSessionRetention(_ retention: ClosedSessionRetention) {
         preferences.set(retention.seconds, forKey: Key.closedSessionRetention)
         onChange?(.closedSessionRetention)
+    }
+
+    /// The folders a person added beside each agent's default one, as paths, in the order they
+    /// were added. What they mean — and which of them count — is `AgentFolders`'s to say.
+    var extraAgentFolders: [AgentSource: [String]] {
+        Dictionary(
+            uniqueKeysWithValues: AgentSource.allCases.map { source in
+                (source, preferences.strings(forKey: Self.folderKey(for: source)) ?? [])
+            })
+    }
+
+    func setExtraFolders(_ paths: [String], for source: AgentSource) {
+        preferences.set(paths, forKey: Self.folderKey(for: source))
+        onChange?(.agentFolders)
     }
 }

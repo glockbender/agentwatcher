@@ -173,7 +173,18 @@ enum AgentWatchSendMain {
             // copy started, and the first event it hears has to be the one that says so.
             forkedFromSessionID: sessionID(in: payload).flatMap {
                 AgentProcessLocator.currentForkedFromSessionID(for: options.source, forSessionID: $0)
-            }
+            },
+            // Which of this agent's folders ran the hook, so the app can tell a folder whose
+            // hooks run from one whose hooks were never approved. The path is read here and
+            // stays here; only its label leaves this process.
+            agentFolderLabel: AgentFolders.label(
+                of: AgentFolders.reportingFolder(
+                    source: options.source,
+                    transcriptPath: string("transcript_path", in: payload),
+                    environment: ProcessInfo.processInfo.environment,
+                    home: AgentWatchPaths.homeDirectory()
+                )
+            )
         )
     }
 
@@ -181,10 +192,14 @@ enum AgentWatchSendMain {
     /// compared with the process's own arguments; it leaves this process redacted like every
     /// other identifier.
     private static func sessionID(in payload: JSONValue) -> String? {
-        guard case let .object(fields) = payload, case let .string(id)? = fields["session_id"] else {
+        string("session_id", in: payload)
+    }
+
+    private static func string(_ key: String, in payload: JSONValue) -> String? {
+        guard case let .object(fields) = payload, case let .string(value)? = fields[key] else {
             return nil
         }
-        return id
+        return value
     }
 
     /// A closed input counts as ready: the last `read` then returns zero and ends the loop.

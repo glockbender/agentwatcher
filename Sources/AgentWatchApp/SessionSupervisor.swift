@@ -26,8 +26,9 @@ final class SessionSupervisor {
     private let heard: AgentHeardStore
     private let history: SessionHistoryStore
     /// How the app finds agents nobody has told it about. Injected so the rules around it
-    /// can be exercised without a machine that happens to be running one.
-    private let liveAgentProcesses: () -> [DiscoveredAgentProcess]
+    /// can be exercised without a machine that happens to be running one; `nil` asks the
+    /// machine, reading the records of every folder the agents are known to keep.
+    private let liveAgentProcessesOverride: (() -> [DiscoveredAgentProcess])?
     /// When a process started, asked of the system. Injected for the same reason, and used
     /// for one thing: half the identity of a pairing, since macOS reuses process numbers.
     private let agentProcessStartedAt: (Int32) -> Date?
@@ -68,6 +69,7 @@ final class SessionSupervisor {
 
     private lazy var hostRegistry = SessionHostRegistry(
         claudeHome: claudeHome,
+        extraClaudeFolders: { [weak self] in self?.agentFolders.extraFolders(for: .claude) ?? [] },
         onAgentProcessExit: { [weak self] sessionID in
             self?.handleAgentProcessExit(sessionID: sessionID)
         },
@@ -82,7 +84,14 @@ final class SessionSupervisor {
     /// Claude Code's own folder under the home this app was given, where it keeps a record of
     /// every process it runs.
     private var claudeHome: URL {
-        home.appendingPathComponent(".claude", isDirectory: true)
+        AgentFolders.defaultFolder(for: .claude, home: home)
+    }
+
+    /// Every folder each agent keeps its files in: the default ones under `home`, and the ones
+    /// a person listed. Asked again on every use, so a folder added in Tooling counts from the
+    /// next event, read or click.
+    private var agentFolders: AgentFolders {
+        AgentFolders(home: home, extra: extraAgentFolders())
     }
 
     /// The transcript a click on a Codex thread needs, for the thread's identifier in its name.
@@ -97,24 +106,16 @@ final class SessionSupervisor {
         if let found = transcripts.transcriptURL(forSessionWithID: snapshot.id) {
             return found
         }
-        let root = TranscriptLocator.defaultRoot(for: snapshot.source, home: home)
-        var roots = [root]
-        if snapshot.source == .codex {
-            roots.append(TranscriptLocator.codexArchivedSessions(inRoot: root))
+        let roots = TranscriptLocator.roots(for: snapshot.source, in: agentFolders).flatMap { root in
+            snapshot.source == .codex ? [root, TranscriptLocator.codexArchivedSessions(inRoot: root)] : [root]
         }
-        for root in roots {
-            if let found = TranscriptLocator.locate(
-                sessionLabel: snapshot.transcriptLabel, source: snapshot.source, root: root)
-            {
-                return found
-            }
-        }
-        return nil
+        return TranscriptLocator.locate(sessionLabel: snapshot.transcriptLabel, source: snapshot.source, roots: roots)
     }
 
     private lazy var transcripts = TranscriptWatcher(
         settings: settings,
         home: home,
+        extraAgentFolders: extraAgentFolders,
         now: now,
         onUpdates: { [weak self] updates in
             self?.applyTranscript(updates)
@@ -126,21 +127,25 @@ final class SessionSupervisor {
     /// gone — and nothing else.
     private lazy var sessionRecords = SessionRecordWatcher(
         claudeHome: claudeHome,
+        extraClaudeFolders: { [weak self] in self?.agentFolders.extraFolders(for: .claude) ?? [] },
         onStatus: { [weak self] sessionID, status in
             self?.applySessionRecord(status, toSessionWithID: sessionID)
         }
     )
     private let home: URL
+    /// The folders a person added beside each agent's default one, by agent, as paths.
+    private let extraAgentFolders: () -> [AgentSource: [String]]
     private let workspaceNotifications: NotificationCenter
 
     init(
         settings: WidgetSettingsStore,
-        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        home: URL = AgentWatchPaths.homeDirectory(),
+        extraAgentFolders: @escaping () -> [AgentSource: [String]] = { [:] },
         heard: AgentHeardStore = AgentHeardStore(),
         history: SessionHistoryStore,
         workspaceNotifications: NotificationCenter = NSWorkspace.shared.notificationCenter,
         now: @escaping () -> Date = { .now },
-        liveAgentProcesses: @escaping () -> [DiscoveredAgentProcess] = AgentProcessScanner.liveAgentProcesses,
+        liveAgentProcesses: (() -> [DiscoveredAgentProcess])? = nil,
         agentProcessStartedAt: @escaping (Int32) -> Date? = AgentProcessLocator.startTime(of:),
         terminalState: @escaping (Int32) -> AgentProcessLocator.TerminalState? = AgentProcessLocator.terminalState(of:),
         terminalDevicePath: @escaping (Int32) -> String? = AgentProcessLocator.terminalDevicePath(of:),
@@ -155,11 +160,12 @@ final class SessionSupervisor {
     ) {
         self.settings = settings
         self.home = home
+        self.extraAgentFolders = extraAgentFolders
         self.workspaceNotifications = workspaceNotifications
         self.heard = heard
         self.history = history
         self.now = now
-        self.liveAgentProcesses = liveAgentProcesses
+        self.liveAgentProcessesOverride = liveAgentProcesses
         self.agentProcessStartedAt = agentProcessStartedAt
         self.terminalState = terminalState
         self.terminalDevicePath = terminalDevicePath
@@ -454,12 +460,27 @@ final class SessionSupervisor {
 
     // MARK: - Events
 
+    /// Which of its agent's folders an event came from, as the heard store keeps it.
+    ///
+    /// A label the default folder also has is the default folder, and so is no label: a sender
+    /// that predates the field ran from there, since nothing else was supported then. A label
+    /// nobody listed is kept as it is, so a folder added later already knows it was heard.
+    private func reportingFolderKey(of request: HookIngressRequest) -> HeardFolder {
+        guard
+            let label = HookIngressRequest.sanitizedFolderLabel(request.agentFolderLabel),
+            label != AgentFolders.label(of: AgentFolders.defaultFolder(for: request.source, home: home))
+        else {
+            return .default
+        }
+        return .listed(label: label)
+    }
+
     @discardableResult
     func ingest(_ request: HookIngressRequest) -> EventEnvelope? {
         // Before anything is made of it, and regardless of whether anything can be: the
         // arrival is the fact that proves this agent's hooks reach the app, and an event that
         // is refused arrived just the same.
-        heard.record(request.source, at: now())
+        heard.record(request.source, folder: reportingFolderKey(of: request), at: now())
 
         let event: EventEnvelope
         var snapshot: SessionSnapshot
@@ -820,7 +841,8 @@ final class SessionSupervisor {
     /// silent. The menu already says when an agent has never been heard from, which is the
     /// honest answer to that case.
     func discoverAgentProcesses() {
-        let live = liveAgentProcesses().map(recognised)
+        let live = (liveAgentProcessesOverride?() ?? AgentProcessScanner.liveAgentProcesses(in: agentFolders))
+            .map(recognised)
         // Dismissals are not pruned here, and that is deliberate. The set lives one launch
         // and holds one string per press of a button, so nothing about it can grow; while
         // pruning it against the live processes could *undo* a press — a dismissed session

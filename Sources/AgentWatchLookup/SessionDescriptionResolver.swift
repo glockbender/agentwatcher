@@ -274,7 +274,7 @@ public enum SessionDescriptionResolver {
     public static func codexSessionIndexPath() -> String {
         let home =
             ProcessInfo.processInfo.environment["CODEX_HOME"].map(URL.init(fileURLWithPath:))
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
+            ?? AgentFolders.defaultFolder(for: .codex, home: AgentWatchPaths.homeDirectory())
         return home.appendingPathComponent("session_index.jsonl").path
     }
 

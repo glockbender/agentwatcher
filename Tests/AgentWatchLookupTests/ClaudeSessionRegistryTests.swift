@@ -1,3 +1,4 @@
+import AgentWatchCore
 import Foundation
 import XCTest
 
@@ -80,6 +81,35 @@ final class ClaudeSessionRegistryTests: XCTestCase {
         )
         XCTAssertEqual(missing.liveProcessIDs(), [])
         XCTAssertFalse(missing.recordsLiveProcess(39806))
+    }
+
+    /// Measured on Claude Code 2.1.294: a Claude started with `CLAUDE_CONFIG_DIR` keeps its
+    /// record in that folder and none under `~/.claude`. Every listed folder is read.
+    func testARecordInAnotherFolderIsFound() throws {
+        let other = directory.appendingPathComponent("other-folder-sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        try Data(#"{"pid":39806,"procStart":"Mon Sep 14 15:06:01 2026"}"#.utf8)
+            .write(to: other.appendingPathComponent("39806.json"))
+        let registry = ClaudeSessionRegistry(directories: [directory, other], startTime: { [started] _ in started })
+
+        XCTAssertTrue(registry.recordsLiveProcess(39806))
+        XCTAssertEqual(registry.liveProcessIDs(), [39806])
+    }
+
+    /// A hook runs inside the Claude it reports for, with that Claude's environment: the
+    /// variable is how it finds its own process's record.
+    func testAHookLooksWhereItsOwnClaudeKeepsRecords() {
+        let home = URL(fileURLWithPath: "/Users/someone")
+
+        XCTAssertEqual(
+            ClaudeSessionRegistry.defaultDirectories(
+                environment: ["CLAUDE_CONFIG_DIR": "/Users/someone/.claude-work"], home: home
+            )
+            .map(\.path),
+            ["/Users/someone/.claude-work/sessions"])
+        XCTAssertEqual(
+            ClaudeSessionRegistry.defaultDirectories(environment: [:], home: home).map(\.path),
+            ["/Users/someone/.claude/sessions"])
     }
 
     private func registry(starts: [Int32: Date]) -> ClaudeSessionRegistry {

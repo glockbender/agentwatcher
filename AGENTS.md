@@ -45,6 +45,10 @@ can be tested in `AgentWatchCoreTests` without launching an application.
   it.
 - **`task verify` rebuilds `dist/` from scratch**, so hooks installed from `dist/AgentWatch.app`
   point at a bundle that will be replaced. Copy it to `/Applications` and install from the copy.
+- **A debug copy that installs hooks needs `AGENT_WATCH_HOME_DIR` beside `AGENT_WATCH_SUPPORT_DIR`.**
+  It names the home that holds `.claude` and `.codex`. `HOME` cannot do it: Foundation returns the
+  account's home whatever `HOME` says, while both agents follow `HOME`. Give the same value to a
+  sender you run by hand, or it reports its default folder as another one.
 - **One Agent Watch runs at a time.** Quit an installed copy before running a build:
   `osascript -e 'quit app "AgentWatch"'`.
 - **The shared Xcode scheme is committed on purpose:** Xcode builds only the products a scheme

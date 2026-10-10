@@ -98,7 +98,8 @@ final class TranscriptWatcher {
         let sessionID: String
         let source: AgentSource
         let sessionLabel: String
-        let root: URL
+        /// Every folder's transcript root for this agent, the default first.
+        let roots: [URL]
         let url: URL?
         let offset: UInt64
         /// Whether a failure to find the file has waited out its grace and may be reported.
@@ -142,19 +143,28 @@ final class TranscriptWatcher {
 
     private let settings: WidgetSettingsStore
     private let home: URL
+    /// The folders a person added beside each agent's default one, asked whenever a read is
+    /// planned so a folder added in Tooling is searched from the next attempt.
+    private let extraAgentFolders: () -> [AgentSource: [String]]
     private let now: () -> Date
     private let onUpdates: ([TranscriptUpdate]) -> Void
 
     init(
         settings: WidgetSettingsStore,
-        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        home: URL = AgentWatchPaths.homeDirectory(),
+        extraAgentFolders: @escaping () -> [AgentSource: [String]] = { [:] },
         now: @escaping () -> Date = { .now },
         onUpdates: @escaping ([TranscriptUpdate]) -> Void
     ) {
         self.settings = settings
         self.home = home
+        self.extraAgentFolders = extraAgentFolders
         self.now = now
         self.onUpdates = onUpdates
+    }
+
+    private var agentFolders: AgentFolders {
+        AgentFolders(home: home, extra: extraAgentFolders())
     }
 
     /// Whether the transcript is being read at all — right now, or on a schedule.
@@ -344,7 +354,7 @@ final class TranscriptWatcher {
                 sessionID: snapshot.id,
                 source: snapshot.source,
                 sessionLabel: snapshot.transcriptLabel,
-                root: TranscriptLocator.defaultRoot(for: snapshot.source, home: home),
+                roots: TranscriptLocator.roots(for: snapshot.source, in: agentFolders),
                 url: nil,
                 offset: 0,
                 // A file that cannot be found is not news here. A session from a previous
@@ -388,7 +398,7 @@ final class TranscriptWatcher {
                 sessionID: snapshot.id,
                 source: snapshot.source,
                 sessionLabel: snapshot.transcriptLabel,
-                root: TranscriptLocator.defaultRoot(for: snapshot.source, home: home),
+                roots: TranscriptLocator.roots(for: snapshot.source, in: agentFolders),
                 url: watch.url,
                 offset: watch.offset,
                 reportsNotFound: moment.timeIntervalSince(watch.firstSeenAt) >= Self.locateGrace,
@@ -613,7 +623,7 @@ final class TranscriptWatcher {
         let described =
             switch job.source {
             case .claude: tail.flatMap(SessionDescriptionResolver.claudeDescription(inTranscriptTail:))
-            case .codex: codexDescription(for: job)
+            case .codex: codexDescription(for: job, transcript: url)
             }
         return HookIngressRequest.sanitized(described)
     }
@@ -625,10 +635,13 @@ final class TranscriptWatcher {
     /// The index is keyed by the raw session identifier, which the app never holds — so the
     /// match is made the way `TranscriptLocator` makes it, by hashing every candidate. The
     /// file is one short record per thread, small enough to read whole.
-    private nonisolated static func codexDescription(for job: ReadJob) -> SessionDescription? {
+    private nonisolated static func codexDescription(for job: ReadJob, transcript: URL) -> SessionDescription? {
+        // The index of the folder the transcript lies in: a thread in a listed folder is named
+        // in that folder's index and in no other.
         guard
+            let root = TranscriptLocator.root(containing: transcript, among: job.roots),
             let index = try? Data(
-                contentsOf: TranscriptLocator.codexThreadIndex(inRoot: job.root)),
+                contentsOf: TranscriptLocator.codexThreadIndex(inRoot: root)),
             let threadName = CodexThreadIndex.threadName(
                 forSessionLabel: job.sessionLabel, inIndex: index)
         else {
@@ -694,7 +707,7 @@ final class TranscriptWatcher {
             let url = TranscriptLocator.locate(
                 sessionLabel: job.sessionLabel,
                 source: job.source,
-                root: job.root
+                roots: job.roots
             )
         else {
             return ReadResult(

@@ -38,8 +38,11 @@ final class ToolingReportTests: XCTestCase {
 
     /// What the menu line could not carry, and half the reason this window exists: which
     /// file each integration writes into.
+    ///
+    /// The row that offers another folder is not an integration and writes into nothing of an
+    /// agent's; once a folder is added, that folder's own row names its file.
     func testEveryRowNamesTheFileItWrites() throws {
-        let rows = agentSections(of: report()).flatMap(\.rows)
+        let rows = agentSections(of: report()).flatMap(\.rows).filter { $0.title != toolingOtherFoldersTitle }
 
         XCTAssertFalse(rows.isEmpty)
         for row in rows {
@@ -230,6 +233,49 @@ final class ToolingReportTests: XCTestCase {
             .first { $0.title.hasPrefix("GoLand") }
     }
 
+    /// A listed folder gets a row of its own, named by the folder, with the press any hooks
+    /// row has and one more: taking the folder off the list. And every agent says where to add
+    /// one, because nothing else on the page would tell a person that an agent can have two.
+    func testAListedFolderHasItsOwnRowAndEveryAgentOffersToAddOne() throws {
+        let work = ToolingFolderReading(
+            folder: "/Users/someone/.codex-work", isDefault: false, exists: true, state: .unheard,
+            hooksPath: "/Users/someone/.codex-work/hooks.json")
+        let sections = agentSections(of: report(folders: [work]))
+        let codex = try XCTUnwrap(sections.first { $0.title == "Codex" })
+
+        XCTAssertEqual(
+            codex.rows.map(\.title), ["Hooks", "Hooks in /Users/someone/.codex-work", toolingOtherFoldersTitle])
+        let row = codex.rows[1]
+        XCTAssertEqual(row.details, ["Writes /Users/someone/.codex-work/hooks.json"])
+        XCTAssertEqual(
+            row.actions.map(\.press),
+            [
+                .folderHooks(source: .codex, folder: "/Users/someone/.codex-work"),
+                .forgetFolder(source: .codex, folder: "/Users/someone/.codex-work"),
+            ])
+        XCTAssertTrue(
+            try XCTUnwrap(row.nextStep).contains("CODEX_HOME=/Users/someone/.codex-work"),
+            "Codex approves hooks per folder, so the step says which Codex to start")
+        for section in sections {
+            XCTAssertEqual(
+                section.rows.first { $0.title == toolingOtherFoldersTitle }?.actions.map(\.press),
+                [.addFolder(section.title == "Codex" ? .codex : .claude)])
+        }
+    }
+
+    /// A listed folder that is not on disk keeps its row: installing is off and says why,
+    /// forgetting stays on, because that is the repair.
+    func testAFolderThatIsNotThereCannotBeInstalledIntoButCanBeForgotten() throws {
+        let gone = ToolingFolderReading(
+            folder: "/Users/someone/.codex-gone", isDefault: false, exists: false, state: .absent,
+            hooksPath: "/Users/someone/.codex-gone/hooks.json")
+        let codex = try XCTUnwrap(agentSections(of: report(folders: [gone])).first { $0.title == "Codex" })
+        let row = codex.rows[1]
+
+        XCTAssertTrue(row.state.contains(toolingMissingFolderText), "the reason is on the row, not only on hover")
+        XCTAssertEqual(row.actions.map(\.isEnabled), [false, true])
+    }
+
     private func reading(_ presence: IDEPluginPresence, isRunning: Bool = true) -> IDEPluginReading {
         IDEPluginReading(
             ide: InstalledJetBrainsIDE(
@@ -245,6 +291,7 @@ final class ToolingReportTests: XCTestCase {
     private func report(
         hookState: ToolingInstallationState = .absent,
         statusLineState: StatusLineState = .notSet,
+        folders: [ToolingFolderReading] = [],
         idePlugins: [IDEPluginReading] = [],
         stagedPlugin: StagedIDEPlugin? = nil
     ) -> [ToolingReportSection] {
@@ -252,6 +299,7 @@ final class ToolingReportTests: XCTestCase {
             hookState: { _ in hookState },
             statusLineState: { statusLineState },
             hooksPath: { "/Users/someone/.\($0.rawValue)/hooks.json" },
+            folders: { $0 == .codex ? folders : [] },
             statusLinePath: "/Users/someone/.claude/settings.json",
             idePlugins: idePlugins,
             stagedPlugin: stagedPlugin,

@@ -11,17 +11,35 @@ import Foundation
 /// which file to open.
 ///
 /// The cost of being told instead of looking is a convention this makes an assumption about.
-/// If either agent renames its transcripts, or `CLAUDE_CONFIG_DIR` moves the root, nothing is
-/// found — and that is a reported failure rather than wrong data, which is the property that
-/// makes the assumption acceptable. `docs/transcript-reader.md` records when to revisit it.
+/// If either agent renames its transcripts, or `CLAUDE_CONFIG_DIR` or `CODEX_HOME` moves the
+/// root to a folder nobody listed (`AgentFolders`), nothing is found — and that is a reported
+/// failure rather than wrong data, which is the property that makes the assumption acceptable.
+/// `docs/transcript-reader.md` records when to revisit it.
 public enum TranscriptLocator {
     public static func defaultRoot(for source: AgentSource, home: URL) -> URL {
+        root(for: source, inFolder: AgentFolders.defaultFolder(for: source, home: home))
+    }
+
+    /// Where one of an agent's folders keeps its transcripts.
+    public static func root(for source: AgentSource, inFolder folder: URL) -> URL {
         switch source {
         case .claude:
-            home.appendingPathComponent(".claude/projects", isDirectory: true)
+            folder.appendingPathComponent("projects", isDirectory: true)
         case .codex:
-            home.appendingPathComponent(".codex/sessions", isDirectory: true)
+            folder.appendingPathComponent("sessions", isDirectory: true)
         }
+    }
+
+    /// The transcript roots of every folder this agent has.
+    public static func roots(for source: AgentSource, in folders: AgentFolders) -> [URL] {
+        folders.folders(for: source).map { root(for: source, inFolder: $0) }
+    }
+
+    /// The root among these that holds a transcript, so that what lies beside the root — the
+    /// thread index Codex keeps there — is read from the folder the transcript came from.
+    public static func root(containing transcript: URL, among roots: [URL]) -> URL? {
+        let path = transcript.standardizedFileURL.path
+        return roots.first { path.hasPrefix($0.standardizedFileURL.path + "/") }
     }
 
     /// Where Codex keeps the name of every thread: one short record each, beside the sessions
@@ -69,6 +87,25 @@ public enum TranscriptLocator {
             }
             if HookCaptureRedactor.label(forRawIdentifier: identifier) == sessionLabel {
                 return url
+            }
+        }
+        return nil
+    }
+
+    /// The transcript for one session in the first of these roots that has it.
+    ///
+    /// One search per root, in order, so the default folder — where nearly every session is —
+    /// costs what it always did, and a listed folder adds its own enumeration only when the
+    /// default had nothing.
+    public static func locate(
+        sessionLabel: String,
+        source: AgentSource,
+        roots: [URL],
+        fileManager: FileManager = .default
+    ) -> URL? {
+        for root in roots {
+            if let found = locate(sessionLabel: sessionLabel, source: source, root: root, fileManager: fileManager) {
+                return found
             }
         }
         return nil

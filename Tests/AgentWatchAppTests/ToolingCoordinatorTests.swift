@@ -133,6 +133,113 @@ final class ToolingCoordinatorTests: XCTestCase {
         }
     }
 
+    // MARK: - Folders a person listed
+
+    /// Adding a folder only lists it: nothing is written into it until its own row is pressed,
+    /// and then the hooks go there and the default folder is left alone.
+    func testAListedFolderGetsItsHooksOnlyWhenItsOwnRowIsPressed() throws {
+        let (coordinator, home, list) = try makeFolderCoordinator()
+        let work = home.appendingPathComponent(".codex-work", isDirectory: true)
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        list.chosen = work
+
+        coordinator.press(.addFolder(.codex))
+
+        XCTAssertEqual(list.paths[.codex], [work.path])
+        let installer = ToolingInstaller(home: home)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: installer.hooksPath(for: .codex, in: work).path))
+
+        coordinator.press(.folderHooks(source: .codex, folder: work.path))
+
+        let reading = try XCTUnwrap(coordinator.facts.folders[.codex]?.first { !$0.isDefault })
+        XCTAssertEqual(reading.state, .unheard, "installed by this app, and nothing has arrived from that folder")
+        XCTAssertEqual(coordinator.hookState(for: .codex), .absent, "the default folder is not touched")
+    }
+
+    /// A folder already listed, or the default one, is not listed twice.
+    func testTheSameFolderIsNotListedTwice() throws {
+        let (coordinator, home, list) = try makeFolderCoordinator()
+        list.chosen = home.appendingPathComponent(".codex", isDirectory: true)
+
+        coordinator.press(.addFolder(.codex))
+
+        XCTAssertEqual(list.paths[.codex] ?? [], [])
+    }
+
+    /// Hooks left in a folder nobody lists would report from a folder no row describes, so
+    /// forgetting the folder takes them out first.
+    func testForgettingAFolderTakesItsHooksOutAndItOffTheList() throws {
+        let (coordinator, home, list) = try makeFolderCoordinator()
+        let work = home.appendingPathComponent(".claude-work", isDirectory: true)
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        list.paths[.claude] = [work.path]
+        coordinator.press(.folderHooks(source: .claude, folder: work.path))
+        let plugin = work.appendingPathComponent("skills/agent-watch")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: plugin.path))
+
+        coordinator.press(.forgetFolder(source: .claude, folder: work.path))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: plugin.path))
+        XCTAssertEqual(list.paths[.claude], [])
+    }
+
+    /// A mistyped or removed path: installing would create a folder no agent reads.
+    func testNothingIsInstalledIntoAListedFolderThatIsNotThere() throws {
+        let (coordinator, home, list) = try makeFolderCoordinator()
+        let gone = home.appendingPathComponent(".codex-gone", isDirectory: true)
+        list.paths[.codex] = [gone.path]
+
+        coordinator.press(.folderHooks(source: .codex, folder: gone.path))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: gone.path))
+        XCTAssertNotNil(coordinator.lastError)
+    }
+
+    /// A person who only ever starts Codex from a listed folder has a working setup with
+    /// nothing in the default one, and the widget must not say otherwise.
+    func testHooksInAListedFolderAreEnoughToSilenceTheWidget() throws {
+        let (coordinator, home, list) = try makeFolderCoordinator()
+        let work = home.appendingPathComponent(".codex-work", isDirectory: true)
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        list.paths[.codex] = [work.path]
+        coordinator.press(.folderHooks(source: .codex, folder: work.path))
+        XCTAssertNotNil(coordinator.complaint(), "installed, and nothing has arrived yet")
+
+        list.heard.record(.codex, folder: .listed(label: AgentFolders.label(of: work)), at: Date())
+
+        XCTAssertNil(coordinator.complaint())
+    }
+
+    /// The person's list and the window that adds to it, standing in for the settings file and
+    /// the open panel.
+    private final class FolderList {
+        var paths: [AgentSource: [String]] = [:]
+        var chosen: URL?
+        var heard: AgentHeardStore!
+    }
+
+    private func makeFolderCoordinator() throws -> (ToolingCoordinator, URL, FolderList) {
+        let home = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let support = home.appendingPathComponent("support")
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        let executable = try makeExecutable(in: home.appendingPathComponent("first-build"))
+        let list = FolderList()
+        list.heard = AgentHeardStore(directoryURL: home)
+        let coordinator = ToolingCoordinator(
+            installer: ToolingInstaller(home: home),
+            heard: list.heard,
+            sender: SenderLink(directoryURL: support),
+            executableURL: executable,
+            extraFolders: { list.paths },
+            setExtraFolders: { list.paths[$0] = $1 },
+            chooseFolder: { _ in list.chosen }
+        )
+        return (coordinator, home, list)
+    }
+
     private func makeCoordinator() throws -> (ToolingCoordinator, URL) {
         let home = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

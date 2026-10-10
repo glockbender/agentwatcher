@@ -174,6 +174,37 @@ final class UnixSocketIngressTests: XCTestCase {
         )
     }
 
+    /// The folder an agent's hook ran from crosses as its label, so the app can tell a Codex
+    /// started with `CODEX_HOME` from the default one without being handed a path.
+    func testTheSenderCarriesTheLabelOfTheAgentsFolder() throws {
+        let directoryURL = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let socketPath = directoryURL.appendingPathComponent("agent-watch.sock").path
+        let results = IngressResults()
+        let received = expectation(description: "the event arrives")
+        let ingress = UnixSocketIngress(socketPath: socketPath) { result in
+            results.append(result)
+            received.fulfill()
+        }
+        try ingress.start()
+        defer { ingress.stop() }
+
+        let label = AgentFolders.label(of: URL(fileURLWithPath: "/Users/someone/.codex-work", isDirectory: true))
+        let request = try XCTUnwrap(
+            RedactedHookIngressRequest.make(
+                source: .codex,
+                declaredEvent: "SessionStart",
+                payload: .object(["session_id": .string("session")]),
+                agentFolderLabel: label
+            ))
+        try HookEventSender.send(request, to: socketPath)
+
+        wait(for: [received], timeout: 1)
+        let receivedRequest = try XCTUnwrap(results.snapshot().first).get()
+        XCTAssertEqual(receivedRequest.agentFolderLabel, label)
+    }
+
     func testLocalControlSenderDeliversRevealRequestToIngress() throws {
         let directoryURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }
