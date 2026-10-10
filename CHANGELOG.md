@@ -3,6 +3,29 @@
 What changed in each release of Agent Watch, for the person updating it. An installed copy shows
 the versions newer than itself in its update window.
 
+## [0.4.0] - 2026-10-10
+
+### Added
+
+- The update window lists what changed in every version since yours, with a progress bar and a
+  Cancel button.
+- Tooling covers an agent's other folders (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`): Add Folder… installs
+  the hooks there, and those sessions show up
+  ([how it looks](https://github.com/glockbender/agentwatcher/blob/v0.4.0/README.md#more-than-one-agent-folder)).
+- A click on a Codex session running in a terminal brings its tab forward, as it does for Claude.
+
+### Changed
+
+- Tooling is a page in Settings instead of a separate window; Connect Agent → in the empty widget
+  opens it.
+- Check for updates automatically replaces Check for updates on launch: it checks at launch and
+  once a day.
+
+### Fixed
+
+- The full-screen dot shows over a full-screen terminal with tabs, such as Ghostty.
+- Text the widget showed before no longer shows faintly through its background.
+
 ## [0.3.0] - 2026-10-08
 
 ### Added
