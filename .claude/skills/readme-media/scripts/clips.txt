@@ -15,3 +15,4 @@ clip-light      look        @light-1.0      @theme+2.4      1600 1000  clips/loo
 clip-size       look        @size-menu-1.0  @size-back+2.0  1600 1000  clips/look.keys
 clip-theme      look        @edit-1.0       @faster+4.2     1600 1000  clips/theme.keys
 clip-setup      setup       @launch-0.6     @ready+2.4      1600 1054  clips/setup.keys
+clip-folders    folders     @add-work-1.6   @installed-personal+3.0  1600 1000  clips/folders.keys

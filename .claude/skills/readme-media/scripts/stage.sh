@@ -134,6 +134,10 @@ reset-settings)
   # An event sent while the copy is down is lost: the end of a turn answered just before the
   # restart was, and its session looked like it was still asking. So the copy restarts only when
   # every session is done. One that ended has nothing more to say.
+  # A stage just put up leaves "Check the task list" asking, for start and menu to answer on camera.
+  # A settings take shot without them waited here four minutes and stopped: it is answered as they
+  # answer it.
+  [[ -z $ASKER || $(last_turn_event $ASKER) != userInputRequired ]] || press_in $NAMES[1] enter
   live=($(live_sessions))
   for i in $live; do
     for t in {1..960}; do [[ $(last_turn_event $IDS[i]) == turnCompleted ]] && break; sleep 0.25; done

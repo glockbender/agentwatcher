@@ -122,9 +122,23 @@ Nothing is written into an agent's configuration until you press an install butt
 other agent later in **Settings… → Tooling**. For Claude, **Connect Status Line** adds the
 context size and account usage to the widget; your own status-line command keeps running.
 
-An agent started with `CODEX_HOME` or `CLAUDE_CONFIG_DIR` reads hooks only from that folder. Add
-the folder in **Settings… → Tooling → Other folders** and install the hooks there too; Codex asks
-you to trust them again in each folder.
+### More than one agent folder
+
+If you start an agent with `CLAUDE_CONFIG_DIR` or `CODEX_HOME` — for example, one folder for a work
+account and one for a personal account — that agent reads hooks only from the folder it names, not
+from `~/.claude` or `~/.codex`. Its sessions do not appear until Agent Watch has hooks there too.
+
+1. In **Settings… → Tooling**, press **Add Folder…** in the agent's **Other folders** row and
+   choose the folder. It gets its own row, such as **Hooks in ~/.claude-work**.
+2. Press **Install** in that row. Add as many folders as you use, each with its own row.
+3. **Claude Code:** start a new session with that folder. **Codex:** start it with that folder and
+   accept its prompt to trust the hooks; trust given in one folder does not count for another.
+
+<img src="docs/images/clip-folders.avif" alt="On the Tooling page, Add Folder… opens a folder dialog in the home folder; choosing .claude-work adds a row for it, and Install puts the hooks there. The same follows for .claude-personal, and both rows say that the hooks are installed" width="800">
+
+Agent Watch reads the sessions of every listed folder. The status line connects only in
+`~/.claude`. **Forget Folder** takes the hooks out of a folder and removes it from the list.
+Details: [installing into the agents](docs/agent-install.md).
 
 ## Make it yours
 
@@ -213,8 +227,9 @@ Details: [installing into the agents](docs/agent-install.md), [architecture](doc
 
 ## Uninstall
 
-1. **Settings… → Tooling**: press **Remove** for each agent and **Disconnect** for
-   the status line. This takes out everything the app wrote into the agents.
+1. **Settings… → Tooling**: press **Remove** for each agent, **Forget Folder** for every folder
+   you added, and **Disconnect** for the status line. This takes out everything the app wrote into
+   the agents.
 2. Quit Agent Watch and move it to the Trash. To forget settings and sessions too, move
    `~/Library/Application Support/AgentWatch/` to the Trash.
 3. If you installed the IDE plugin, uninstall it in the IDE: **Settings → Plugins**.
