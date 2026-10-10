@@ -9,7 +9,8 @@
 # minutes and needs the Tart machine `aw-golden` that the README clips use
 # (.claude/skills/readme-media/vm.md says how it was made). Nothing happens on this Mac's screen:
 # the windows open and the buttons are pressed inside a throwaway clone of that machine, which is
-# deleted at the end with `tart delete` — a machine never goes to the Trash.
+# deleted at the end with `tart delete`. Nothing of the run goes to the Trash: it is a sandbox,
+# and test copies piling up there were something the owner had to keep emptying.
 #
 # What runs there is this working tree, built in debug: an old copy (0.9.0) and a new one (0.9.2),
 # both signed ad-hoc like a release, and a local server playing GitHub with feeds that behave well
@@ -42,7 +43,7 @@ mkdir -p "$share/serve/feeds" "$share/old" "$share/new"
 say() { printf '\n== %s\n' "$1"; }
 
 # Runs machine.sh with <arguments> in a throwaway clone of the golden machine, prints a line per
-# case, and exits: 1 when a case failed, keeping the folder; 0 after moving it to the Trash.
+# case, and exits: 1 when a case failed, keeping the folder; 0 after deleting it.
 run_in_machine() { # [machine.sh arguments]
     swiftc -O -target arm64-apple-macos14 -o "$share/ax" "$here/ax.swift"
     cp "$here/server.py" "$here/machine.sh" "$share/"
@@ -62,9 +63,9 @@ run_in_machine() { # [machine.sh arguments]
         echo "what each window said and showed is in $share/out" >&2
         exit 1
     fi
-    # Kept on failure for inspection; on success it goes to the Trash with the copies in it.
-    /usr/bin/trash "$work"
-    echo "PASSED; the test folder was moved to the Trash"
+    # Kept on failure for inspection; on success nothing in it is worth keeping.
+    rm -rf -- "$work"
+    echo "PASSED; the test folder was deleted"
     exit 0
 }
 cleanup() { tart stop "$vm" >/dev/null 2>&1 || true; tart delete "$vm" >/dev/null 2>&1 || true; }

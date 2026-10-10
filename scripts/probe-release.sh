@@ -71,4 +71,5 @@ PY
         || fail "the archive's EdDSA signature does not match SUPublicEDKey"
     echo "appcast.xml names $version and this archive, signed with the key in Info.plist: copies with Sparkle can take it"
 fi
-/usr/bin/trash "$work"
+# Downloaded copies only, so a sandbox: deleted rather than sent to the Trash. A failure keeps them.
+rm -rf -- "$work"
