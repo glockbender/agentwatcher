@@ -71,7 +71,7 @@ pathlib.Path(sys.argv[1]).write_text(json.dumps(settings, indent=1))
 print(f"· {len(hooks)} hooks")
 EOF
 
-  [[ -e $SUPPORT ]] && trash $SUPPORT
+  [[ -e $SUPPORT ]] && discard $SUPPORT
   # The opening clip scrolls the list: four rows of seven, a size a person could have dragged the
   # widget to. reset-settings drops it, and for the settings takes the widget sizes itself again.
   mkdir -p $SUPPORT/AgentWatch/Themes
@@ -142,7 +142,7 @@ reset-settings)
   $AW quit $DEMO_PID
   for i in {1..40}; do kill -0 $DEMO_PID 2>/dev/null || break; sleep 0.25; done
   f=$SUPPORT/AgentWatch/settings.json
-  [[ ! -e $f ]] || trash $f
+  [[ ! -e $f ]] || discard $f
   start_stage_copy
   save_state
   # A restarted copy shows a session it has not heard from yet as "no signal", the grey ring the
@@ -161,7 +161,7 @@ down)
   for pid in $(demo_claude_pids); do kill -TERM $pid; done
   [[ -n $DEMO_PID ]] && kill -0 $DEMO_PID 2>/dev/null && $AW quit $DEMO_PID
   sleep 1
-  [[ -e $SUPPORT ]] && trash $SUPPORT
+  [[ -e $SUPPORT ]] && discard $SUPPORT
   rm -f $STATE
   say_step "down. Recordings and clips stay in $WORK"
   ;;

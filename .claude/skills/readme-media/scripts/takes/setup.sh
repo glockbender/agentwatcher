@@ -14,7 +14,7 @@ others=$($AW onscreen | sort -u | tr '\n' ' ')
 [[ -z $others ]] || die "this desktop is not empty: $others"
 [[ -d $DEMO_APP ]] || die "no $DEMO_APP: vm.sh up bare puts it there"
 # A first start: the copy remembers nothing, and no stage is up.
-[[ ! -e $SUPPORT ]] || trash $SUPPORT
+[[ ! -e $SUPPORT ]] || discard $SUPPORT
 rm -f $STATE
 DEMO_PID=""
 # The terminal opens on camera where it stays: Ghostty puts a new window where its configuration

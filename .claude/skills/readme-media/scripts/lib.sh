@@ -27,6 +27,15 @@ BAR=$($AW screen | awk '{ print $2 }')
 die() { print -u2 -- "$*"; exit 1 }
 say_step() { print -- "· $*" }
 
+# discard <path>…: a sandbox file goes — a folder the scripts made only to throw away. Into the
+# Trash, unless the owner chose at the skill's start to delete such files at once (AW_DISCARD=delete,
+# SKILL.md «До начала»).
+discard() {
+  local p
+  for p in "$@"; do [[ -n $p && $p != / && $p != $HOME ]] || die "discard: refusing '$p'"; done
+  if [[ ${AW_DISCARD:-trash} == delete ]]; then rm -rf -- "$@"; else trash "$@"; fi
+}
+
 # Under `set -e` a failed command ends a take before its take_end, and a recording left running grows
 # by up to 27 MB a second and holds `tart exec` open. Whatever ends the script stops it first; a take
 # adds its own clean-up to AT_EXIT.

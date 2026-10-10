@@ -16,6 +16,9 @@
 #           `fetch start menu` copies those takes whatever is here
 #   down    stop aw-take and delete it
 #   sh      run a command inside aw-take, or inside the machine AW_VM names
+#
+# AW_DISCARD=delete removes the sandbox files a command leaves on this Mac at once, instead of
+# moving them to the Trash: the owner's answer at the skill's start (SKILL.md).
 set -e
 
 SCRIPTS=${0:A:h}
@@ -47,6 +50,15 @@ mkdir -p $SHARE
 
 die() { print -u2 -- "$*"; exit 1 }
 say_step() { print -- "· $*" }
+
+# discard <path>…: a sandbox file goes — a folder the scripts made only to throw away. Into the
+# Trash, unless the owner chose at the skill's start to delete such files at once (AW_DISCARD=delete,
+# SKILL.md «До начала»).
+discard() {
+  local p
+  for p in "$@"; do [[ -n $p && $p != / && $p != $HOME ]] || die "discard: refusing '$p'"; done
+  if [[ ${AW_DISCARD:-trash} == delete ]]; then rm -rf -- "$@"; else trash "$@"; fi
+}
 
 # A login shell, for Homebrew's PATH and the token's line in ~/.zshenv.
 in() { local vm=$1; shift; tart exec $vm zsh -lc "$*" }
@@ -185,7 +197,7 @@ stand)
     in $STAND "{ [[ ! -e /Applications/Claude.app ]] || sudo trash /Applications/Claude.app } \
       && sudo ditto '$G_SHARE/Claude-$desktop.app' /Applications/Claude.app \
       && /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/Claude.app"
-    trash $SHARE/Claude-$desktop.app
+    discard $SHARE/Claude-$desktop.app
   fi
 
   # Copied rather than installed: the same build as here, and nothing downloaded from inside.
@@ -360,7 +372,7 @@ fetch)
     in $VM "cp $G_WORK/$take.mov '$G_SHARE/$box/'"
     mv $SHARE/$box/$take.mov $WORK/ && cp $SHARE/$box/$take.marks $WORK/
   done
-  trash $SHARE/$box
+  discard $SHARE/$box
   say_step "fetched: ${takes:-nothing new}"
   ;;
 
