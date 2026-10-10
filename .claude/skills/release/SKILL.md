@@ -74,8 +74,9 @@ IDE не выпускает: у него `publish-plugin.yml` и свой тек
 
 ## После «да»
 
-1. `plutil -replace CFBundleShortVersionString -string X.Y.Z Resources/Info.plist`; коммит
-   `Set the version to X.Y.Z` с `Info.plist` и `CHANGELOG.md`. Проверка коммита — `task verify`.
+1. В `Resources/Info.plist` заменить строку под `CFBundleShortVersionString` правкой текста:
+   `plutil -replace` переписывает весь файл табами. Коммит `Set the version to X.Y.Z` с
+   `Info.plist` и `CHANGELOG.md`; проверка коммита — `task verify`.
 2. `task e2e-update` — обновление этой сборки в чистой машине, со всеми сбоями.
 3. `task release` — zip и образ; zip распаковывается и проходит `codesign --verify --strict`,
    как его проверят установленные 0.3.0. Предупреждение о `SPARKLE_PRIVATE_KEY` здесь ожидаемо:
