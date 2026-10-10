@@ -11,6 +11,7 @@ ax=~/ax
 cp "$share/ax" $ax
 port=8123
 copy=/Applications/AgentWatch.app
+sparkle_cache=~/Library/Caches/com.glockbender.agentwatch/org.sparkle-project.Sparkle
 
 say() { print -- "[$(date +%H:%M:%S)] $*" | tee -a "$out/run.log" }
 result() { print -- "$1 $2${3:+ — $3}" | tee -a "$out/result.txt" }
@@ -39,6 +40,15 @@ fresh() {
   ditto "$share/old/AgentWatch.app" $copy
   defaults delete com.glockbender.agentwatch > /dev/null 2>&1
   rm -rf ~/Library/Caches/com.glockbender.agentwatch
+  touch ~/.case-start
+}
+
+# A download cut short leaves its part in the temp folder (measured on macOS 15.7.7). macOS's own
+# downloader keeps it, not Sparkle, and macOS clears that folder itself, so it is reported, not
+# failed. The folder is shared by every program of this account: nothing here may clean it.
+partials() {
+  find "$(getconf DARWIN_USER_TEMP_DIR)" -maxdepth 1 -name 'CFNetworkDownload_*' -newer ~/.case-start \
+    2> /dev/null | wc -l | tr -d ' '
 }
 
 # Starts the installed copy against a feed; sets $pid. Sparkle looks five seconds after launch.
@@ -50,11 +60,14 @@ start() { # <case> <feed url>
   return 1
 }
 
-# The old copy is in place, whole, and still running: what every failure must leave behind.
+# The old copy is in place, whole, and still running, and Sparkle's folders hold nothing of the
+# attempt: what every failure must leave behind.
 untouched() {
   [[ $(installed) == 0.9.0 ]] || { print "installed $(installed)"; return 1 }
   codesign --verify --strict $copy 2> /dev/null || { print "codesign --strict fails"; return 1 }
   kill -0 $pid 2> /dev/null || { print "the app quit"; return 1 }
+  local left=$(find $sparkle_cache -mindepth 2 2> /dev/null | sed "s|^$sparkle_cache/||" | tr '\n' ' ')
+  [[ -z $left ]] || { print "Sparkle left $left"; return 1 }
 }
 
 # A check that fails before any offer: nothing on screen, nothing changed.
@@ -86,8 +99,52 @@ failed_download() { # <case> <feed url> <seconds to wait for the error>
   local said=$(grep -i -m1 -E 'error|could not|failed|improperly' "$out/$1.txt")
   $ax press $pid OK 2> /dev/null || $ax press $pid Cancel 2> /dev/null
   sleep 1
-  local why
-  why=$(untouched) && result $1 passed "said: $said" || result $1 FAILED "$why"
+  local why note=""
+  (( $(partials) )) && note="; a partial download stays in the temp folder"
+  why=$(untouched) && result $1 passed "said: $said$note" || result $1 FAILED "$why"
+}
+
+# The copy sits in a folder this account cannot write to, as when another administrator installed
+# it: Sparkle asks for an administrator's password, right after the download (measured on macOS
+# 15.7.7). The person cancels, and the update ends quietly with the copy untouched. Typing the
+# password is left out: what follows it is Sparkle's own installer, run by macOS as root.
+no_write_access() {
+  local saved=$copy agent="" i why
+  quit_app
+  copy=~/ReadOnly/AgentWatch.app
+  fresh
+  chmod 555 ${copy:h}
+  if ! start no-write-access $(feed good); then
+    result no-write-access FAILED "did not start"
+  elif ! wait_for $pid 'Install Update' 30; then
+    shot no-write-access; result no-write-access FAILED "no offer"
+  else
+    $ax press $pid "Install Update"
+    # The prompt belongs to SecurityAgent, not to the app.
+    for i in {1..60}; do
+      agent=$(pgrep -x SecurityAgent | head -1)
+      [[ -n $agent ]] && $ax text $agent 2> /dev/null | grep -q 'wants permission to update' && break
+      agent=""
+      sleep 1
+    done
+    shot no-write-access
+    if [[ -z $agent ]]; then
+      windows_say $pid > "$out/no-write-access.txt"; result no-write-access FAILED "no password prompt"
+    else
+      $ax text $agent > "$out/no-write-access.txt"
+      $ax press $agent Cancel
+      sleep 5
+      if windows_say $pid | grep -q -i -E 'Install Update|Install and Relaunch|error'; then
+        shot no-write-access-after; result no-write-access FAILED "a window stayed after Cancel"
+      else
+        why=$(untouched) && result no-write-access passed "asked for a password; Cancel left the copy untouched" \
+          || result no-write-access FAILED "$why"
+      fi
+    fi
+  fi
+  quit_app
+  chmod 755 ${copy:h}
+  copy=$saved
 }
 
 # Presses Install and Relaunch in the running copy and checks what came back: <version> installed,
@@ -181,3 +238,5 @@ else
   shot retry; result retry-after-failure FAILED "no offer"
 fi
 quit_app
+
+no_write_access

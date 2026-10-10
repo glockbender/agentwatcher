@@ -2,8 +2,9 @@
 # Updates a copy of the app end to end in a clean macOS: Sparkle's windows, a real download, a
 # real replacement of the bundle — and every way the download can fail before that.
 #
-#     ./scripts/e2e-update.sh                # this working tree, against a local server
-#     ./scripts/e2e-update.sh --from v0.3.0  # that published release, to the latest on GitHub
+#     ./scripts/e2e-update.sh                           # this working tree, against a local server
+#     ./scripts/e2e-update.sh --from v0.3.0             # that published release, to the latest
+#     ./scripts/e2e-update.sh --from v0.4.0 --as 0.3.0  # the latest, saying it is 0.3.0, to itself
 #
 # Runs before every release (the release skill calls it) rather than on every push: it takes a few
 # minutes and needs the Tart machine `aw-golden` that the README clips use
@@ -19,7 +20,10 @@
 #
 # With --from, after a release is published: that earlier release, downloaded as a person would
 # have it, finds the new one on GitHub and replaces itself — with its own updater (0.3.0) or with
-# Sparkle — exactly as the copies people run will.
+# Sparkle — exactly as the copies people run will. With --as, the copy says it is that older
+# version: the latest release then updates to itself, which proves that its own Sparkle follows
+# GitHub's redirect to the real feed and accepts the real key — what every copy of it will do
+# when the next release comes out.
 
 set -euo pipefail
 
@@ -72,12 +76,26 @@ cleanup() { tart stop "$vm" >/dev/null 2>&1 || true; tart delete "$vm" >/dev/nul
 in_vm() { tart exec "$vm" zsh -lc "$1"; }
 
 if [[ "${1:-}" == "--from" ]]; then
-    from_tag="${2:?usage: e2e-update.sh --from <tag of a published release>}"
+    from_tag="${2:?usage: e2e-update.sh --from <tag of a published release> [--as <older version>]}"
+    as_version=""
+    [[ "${3:-}" != "--as" ]] || as_version="${4:?usage: e2e-update.sh --from <tag> --as <older version>}"
     latest="$(gh release view --repo glockbender/agentwatcher --json tagName --jq .tagName)"
-    [[ "$latest" != "$from_tag" ]] || { echo "$from_tag is the latest release: nothing to update to" >&2; exit 1; }
+    if [[ "$latest" == "$from_tag" && -z "$as_version" ]]; then
+        echo "$from_tag is the latest release: nothing to update to, unless --as <older version>" >&2
+        exit 1
+    fi
     say "Downloading $from_tag, to update to $latest"
     gh release download "$from_tag" --repo glockbender/agentwatcher --pattern "AgentWatch-${from_tag#v}.zip" --dir "$work"
     ditto -x -k "$work/AgentWatch-${from_tag#v}.zip" "$share/old"
+    if [[ -n "$as_version" ]]; then
+        # Sparkle compares CFBundleVersion with the feed, so both keys change. The edit breaks the
+        # seal: the copy is signed again ad-hoc, as the release was.
+        plist="$share/old/AgentWatch.app/Contents/Info.plist"
+        plutil -replace CFBundleShortVersionString -string "$as_version" "$plist"
+        plutil -replace CFBundleVersion -string "$as_version" "$plist"
+        codesign --force --sign - "$share/old/AgentWatch.app" >/dev/null 2>&1
+        codesign --verify --strict "$share/old/AgentWatch.app"
+    fi
     run_in_machine published "${latest#v}"
 fi
 
