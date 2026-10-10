@@ -36,5 +36,7 @@
     <false/>
     <key>SUFeedURL</key>
     <string>https://github.com/glockbender/agentwatcher/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>HqLleP2TkUNAzKZ55Uen7+N6UkahbGFyJyDUPRDYbFs=</string>
 </dict>
 </plist>
