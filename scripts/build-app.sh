@@ -62,7 +62,6 @@ install -m 755 "$git_binary" "$contents_path/MacOS/AgentWatchGit"
 hooks="$contents_path/Resources/GitProtection/hooks"
 mkdir -p "$hooks"
 install -m 755 "$project_root/Resources/GitProtection/hooks/git-guard.sh" "$hooks/git-guard.sh"
-install -m 644 "$project_root/Resources/GitProtection/hooks/git_guard.py" "$hooks/git_guard.py"
 
 if command -v codesign >/dev/null 2>&1; then
     # Which identity seals the bundle, and why it is worth a certificate at all.

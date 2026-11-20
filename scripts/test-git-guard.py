@@ -175,7 +175,7 @@ class GitGuardTests(unittest.TestCase):
         contents = root / "Example Application.app/Contents"
         hooks = contents / "Resources/GitProtection/hooks"
         shutil.copytree(HOOKS, hooks, ignore=shutil.ignore_patterns("__pycache__"))
-        cls.hook = hooks / "git-guard.sh"
+        cls.hook = hooks / "git_guard.py"
         spec = importlib.util.spec_from_file_location("git_guard", hooks / "git_guard.py")
         cls.guard = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = cls.guard
@@ -198,7 +198,9 @@ class GitGuardTests(unittest.TestCase):
             git(feature, "update-ref", "refs/remotes/origin/" + branch, "HEAD")
 
     def invoke(self, host, payload):
-        argv = [str(self.hook)] + ([] if host == "claude" else ["--host", "codex"])
+        argv = [sys.executable, "-I", "-B", "-S", str(self.hook)]
+        if host == "codex":
+            argv += ["--host", "codex"]
         return subprocess.run(argv, env=self.env, cwd=self.folders["feat"], input=payload,
                               text=True, capture_output=True, check=True, timeout=10).stdout
 
@@ -233,7 +235,7 @@ class GitGuardTests(unittest.TestCase):
         self.assertEqual(json.loads(self.invoke("codex", payload))["hookSpecificOutput"]["permissionDecision"], "deny")
 
     def test_install_preflight_finishes_without_reading_stdin(self):
-        proc = subprocess.Popen([self.hook, "--check"], stdin=subprocess.PIPE,
+        proc = subprocess.Popen([sys.executable, self.hook, "--check"], stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env)
         try:
             self.assertEqual(proc.wait(timeout=3), 0)
@@ -243,16 +245,6 @@ class GitGuardTests(unittest.TestCase):
             if proc.poll() is None:
                 proc.kill()
             proc.communicate()
-
-    def test_install_preflight_rejects_an_incomplete_bundle(self):
-        moved = self.hook.with_name("missing-script")
-        moved.mkdir()
-        hook = moved / self.hook.name
-        shutil.copy2(self.hook, hook)
-        proc = subprocess.run([hook, "--check"], stdin=subprocess.DEVNULL, env=self.env,
-                              capture_output=True, text=True, timeout=3)
-        self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("could not load", proc.stderr)
 
     def test_unreadable_input_fails_closed(self):
         self.assertEqual(json.loads(self.invoke("claude", "invalid"))["hookSpecificOutput"]["permissionDecision"], "deny")

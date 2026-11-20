@@ -214,7 +214,8 @@ newer, classic and reworked terminals), and needs the Agent Watch app.
 ## Git protection
 
 In **Settings… → Git Protection**, select the client and profile, then click **Install Git Hook**.
-In Codex, approve the new entry in `/hooks` once. Start a new chat in each client. Install the
+In Codex desktop, open **Settings → Hooks** and click **Trust**. In the terminal, use `/hooks`.
+Start a new chat in each client. Install the
 hook before updating from a Mothership version that provides Git protection. Keep Agent Watch
 at the same path when updating. Both clients continue using the existing project rules.
 
