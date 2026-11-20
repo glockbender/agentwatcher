@@ -33,7 +33,7 @@ swift build --configuration "$configuration" -Xswiftc -warnings-as-errors
 bin_path="$(swift build --configuration "$configuration" --show-bin-path)"
 
 if [[ -e "$app_path" ]]; then
-    rm -rf -- "$app_path"
+    /usr/bin/trash "$app_path"
 fi
 
 mkdir -p "$contents_path/MacOS" "$contents_path/Resources"
@@ -56,6 +56,13 @@ cp "$project_root/Resources/Info.plist" "$contents_path/Info.plist"
 version="$(plutil -extract CFBundleShortVersionString raw -o - "$contents_path/Info.plist")"
 plutil -replace CFBundleVersion -string "$version" "$contents_path/Info.plist"
 plutil -lint "$contents_path/Info.plist" >/dev/null
+
+git_binary="$(python3 "$project_root/scripts/build_native_git.py")"
+install -m 755 "$git_binary" "$contents_path/MacOS/AgentWatchGit"
+hooks="$contents_path/Resources/GitProtection/hooks"
+mkdir -p "$hooks"
+install -m 755 "$project_root/Resources/GitProtection/hooks/git-guard.sh" "$hooks/git-guard.sh"
+install -m 644 "$project_root/Resources/GitProtection/hooks/git_guard.py" "$hooks/git_guard.py"
 
 if command -v codesign >/dev/null 2>&1; then
     # Which identity seals the bundle, and why it is worth a certificate at all.
@@ -88,6 +95,7 @@ if command -v codesign >/dev/null 2>&1; then
     fi
     # The nested executable is signed before the bundle that seals it.
     codesign --force --sign "$signing_identity" "$contents_path/MacOS/AgentWatchSend" >/dev/null
+    codesign --force --sign "$signing_identity" "$contents_path/MacOS/AgentWatchGit" >/dev/null
     codesign --force --sign "$signing_identity" "$app_path" >/dev/null
 fi
 

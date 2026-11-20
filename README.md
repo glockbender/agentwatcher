@@ -211,23 +211,39 @@ newer, classic and reworked terminals), and needs the Agent Watch app.
 2. In the IDE: **Settings → Plugins → ⚙ → Install Plugin from Disk**, select the ZIP, restart if asked.
 3. In Agent Watch: **Settings… → Tooling**, press **Check** beside the IDE.
 
+## Git protection
+
+In **Settings… → Git Protection**, select the client and profile, then click **Install Git Hook**.
+In Codex, approve the new entry in `/hooks` once. Start a new chat in each client. Install the
+hook before updating from a Mothership version that provides Git protection. Keep Agent Watch
+at the same path when updating. Both clients continue using the existing project rules.
+
+Choose a Git working folder and enter a branch name. You can
+require the repository name before deleting that branch on the remote, or remove a rule saved
+directly in that repository. The change applies to its linked working folders. The installed
+Git guard enforces the rule. If the outcome depends on the remote’s default branch, the preview
+explains both possibilities.
+
 ## Privacy
 
-- Session state stays on your Mac. Hooks send events over a local socket only your user can open.
-  When Agent Watch is not running they fail open, and the agent goes on as usual.
+- Session monitoring sends events over a local socket only your user can open. When the app is
+  closed, monitoring lets the agent continue. Git protection runs on demand and can still ask
+  for confirmation while the app is closed.
 - For names, branch and context size the app reads the agent's own files on disk, such as the
   Claude transcript and the Codex thread index. **Settings… → General** sets how often.
 - It writes `~/.claude/skills/agent-watch/` for Claude, its own entries in `~/.codex/hooks.json`
   for Codex, the same in every other folder you add, the `statusLine` key in
-  `~/.claude/settings.json` only if you connect the status line, and its state in
-  `~/Library/Application Support/AgentWatch/`.
-- It goes online only to check GitHub for updates and to download a release you chose to install.
+  `~/.claude/settings.json` if you connect the status line, and a `PreToolUse` entry in each profile
+  where you enable Git protection. App state lives in `~/Library/Application Support/AgentWatch/`.
+- The updater contacts GitHub to check for and download releases. When handling a push, the Git
+  tool contacts the project’s configured remote to check its refs and perform an approved change.
 
 Details: [installing into the agents](docs/agent-install.md), [architecture](docs/architecture.md).
 
 ## Uninstall
 
-1. **Settings… → Tooling**: press **Remove** for each agent, **Forget Folder** for every folder
+1. In **Settings… → Git Protection**, use **Remove Git Hook…** for each protected profile.
+   In **Settings… → Tooling**, press **Remove** for each agent, **Forget Folder** for every folder
    you added, and **Disconnect** for the status line. This takes out everything the app wrote into
    the agents.
 2. Quit Agent Watch and move it to the Trash. To forget settings and sessions too, move
@@ -240,7 +256,8 @@ A session does not appear, has no name, or a lamp looks stuck: see [Troubleshoot
 
 ## Build from source
 
-Requires Xcode 16 or newer and [Task](https://taskfile.dev/). Liquid Glass needs Xcode 26 and its
+Requires Xcode 16 or newer, [Task](https://taskfile.dev/) and Rust 1.98.1 installed through rustup.
+Liquid Glass needs Xcode 26 and its
 macOS 26 SDK; with an older Xcode the widget is frosted instead.
 
 ```sh

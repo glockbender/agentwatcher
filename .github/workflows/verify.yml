@@ -30,6 +30,9 @@ jobs:
 
       # The repository gate is `task verify`, so CI runs that one command rather
       # than a second list of steps that can drift away from it.
+      - name: Install the Rust toolchain for Git protection
+        run: rustup toolchain install 1.98.1 --profile minimal
+
       - name: Install Task
         run: brew install go-task
 

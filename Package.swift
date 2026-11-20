@@ -23,10 +23,12 @@ let package = Package(
     ],
     targets: [
         .target(name: "AgentWatchCore"),
+        .target(name: "AgentWatchGit"),
+        .testTarget(name: "AgentWatchGitTests", dependencies: ["AgentWatchGit"]),
         .executableTarget(
             name: "AgentWatchApp",
             dependencies: [
-                "AgentWatchCore", "AgentWatchIngress", "AgentWatchSender", "AgentWatchLookup",
+                "AgentWatchCore", "AgentWatchIngress", "AgentWatchSender", "AgentWatchLookup", "AgentWatchGit",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             swiftSettings: [.define("AGENT_WATCH_DEBUG_CAPTURE", .when(configuration: .debug))],

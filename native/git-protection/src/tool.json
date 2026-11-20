@@ -1,0 +1,51 @@
+{
+  "name": "push_once",
+  "description": "Push one explicit Git ref after user confirmation in the Agent Watch macOS window (independent of client approval mode). An ordinary branch deletion takes one click. Deleting a protected branch takes one click followed by typing the repository name. Other operations confirm any risks separately and require the repository name. Other platforms or an explicit --client-forms server configuration use client MCP forms. Include a short reason in the user's language; it is context, never an approval. The tool waits for the person and executes the push itself. After refusal, show manual_command; never execute it or retry automatically. Never answer or automate confirmation windows or forms.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "repository": {
+        "type": "string",
+        "description": "Absolute working tree path."
+      },
+      "remote": {
+        "type": "string",
+        "description": "Configured remote name; default origin."
+      },
+      "destination": {
+        "type": "string",
+        "description": "One full refs/heads/ or refs/tags/ ref."
+      },
+      "source": {
+        "type": "string",
+        "description": "Revision to freeze; default HEAD. Omit for deletes."
+      },
+      "force": {
+        "type": "boolean",
+        "description": "Request explicit history/tag replacement consent."
+      },
+      "delete": {
+        "type": "boolean",
+        "description": "Request deletion of the destination ref."
+      },
+      "reason": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "description": "One short sentence in the user's language explaining why this change is needed. Do not claim approval or tell the user what to select."
+      }
+    },
+    "required": [
+      "repository",
+      "destination"
+    ],
+    "additionalProperties": false
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "title": "\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435 \u0440\u0435\u043f\u043e\u0437\u0438\u0442\u043e\u0440\u0438\u044f"
+}

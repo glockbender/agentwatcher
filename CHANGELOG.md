@@ -3,6 +3,14 @@
 What changed in each release of Agent Watch, for the person updating it. An installed copy shows
 the versions newer than itself in its update window.
 
+## [Unreleased]
+
+### Changed
+
+- If you use Mothership Git protection, register the Agent Watch hook once for each Claude and
+  Codex profile in **Settings → Git Protection**. Approve the new hook in Codex before updating
+  Mothership. Your existing protected branches carry over.
+
 ## [0.4.0] - 2026-10-10
 
 ### Added
