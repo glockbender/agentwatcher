@@ -39,3 +39,7 @@ must_use_candidate = "allow"
 strip = true
 lto = true
 codegen-units = 1
+
+# Keep the simulated confirmation executable separate from concurrent production builds.
+[profile.fixture]
+inherits = "dev"
