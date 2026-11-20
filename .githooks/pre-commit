@@ -13,4 +13,8 @@ if ! git diff --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]];
     exit 1
 fi
 
+# In a linked worktree Git hands its hooks GIT_DIR and GIT_INDEX_FILE, and every git a build runs
+# inherits them: SwiftPM then reads tags from this repository instead of its package cache and
+# reports that no Sparkle version exists. The check above needed them; the build must not see them.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 task verify
