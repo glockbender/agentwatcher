@@ -201,6 +201,106 @@ final class TranscriptReaderTests: XCTestCase {
         )
     }
 
+    func testCodexQuestionsAreAddressedByIndexIncludingFreeFormQuestions() throws {
+        let asked = try completedCodexItem([
+            "type": "AgentMessage", "id": "call_fixture", "phase": "final_answer", "delivery": "async",
+            "content": [["type": "Text", "text": "This text need not contain a question."]],
+            "questions": [
+                ["title": "First", "options": ["One", "Two"]],
+                ["title": "Second", "options": NSNull()],
+            ],
+        ])
+        let first = HookCaptureRedactor.label(forRawIdentifier: "request_user_input_async:call_fixture:0")
+        let second = HookCaptureRedactor.label(forRawIdentifier: "request_user_input_async:call_fixture:1")
+        XCTAssertEqual(
+            try read([asked], source: .codex).facts,
+            [.codexQuestionAsked(activityID: first, at: now), .codexQuestionAsked(activityID: second, at: now)]
+        )
+
+        let reply = try codexReply([
+            ["questionItemId": #"["request_user_input_async","call_fixture",1]"#, "question": "Second", "answer": "A"],
+            ["questionItemId": #"["request_user_input_async","call_fixture",0]"#, "question": "First", "answer": "B"],
+        ])
+        let answered = try completedCodexItem([
+            "type": "UserMessage", "id": "item_reply", "client_id": "client",
+            "content": [["type": "text", "text": reply, "text_elements": []]],
+        ])
+        XCTAssertEqual(
+            try read([answered], source: .codex).facts,
+            [.codexQuestionAnswered(activityID: second, at: now), .codexQuestionAnswered(activityID: first, at: now)]
+        )
+    }
+
+    func testOnlyEachAnsweredIndexIsReturnedOnceEvenWithMalformedNeighbours() throws {
+        let invalid = [
+            #"["request_user_input","call_fixture",0]"#,
+            #"["request_user_input_async","",0]"#,
+            #"["request_user_input_async","call_",0]"#,
+            #"["request_user_input_async","call_fixture",-1]"#,
+            #"["request_user_input_async","call_fixture",true]"#,
+            #"["request_user_input_async","call_fixture",0.5]"#,
+            #"["request_user_input_async","call_fixture","0"]"#,
+            #"["request_user_input_async","call_fixture"]"#,
+            #"["request_user_input_async","call_fixture",0,1]"#,
+            "bad JSON",
+        ]
+        let valid = ["questionItemId": #"["request_user_input_async","call_fixture",2]"#, "answer": "A"]
+        let entries = invalid.map { ["questionItemId": $0, "answer": "ignored"] }
+        let envelope = try codexReply(
+            entries + [["questionItemId": #"["request_user_input_async","call_fixture",1]"#]] + [valid, valid])
+        let reply = try completedCodexItem([
+            "type": "UserMessage", "id": "item_reply", "content": [["type": "text", "text": envelope]],
+        ])
+        let third = HookCaptureRedactor.label(forRawIdentifier: "request_user_input_async:call_fixture:2")
+        XCTAssertEqual(try read([reply], source: .codex).facts, [.codexQuestionAnswered(activityID: third, at: now)])
+    }
+
+    func testQuestionWordingQuotedEnvelopesAndDeliveryAcknowledgementsAreNotQuestionEvents() throws {
+        let envelope = try codexReply([
+            ["questionItemId": #"["request_user_input_async","call_fixture",0]"#, "answer": "A"]
+        ])
+        let content = [["type": "text", "text": envelope]]
+        let questions = [["title": "Answer this?"]]
+        let items: [[String: Any]] = [
+            ["type": "AgentMessage", "id": "call_fixture", "delivery": "async", "content": content],
+            ["type": "AgentMessage", "id": "call_fixture", "questions": questions, "content": content],
+            ["type": "AgentMessage", "id": "call_fixture", "delivery": "async", "questions": [], "content": content],
+            [
+                "type": "UserMessage", "id": "item_reply",
+                "content": [["type": "text", "text": "Example:\n" + envelope]],
+            ],
+            [
+                "type": "UserMessage", "id": "item_reply",
+                "content": [["type": "text", "text": "    " + envelope]],
+            ],
+            [
+                "type": "UserMessage", "id": "item_reply",
+                "content": content + [["type": "text", "text": "quoted above"]],
+            ],
+        ]
+        for item in items {
+            let id = try XCTUnwrap(item["id"] as? String)
+            XCTAssertEqual(
+                try read([completedCodexItem(item)], source: .codex).facts,
+                [.callReturned(activityID: HookCaptureRedactor.label(forRawIdentifier: id), at: now)])
+        }
+        let ack =
+            #"{"type":"response_item","payload":{"type":"function_call_output","call_id":"call_fixture","output":"Questions submitted"}}"#
+        XCTAssertEqual(
+            try read([ack], source: .codex).facts,
+            [.callReturned(activityID: HookCaptureRedactor.label(forRawIdentifier: "call_fixture"), at: now)])
+    }
+
+    private func completedCodexItem(_ item: [String: Any]) throws -> String {
+        let event: [String: Any] = ["type": "event_msg", "payload": ["type": "item_completed", "item": item]]
+        return String(decoding: try JSONSerialization.data(withJSONObject: event), as: UTF8.self)
+    }
+
+    private func codexReply(_ entries: [[String: String]]) throws -> String {
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: entries), as: UTF8.self)
+        return "<send_user_message_question_reply>\n" + json + "\n</send_user_message_question_reply>\n"
+    }
+
     // MARK: - Reading a file that is being written
 
     func testAHalfWrittenLastLineIsLeftForTheNextRead() throws {
@@ -412,7 +512,7 @@ extension TranscriptFact {
     fileprivate var endedActivityID: String? {
         switch self {
         case let .callReturned(id, _), let .callFailed(id, _), let .workEnded(id, _): id
-        case .callStarted, .turnInterrupted: nil
+        case .callStarted, .turnInterrupted, .codexQuestionAsked, .codexQuestionAnswered: nil
         }
     }
 }

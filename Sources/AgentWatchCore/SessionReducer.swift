@@ -67,6 +67,7 @@ public enum SessionReducer {
 
         switch event {
         case let .sessionStarted(mode, observedAt):
+            next.clearCodexQuestions(at: observedAt)
             next.rateLimitReachedAt = nil
             next.mode = mode ?? .unknown
             next.phase = .idle
@@ -254,6 +255,7 @@ public enum SessionReducer {
             next.lastObservedAt = observedAt
 
         case let .turnInterrupted(observedAt):
+            next.clearCodexQuestions(at: observedAt)
             next.rateLimitReachedAt = nil
             // Everything the turn issued stops with it, a subagent included: the interruption
             // is aimed at the whole turn, not at one call. That is the difference from
@@ -279,18 +281,21 @@ public enum SessionReducer {
             next.lastObservedAt = observedAt
 
         case let .failed(observedAt):
+            next.clearCodexQuestions(at: observedAt)
             next.rateLimitReachedAt = nil
             next.phase = .failed
             next.clearAwaited()
             next.lastObservedAt = observedAt
 
         case let .disconnected(observedAt):
+            next.clearCodexQuestions(at: observedAt)
             next.rateLimitReachedAt = nil
             next.phase = .disconnected
             next.clearAwaited()
             next.lastObservedAt = observedAt
 
         case .terminalClosed:
+            next.clearCodexQuestions(at: next.lastObservedAt)
             next.rateLimitReachedAt = nil
             // What was running went with the terminal, exactly as when a session closes: the
             // dialogs were on the screen that is gone, and the calls belong to an agent that
@@ -301,6 +306,7 @@ public enum SessionReducer {
             next.backgroundWork = nil
 
         case let .sessionClosed(observedAt):
+            next.pendingCodexQuestions = nil
             next.rateLimitReachedAt = nil
             next.phase = .sessionClosed
             next.clearAwaited()
@@ -389,6 +395,14 @@ public enum SessionReducer {
 }
 
 extension SessionSnapshot {
+    fileprivate mutating func clearCodexQuestions(at moment: Date) {
+        guard source == .codex else { return }
+        let boundary = max(moment, codexQuestionsClearedAt ?? moment)
+        codexQuestionsClearedAt = boundary
+        let remaining = pendingCodexQuestions?.filter { $0.value > boundary }
+        pendingCodexQuestions = remaining?.isEmpty == false ? remaining : nil
+    }
+
     /// Records a question and leaves the row saying what it is.
     ///
     /// A second question from the same owner replaces the first rather than joining it: an
