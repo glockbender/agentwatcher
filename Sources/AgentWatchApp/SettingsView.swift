@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case widget, rows, order, appearance, theme, timing, themes, menuBar, general, tooling, diagnostics
+    case widget, rows, order, appearance, theme, timing, themes, menuBar, general, tooling, gitProtection, diagnostics
 
     var id: String { rawValue }
 
@@ -16,7 +16,9 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         }
     }
 
-    static let sidebar: [SettingsPage] = [.general, .tooling, .appearance, .menuBar, .widget, .diagnostics]
+    static let sidebar: [SettingsPage] = [
+        .general, .tooling, .gitProtection, .appearance, .menuBar, .widget, .diagnostics,
+    ]
 
     var title: String {
         switch self {
@@ -30,6 +32,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .menuBar: "Menu Bar"
         case .general: "General"
         case .tooling: "Tooling"
+        case .gitProtection: "Git Protection"
         case .diagnostics: "Diagnostics"
         }
     }
@@ -41,6 +44,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .menuBar: "menubar.rectangle"
         case .general: "gearshape"
         case .tooling: "wrench.and.screwdriver"
+        case .gitProtection: "shield"
         case .diagnostics: "stethoscope"
         }
     }
@@ -72,6 +76,10 @@ struct SettingsView: View {
                 case .menuBar: MenuBarPane(model: model)
                 case .general: GeneralPane(model: model)
                 case .tooling: ToolingPane(tooling: model.tooling)
+                case .gitProtection:
+                    GitProtectionPane(
+                        profiles: AgentFolders(
+                            home: AgentWatchPaths.homeDirectory(), extra: model.settings.extraAgentFolders))
                 case .diagnostics: DiagnosticsPane(model: model)
                 }
             }

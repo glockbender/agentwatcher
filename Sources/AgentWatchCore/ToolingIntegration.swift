@@ -324,12 +324,15 @@ public enum ToolingInstallation {
                 remaining[event] = groups
                 continue
             }
-            let keptGroups: [JSONValue] = groupList.compactMap { group in
+            var keptGroups: [JSONValue] = []
+            // Build from the right to preserve Codex trust indexes when a later group survives.
+            for group in groupList.reversed() {
                 guard
                     case var .object(groupFields) = group,
                     case let .array(entries)? = groupFields["hooks"]
                 else {
-                    return group
+                    keptGroups.append(group)
+                    continue
                 }
                 let kept = entries.filter { entry in
                     guard
@@ -340,12 +343,14 @@ public enum ToolingInstallation {
                     }
                     return senderPath(inCommand: command, source: source, event: event) == nil
                 }
-                guard !kept.isEmpty else {
-                    return nil
+                if kept.isEmpty, entries.isEmpty || source != .codex || keptGroups.isEmpty {
+                    if entries.isEmpty { keptGroups.append(group) }
+                    continue
                 }
                 groupFields["hooks"] = .array(kept)
-                return .object(groupFields)
+                keptGroups.append(.object(groupFields))
             }
+            keptGroups.reverse()
             if !keptGroups.isEmpty {
                 remaining[event] = .array(keptGroups)
             }

@@ -50,6 +50,9 @@ jobs:
           plutil -extract SUPublicEDKey raw -o - Resources/Info.plist >/dev/null \
             || { echo "Resources/Info.plist has no SUPublicEDKey" >&2; exit 1; }
 
+      - name: Install the Rust toolchain for Git protection
+        run: rustup toolchain install 1.98.1 --profile minimal
+
       - name: Install Task
         run: brew install go-task
 

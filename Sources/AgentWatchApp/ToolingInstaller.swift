@@ -203,6 +203,10 @@ final class ToolingInstaller {
     }
 
     private func changeCodexHooks(in folder: URL, _ change: (JSONValue) -> JSONValue) throws {
+        try fileManager.createDirectory(
+            at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let lock = try AgentProfileLock(folder)
+        defer { withExtendedLifetime(lock) {} }
         let url = codexHooksURL(in: folder)
         let existing = try read(url) ?? .object([:])
         let changed = change(existing)
@@ -314,6 +318,11 @@ final class ToolingInstaller {
     }
 
     private func setStatusLineCommand(_ command: String?) throws {
+        let folder = defaultFolder(for: .claude)
+        try fileManager.createDirectory(
+            at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let lock = try AgentProfileLock(folder)
+        defer { withExtendedLifetime(lock) {} }
         guard case var .object(root) = try readClaudeSettings() ?? .object([:]) else {
             return
         }

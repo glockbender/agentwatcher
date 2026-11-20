@@ -11,7 +11,7 @@ final class SettingsWindowTests: XCTestCase {
     func testTheSidebarListsThePagesInTheChosenOrder() {
         XCTAssertEqual(
             SettingsPage.sidebar.map(\.title),
-            ["General", "Tooling", "Appearance", "Menu Bar", "Widget", "Diagnostics"]
+            ["General", "Tooling", "Git Protection", "Appearance", "Menu Bar", "Widget", "Diagnostics"]
         )
     }
 
