@@ -25,12 +25,12 @@ tasks:
     cmds:
       - python3 -B scripts/test-git-guard.py
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml
-      - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --features mcp-fixture --test push --test protocol -- --test-threads=2
+      - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --profile fixture --features mcp-fixture --test push --test protocol -- --test-threads=2
 
   test-git-windows:
     desc: Rehearse cancelling deletion of a feature branch and the default branch in real macOS windows
     cmds:
-      - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --features mcp-fixture --test push rehearse_deletion_with_native_windows -- --ignored --exact --nocapture
+      - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --profile fixture --features mcp-fixture --test push rehearse_deletion_with_native_windows -- --ignored --exact --nocapture
 
   test-cli-close:
     desc: Verify chat closure in both real clients with isolated macOS profiles
@@ -40,7 +40,7 @@ tasks:
   test-git-window-cancellation:
     desc: Check that real confirmation windows close when the caller stops
     cmds:
-      - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --features mcp-fixture --test push native_window_cancellation_disconnect_and_server_death_never_push -- --ignored --exact --nocapture
+      - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --profile fixture --features mcp-fixture --test push native_window_cancellation_disconnect_and_server_death_never_push -- --ignored --exact --nocapture
 
   test-git-upgrade:
     desc: Verify both clients keep their rules across bundle replacement with isolated macOS profiles

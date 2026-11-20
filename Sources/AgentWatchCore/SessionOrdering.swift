@@ -114,7 +114,7 @@ public struct SessionOrdering: Sendable {
             let groups = SessionAttention.allCases.map(\.rawValue)
             return grouped(
                 sessions, groups: groups, now: now,
-                group: { snapshot, _ in snapshot.phase.attention.rawValue },
+                group: { snapshot, _ in snapshot.attention.rawValue },
                 joined: Self.likelyJoinedAttention
             )
         case .blocks:

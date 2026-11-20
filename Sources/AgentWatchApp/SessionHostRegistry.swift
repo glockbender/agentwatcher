@@ -178,7 +178,9 @@ final class SessionHostRegistry {
     /// - Parameter otherSessionNames: what the other rows are called, which is how Ghostty's
     ///   tab titles are shown to carry session names at all (`GhosttyFocus.decision`).
     @discardableResult
-    func focus(_ snapshot: SessionSnapshot, otherSessionNames: [String] = []) -> FocusOutcome {
+    func focus(_ snapshot: SessionSnapshot, otherSessionNames: [String] = [], requireDesktopLink: Bool = false)
+        -> FocusOutcome
+    {
         // A background session has no application anywhere above it and never will — its
         // tree ends at `launchd` — so there is no host to raise. What it has is a door, and
         // the click opens that instead. Unless a terminal is showing it already: then the
@@ -191,6 +193,12 @@ final class SessionHostRegistry {
             return FocusOutcome(raised: false, tab: .unaddressable)
         }
         let route = tabRoute(of: snapshot, in: application, otherSessionNames: otherSessionNames)
+        let desktop =
+            snapshot.hostKind == .desktop || application.bundleIdentifier == DesktopSessionLink.claudeBundleIdentifier
+            || application.bundleIdentifier == DesktopSessionLink.codexBundleIdentifier
+        if requireDesktopLink && desktop {
+            return Self.openDesktopChat(route, follow: follow)
+        }
         // Nothing is raised for a tab that is gone. Ghostty would show whichever window came
         // forward, and in the case reported that was an empty shell nobody had asked for.
         if case let .noTab(attempt) = route, case .gone = attempt {
@@ -198,6 +206,20 @@ final class SessionHostRegistry {
         }
         let raised = application.activate(options: Self.activationOptions(for: route))
         return FocusOutcome(raised: raised, tab: follow(route))
+    }
+
+    /// The beacon offers a particular conversation. Opening its verified link brings the
+    /// client forward; activating the app separately could show a different chat on failure.
+    static func openDesktopChat(_ route: TabRoute, follow: (TabRoute) -> TabFocusAttempt) -> FocusOutcome {
+        switch route {
+        case .desktopClient:
+            let attempt = follow(route)
+            return FocusOutcome(raised: attempt == .asked, tab: attempt)
+        case .noTab(let reason):
+            return FocusOutcome(raised: false, tab: reason)
+        case .jetBrains, .ghostty:
+            return FocusOutcome(raised: false, tab: .unaddressable)
+        }
     }
 
     /// Whether this session's tab is still gone with its terminal kept, asked again by the

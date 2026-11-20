@@ -259,7 +259,13 @@ public struct SessionStateEngine: Sendable {
         // lose: the copy-chain rule returns without applying anything when an earlier session
         // of the row speaks, and a wait spent by an event the row refused would leave a
         // restored row saying `no signal` for good, with nothing left to ask the transcript.
-        rememberedWaits.removeValue(forKey: snapshotID)
+        if let remembered = rememberedWaits.removeValue(forKey: snapshotID), !remembered.codexQuestions.isEmpty,
+            ![.sessionStarted, .sessionEnded, .turnInterrupted, .turnFailed].contains(event.kind)
+        {
+            // A new command can run while an earlier desktop question is still on screen.
+            rememberedWaits[snapshotID] = .init(
+                dialogs: [], observedAt: remembered.observedAt, codexQuestions: remembered.codexQuestions)
+        }
 
         if let agentProcessID = event.agentProcessID {
             snapshot.agentProcessID = agentProcessID
@@ -576,6 +582,22 @@ public struct SessionStateEngine: Sendable {
 
         var next: SessionSnapshot
         switch fact {
+        case let .codexQuestionAsked(activityID, at):
+            guard previous.source == .codex, previous.phase != .disconnected, previous.phase != .terminalClosed,
+                previous.codexQuestionsClearedAt.map({ at > $0 }) ?? true
+            else { return nil }
+            next = previous
+            var pending = next.pendingCodexQuestions ?? [:]
+            pending[activityID] = at
+            next.pendingCodexQuestions = pending
+            next.lastObservedAt = at
+        case let .codexQuestionAnswered(activityID, at):
+            guard var pending = previous.pendingCodexQuestions, pending.removeValue(forKey: activityID) != nil else {
+                return nil
+            }
+            next = previous
+            next.pendingCodexQuestions = pending.isEmpty ? nil : pending
+            next.lastObservedAt = at
         case let .callReturned(activityID, at):
             next = SessionReducer.reduce(previous, event: .activityCompleted(id: activityID, at: at))
         case let .callFailed(activityID, at):
@@ -805,13 +827,14 @@ public struct SessionStateEngine: Sendable {
                 // A file written before the dialogs were recorded brings none, and such a
                 // wait is simply dropped: with nothing to ask the transcript about, the row
                 // keeps the answer that costs nothing.
-                if restored.phase == .waitingForUser {
+                if restored.needsUserReply {
                     rememberedWaits[restored.id] = SessionHistory.RememberedWait(
                         dialogs: restored.unansweredDialogs,
-                        observedAt: restored.lastObservedAt
+                        observedAt: restored.lastObservedAt, codexQuestions: restored.pendingCodexQuestions ?? [:]
                     )
                     restored.phase = .disconnected
                     restored.clearAwaited()
+                    restored.pendingCodexQuestions = nil
                 }
                 // Its own place, unless the engine has already handed that index out. The list
                 // is sorted by this, so two rows sharing an index would leave their order to a
@@ -897,18 +920,23 @@ public struct SessionStateEngine: Sendable {
         guard let wait = rememberedWaits.removeValue(forKey: id) else {
             return nil
         }
-        guard
-            var snapshot = snapshots[id],
-            snapshot.phase == .disconnected,
-            SessionHistory.waitStillHolds(wait, evidence: evidence)
-        else {
-            return nil
+        guard var snapshot = liveRow(id), let evidence else { return nil }
+        let verified = wait.codexQuestions.filter { key, askedAt in
+            evidence.openCodexQuestions.contains(key)
+                && (snapshot.codexQuestionsClearedAt.map { askedAt > $0 } ?? true)
         }
-        snapshot.phase = .waitingForUser
-        // Older history has no workedOnce field. The confirmed dialog proves that a turn
-        // happened, even though restoration does not pass through the event reducer.
+        let blocking = snapshot.phase == .disconnected && SessionHistory.waitStillHolds(wait, evidence: evidence)
+        guard blocking || !verified.isEmpty else { return nil }
+        if blocking {
+            snapshot.phase = .waitingForUser
+            snapshot.setAwaitedDialogs(wait.dialogs)
+        }
+        if !verified.isEmpty {
+            snapshot.pendingCodexQuestions = (snapshot.pendingCodexQuestions ?? [:]).merging(verified) { current, _ in
+                current
+            }
+        }
         snapshot.workedOnce = true
-        snapshot.setAwaitedDialogs(wait.dialogs)
         snapshots[id] = snapshot
         return snapshot
     }

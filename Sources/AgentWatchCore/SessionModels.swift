@@ -354,6 +354,17 @@ public struct SessionSnapshot: Identifiable, Codable, Equatable, Sendable {
     /// Settable only through `setAwaitedDialogs` and `clearAwaited`, because the row's own
     /// summary of it — `userInputRequestKind` — has to change with it.
     public internal(set) var awaitedDialogs: [AwaitedDialog]?
+
+    /// Desktop Codex can keep working after asking a question. Only the question identity is retained.
+    public internal(set) var pendingCodexQuestions: [String: Date]?
+    /// Ignore older questions read from disk after their turn was cancelled.
+    var codexQuestionsClearedAt: Date?
+
+    public var attention: SessionAttention { needsUserReply ? .needsPerson : phase.attention }
+
+    public var needsUserReply: Bool {
+        phase == .waitingForUser || pendingCodexQuestions?.isEmpty == false
+    }
     /// The foreground turn's limit survives a child dialog temporarily taking the row.
     /// Cleared by foreground resumption, another ending, or loss of the observed state.
     public var rateLimitReachedAt: Date?

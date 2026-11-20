@@ -58,6 +58,7 @@ public enum SessionHistory {
     ) -> SessionSnapshot {
         var remembered = snapshot
         remembered.activities = []
+        remembered.codexQuestionsClearedAt = nil
         remembered.rateLimitReachedAt = nil
         // And what the last turn left running goes with them, for the same reason: the row
         // draws that list as something happening now, and after a restart nobody is left to
@@ -70,7 +71,9 @@ public enum SessionHistory {
 
         if let awaiting {
             remembered.discoveredProcess = nil
-            remembered.phase = .waitingForUser
+            remembered.pendingCodexQuestions = (snapshot.pendingCodexQuestions ?? [:]).merging(awaiting.codexQuestions)
+            { current, _ in current }
+            remembered.phase = awaiting.dialogs.isEmpty ? .disconnected : .waitingForUser
             remembered.setAwaitedDialogs(awaiting.dialogs)
             return remembered
         }
@@ -107,7 +110,10 @@ public enum SessionHistory {
         /// When the session was last heard from, used to reject older interruptions.
         public let observedAt: Date
 
-        public init(dialogs: [AwaitedDialog], observedAt: Date) {
+        public let codexQuestions: [String: Date]
+
+        public init(dialogs: [AwaitedDialog], observedAt: Date, codexQuestions: [String: Date] = [:]) {
+            self.codexQuestions = codexQuestions
             self.dialogs = dialogs
             self.observedAt = observedAt
         }
@@ -137,8 +143,10 @@ public enum SessionHistory {
         /// A whole-turn interruption, judged against the age of the remembered wait.
         /// Late observations of calls starting preserve a wait, just as they do live.
         public let newestInterruptionAt: Date?
+        public private(set) var openCodexQuestions: Set<String> = []
 
-        public init(dialogs: [DialogEvidence], newestInterruptionAt: Date?) {
+        public init(dialogs: [DialogEvidence], newestInterruptionAt: Date?, openCodexQuestions: Set<String> = []) {
+            self.openCodexQuestions = openCodexQuestions
             self.dialogs = dialogs
             self.newestInterruptionAt = newestInterruptionAt
         }
@@ -148,6 +156,14 @@ public enum SessionHistory {
         /// Here rather than in the reader that produced the bytes: this is the whole
         /// interpretation step, and it is worth being able to exercise it without a file.
         public init(facts: [TranscriptFact], dialogs: [AwaitedDialog]) {
+            for fact in facts {
+                switch fact {
+                case let .codexQuestionAsked(id, _): openCodexQuestions.insert(id)
+                case let .codexQuestionAnswered(id, _): openCodexQuestions.remove(id)
+                case .turnInterrupted: openCodexQuestions.removeAll()
+                default: break
+                }
+            }
             self.dialogs = dialogs.map { dialog in
                 let endings = facts.filter { $0.ends(dialog) }
                 return DialogEvidence(dialog: dialog, callEndedAt: endings.map(\.at).max())

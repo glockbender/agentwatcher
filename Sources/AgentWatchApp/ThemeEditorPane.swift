@@ -56,7 +56,7 @@ struct ThemeEditorPane: View {
                 }
             }
             Section {
-                PageLink(title: "Timing", detail: "Widget, menu bar, full-screen dot") { model.go(.timing) }
+                PageLink(title: "Timing", detail: "Widget, menu bar, waiting beacon") { model.go(.timing) }
             } footer: {
                 Footnote("How long things take and how far they fade. The same in light and dark.")
             }

@@ -19,8 +19,8 @@ struct GitHookInstaller {
     private static let hookSuffix = "/Contents/Resources/GitProtection/hooks/git-guard.sh"
     private static let failedHook =
         #"{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Agent Watch Git: the installed hook could not run. Repair Git Hook in Agent Watch and try again."}}"#
-    // Start the deadline before opening anything in the bundle. Separate process groups let
-    // the timer stop the entire check, including a blocked interpreter or Git child.
+    // Start the outer deadline before opening the bundle. The timer stops the launcher group
+    // so the client gets a denial. The native hook bounds its own Git child processes.
     private static let hookLauncher = """
         set -m
         exec 3<&0

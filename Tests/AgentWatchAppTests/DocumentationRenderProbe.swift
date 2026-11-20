@@ -34,6 +34,13 @@ final class DocumentationRenderProbe: XCTestCase {
         }
     }
 
+    func testDrawTheWaitingBeacon() throws {
+        let root = try outputDirectory()
+        let beacon = WaitingBeaconButton {}
+        beacon.showCount(2)
+        try write(framed(beacon, padding: 6, color: .clear), "full-screen-beacon", in: root)
+    }
+
     /// Every lamp at its own rhythm, one row each, named by what it means.
     ///
     /// Thirty seconds, so the loop closes on a whole cycle of every lamp but the 2.8-second

@@ -546,7 +546,7 @@ class HUDSessionListView: NSView {
         let hidden = hiddenRows(rowFrames: rows.map(\.frame), visibleRect: visible)
         let urgent = hiddenRows(
             rowFrames: rows.filter {
-                ($0 as? HUDSessionRowView)?.snapshot.phase.attention == .needsPerson
+                ($0 as? HUDSessionRowView)?.snapshot.attention == .needsPerson
             }.map(\.frame),
             visibleRect: visible
         )
