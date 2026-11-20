@@ -213,6 +213,7 @@
 
 | Версия | Что замерено | Где |
 | --- | --- | --- |
+| Codex 0.169.0-alpha.11.1 | 19 ноября 2026 года в обычном чате Codex `push_once` вернул `completed` после того, как пользователь подтвердил удаление тестовой ветки в окне Agent Watch сборки `6ac27a52`. | [git-protection.md, «Сквозная проверка в Codex»](git-protection.md#сквозная-проверка-в-codex) |
 | Codex 0.162.0 | Запуск с `--ephemeral` транскрипта не пишет и шлёт `transcript_path: null`, поэтому его отсекает тот же признак, что и служебный сеанс: строки у него нет даже с `Show headless runs`. | [agent-events.md, «Приём сеансов Codex, и открытый вопрос про `/clear`»](agent-events.md#приём-сеансов-codex-и-открытый-вопрос-про-clear) |
 | Codex 0.162.0 | Хук, которому проверка доверия не мешает, запускается и видит `CODEX_HOME` в своём окружении. | [agent-install.md, «Другие папки агента»](agent-install.md#другие-папки-агента) |
 | Codex 0.162.0-alpha.2 | Транскрипт к этому моменту уже есть: файл появляется примерно за секунду до `SessionStart`. | [agent-events.md, «Приём сеансов Codex, и открытый вопрос про `/clear`»](agent-events.md#приём-сеансов-codex-и-открытый-вопрос-про-clear) |
@@ -314,6 +315,7 @@
 
 | Версия | Что замерено | Где |
 | --- | --- | --- |
+| 27.2 | 19 ноября 2026 года в обычном чате Codex `push_once` вернул `completed` после того, как пользователь подтвердил удаление тестовой ветки в окне Agent Watch сборки `6ac27a52`. | [git-protection.md, «Сквозная проверка в Codex»](git-protection.md#сквозная-проверка-в-codex) |
 | 26.6.2 | Whether the end is in view, not where the clip stops: measured on macOS 26.6.2, the clip stood 6 points past the end of a 2814-point log. | `Tests/AgentWatchAppTests/EventDebugLogTests.swift` |
 | 26.6.2 | A wider page widens the window rather than being cut off (measured on macOS 26.6.2 and 15.3.1: 811 for a page that asked for 640), so this holds the window to its size. | `Tests/AgentWatchAppTests/ThemeEditingTests.swift` |
 | 26.6.2 | macOS 26 draws colour wells and pop-up buttons wider, measured on macOS 26.6.2: there the editor asks for 592, and the window opens at 790 instead of 760. | `Tests/AgentWatchAppTests/ThemeEditingTests.swift` |
