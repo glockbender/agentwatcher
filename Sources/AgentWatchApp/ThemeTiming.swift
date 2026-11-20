@@ -112,40 +112,25 @@ extension WidgetTheme {
             var clamped: MenuBar { Self.fields.clamp(self, to: MenuBar()) }
         }
 
-        /// The dot in a corner of a full-screen display, where the menu bar is hidden.
+        /// Placement of the waiting beacon. The dot key also reads older themes.
         struct Dot: Codable, Equatable {
-            var diameter: Double = 8
-            /// How far from the corner: far enough to stay clear of the microphone dot the
-            /// system draws there.
+            var ringDiameter: Double = 24
             var inset: Double = 28
-            /// `topRight` or `topLeft`.
             var corner = "topRight"
-            /// One round through the colours of every state that holds sessions, and how much
-            /// of each state's turn goes into fading into the next.
-            var cycle: Double = 2
-            var fadeShare: Double = 0.3
-            /// How long after the pointer leaves the menu bar the dot comes back.
-            var returnDelay: Double = 1
 
             init() {}
 
             init(from decoder: Decoder) throws {
                 let values = try decoder.container(keyedBy: CodingKeys.self)
                 let standard = Dot()
-                diameter = try values.decode(.diameter, or: standard.diameter)
+                ringDiameter = try values.decode(.ringDiameter, or: standard.ringDiameter)
                 inset = try values.decode(.inset, or: standard.inset)
                 corner = try values.decode(.corner, or: standard.corner)
-                cycle = try values.decode(.cycle, or: standard.cycle)
-                fadeShare = try values.decode(.fadeShare, or: standard.fadeShare)
-                returnDelay = try values.decode(.returnDelay, or: standard.returnDelay)
             }
 
             static let fields: [Field<Dot>] = [
-                Field("Size", \.diameter, 4...16, unit: .points),
-                Field("Distance from the corner", \.inset, 0...80, unit: .points),
-                Field("Colour cycle", \.cycle, 0.5...10),
-                Field("Fade between colours", \.fadeShare, 0...1, unit: .fraction),
-                Field("Back after the menu bar", \.returnDelay, 0...5),
+                Field("Ring diameter", \.ringDiameter, 20...34, unit: .points),
+                Field("Distance from the side", \.inset, 0...80, unit: .points),
             ]
 
             var isOnTheRight: Bool { corner != "topLeft" }

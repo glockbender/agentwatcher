@@ -68,10 +68,11 @@ It comes in two styles, chosen in **Settings… → Menu Bar**:
 
 <img src="docs/images/clip-counts.avif" alt="The same scene with the Counts icon: the one session moves from done to working, to needs you, and back to done" width="640">
 
-On a full-screen display, where the menu bar is hidden, a small dot in a top corner shows while a
-session needs you or works.
+An optional orange beacon appears when a chat is waiting for your reply. Choose **Full screen only** or **All modes** to show it on windowed desktops too.
+Click the ring and choose a chat to open it. Right-click it to open **Waiting Beacon Settings…**.
+You can also open **Settings → Waiting Beacon** to turn it on, resize it, or choose its position.
 
-<img src="docs/images/clip-fullscreen.avif" alt="A terminal fills the screen and the menu bar is hidden; a dot in the top right corner turns blue while a session works and orange when it asks; the menu bar slides down with the icon, and the dot goes out once the session is done" width="800">
+<img src="docs/images/full-screen-beacon.png" alt="An orange light on the rim of the waiting-chat beacon" width="56">
 
 ## What it works with
 
@@ -164,7 +165,7 @@ The theme editor changes:
   lamps; for the sphere, its halo, sway and swell.
 - **Other colours:** the timers, the highlight outline, secondary text and warnings.
 - **Timing:** how long the highlight lasts, how soon a row's card opens, how far lamps dim, and
-  where the full-screen dot sits and how big it is.
+  the waiting beacon’s size and position.
 
 A change goes into light mode, dark mode, or both. A theme is a JSON file: **Export…** one to
 share it, **Import…** one somebody shared, or edit the file by hand. Glass chosen on an older macOS

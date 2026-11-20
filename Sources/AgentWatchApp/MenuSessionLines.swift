@@ -31,7 +31,7 @@ func menuSessionLines(
     reach: (SessionSnapshot) -> SessionReach
 ) -> [MenuSessionLine] {
     sessions.compactMap { snapshot in
-        let attention = snapshot.phase.attention
+        let attention = snapshot.attention
         guard SessionAttention.counted.contains(attention), attentions.contains(attention) else {
             return nil
         }

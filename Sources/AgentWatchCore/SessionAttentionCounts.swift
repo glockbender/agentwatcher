@@ -28,7 +28,7 @@ public struct SessionAttentionCounts: Equatable, Sendable {
         var done = 0
         var quiet = 0
         for session in sessions {
-            switch session.phase.attention {
+            switch session.attention {
             case .needsPerson: needsPerson += 1
             case .working: working += 1
             case .done: done += 1

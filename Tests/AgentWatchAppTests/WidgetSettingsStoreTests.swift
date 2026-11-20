@@ -393,6 +393,27 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertFalse(WidgetSettingsStore(preferences: preferences).showsWidget)
     }
 
+    func testBeaconStartsOffAndKeepsThePreviousFullScreenDotPreference() throws {
+        let preferences = try isolatedPreferences()
+        XCTAssertFalse(WidgetSettingsStore(preferences: preferences).showsFullScreenDot)
+        preferences.set(true, forKey: "showsFullScreenDot")
+        XCTAssertTrue(WidgetSettingsStore(preferences: preferences).showsFullScreenDot)
+        WidgetSettingsStore(preferences: preferences).setShowsFullScreenDot(false)
+        XCTAssertFalse(WidgetSettingsStore(preferences: preferences).showsFullScreenDot)
+    }
+
+    func testWaitingBeaconScopeSurvivesDisablingAndFallsBackForOldPreferences() throws {
+        let preferences = try isolatedPreferences()
+        let store = WidgetSettingsStore(preferences: preferences)
+        preferences.set(true, forKey: "showsFullScreenDot")
+        XCTAssertEqual(store.waitingBeaconScope, .fullScreenOnly)
+        store.setWaitingBeaconScope(.allModes)
+        store.setShowsFullScreenDot(false)
+        XCTAssertEqual(WidgetSettingsStore(preferences: preferences).waitingBeaconScope, .allModes)
+        preferences.set("unknown", forKey: "waitingBeaconScope")
+        XCTAssertEqual(store.waitingBeaconScope, .fullScreenOnly)
+    }
+
     private func makeStore() throws -> WidgetSettingsStore {
         WidgetSettingsStore(preferences: try isolatedPreferences())
     }
