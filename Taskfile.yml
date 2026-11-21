@@ -17,6 +17,7 @@ tasks:
       - python3 scripts/test-check-troubleshooting.py
       - python3 scripts/test-check-docs.py
       - python3 scripts/test-measurements.py
+      - python3 -B scripts/test-setup-git-hooks.py
       - swift test --parallel -Xswiftc -warnings-as-errors
       - task: test-native-git
 
@@ -190,9 +191,9 @@ tasks:
       - swift run AgentWatch
 
   setup:
-    desc: Configure repository-local Git hooks
+    desc: Install the Git gates so that every worktree runs the hooks of its own branch
     cmds:
-      - git config core.hooksPath .githooks
+      - python3 -B scripts/setup-git-hooks.py
 
   doctor:
     desc: Show the local Swift and Apple developer toolchain

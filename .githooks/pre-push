@@ -41,4 +41,6 @@ if ! git diff --quiet HEAD || [[ -n "$(git ls-files --others --exclude-standard)
     exit 1
 fi
 
+# Git's GIT_DIR and GIT_INDEX_FILE would follow the build into SwiftPM; see pre-commit.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 task verify-all
