@@ -41,6 +41,17 @@ public protocol AgentProcessRules: Sendable {
     /// Every live session of this agent that can be found from its processes alone, whether or
     /// not it has ever sent a hook — empty for an agent whose processes do not count sessions.
     func liveSessions() -> [DiscoveredAgentProcess]
+
+    /// The environment variable in which the agent names its session for every process it
+    /// starts. The value is raw, for the redactor.
+    var sessionMarkerVariable: String { get }
+
+    /// Whether a process holds many sessions at once and names none of them, so that its tree
+    /// has to be split by the markers below it.
+    ///
+    /// The path and the arguments are asked for only when the name makes it worth it: the
+    /// resource sampler asks this of every process on the machine.
+    func isSharedHost(executableName: String, executablePath: () -> String?, arguments: () -> [String]?) -> Bool
 }
 
 extension AgentSource {

@@ -50,6 +50,31 @@ public struct CodexProcessRules: AgentProcessRules {
         []
     }
 
+    /// Which of a thread's processes carry it:
+    /// `docs/agent-processes.md`, «Маркер сессии в окружении».
+    public var sessionMarkerVariable: String {
+        "CODEX_THREAD_ID"
+    }
+
+    /// The desktop application's `codex app-server` that holds every thread's commands and MCP
+    /// servers. The smaller ones started with `--listen stdio://` and `codex exec-server` are left
+    /// out: nothing says yet what their children would be.
+    /// `docs/agent-processes.md`, «Маркер сессии в окружении».
+    public func isSharedHost(
+        executableName: String,
+        executablePath: () -> String?,
+        arguments: () -> [String]?
+    ) -> Bool {
+        guard
+            executableName.lowercased() == "codex",
+            let path = executablePath(),
+            Self.isDesktopProcess(ProcessSnapshot(processID: 0, executableName: executableName, executablePath: path))
+        else {
+            return false
+        }
+        return arguments()?.contains("app-server") == true
+    }
+
     private static func isDesktopProcess(_ snapshot: ProcessSnapshot) -> Bool {
         guard let executablePath = snapshot.executablePath?.lowercased() else {
             return false
