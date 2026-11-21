@@ -26,6 +26,7 @@ tasks:
       - python3 -B scripts/test-git-guard.py
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --profile fixture --features mcp-fixture --test push --test protocol -- --test-threads=2
+      - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection-e2e/Cargo.toml
 
   test-git-windows:
     desc: Rehearse cancelling deletion of a feature branch and the default branch in real macOS windows
@@ -33,7 +34,7 @@ tasks:
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --profile fixture --features mcp-fixture --test push rehearse_deletion_with_native_windows -- --ignored --exact --nocapture
 
   test-cli-close:
-    desc: Verify chat closure in both real clients with isolated macOS profiles
+    desc: Verify chat closure in both real clients inside a disposable macOS guest
     cmds:
       - bash scripts/cli-lifecycle/test.sh
 
@@ -43,13 +44,13 @@ tasks:
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --profile fixture --features mcp-fixture --test push native_window_cancellation_disconnect_and_server_death_never_push -- --ignored --exact --nocapture
 
   test-git-upgrade:
-    desc: Verify both clients keep their rules across bundle replacement with isolated macOS profiles
+    desc: Verify both clients keep their rules across bundle replacement and a missing bundle, inside a disposable macOS guest
     requires:
       vars: [AGENT_WATCH_TEST_BUNDLE]
     cmds:
       - mkdir -p .build/cli-lifecycle
       - xcrun swiftc -O scripts/cli-lifecycle/windows.swift -o .build/cli-lifecycle/windows
-      - python3 -Bu scripts/cli-lifecycle/upgrade.py --bundle "{{.AGENT_WATCH_TEST_BUNDLE}}" --windows .build/cli-lifecycle/windows
+      - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}" rustup run 1.98.1 cargo run --locked --quiet --manifest-path native/git-protection-e2e/Cargo.toml -- upgrade --bundle "{{.AGENT_WATCH_TEST_BUNDLE}}" --windows .build/cli-lifecycle/windows
 
   lint:
     desc: Check Swift formatting and style, the shape of TROUBLESHOOTING.md, the documents, and the list of measurements
