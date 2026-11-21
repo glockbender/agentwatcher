@@ -51,7 +51,7 @@ final class SettingsModel: ObservableObject {
     @Published private(set) var page: SettingsPage = SettingsPage.sidebar[0] {
         didSet {
             stopRecordingShortcut()
-            if page.parent == .appearance {
+            if page.parent == .appearance || page == .waitingBeacon {
                 themes.reload()
             }
         }

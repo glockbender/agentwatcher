@@ -3,19 +3,75 @@ import XCTest
 
 @testable import AgentWatchApp
 
-/// The full-screen dot's colour cycle: every state that holds sessions gets its share of the
-/// two seconds, and fades into the next.
 @MainActor
 final class FullScreenDotTests: XCTestCase {
-    func testEachStateHoldsItsShareAndFadesIntoTheNext() {
-        let frames = FullScreenDot.cycle([(.orange, 1), (.blue, 3)])
-
-        assertEqual(frames.map(\.time), [0, 0.175, 0.25, 0.775, 1], accuracy: 0.0001)
-        XCTAssertEqual(frames.map(\.color), [.orange, .orange, .blue, .blue, .orange])
+    func testAllModesIncludesWindowedDisplaysOnlyWhileWaiting() {
+        let screens = ["Laptop", "External display"]
+        let display = screens[1]
+        var checks = 0
+        func targets(_ scope: WaitingBeaconScope, _ count: Int, enabled: Bool = true) -> [String] {
+            FullScreenDot.targetScreens(waitingCount: count, enabled: enabled, scope: scope, screens: screens) { _ in
+                checks += 1
+                return []
+            }
+        }
+        XCTAssertEqual(targets(.allModes, 2), screens)
+        XCTAssertTrue(targets(.allModes, 0).isEmpty)
+        XCTAssertTrue(targets(.allModes, 2, enabled: false).isEmpty)
+        XCTAssertTrue(targets(.fullScreenOnly, 0).isEmpty)
+        XCTAssertEqual(checks, 0)
+        XCTAssertTrue(targets(.fullScreenOnly, 1).isEmpty)
+        XCTAssertEqual(checks, 1)
+        XCTAssertEqual(
+            FullScreenDot.targetScreens(waitingCount: 1, enabled: true, scope: .fullScreenOnly, screens: screens) { _ in
+                [display]
+            }, [display])
     }
 
-    func testNothingToShowIsNoCycle() {
-        XCTAssertTrue(FullScreenDot.cycle([]).isEmpty)
+    func testBeaconBelowMenuHasRoomForTheWholeTargetInEitherCorner() {
+        let display = CGRect(x: -1512, y: 250, width: 1512, height: 982)
+        let right = FullScreenDot.frame(on: display, menuHeight: 37, right: true, inset: 12)
+        let left = FullScreenDot.frame(on: display, menuHeight: 37, right: false, inset: 12)
+        XCTAssertEqual(right.size, NSSize(width: 44, height: 44))
+        XCTAssertEqual(right.maxY, display.maxY - 37 - 4)
+        XCTAssertEqual(right.maxX, display.maxX - 12)
+        XCTAssertEqual(left.minX, display.minX + 12)
+        XCTAssertEqual(left.maxY, right.maxY)
+    }
+
+    func testBeaconIsAnActionWithAnAccessibleExactCountEvenWhenTheNumberIsAbbreviated() {
+        var opened = 0
+        let beacon = WaitingBeaconButton { opened += 1 }
+        beacon.showCount(126)
+        XCTAssertEqual(beacon.title, "99+")
+        XCTAssertEqual(beacon.accessibilityLabel(), "126 chats waiting for a reply")
+        beacon.performClick(nil)
+        XCTAssertEqual(opened, 1)
+    }
+
+    func testBeaconSizeKeepsTheClickTargetAndItsContextMenuOpensSettings() throws {
+        var settingsOpened = false
+        var chatsOpened = false
+        let beacon = WaitingBeaconButton(openSettings: { settingsOpened = true }) { chatsOpened = true }
+        XCTAssertEqual(beacon.diameter, 24)
+        beacon.setDiameter(30)
+        XCTAssertEqual(beacon.diameter, 30)
+        XCTAssertEqual(beacon.bounds.size, NSSize(width: 44, height: 44))
+        let menu = try XCTUnwrap(beacon.menu)
+        XCTAssertEqual(menu.items.map(\.title), ["Waiting Beacon Settings…"])
+        menu.performActionForItem(at: 0)
+        XCTAssertTrue(settingsOpened)
+        XCTAssertFalse(chatsOpened)
+    }
+
+    func testReduceMotionStopsTheOrbitAndKeepsTheCount() {
+        let beacon = WaitingBeaconButton {}
+        beacon.showCount(3)
+        beacon.setRotating(true)
+        XCTAssertTrue(beacon.isRotating)
+        beacon.setRotating(false)
+        XCTAssertFalse(beacon.isRotating)
+        XCTAssertEqual(beacon.title, "3")
     }
 
     /// A full-screen window with tabs or a toolbar is two windows. Measured on macOS 15.7.7 with
@@ -75,23 +131,4 @@ final class FullScreenDotTests: XCTestCase {
     }
 
     private let screen = CGRect(x: 0, y: 0, width: 1728, height: 1117)
-
-    func testThePointerInTheMenuBarBandOfThatScreenOnly() {
-        let screen = NSRect(x: 0, y: 0, width: 1512, height: 982)
-
-        XCTAssertTrue(FullScreenDot.isInMenuBar(NSPoint(x: 1400, y: 982), screen: screen, height: 37))
-        XCTAssertTrue(FullScreenDot.isInMenuBar(NSPoint(x: 10, y: 946), screen: screen, height: 37))
-        XCTAssertFalse(FullScreenDot.isInMenuBar(NSPoint(x: 10, y: 944), screen: screen, height: 37))
-        XCTAssertFalse(FullScreenDot.isInMenuBar(NSPoint(x: 1600, y: 982), screen: screen, height: 37))
-        XCTAssertFalse(FullScreenDot.isInMenuBar(NSPoint(x: 10, y: 990), screen: screen, height: 37))
-    }
-}
-
-private func assertEqual(
-    _ values: [Double], _ expected: [Double], accuracy: Double, file: StaticString = #filePath, line: UInt = #line
-) {
-    XCTAssertEqual(values.count, expected.count, file: file, line: line)
-    for (value, want) in zip(values, expected) {
-        XCTAssertEqual(value, want, accuracy: accuracy, file: file, line: line)
-    }
 }

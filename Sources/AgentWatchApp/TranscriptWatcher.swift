@@ -89,6 +89,8 @@ final class TranscriptWatcher {
         let firstSeenAt: Date
         var nextLocateAttemptAt: Date
         var signals = TranscriptSignals()
+        /// An async question can be written immediately before Stop, between scheduled reads.
+        var readAfterCodexStop = false
         /// The label the file was, or is being, looked for under — `SessionSnapshot.transcriptLabel`.
         /// A row continued by a copy changes it, and the watch starts over on the copy's file.
         let sessionLabel: String
@@ -117,7 +119,7 @@ final class TranscriptWatcher {
         /// of its old file was in flight — and leave the new watch alone.
         let sessionLabel: String
         let url: URL?
-        let offset: UInt64
+        var offset: UInt64
         let facts: [TranscriptFact]
         let fault: MonitoringFault?
         var faultDetail: String?
@@ -199,7 +201,7 @@ final class TranscriptWatcher {
         rescheduleReads()
     }
 
-    /// The sessions worth reading a transcript for, and the only ones the timer runs for.
+    /// The sessions that need recurring reads. A watched Codex turn also gets one read after Stop.
     ///
     /// Those whose quiet might end without a hook: a session claiming work, and one waiting
     /// for a person — whose dialog can be dismissed with Esc, which the transcript records and
@@ -213,11 +215,22 @@ final class TranscriptWatcher {
     /// ten seconds all night for a row the person can already clear. A working session gets
     /// no such bound, because its quiet is the fault being watched for.
     static func watchableSessions(_ sessions: some Collection<SessionSnapshot>, now: Date) -> [SessionSnapshot] {
-        sessions.filter { snapshot in
-            SessionSilence.mayEndWithoutAHook(snapshot)
-                && !(snapshot.phase == .waitingForUser
-                    && SessionPresence.dismissal(of: snapshot, now: now) == .now)
-        }
+        sessions.filter { isWatchable($0, now: now) }
+    }
+
+    private static func isWatchable(_ snapshot: SessionSnapshot, now: Date) -> Bool {
+        snapshot.pendingCodexQuestions?.isEmpty == false
+            || (SessionSilence.mayEndWithoutAHook(snapshot)
+                && !(snapshot.phase == .waitingForUser && SessionPresence.dismissal(of: snapshot, now: now) == .now))
+    }
+
+    private func needsFinalRead(_ snapshot: SessionSnapshot) -> Bool {
+        guard snapshot.phase == .completed, let watch = watches[snapshot.id] else { return false }
+        return watch.readAfterCodexStop && watch.sessionLabel == snapshot.transcriptLabel
+    }
+
+    private func needsRead(_ snapshot: SessionSnapshot, at moment: Date) -> Bool {
+        Self.isWatchable(snapshot, now: moment) || needsFinalRead(snapshot)
     }
 
     func update(sessions: [SessionSnapshot]) {
@@ -225,15 +238,16 @@ final class TranscriptWatcher {
         let live = Set(sessions.map(\.id))
         watches = watches.filter { live.contains($0.key) }
         let moment = now()
-        for snapshot in Self.watchableSessions(sessions, now: moment)
-        where watches[snapshot.id]?.sessionLabel != snapshot.transcriptLabel {
-            // A new watch for a new row — or for a row whose transcript has moved: `/bg` and
-            // `/fork` continue a session in a copy that writes a file of its own, named after
-            // its own identifier, and the original's file stops growing that moment. The copy's
-            // file is found and read from its end like any newly found file, so its history
-            // — the whole conversation so far — is not replayed.
-            watches[snapshot.id] = Watch(
-                firstSeenAt: moment, nextLocateAttemptAt: moment, sessionLabel: snapshot.transcriptLabel)
+        for snapshot in sessions {
+            let watching = Self.isWatchable(snapshot, now: moment)
+            if watching && watches[snapshot.id]?.sessionLabel != snapshot.transcriptLabel {
+                // A continued row can switch to a copy with its own transcript.
+                watches[snapshot.id] = Watch(
+                    firstSeenAt: moment, nextLocateAttemptAt: moment, sessionLabel: snapshot.transcriptLabel)
+            }
+            if snapshot.source == .codex, snapshot.phase != .completed {
+                watches[snapshot.id]?.readAfterCodexStop = watching
+            }
         }
         rescheduleReads()
     }
@@ -380,14 +394,19 @@ final class TranscriptWatcher {
     }
 
     private func makeJobs(at moment: Date) -> [ReadJob] {
-        Self.watchableSessions(sessions, now: now()).compactMap { snapshot in
+        sessions.compactMap { snapshot in
+            guard needsRead(snapshot, at: moment) else { return nil }
+            let finalRead = needsFinalRead(snapshot)
             var watch =
                 watches[snapshot.id]
                 ?? Watch(firstSeenAt: moment, nextLocateAttemptAt: moment, sessionLabel: snapshot.transcriptLabel)
             defer { watches[snapshot.id] = watch }
 
+            // Consume the extra read when dispatched. A Stop during an earlier read must
+            // still get a new read; a missing file must never keep a finished row on the timer.
+            if finalRead { watch.readAfterCodexStop = false }
             if watch.url == nil {
-                guard moment >= watch.nextLocateAttemptAt else {
+                guard finalRead || moment >= watch.nextLocateAttemptAt else {
                     return nil
                 }
                 // The next attempt is booked before the scan runs, not after it returns, so
@@ -573,7 +592,17 @@ final class TranscriptWatcher {
             let tail = tailIfNeeded(at: url, for: job)
             result.description = currentDescription(tail: tail, at: url, for: job)
             if let wait = job.rememberedWait {
-                result.waitEvidence = waitEvidence(inTail: tail, for: wait, source: job.source)
+                let evidence = waitEvidence(inTail: tail, for: wait, source: job.source)
+                if job.source == .codex, !wait.codexQuestions.isEmpty {
+                    let recovered = try? CodexQuestionRecovery.read(
+                        at: url, through: result.offset, questions: Set(wait.codexQuestions.keys))
+                    if let recovered { result.offset = recovered.offset }
+                    result.waitEvidence = SessionHistory.RememberedWaitEvidence(
+                        dialogs: evidence?.dialogs ?? [], newestInterruptionAt: evidence?.newestInterruptionAt,
+                        openCodexQuestions: recovered?.open ?? [])
+                } else {
+                    result.waitEvidence = evidence
+                }
             }
             return result
         }
@@ -582,7 +611,7 @@ final class TranscriptWatcher {
     /// The tail, when something is going to ask it a question. Codex keeps its name
     /// elsewhere, so its tail is read only for a wait.
     private nonisolated static func tailIfNeeded(at url: URL, for job: ReadJob) -> Data? {
-        guard job.source == .claude || job.rememberedWait != nil else {
+        guard job.source == .claude || job.rememberedWait?.dialogs.isEmpty == false else {
             return nil
         }
         return TitleFileSystem.live.readTail(url.path, SessionDescriptionResolver.transcriptTailByteCount)
@@ -833,9 +862,10 @@ final class TranscriptWatcher {
     // MARK: - Timer
 
     private func rescheduleReads() {
+        let moment = now()
         guard
             let floor = settings.transcriptPollInterval,
-            !Self.watchableSessions(sessions, now: now()).isEmpty
+            sessions.contains(where: { needsRead($0, at: moment) })
         else {
             timer?.invalidate()
             timer = nil
@@ -845,7 +875,6 @@ final class TranscriptWatcher {
             return
         }
 
-        let moment = now()
         // Anchored once, when reading starts, rather than on every call: taking `now` each
         // time would push the first read further away with every session update.
         let anchor = lastReadAt ?? moment

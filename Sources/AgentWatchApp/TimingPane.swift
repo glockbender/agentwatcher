@@ -14,8 +14,46 @@ struct TimingPane: View {
             ThemeTimingSection(
                 title: "Menu bar", hint: "The Counts icon's empty marks, and how far its marks dim.",
                 fields: WidgetTheme.Timing.MenuBar.fields, group: \.menuBar, model: model)
+            Section {
+                PageLink(title: "Waiting Beacon", detail: "Size and position") { model.go(.waitingBeacon) }
+            }
+            Section {
+            } footer: {
+                SectionButtons(note: model.themeProblem) {
+                    Button("Restore Default Timing") { model.changeTheme { $0.timing = WidgetTheme.Timing() } }
+                }
+            }
+        }
+    }
+
+}
+
+struct WaitingBeaconPane: View {
+    @ObservedObject var model: SettingsModel
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle(
+                    "Show waiting beacon",
+                    isOn: Binding(
+                        get: { model.settings.showsFullScreenDot },
+                        set: { on in model.update { model.settings.setShowsFullScreenDot(on) } }))
+                Picker(
+                    "Show in",
+                    selection: Binding(
+                        get: { model.settings.waitingBeaconScope },
+                        set: { scope in model.update { model.settings.setWaitingBeaconScope(scope) } }
+                    )
+                ) {
+                    Text("Full screen only").tag(WaitingBeaconScope.fullScreenOnly)
+                    Text("All modes").tag(WaitingBeaconScope.allModes)
+                }
+            } footer: {
+                Footnote("The orange ring appears when chats need a reply. Click it to open those chats.")
+            }
             ThemeTimingSection(
-                title: "Full-screen dot", hint: "Shown where the menu bar is hidden.",
+                title: "Size and position", hint: "Saved with the current theme.",
                 fields: WidgetTheme.Timing.Dot.fields, group: \.dot, model: model
             ) {
                 Picker("Corner", selection: corner) {
@@ -23,11 +61,8 @@ struct TimingPane: View {
                     Text("Top right").tag(true)
                 }
             }
-            Section {
-            } footer: {
-                SectionButtons(note: model.themeProblem) {
-                    Button("Restore Default Timing") { model.changeTheme { $0.timing = WidgetTheme.Timing() } }
-                }
+            if let problem = model.themeProblem {
+                Text(problem).foregroundStyle(.secondary)
             }
         }
     }
@@ -56,7 +91,9 @@ private struct ThemeTimingSection<Group, Extra: View>: View {
                 LabeledContent(field.title) {
                     CycleSlider(
                         value: binding(field), range: field.range, unit: unit(field.unit),
-                        format: field.unit == .fraction ? "%.2f" : field.unit == .points ? "%.0f" : "%.1f")
+                        format: field.unit == .fraction ? "%.2f" : field.unit == .points ? "%.0f" : "%.1f"
+                    )
+                    .help(field.title)
                 }
             }
         } header: {
@@ -75,7 +112,11 @@ private struct ThemeTimingSection<Group, Extra: View>: View {
     private func binding(_ field: WidgetTheme.Timing.Field<Group>) -> Binding<Double> {
         Binding(
             get: { model.themes.theme.timing.clamped[keyPath: group][keyPath: field.path] },
-            set: { value in model.changeTheme { $0.timing[keyPath: group][keyPath: field.path] = value } }
+            set: { value in
+                model.changeTheme {
+                    $0.timing[keyPath: group][keyPath: field.path] = field.unit == .points ? value.rounded() : value
+                }
+            }
         )
     }
 }

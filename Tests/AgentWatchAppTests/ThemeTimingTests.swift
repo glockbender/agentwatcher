@@ -16,22 +16,33 @@ final class ThemeTimingTests: XCTestCase {
         let json = #"{"name": "Mine", "timing": {"dot": {"diameter": 12, "corner": "topLeft"}}}"#
         let timing = try JSONDecoder().decode(WidgetTheme.self, from: Data(json.utf8)).timing
 
-        XCTAssertEqual(timing.dot.diameter, 12)
+        XCTAssertEqual(timing.dot.ringDiameter, 24)
         XCTAssertFalse(timing.dot.isOnTheRight)
         XCTAssertEqual(timing.dot.inset, WidgetTheme.Timing.Dot().inset)
         XCTAssertEqual(timing.widget, WidgetTheme.Timing.Widget())
     }
 
+    func testBeaconDiameterRoundTripsAndStaysInsideItsClickTarget() throws {
+        var dot = WidgetTheme.Timing.Dot()
+        dot.ringDiameter = 30
+        let data = try JSONEncoder().encode(dot)
+        XCTAssertEqual(try JSONDecoder().decode(WidgetTheme.Timing.Dot.self, from: data).ringDiameter, 30)
+        dot.ringDiameter = 100
+        XCTAssertEqual(dot.clamped.ringDiameter, 34)
+        dot.ringDiameter = 0
+        XCTAssertEqual(dot.clamped.ringDiameter, 20)
+    }
+
     func testANumberOutOfRangeIsHeldToIt() {
         var timing = WidgetTheme.Timing()
         timing.widget.glassTint = 7
-        timing.dot.diameter = .nan
+        timing.dot.inset = .nan
         timing.dot.corner = "bottom"
 
         let clamped = timing.clamped
 
         XCTAssertEqual(clamped.widget.glassTint, 1)
-        XCTAssertEqual(clamped.dot.diameter, WidgetTheme.Timing.Dot().diameter)
+        XCTAssertEqual(clamped.dot.inset, WidgetTheme.Timing.Dot().inset)
         XCTAssertEqual(clamped.dot.corner, "topRight")
     }
 
