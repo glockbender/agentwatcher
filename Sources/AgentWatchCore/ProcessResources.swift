@@ -329,6 +329,9 @@ public struct ResourceReport: Equatable, Sendable {
         /// The process's name: a number reused by another program is not the same process.
         let name: String
         let cpuTime: TimeInterval
+        /// The part of `cpuTime` that came from children it reaped. What it reaps in the interval
+        /// it changes bucket was done in the old one.
+        let finishedChildrenCPUTime: TimeInterval
     }
 
     struct Boundary: Equatable, Sendable {

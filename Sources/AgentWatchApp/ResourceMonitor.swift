@@ -79,8 +79,9 @@ final class ResourceMonitor {
     private var sampler: ProcessResourceSampler? = ProcessResourceSampler()
     private var timer: Timer?
     private var lastLoggedAt: Date?
-    /// Moved on whenever watching is switched off, so a pass that was under way then is not taken
-    /// in: its load would span the time nobody watched.
+    /// Moved on whenever the timer stops — watching switched off, the last row closed — so a
+    /// pass that was under way then is not taken in: its load would span the time nobody
+    /// watched, and its rows are not the ones open now.
     private var generation = 0
     private let now: () -> Date
     private let interval: TimeInterval
@@ -108,7 +109,6 @@ final class ResourceMonitor {
         if !enabled {
             report = nil
             lastLoggedAt = nil
-            generation += 1
         }
         updateTimer()
     }
@@ -121,6 +121,12 @@ final class ResourceMonitor {
     func stop() {
         timer?.invalidate()
         timer = nil
+        generation += 1
+    }
+
+    /// Whether a pass is running off the main thread now.
+    var isPassUnderWay: Bool {
+        sampler == nil
     }
 
     /// A pass now rather than at the next tick: the menu opening wants a figure that is no
@@ -134,11 +140,14 @@ final class ResourceMonitor {
 
     private func updateTimer() {
         guard Self.shouldSample(isEnabled: isEnabled, sessions: sessions) else {
+            let wasReading = timer != nil || report != nil
             stop()
             // With nothing open there is no next reading, and a report kept now would be shown
-            // as the current one for as long as no row opens.
-            if report != nil {
-                report = nil
+            // as the current one for as long as no row opens; a row that closed before its first
+            // reading leaves the Resources page promising one. Switching off refreshes those
+            // places itself.
+            report = nil
+            if isEnabled, wasReading {
                 onCleared?()
             }
             return
@@ -172,8 +181,13 @@ final class ResourceMonitor {
             return
         }
         let moment = now()
-        if let report, moment.timeIntervalSince(report.sampledAt) < minimumInterval {
-            return
+        // A clock set back gives the last report a negative age. It is not fresh, and waiting
+        // for the clock to catch up would freeze the figures.
+        if let report {
+            let age = moment.timeIntervalSince(report.sampledAt)
+            if age >= 0, age < minimumInterval {
+                return
+            }
         }
         self.sampler = nil
         let open = sessions.filter { $0.phase != .sessionClosed }
@@ -199,6 +213,11 @@ final class ResourceMonitor {
         // A pass that outlived the last open row is not taken in either: it would bring back the
         // report that closing the row dropped.
         guard isEnabled, generation == self.generation, isSampling else {
+            // The timer started again while it ran — a row opened, watching came back on — and
+            // its first pass found the sampler taken. Without this one it waits for the tick.
+            if isSampling {
+                sampleNow()
+            }
             return
         }
         self.report = report

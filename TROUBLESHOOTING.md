@@ -172,7 +172,10 @@ seen: the app stopping an unused session on its own.
 its MCP servers run under that process too. Nothing in that process says which part belongs to
 which thread, so a thread's row counts only the commands that thread started. A Claude session has
 an agent process of its own, so its row counts the agent and its MCP servers as well. The thread's
-hover card says "Commands only".
+hover card says "Commands only". A command is found by the thread id in its environment, and some
+programs that come with macOS, `/bin/zsh` and `/bin/sleep` among them, do not show their
+environment to other programs. So a command made only of such programs counts in the shared process, and the
+thread can show 0 MB while it runs.
 
 **What to do:** Nothing is wrong. To see the shared process, open **Settings › Resources**: the
 line "Agents" counts every session together with ChatGPT's `app-server` and its MCP servers, and

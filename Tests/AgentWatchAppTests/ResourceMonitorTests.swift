@@ -93,26 +93,82 @@ final class ResourceMonitorTests: XCTestCase {
     }
 
     /// A menu opening right after a tick would count a load over a few milliseconds, which is
-    /// noise. A report that young is fresh enough, and no pass runs.
-    func testAPassAskedForRightAfterAReportWaits() async throws {
+    /// noise. A report that young is fresh enough, and no pass starts.
+    func testAPassAskedForRightAfterAReportIsSkipped() async {
+        let monitor = ResourceMonitor(isEnabled: true, now: { [now] in now })
+        let reported = expectation(description: "a report")
+        reported.assertForOverFulfill = false
+        monitor.onReport = { _ in reported.fulfill() }
+        monitor.sessionsChanged([row("a", processID: getpid())])
+        await fulfillment(of: [reported], timeout: 10)
+
+        monitor.sampleSoon()
+        let started = monitor.isPassUnderWay
+        monitor.stop()
+
+        XCTAssertFalse(started)
+    }
+
+    /// A clock set back makes the last report's age negative. That report is not fresh: waiting
+    /// until the clock passes it again would freeze the figures for as long as it was set back.
+    func testAClockSetBackDoesNotFreezeTheFigures() async {
+        var clock = now
+        let monitor = ResourceMonitor(isEnabled: true, now: { clock })
+        let first = expectation(description: "the first report")
+        let afterTheClockWentBack = expectation(description: "a report after the clock went back")
+        afterTheClockWentBack.assertForOverFulfill = false
+        var sampledAt: [Date] = []
+        monitor.onReport = { report in
+            sampledAt.append(report.sampledAt)
+            (sampledAt.count == 1 ? first : afterTheClockWentBack).fulfill()
+        }
+        monitor.sessionsChanged([row("a", processID: getpid())])
+        await fulfillment(of: [first], timeout: 10)
+
+        clock = now.addingTimeInterval(-3600)
+        monitor.sampleSoon()
+        await fulfillment(of: [afterTheClockWentBack], timeout: 10)
+        monitor.stop()
+
+        XCTAssertEqual(sampledAt.last, now.addingTimeInterval(-3600))
+    }
+
+    /// The last row closes while a pass is under way, and another opens before it is back. That
+    /// pass read the closed row and is not taken in; the new row gets a pass of its own at once,
+    /// not at the next tick five seconds on.
+    func testAPassThatOutlivedItsRowsGivesWayToOneForTheRowsOpenNow() async {
         let monitor = ResourceMonitor(isEnabled: true)
         let reported = expectation(description: "a report")
         reported.assertForOverFulfill = false
-        var reports = 0
-        monitor.onReport = { _ in
-            reports += 1
+        var reports: [ResourceReport] = []
+        monitor.onReport = { report in
+            reports.append(report)
             reported.fulfill()
         }
-        monitor.sessionsChanged([row("a", processID: getpid())])
-        await fulfillment(of: [reported], timeout: 10)
-        let first = try XCTUnwrap(monitor.report).sampledAt
 
-        monitor.sampleSoon()
-        try await Task.sleep(nanoseconds: 300_000_000)
+        monitor.sessionsChanged([row("a", processID: getpid())])
+        XCTAssertTrue(monitor.isPassUnderWay)
+        let closed = row("a", processID: getpid(), phase: .sessionClosed)
+        monitor.sessionsChanged([closed])
+        monitor.sessionsChanged([closed, row("b", processID: getpid())])
+        await fulfillment(of: [reported], timeout: 4)
         monitor.stop()
 
-        XCTAssertEqual(reports, 1)
-        XCTAssertEqual(monitor.report?.sampledAt, first)
+        XCTAssertEqual(reports.first.map { Array($0.sessions.keys) }, ["claude:b"])
+    }
+
+    /// A row that closes before its first reading leaves no report to drop, but the Resources
+    /// page still says a reading is coming. It has to hear that none is.
+    func testARowClosingBeforeItsFirstReadingStillClears() {
+        let monitor = ResourceMonitor(isEnabled: true)
+        var cleared = 0
+        monitor.onCleared = { cleared += 1 }
+
+        monitor.sessionsChanged([row("a", processID: getpid())])
+        monitor.sessionsChanged([row("a", processID: getpid(), phase: .sessionClosed)])
+
+        XCTAssertFalse(monitor.isSampling)
+        XCTAssertEqual(cleared, 1)
     }
 
     /// An open menu runs the main thread in its own mode. The figure in it must keep moving,

@@ -337,6 +337,43 @@ final class ResourceAttributionTests: XCTestCase {
         XCTAssertEqual(second.hosts.first?.cpuLoad ?? -1, 1, accuracy: 0.001, "five seconds of work over five")
     }
 
+    /// The thread's command ends in the same interval its shell moves to the host: with no
+    /// marker left below it, the shell is the host's now, holding the command's whole life in
+    /// its counter of finished children. That life was the thread's; the host gets only what
+    /// the shell itself did.
+    func testAShellThatChangesOwnerKeepsWhatItReapedOutOfTheNewBucket() {
+        let hosts = [SharedAgentHost(processID: 500, source: .codex)]
+        let thread = row("t1", source: .codex)
+        var closed = thread
+        closed.phase = .sessionClosed
+        let first = ResourceAttribution.report(
+            table: ProcessTable(
+                sampledAt: start,
+                processes: [
+                    process(500, parent: 1, "codex", cpu: 100),
+                    process(501, parent: 500, "zsh", cpu: 1),
+                    process(502, parent: 501, "go", cpu: 121, markers: [marker("t1", source: .codex)]),
+                ],
+                hosts: hosts),
+            sessions: [thread],
+            previous: nil
+        )
+        let second = ResourceAttribution.report(
+            table: ProcessTable(
+                sampledAt: start.addingTimeInterval(5),
+                processes: [
+                    process(500, parent: 1, "codex", cpu: 100),
+                    process(501, parent: 500, "zsh", cpu: 1.5, finished: 126),
+                ],
+                hosts: hosts),
+            sessions: [closed],
+            previous: first
+        )
+
+        XCTAssertEqual(
+            second.hosts.first?.cpuLoad ?? -1, 0.1, accuracy: 0.001, "half a second of the shell's own work over five")
+    }
+
     // MARK: - A background session's terminal
 
     /// After `/bg` the terminal the person typed it in keeps an interactive `claude` alive,
