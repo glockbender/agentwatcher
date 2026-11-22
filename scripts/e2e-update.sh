@@ -51,6 +51,10 @@ say() { printf '\n== %s\n' "$1"; }
 run_in_machine() { # [machine.sh arguments]
     swiftc -O -target arm64-apple-macos14 -o "$share/ax" "$here/ax.swift"
     cp "$here/server.py" "$here/machine.sh" "$share/"
+    # On a macOS 26 guest the shared folder breaks the symbolic links inside Sparkle.framework,
+    # and the copy fails codesign --strict; an archive carries them whole.
+    rm -f "$share/old.zip"
+    ditto -c -k --keepParent "$share/old/AgentWatch.app" "$share/old.zip"
     say "Running in a clone of $golden"
     tart clone "$golden" "$vm"
     trap cleanup EXIT
