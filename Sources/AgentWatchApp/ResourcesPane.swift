@@ -19,13 +19,15 @@ struct ResourcesPane: View {
             Section {
                 Toggle("Beside the menu's summary", isOn: showsInMenu)
                     .disabled(!isOn)
+                Toggle("In a widget row's card", isOn: showsInCard)
+                    .disabled(!isOn)
             } header: {
                 Text("Show")
             } footer: {
                 // One line in both states, so the page does not move when watching is switched.
                 Footnote(
                     isOn
-                        ? "What the agents and everything they run use together."
+                        ? "A row shows its own figures as a part: add Memory & CPU in Rows."
                         : "Turn on watching above to show the figures.")
             }
             Section {
@@ -90,5 +92,9 @@ struct ResourcesPane: View {
 
     private var showsInMenu: Binding<Bool> {
         Binding(get: { model.showsResourcesInMenu }, set: { model.showsResourcesInMenu = $0 })
+    }
+
+    private var showsInCard: Binding<Bool> {
+        Binding(get: { model.showsResourcesInCard }, set: { model.showsResourcesInCard = $0 })
     }
 }

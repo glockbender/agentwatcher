@@ -63,6 +63,34 @@ extension ResourceReport {
     }
 }
 
+extension SessionResources {
+    /// The session's total, as its row and its card show it.
+    public var figure: ResourceFigure {
+        ResourceFigure(footprint: total.footprint, cpuLoad: cpuLoad)
+    }
+
+    /// Whether the agent's own process is in this session. A Codex thread in ChatGPT.app has
+    /// none: the agent is the app's shared process, so the row holds only the thread's commands.
+    public var hasAgentProcess: Bool {
+        parts[.agent] != nil
+    }
+
+    /// The parts that hold memory, heaviest first. Finished commands hold none, and a part at
+    /// zero says nothing a reader can use. Ties go by name, so the order does not change
+    /// between two reports with the same numbers.
+    public func heaviestParts(_ count: Int) -> [(part: ResourcePart, usage: ResourceUsage)] {
+        parts
+            .filter { $0.value.footprint > 0 }
+            .sorted {
+                $0.value.footprint != $1.value.footprint
+                    ? $0.value.footprint > $1.value.footprint
+                    : ResourceFormat.name(of: $0.key) < ResourceFormat.name(of: $1.key)
+            }
+            .prefix(count)
+            .map { (part: $0.key, usage: $0.value) }
+    }
+}
+
 /// The whole machine, as the Resources page shows it.
 public struct MachineFigure: Equatable, Sendable {
     public let physical: UInt64
@@ -111,7 +139,23 @@ public enum ResourceFormat {
 
     /// Percent of one core, as Activity Monitor's «% CPU» counts it: two busy cores are 200%.
     public static func load(_ cores: Double) -> String {
-        String(format: "%.0f%% CPU", max(0, cores) * 100)
+        "\(percent(cores)) CPU"
+    }
+
+    /// «140%»: the load without its unit, where a symbol beside it says what it is.
+    public static func percent(_ cores: Double) -> String {
+        String(format: "%.0f%%", max(0, cores) * 100)
+    }
+
+    /// What a part of a session is called in a card: «agent», an MCP server by its own name.
+    public static func name(of part: ResourcePart) -> String {
+        switch part {
+        case .agent: "agent"
+        case let .helper(name): name
+        case .commands: "commands"
+        case .finishedCommands: "finished commands"
+        case .orphans: "left running"
+        }
     }
 
     /// «3.4 GB · 140% CPU», or the memory alone before the load is known.
@@ -124,7 +168,7 @@ public enum ResourceFormat {
 
     /// «310% of 1400%»: the machine's load beside what all its cores could give.
     public static func share(_ cores: Double, of total: Int?) -> String {
-        let busy = String(format: "%.0f%%", max(0, cores) * 100)
+        let busy = percent(cores)
         guard let total else {
             return busy
         }

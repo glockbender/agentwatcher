@@ -13,6 +13,7 @@ protocol SettingsHost: AnyObject {
     /// (`ResourceSettings`).
     var watchesResources: Bool { get set }
     var showsResourcesInMenu: Bool { get set }
+    var showsResourcesInCard: Bool { get set }
     /// The last reading while watching, for the Resources page.
     var resourceReport: ResourceReport? { get }
     var isReadingTranscripts: Bool { get }
@@ -189,6 +190,11 @@ final class SettingsModel: ObservableObject {
     var showsResourcesInMenu: Bool {
         get { host?.showsResourcesInMenu ?? false }
         set { update { host?.showsResourcesInMenu = newValue } }
+    }
+
+    var showsResourcesInCard: Bool {
+        get { host?.showsResourcesInCard ?? false }
+        set { update { host?.showsResourcesInCard = newValue } }
     }
 
     var resourceReport: ResourceReport? {

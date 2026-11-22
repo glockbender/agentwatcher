@@ -124,7 +124,38 @@ final class ResourceFiguresTests: XCTestCase {
         XCTAssertNil(report.machineFigure?.load)
     }
 
+    /// The card names the three parts that hold the most memory. Finished commands hold none and
+    /// are left out; equal parts keep one order from report to report.
+    func testHeaviestPartsSkipWhatHoldsNoMemoryAndKeepOneOrderForTies() {
+        let session = SessionResources(
+            sessionID: "claude:a",
+            parts: [
+                .agent: ResourceUsage(footprint: 237 * megabyte),
+                .helper("plata-mcp"): ResourceUsage(footprint: 238 * megabyte),
+                .helper("github"): ResourceUsage(footprint: 6 * megabyte),
+                .commands: ResourceUsage(footprint: 6 * megabyte),
+                .finishedCommands: ResourceUsage(cpuTime: 40),
+            ],
+            total: ResourceUsage(footprint: 487 * megabyte),
+            cpuLoad: 0.3)
+
+        let heaviest = session.heaviestParts(3).map { ResourceFormat.name(of: $0.part) }
+        XCTAssertEqual(heaviest, ["plata-mcp", "agent", "commands"])
+        XCTAssertEqual(session.heaviestParts(10).count, 4, "finished commands hold no memory")
+        XCTAssertEqual(session.figure, ResourceFigure(footprint: 487 * megabyte, cpuLoad: 0.3))
+        XCTAssertTrue(session.hasAgentProcess)
+    }
+
+    /// A Codex thread in ChatGPT.app has only its commands: the agent is the app's process.
+    func testAThreadWithoutItsOwnAgentProcessSaysSo() {
+        let thread = SessionResources(
+            sessionID: "codex:t", parts: [.commands: ResourceUsage(footprint: 43 * megabyte)],
+            total: ResourceUsage(footprint: 43 * megabyte))
+        XCTAssertFalse(thread.hasAgentProcess)
+    }
+
     func testFiguresAreWrittenAsActivityMonitorWritesThem() {
+        XCTAssertEqual(ResourceFormat.percent(1.4), "140%")
         XCTAssertEqual(ResourceFormat.memory(830 * megabyte), "830 MB")
         XCTAssertEqual(ResourceFormat.memory(3482 * megabyte), "3.4 GB")
         XCTAssertEqual(ResourceFormat.load(1.4), "140% CPU")

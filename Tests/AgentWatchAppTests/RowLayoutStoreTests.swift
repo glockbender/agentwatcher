@@ -65,11 +65,12 @@ final class RowLayoutStoreTests: XCTestCase {
         let preferences = try isolatedPreferences()
         let store = RowLayoutStore(preferences: preferences)
         let chosen = RowLayout(
-            parts: [.lamp, .name, .gap, .branch],
+            parts: [.lamp, .name, .gap, .branch, .resources],
             flexible: .branch,
             counterKinds: [.shell],
             nameStyle: .title,
             contextStyle: .both,
+            resourceStyle: .processor,
             reservesDismissColumn: true
         )
 

@@ -100,6 +100,10 @@ final class HUDSessionRowView: NSStackView {
     /// Kept because the timer's colour follows it, not only the lamp's — see `timerColor`.
     private let lampScheme: LampScheme
     private let timerLabel: NSTextField
+    /// The memory and CPU numbers, when the row draws its resources part. Kept so a reading every
+    /// five seconds restates them without a rebuild, the way the timer restates its age.
+    private var memoryLabel: NSTextField?
+    private var processorLabel: NSTextField?
     /// What the timer currently reads, so a tick that changes nothing writes nothing.
     private var shownElapsed: String
     private var shownColor: NSColor?
@@ -143,6 +147,10 @@ final class HUDSessionRowView: NSStackView {
         /// the app's own is what most rows look like anyway.
         layout: RowLayout,
         style: WidgetStyle = .standard,
+        /// Whether the template's resources part is drawn — `HUDRowModel.showsResources`.
+        showsResources: Bool = false,
+        /// The figures it starts with; a reading later restates them in place.
+        resourceFigure: ResourceFigure? = nil,
         onFocus: @escaping () -> Void,
         dismissal: RowDismissal,
         onRemove: @escaping () -> Void,
@@ -185,7 +193,9 @@ final class HUDSessionRowView: NSStackView {
                     lamp: lamp,
                     layout: layout,
                     background: background,
-                    style: style
+                    style: style,
+                    showsResources: showsResources,
+                    resourceFigure: resourceFigure
                 )
             else {
                 continue
@@ -265,7 +275,9 @@ final class HUDSessionRowView: NSStackView {
         lamp: SessionLampAppearance,
         layout: RowLayout,
         background: WidgetBackground,
-        style: WidgetStyle
+        style: WidgetStyle,
+        showsResources: Bool,
+        resourceFigure: ResourceFigure?
     ) -> NSView? {
         switch part {
         case .timer:
@@ -303,7 +315,105 @@ final class HUDSessionRowView: NSStackView {
             return widgetContextText(for: snapshot, style: layout.contextStyle).map {
                 Self.makeCounter(image: Self.contextImage, text: $0, background: background, style: style)
             }
+        case .resources:
+            guard showsResources else {
+                return nil
+            }
+            return makeResources(layout.resourceStyle, figure: resourceFigure, background: background, style: style)
         }
+    }
+
+    /// The memory number, the CPU number, or both, each beside its symbol and each in a label
+    /// as wide as the widest value it can show. A fixed width is what lets the numbers change in
+    /// place: the row's name budget was measured once, when it was built, and a label that grew
+    /// with its value would push past it.
+    private func makeResources(
+        _ resourceStyle: RowLayout.ResourceStyle,
+        figure: ResourceFigure?,
+        background: WidgetBackground,
+        style: WidgetStyle
+    ) -> NSView {
+        var pairs: [NSView] = []
+        if resourceStyle != .processor {
+            let label = Self.makeFigureLabel(widest: Self.widestMemory, background: background, style: style)
+            memoryLabel = label
+            pairs.append(Self.makePair(Self.makeSymbol(Self.memoryImage, background: background, style: style), label))
+        }
+        if resourceStyle != .memory {
+            let label = Self.makeFigureLabel(widest: Self.widestLoad, background: background, style: style)
+            processorLabel = label
+            pairs.append(
+                Self.makePair(Self.makeSymbol(Self.processorImage, background: background, style: style), label))
+        }
+        refreshResources(figure)
+        let block = NSStackView(views: pairs)
+        block.orientation = .horizontal
+        block.alignment = .centerY
+        block.spacing = style.elementSpacing
+        return block
+    }
+
+    /// Restates the memory and CPU numbers, and only where they read differently. Answers
+    /// whether it wrote anything. A dash stands for a number no reading has given yet.
+    @discardableResult
+    func refreshResources(_ figure: ResourceFigure?) -> Bool {
+        var wrote = false
+        if let memoryLabel {
+            wrote = Self.write(figure.map { ResourceFormat.memory($0.footprint) } ?? Self.noFigure, to: memoryLabel)
+        }
+        if let processorLabel {
+            let load = figure?.cpuLoad.map(ResourceFormat.percent) ?? Self.noFigure
+            wrote = Self.write(load, to: processorLabel) || wrote
+        }
+        return wrote
+    }
+
+    /// What the row's resources part reads now, for a test: memory, then CPU.
+    var shownResources: [String] {
+        [memoryLabel, processorLabel].compactMap { $0?.stringValue }
+    }
+
+    private static func write(_ text: String, to label: NSTextField) -> Bool {
+        guard label.stringValue != text else {
+            return false
+        }
+        label.stringValue = text
+        return true
+    }
+
+    private static let noFigure = "–"
+
+    /// The widest memory a row writes: below 1024 MB it counts megabytes, above it gigabytes
+    /// with one decimal, and a session past 100 GB is not one this widget will meet.
+    private static let widestMemory = ["1023 MB", "99.9 GB"]
+
+    /// Every core of this Mac busy, the most a session can use.
+    private static let widestLoad = [ResourceFormat.percent(Double(ProcessInfo.processInfo.activeProcessorCount))]
+
+    private static let memoryImage = symbol("memorychip", described: "Memory")
+    private static let processorImage = symbol("cpu", described: "CPU")
+
+    private static func symbol(_ name: String, described description: String) -> NSImage? {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: description)
+        image?.isTemplate = true
+        return image
+    }
+
+    private static func makeFigureLabel(
+        widest: [String],
+        background: WidgetBackground,
+        style: WidgetStyle
+    ) -> NSTextField {
+        let label = NSTextField(labelWithString: noFigure)
+        label.font = style.figuresFont
+        label.textColor = background.foregroundColor
+        label.alignment = .right
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        let insets = label.alignmentRectInsets
+        let width = widest.map { labelWidth(of: $0, font: style.figuresFont) }.max() ?? 0
+        label.widthAnchor.constraint(equalToConstant: max(0, width - insets.left - insets.right)).isActive = true
+        return label
     }
 
     /// Gives the row its name, at whatever length the measured budget allows.
@@ -680,16 +790,7 @@ final class HUDSessionRowView: NSStackView {
         background: WidgetBackground,
         style: WidgetStyle
     ) -> NSView {
-        let symbol = NSImageView()
-        symbol.image = image
-        symbol.contentTintColor = background.secondaryForegroundColor
-        symbol.symbolConfiguration = .init(pointSize: style.activityIconPointSize, weight: .regular)
-        // For the reason the fault marker gives: a symbol's own constraints outvote the box
-        // unless the view is told it may scale down.
-        symbol.imageScaling = .scaleProportionallyDown
-        symbol.image?.size = style.activityIconSize
-        symbol.pinSize(to: style.activityIconSize)
-
+        let symbol = makeSymbol(image, background: background, style: style)
         guard let text else {
             return symbol
         }
@@ -699,7 +800,23 @@ final class HUDSessionRowView: NSStackView {
         label.textColor = background.foregroundColor
         label.setContentCompressionResistancePriority(.required, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
+        return makePair(symbol, label)
+    }
 
+    private static func makeSymbol(_ image: NSImage?, background: WidgetBackground, style: WidgetStyle) -> NSImageView {
+        let symbol = NSImageView()
+        symbol.image = image
+        symbol.contentTintColor = background.secondaryForegroundColor
+        symbol.symbolConfiguration = .init(pointSize: style.activityIconPointSize, weight: .regular)
+        // For the reason the fault marker gives: a symbol's own constraints outvote the box
+        // unless the view is told it may scale down.
+        symbol.imageScaling = .scaleProportionallyDown
+        symbol.image?.size = style.activityIconSize
+        symbol.pinSize(to: style.activityIconSize)
+        return symbol
+    }
+
+    private static func makePair(_ symbol: NSView, _ label: NSTextField) -> NSView {
         let pair = NSStackView(views: [symbol, label])
         pair.orientation = .horizontal
         pair.alignment = .centerY

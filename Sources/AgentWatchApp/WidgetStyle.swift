@@ -93,6 +93,10 @@ struct WidgetStyle {
     var titleFont: NSFont { .systemFont(ofSize: points(12)) }
     /// Activity and context counters.
     var countsFont: NSFont { .systemFont(ofSize: points(12)) }
+    /// A row's memory and CPU. Digits of one width, so the label's fixed width — taken from the
+    /// widest value it can show — holds every value, and a number that changes in place does not
+    /// shift the digits beside it.
+    var figuresFont: NSFont { .monospacedDigitSystemFont(ofSize: points(12), weight: .regular) }
     /// Account usage under the divider.
     var usageFont: NSFont { .systemFont(ofSize: points(11), weight: .medium) }
     /// The hover card.

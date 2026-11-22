@@ -61,9 +61,11 @@ final class ResourcesPaneTests: XCTestCase {
 
         model.watchesResources = true
         model.showsResourcesInMenu = false
+        model.showsResourcesInCard = false
 
         XCTAssertTrue(host.watchesResources)
         XCTAssertFalse(host.showsResourcesInMenu)
-        XCTAssertEqual(model.revision, revision + 2, "each switch redraws the page")
+        XCTAssertFalse(host.showsResourcesInCard)
+        XCTAssertEqual(model.revision, revision + 3, "each switch redraws the page")
     }
 }

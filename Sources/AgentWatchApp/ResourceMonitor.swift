@@ -11,6 +11,7 @@ final class ResourceSettings: PreferenceDefaults {
     private enum Key {
         static let enabled = "resources.enabled"
         static let showsInMenu = "resources.showsInMenu"
+        static let showsInCard = "resources.showsInCard"
     }
 
     private let preferences: PreferenceFile
@@ -20,7 +21,7 @@ final class ResourceSettings: PreferenceDefaults {
     }
 
     var defaultValues: [String: JSONValue] {
-        [Key.enabled: .bool(false), Key.showsInMenu: .bool(true)]
+        [Key.enabled: .bool(false), Key.showsInMenu: .bool(true), Key.showsInCard: .bool(true)]
     }
 
     var isEnabled: Bool {
@@ -32,12 +33,22 @@ final class ResourceSettings: PreferenceDefaults {
         preferences.flag(forKey: Key.showsInMenu) ?? true
     }
 
+    /// The session's figures in the widget row's hover card. Read only while `isEnabled` holds.
+    /// The row itself carries them as a part of its template, switched in `Rows`.
+    var showsInCard: Bool {
+        preferences.flag(forKey: Key.showsInCard) ?? true
+    }
+
     func setEnabled(_ enabled: Bool) {
         preferences.set(enabled, forKey: Key.enabled)
     }
 
     func setShowsInMenu(_ shows: Bool) {
         preferences.set(shows, forKey: Key.showsInMenu)
+    }
+
+    func setShowsInCard(_ shows: Bool) {
+        preferences.set(shows, forKey: Key.showsInCard)
     }
 }
 

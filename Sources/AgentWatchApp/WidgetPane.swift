@@ -12,7 +12,7 @@ struct WidgetPane: View {
             Section {
                 SampleRowsPreview(
                     look: model.themes.look, dark: model.themes.isDark, layout: model.layout,
-                    samples: SampleRowsPreview.pair
+                    samples: SampleRowsPreview.pair, watchesResources: model.watchesResources
                 )
                 .frame(height: SampleRowsPreview.pairHeight)
                 .listRowInsets(EdgeInsets())

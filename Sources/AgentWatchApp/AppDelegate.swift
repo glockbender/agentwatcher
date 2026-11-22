@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.onReport = { [weak self] _ in
             guard let self else { return }
             statusMenu?.refreshSummary()
+            hudController.resourcesChanged()
             if settingsWindow.model.isShowingResources {
                 settingsWindow.model.refresh()
             }
@@ -118,6 +119,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         controller.openSetup = { [weak self] in
             self?.showSetupGuide()
+        }
+        controller.resources = { [weak self] in
+            guard let self else { return WidgetResources() }
+            return WidgetResources(
+                isWatching: resourceSettings.isEnabled,
+                showsInCard: resourceSettings.showsInCard,
+                report: resourceMonitor.report)
+        }
+        controller.wantsFreshResources = { [weak self] in
+            self?.resourceMonitor.sampleSoon()
         }
         // The order the menu shows too — see `SessionOrderBook`.
         controller.order = { [orderBook] sessions, now in
@@ -613,6 +624,7 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
             resourceSettings.setEnabled(newValue)
             resourceMonitor.setEnabled(newValue)
             statusMenu?.refreshSummary()
+            hudController.resourcesChanged()
         }
     }
 
@@ -621,6 +633,14 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         set {
             resourceSettings.setShowsInMenu(newValue)
             statusMenu?.refreshSummary()
+        }
+    }
+
+    var showsResourcesInCard: Bool {
+        get { resourceSettings.showsInCard }
+        set {
+            resourceSettings.setShowsInCard(newValue)
+            hudController.resourcesChanged()
         }
     }
 

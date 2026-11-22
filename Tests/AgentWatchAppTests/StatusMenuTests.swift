@@ -592,6 +592,7 @@ final class FakeAppHost: StatusMenuHost, SettingsHost {
     var checksForUpdatesOnLaunch = true
     var watchesResources = false
     var showsResourcesInMenu = true
+    var showsResourcesInCard = true
     var resourceReport: ResourceReport?
     var isReadingTranscripts = false
     var transcriptFaultedSessionCount = 0

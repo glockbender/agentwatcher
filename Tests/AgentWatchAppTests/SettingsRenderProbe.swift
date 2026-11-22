@@ -66,6 +66,10 @@ final class SettingsRenderProbe: XCTestCase {
             previous: nil)
         model.refresh()
         try draw(AnyView(ResourcesPane(model: model)), height: 660, named: "settings-resources-on", in: directory)
+        // The row's own figures, in the preview at the top of Rows, once watching is on.
+        model.setLayout(
+            RowLayout.standard.changing(parts: RowLayout.standard.parts + [.resources], resourceStyle: .both))
+        try draw(AnyView(RowPane(model: model)), height: 900, named: "settings-rows-resources", in: directory)
         _ = host
     }
 
