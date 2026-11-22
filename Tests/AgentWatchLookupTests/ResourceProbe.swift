@@ -9,12 +9,15 @@ import XCTest
 /// its memory file, so the sessions are the ones on screen.
 ///
 ///     AGENT_WATCH_RESOURCE_PROBE=1 swift test --filter ResourceProbe
+///
+/// `AGENT_WATCH_PROBE_ROOTS=claude:4242,codex:4343` adds a row for each agent process named, for
+/// one the app has no row for — a `claude -p` or `codex exec` started by hand.
 final class ResourceProbe: XCTestCase {
     func testTwoPassesOverThisMachine() throws {
         guard ProcessInfo.processInfo.environment["AGENT_WATCH_RESOURCE_PROBE"] != nil else {
             throw XCTSkip("Set AGENT_WATCH_RESOURCE_PROBE to measure this machine")
         }
-        let rows = try installedAppRows()
+        let rows = try installedAppRows() + probeRows()
         let open = rows.filter { $0.phase != .sessionClosed }
         let roots = ResourceAttribution.rootProcessIDs(of: open)
         var sampler = ProcessResourceSampler()
@@ -79,6 +82,20 @@ final class ResourceProbe: XCTestCase {
             )
         }
         print(lines.map { "PROBE " + $0 }.joined(separator: "\n"))
+    }
+
+    private func probeRows() -> [SessionSnapshot] {
+        let named = ProcessInfo.processInfo.environment["AGENT_WATCH_PROBE_ROOTS"] ?? ""
+        return named.split(separator: ",").compactMap { entry in
+            let pair = entry.split(separator: ":")
+            guard pair.count == 2, let source = AgentSource(rawValue: String(pair[0])), let pid = Int32(pair[1])
+            else {
+                return nil
+            }
+            return SessionSnapshot(
+                id: SessionSnapshot.id(source: source, sessionLabel: "probe-\(pid)"), source: source, arrivalIndex: 0,
+                phase: .executing, lastObservedAt: Date(), agentProcessID: pid)
+        }
     }
 
     private func installedAppRows() throws -> [SessionSnapshot] {

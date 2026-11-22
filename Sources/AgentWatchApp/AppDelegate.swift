@@ -25,13 +25,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let updater: AppUpdater
     private let resourceSettings: ResourceSettings
     private let heard = AgentHeardStore()
+    /// Each session's peak memory and CPU time, for when it has closed.
+    private let resourceHistory = ResourceHistoryStore()
     private lazy var resourceMonitor: ResourceMonitor = {
         let monitor = ResourceMonitor(isEnabled: resourceSettings.isEnabled)
         monitor.onLog = { [weak self] message in
             self?.recordDebug(message)
         }
-        monitor.onReport = { [weak self] _ in
+        monitor.onReport = { [weak self] report in
             guard let self else { return }
+            resourceHistory.add(report)
             statusMenu?.refreshSummary()
             hudController.resourcesChanged()
             if settingsWindow.model.isShowingResources {
@@ -90,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             self?.renderWidget(sessions: sessions, usageLimits: usageLimits)
             self?.resourceMonitor.sessionsChanged(sessions)
+            self?.resourceHistory.sessionsChanged(sessions)
         },
         onNotableEvent: { [weak self] message in
             self?.recordDebug(message)
@@ -290,6 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ingress.stop()
         supervisor.stop()
         resourceMonitor.stop()
+        resourceHistory.save()
         debugController.close()
         hudController.shutdown()
         if let statusItem {
