@@ -30,6 +30,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.onLog = { [weak self] message in
             self?.recordDebug(message)
         }
+        monitor.onReport = { [weak self] _ in
+            guard let self else { return }
+            statusMenu?.refreshSummary()
+            if settingsWindow.model.isShowingResources {
+                settingsWindow.model.refresh()
+            }
+        }
         return monitor
     }()
     /// Keeps the combination that hides and shows the widget agreeing with the setting.
@@ -580,6 +587,13 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         menuBarCounts
     }
 
+    var resourceFigure: AgentsResourceFigure? {
+        guard resourceSettings.isEnabled, resourceSettings.showsInMenu else {
+            return nil
+        }
+        return resourceMonitor.report?.agents
+    }
+
     var isWidgetVisible: Bool {
         hudController.window?.isVisible == true
     }
@@ -591,6 +605,27 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
     var checksForUpdatesOnLaunch: Bool {
         get { updater.checksOnLaunch }
         set { updater.checksOnLaunch = newValue }
+    }
+
+    var watchesResources: Bool {
+        get { resourceSettings.isEnabled }
+        set {
+            resourceSettings.setEnabled(newValue)
+            resourceMonitor.setEnabled(newValue)
+            statusMenu?.refreshSummary()
+        }
+    }
+
+    var showsResourcesInMenu: Bool {
+        get { resourceSettings.showsInMenu }
+        set {
+            resourceSettings.setShowsInMenu(newValue)
+            statusMenu?.refreshSummary()
+        }
+    }
+
+    var resourceReport: ResourceReport? {
+        resourceMonitor.report
     }
 
     var isReadingTranscripts: Bool {
@@ -624,6 +659,8 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         // the app has never heard from is most worth finding. It costs about a millisecond
         // and saves a timer: see `SessionSupervisor.discoverAgentProcesses`.
         supervisor.discoverAgentProcesses()
+        // The figure beside the summary should be no older than the opening.
+        resourceMonitor.sampleSoon()
         // The files belong to other programs and other people, so what the widget complains
         // about is read again rather than remembered from the last time this app looked.
         refreshToolingComplaint()

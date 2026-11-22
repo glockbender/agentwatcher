@@ -45,6 +45,21 @@ final class SettingsRenderProbe: XCTestCase {
         try draw(AnyView(RowPane(model: model)), height: 900, named: "settings-rows", in: directory)
         try draw(AnyView(MenuBarPane(model: model)), height: 820, named: "settings-menu-bar", in: directory)
         try draw(AnyView(GeneralPane(model: model)), height: 900, named: "settings-general", in: directory)
+        try draw(AnyView(ResourcesPane(model: model)), height: 520, named: "settings-resources-off", in: directory)
+        host.watchesResources = true
+        host.resourceReport = ResourceAttribution.report(
+            table: ProcessTable(
+                sampledAt: Date(),
+                processes: [SampledProcess(processID: 100, parentProcessID: 1, name: "claude", footprint: 3482 << 20)],
+                agentWatch: ResourceUsage(footprint: 83 << 20, processCount: 1)),
+            sessions: [
+                SessionSnapshot(
+                    id: "claude:a", source: .claude, arrivalIndex: 0, phase: .idle, lastObservedAt: Date(),
+                    agentProcessID: 100)
+            ],
+            previous: nil)
+        model.refresh()
+        try draw(AnyView(ResourcesPane(model: model)), height: 520, named: "settings-resources-on", in: directory)
         _ = host
     }
 

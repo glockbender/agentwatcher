@@ -247,6 +247,8 @@ public struct ResourceReport: Equatable, Sendable {
     public let hosts: [HostResources]
     public let totals: ResourceTotals
     public let agentWatch: ResourceUsage?
+    /// Cores Agent Watch itself used since the previous report.
+    public let agentWatchLoad: Double?
     public let machine: MachineMemory?
     /// What the next report needs to turn processor time into load. Not shown.
     let rateBasis: RateBasis

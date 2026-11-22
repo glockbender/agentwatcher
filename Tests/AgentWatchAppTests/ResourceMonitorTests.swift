@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AppKit
 import Foundation
 import XCTest
 
@@ -14,6 +15,13 @@ final class ResourceMonitorTests: XCTestCase {
 
         XCTAssertFalse(settings.isEnabled)
         XCTAssertEqual(settings.defaultValues["resources.enabled"], .bool(false))
+        XCTAssertTrue(settings.showsInMenu, "once it is on, the menu shows the figure until told not to")
+
+        settings.setEnabled(true)
+        settings.setShowsInMenu(false)
+
+        XCTAssertTrue(settings.isEnabled)
+        XCTAssertFalse(settings.showsInMenu)
     }
 
     /// No timer while it is off or every row is closed — and a Codex thread in ChatGPT.app is an
@@ -47,16 +55,43 @@ final class ResourceMonitorTests: XCTestCase {
         XCTAssertEqual(lines.count, 1)
     }
 
-    func testMonitorThatIsOffNeverReports() async {
+    /// Off means no timer at all, and turning it off drops the figures it had.
+    func testMonitorKeepsATimerOnlyWhileItIsOn() async {
         let monitor = ResourceMonitor(isEnabled: false)
-        let reported = expectation(description: "no report")
-        reported.isInverted = true
+        monitor.sessionsChanged([row("a", processID: getpid())])
+        XCTAssertFalse(monitor.isSampling)
+
+        let reported = expectation(description: "a report")
+        reported.assertForOverFulfill = false
         monitor.onReport = { _ in reported.fulfill() }
+        monitor.setEnabled(true)
+        XCTAssertTrue(monitor.isSampling)
+        await fulfillment(of: [reported], timeout: 10)
+
+        monitor.setEnabled(false)
+        XCTAssertFalse(monitor.isSampling)
+        XCTAssertNil(monitor.report)
+    }
+
+    /// An open menu runs the main thread in its own mode. The figure in it must keep moving,
+    /// so the timer and the hop back from a pass have to work there too.
+    func testReportsKeepComingWhileAMenuTracksTheMouse() {
+        // NSApplication is what puts the menu's mode among the common ones; without it nothing
+        // runs in that mode at all, a timer of the default mode included. Measured on macOS 27.2:
+        // in that mode a timer made by `scheduledTimer` fired 0 times in 0.6 s, a common one 6.
+        _ = NSApplication.shared
+        let monitor = ResourceMonitor(isEnabled: true, interval: 0.2)
+        var reports = 0
+        monitor.onReport = { _ in reports += 1 }
 
         monitor.sessionsChanged([row("a", processID: getpid())])
-        await fulfillment(of: [reported], timeout: 1)
+        let deadline = Date().addingTimeInterval(10)
+        while reports < 3, Date() < deadline {
+            RunLoop.main.run(mode: .eventTracking, before: Date().addingTimeInterval(0.05))
+        }
+        monitor.stop()
 
-        XCTAssertNil(monitor.report)
+        XCTAssertGreaterThanOrEqual(reports, 3)
     }
 
     /// The debug log is a file anyone can read and paste into an issue. A helper's folder is a

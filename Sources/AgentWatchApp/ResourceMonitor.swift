@@ -2,15 +2,15 @@ import AgentWatchCore
 import AgentWatchLookup
 import Foundation
 
-/// Whether the app watches what the agents cost.
+/// Whether the app watches what the agents cost, and where it shows it.
 ///
-/// Off until a person turns it on: it adds a timer that runs as long as any row is open, and
-/// later figures in the menu and the widget. Until the settings window has a switch for it,
-/// it is turned on in `settings.json` and read at launch. `docs/proposals/resource-usage.md`,
-/// «Что решить до начала».
+/// Off until a person turns it on in the Resources pane: it adds a timer that runs as long as
+/// any row is open. Each place a figure appears has a switch of its own under the main one.
+/// `docs/proposals/resource-usage.md`, «Что решить до начала».
 final class ResourceSettings: PreferenceDefaults {
     private enum Key {
         static let enabled = "resources.enabled"
+        static let showsInMenu = "resources.showsInMenu"
     }
 
     private let preferences: PreferenceFile
@@ -20,11 +20,24 @@ final class ResourceSettings: PreferenceDefaults {
     }
 
     var defaultValues: [String: JSONValue] {
-        [Key.enabled: .bool(false)]
+        [Key.enabled: .bool(false), Key.showsInMenu: .bool(true)]
     }
 
     var isEnabled: Bool {
         preferences.flag(forKey: Key.enabled) ?? false
+    }
+
+    /// The agents' figure beside the menu's summary. Read only while `isEnabled` holds.
+    var showsInMenu: Bool {
+        preferences.flag(forKey: Key.showsInMenu) ?? true
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        preferences.set(enabled, forKey: Key.enabled)
+    }
+
+    func setShowsInMenu(_ shows: Bool) {
+        preferences.set(shows, forKey: Key.showsInMenu)
     }
 }
 
@@ -38,7 +51,7 @@ final class ResourceSettings: PreferenceDefaults {
 /// changed.
 @MainActor
 final class ResourceMonitor {
-    static let interval: TimeInterval = 5
+    static let defaultInterval: TimeInterval = 5
     /// How often a report goes into the debug log. The log keeps a few hundred lines, and a line
     /// per pass would push the events out of it within the hour.
     static let logInterval: TimeInterval = 60
@@ -54,10 +67,17 @@ final class ResourceMonitor {
     private var timer: Timer?
     private var lastLoggedAt: Date?
     private let now: () -> Date
+    private let interval: TimeInterval
 
-    init(isEnabled: Bool, now: @escaping () -> Date = Date.init) {
+    init(isEnabled: Bool, interval: TimeInterval = defaultInterval, now: @escaping () -> Date = Date.init) {
         self.isEnabled = isEnabled
+        self.interval = interval
         self.now = now
+    }
+
+    /// Whether a timer is kept: the one cost the monitor has while nothing is shown.
+    var isSampling: Bool {
+        timer != nil
     }
 
     /// Whether there is anything to sample: the monitor is on and a row is still open. A Codex
@@ -86,6 +106,15 @@ final class ResourceMonitor {
         timer = nil
     }
 
+    /// A pass now rather than at the next tick: the menu opening wants a figure that is no
+    /// older than the opening. Nothing happens while a pass runs; its report is that fresh.
+    func sampleSoon() {
+        guard timer != nil else {
+            return
+        }
+        sampleNow()
+    }
+
     private func updateTimer() {
         guard Self.shouldSample(isEnabled: isEnabled, sessions: sessions) else {
             stop()
@@ -94,13 +123,16 @@ final class ResourceMonitor {
         guard timer == nil else {
             return
         }
-        let timer = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.sampleNow()
             }
         }
         // Lets macOS fold this wake-up into others.
-        timer.tolerance = 1
+        timer.tolerance = min(1, interval / 5)
+        // The common modes, so the figure in an open menu keeps moving: a menu tracks the mouse
+        // in a mode of its own, and a timer of the default mode waits until it closes.
+        RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         sampleNow()
     }
@@ -145,29 +177,23 @@ final class ResourceMonitor {
         let hostTotal = report.hosts.reduce(into: ResourceUsage.zero) { $0.add($1.total) }
         let loads = report.sessions.values.compactMap(\.cpuLoad) + report.hosts.compactMap(\.cpuLoad)
         var parts = [
-            "Resources · \(report.sessions.count) sessions \(bytes(sessionTotal.footprint))",
-            "shared hosts \(bytes(hostTotal.footprint))",
-            "helpers \(bytes(report.totals.helpers.footprint))",
-            "commands \(bytes(report.totals.commands.footprint))",
-            "unattributed \(bytes(report.totals.unattributed.footprint))",
+            "Resources · \(report.sessions.count) sessions \(ResourceFormat.memory(sessionTotal.footprint))",
+            "shared hosts \(ResourceFormat.memory(hostTotal.footprint))",
+            "helpers \(ResourceFormat.memory(report.totals.helpers.footprint))",
+            "commands \(ResourceFormat.memory(report.totals.commands.footprint))",
+            "unattributed \(ResourceFormat.memory(report.totals.unattributed.footprint))",
         ]
         if !loads.isEmpty {
             parts.append(String(format: "%.2f cores", loads.reduce(0, +)))
         }
         if let own = report.agentWatch {
-            parts.append("Agent Watch \(bytes(own.footprint))")
+            parts.append("Agent Watch \(ResourceFormat.memory(own.footprint))")
         }
         if let machine = report.machine, machine.swapTotal > 0 {
-            parts.append("swap \(bytes(machine.swapUsed)) of \(bytes(machine.swapTotal))")
+            parts.append(
+                "swap \(ResourceFormat.memory(machine.swapUsed)) of \(ResourceFormat.memory(machine.swapTotal))")
         }
         parts.append(String(format: "pass %.1f ms", milliseconds))
         return parts.joined(separator: " · ")
-    }
-
-    private static func bytes(_ count: UInt64) -> String {
-        let megabytes = Double(count) / 1_048_576
-        return megabytes >= 1024
-            ? String(format: "%.1f GB", megabytes / 1024)
-            : String(format: "%.0f MB", megabytes)
     }
 }

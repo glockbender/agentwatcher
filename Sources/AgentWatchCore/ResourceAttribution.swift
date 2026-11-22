@@ -86,7 +86,11 @@ public enum ResourceAttribution {
         }
 
         basis.boundaries = tree.boundaries()
+        var agentWatchLoad: Double?
         if let previous {
+            agentWatchLoad = load(
+                from: previous.agentWatch, to: table.agentWatch,
+                over: table.sampledAt.timeIntervalSince(previous.sampledAt))
             let loads = cpuLoads(
                 now: basis, at: table.sampledAt, liveProcesses: tree.processes, previous: previous)
             for id in sessionResources.keys {
@@ -103,9 +107,19 @@ public enum ResourceAttribution {
             hosts: hostResources.values.sorted { $0.host.processID < $1.host.processID },
             totals: totals,
             agentWatch: table.agentWatch,
+            agentWatchLoad: agentWatchLoad,
             machine: table.machine,
             rateBasis: basis
         )
+    }
+
+    private static func load(from before: ResourceUsage?, to now: ResourceUsage?, over interval: TimeInterval)
+        -> Double?
+    {
+        guard let before, let now, interval > 0 else {
+            return nil
+        }
+        return max(0, now.cpuTime - before.cpuTime) / interval
     }
 
     /// Cores used per bucket since the previous report.
