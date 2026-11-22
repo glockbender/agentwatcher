@@ -16,6 +16,8 @@ protocol SettingsHost: AnyObject {
     var showsResourcesInCard: Bool { get set }
     /// The last reading while watching, for the Resources page.
     var resourceReport: ResourceReport? { get }
+    /// Whether a reading is coming: watching is on and a row is open.
+    var isReadingResources: Bool { get }
     var isReadingTranscripts: Bool { get }
     var transcriptFaultedSessionCount: Int { get }
     func toggleWidget()
@@ -199,6 +201,10 @@ final class SettingsModel: ObservableObject {
 
     var resourceReport: ResourceReport? {
         host?.resourceReport
+    }
+
+    var isReadingResources: Bool {
+        host?.isReadingResources ?? false
     }
 
     /// Whether the Resources page is on screen to go stale with each reading.

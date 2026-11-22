@@ -12,12 +12,16 @@ struct WidgetResources {
     var showsInCard = false
     var report: ResourceReport?
 
-    /// The session's total, while watching is on and a reading has it.
-    func figure(forSessionID id: String) -> ResourceFigure? {
-        guard isWatching else {
+    /// The session's total, while watching is on and a reading has it. A thread in ChatGPT.app
+    /// that a reading does not hold has no command running, which is nothing rather than unknown.
+    func figure(for snapshot: SessionSnapshot) -> ResourceFigure? {
+        guard isWatching, let report else {
             return nil
         }
-        return report?.sessions[id]?.figure
+        if let session = report.sessions[snapshot.id] {
+            return session.figure
+        }
+        return Self.isAppThread(snapshot) ? ResourceFigure(footprint: 0, cpuLoad: nil) : nil
     }
 
     /// What the session's hover card says, or `nil` for nothing: watching or the card's switch
@@ -26,15 +30,28 @@ struct WidgetResources {
         guard isWatching, showsInCard, Self.canMeasure(snapshot) else {
             return nil
         }
-        guard let session = report?.sessions[snapshot.id] else {
+        guard let report else {
             return .notRead
         }
-        return .measured(session, source: snapshot.source)
+        if let session = report.sessions[snapshot.id] {
+            return .measured(session, source: snapshot.source)
+        }
+        return Self.isAppThread(snapshot)
+            ? .measured(SessionResources(sessionID: snapshot.id), source: snapshot.source) : .notRead
     }
 
-    /// Whether a reading can hold this session at all: it is open and a process of its own,
-    /// or the app that shows it, is known.
+    /// Whether a reading can hold this session at all: it is open, and either a process of its
+    /// own is known or it is a thread whose commands a reading finds under the app's shared host.
     static func canMeasure(_ snapshot: SessionSnapshot) -> Bool {
-        !ResourceAttribution.rootProcessIDs(of: snapshot).isEmpty
+        snapshot.phase != .sessionClosed
+            && (!ResourceAttribution.rootProcessIDs(of: snapshot).isEmpty || isAppThread(snapshot))
+    }
+
+    /// A Codex thread in ChatGPT.app: no process of its own — the agent is the app's shared
+    /// `app-server` — so its hooks carry no process number, and a reading holds only the
+    /// commands the thread started, found by the thread's id in their environment.
+    static func isAppThread(_ snapshot: SessionSnapshot) -> Bool {
+        snapshot.source == .codex && snapshot.clientKind == .desktop
+            && ResourceAttribution.rootProcessIDs(of: snapshot).isEmpty
     }
 }

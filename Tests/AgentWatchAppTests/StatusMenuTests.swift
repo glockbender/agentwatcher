@@ -594,6 +594,7 @@ final class FakeAppHost: StatusMenuHost, SettingsHost {
     var showsResourcesInMenu = true
     var showsResourcesInCard = true
     var resourceReport: ResourceReport?
+    var isReadingResources = true
     var isReadingTranscripts = false
     var transcriptFaultedSessionCount = 0
     var sessions: [SessionSnapshot] = []

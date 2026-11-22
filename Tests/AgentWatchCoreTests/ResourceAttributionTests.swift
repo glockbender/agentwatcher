@@ -301,6 +301,42 @@ final class ResourceAttributionTests: XCTestCase {
         XCTAssertEqual(second.hosts.first?.cpuLoad, 0)
     }
 
+    /// A thread's row closes while its command still runs: the command moves to the host. The
+    /// host's load is the command's work over the interval, not the whole life it brings along.
+    func testACommandThatChangesOwnerBringsOnlyItsNewWork() {
+        let hosts = [SharedAgentHost(processID: 500, source: .codex)]
+        let thread = row("t1", source: .codex)
+        var closed = thread
+        closed.phase = .sessionClosed
+        let first = ResourceAttribution.report(
+            table: ProcessTable(
+                sampledAt: start,
+                processes: [
+                    process(500, parent: 1, "codex", cpu: 100),
+                    process(501, parent: 500, "zsh", cpu: 1),
+                    process(502, parent: 501, "go", cpu: 121, markers: [marker("t1", source: .codex)]),
+                ],
+                hosts: hosts),
+            sessions: [thread],
+            previous: nil
+        )
+        let second = ResourceAttribution.report(
+            table: ProcessTable(
+                sampledAt: start.addingTimeInterval(5),
+                processes: [
+                    process(500, parent: 1, "codex", cpu: 100),
+                    process(501, parent: 500, "zsh", cpu: 1),
+                    process(502, parent: 501, "go", cpu: 126, markers: [marker("t1", source: .codex)]),
+                ],
+                hosts: hosts),
+            sessions: [closed],
+            previous: first
+        )
+
+        XCTAssertNil(second.sessions[thread.id], "the closed row holds nothing")
+        XCTAssertEqual(second.hosts.first?.cpuLoad ?? -1, 1, accuracy: 0.001, "five seconds of work over five")
+    }
+
     // MARK: - A background session's terminal
 
     /// After `/bg` the terminal the person typed it in keeps an interactive `claude` alive,

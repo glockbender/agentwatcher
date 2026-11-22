@@ -319,6 +319,16 @@ public struct ResourceReport: Equatable, Sendable {
         /// Tops of subtrees that hang under another bucket, with that bucket and the subtree's
         /// time: when such a subtree ends, its time lands in the other bucket's counter.
         var boundaries: [Int32: Boundary] = [:]
+        /// Which bucket each process counted in, and how much time it brought: a live process
+        /// that changes bucket must not bring its whole life to the new one.
+        var members: [Int32: Member] = [:]
+    }
+
+    struct Member: Equatable, Sendable {
+        let bucket: String
+        /// The process's name: a number reused by another program is not the same process.
+        let name: String
+        let cpuTime: TimeInterval
     }
 
     struct Boundary: Equatable, Sendable {

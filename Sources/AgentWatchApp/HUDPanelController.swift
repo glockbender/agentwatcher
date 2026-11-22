@@ -369,8 +369,8 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 onHoverChanged: { [weak self] row, isInside in
                     self?.hoverChanged(row, isInside: isInside)
                 },
-                resourceFigure: { [weak self] sessionID in
-                    self?.resources().figure(forSessionID: sessionID)
+                resourceFigure: { [weak self] snapshot in
+                    self?.resources().figure(for: snapshot)
                 }
             )
         )

@@ -51,7 +51,11 @@ public enum ResourceAttribution {
 
         for process in table.processes {
             let whole = usage(of: process, includingFinishedChildren: true)
-            switch tree.owner(of: process.processID) {
+            let owner = tree.owner(of: process.processID)
+            basis.members[process.processID] = ResourceReport.Member(
+                bucket: tree.bucket(of: owner) ?? ProcessTree.unattributedBucket, name: process.name,
+                cpuTime: whole.cpuTime)
+            switch owner {
             case let .session(id, part):
                 var resources = sessionResources[id] ?? SessionResources(sessionID: id)
                 if part == .agent {
@@ -164,6 +168,11 @@ public enum ResourceAttribution {
     /// reaped is the top with every descendant it reaped first. A bucket whose time still went
     /// down — a process left without being reaped inside it — reads as idle rather than
     /// negative.
+    ///
+    /// A process still running can change bucket too: a thread's row closes and its command
+    /// goes to the host, a row's agent goes to its application. The time it had brought the old
+    /// bucket is taken off the new one and given back to the old, so each shows only what was
+    /// done in the interval.
     static func cpuLoads(
         now: ResourceReport.RateBasis,
         at moment: Date,
@@ -178,12 +187,23 @@ public enum ResourceAttribution {
         for (processID, boundary) in previous.rateBasis.boundaries where liveProcesses[processID] == nil {
             reaped[boundary.enclosingBucket, default: 0] += boundary.cpuTime
         }
+        var moved: [String: TimeInterval] = [:]
+        for (processID, member) in now.members {
+            guard let before = previous.rateBasis.members[processID], before.name == member.name,
+                before.bucket != member.bucket
+            else {
+                continue
+            }
+            moved[member.bucket, default: 0] += before.cpuTime
+            moved[before.bucket, default: 0] -= before.cpuTime
+        }
         var loads: [String: Double] = [:]
         for (bucket, time) in now.cpuTime {
             guard let before = previous.rateBasis.cpuTime[bucket] else {
                 continue
             }
-            loads[bucket] = max(0, time - before - reaped[bucket, default: 0]) / interval
+            let added = time - before - reaped[bucket, default: 0] - moved[bucket, default: 0]
+            loads[bucket] = max(0, added) / interval
         }
         return loads
     }
@@ -316,7 +336,11 @@ final class ProcessTree {
         return time
     }
 
-    private func bucket(of owner: Owner) -> String? {
+    /// Where a process no bucket claims counts while it moves: an orphan that a row later claims
+    /// brings no time from here either.
+    static let unattributedBucket = "unattributed"
+
+    func bucket(of owner: Owner) -> String? {
         switch owner {
         case let .session(id, _): id
         case let .host(processID, _): Self.bucket(host: processID)

@@ -32,6 +32,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.onLog = { [weak self] message in
             self?.recordDebug(message)
         }
+        monitor.onCleared = { [weak self] in
+            guard let self else { return }
+            statusMenu?.refreshSummary()
+            hudController.resourcesChanged()
+            if settingsWindow.model.isShowingResources {
+                settingsWindow.model.refresh()
+            }
+        }
         monitor.onReport = { [weak self] report in
             guard let self else { return }
             resourceHistory.add(report)
@@ -651,6 +659,10 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
 
     var resourceReport: ResourceReport? {
         resourceMonitor.report
+    }
+
+    var isReadingResources: Bool {
+        resourceMonitor.isSampling
     }
 
     var isReadingTranscripts: Bool {

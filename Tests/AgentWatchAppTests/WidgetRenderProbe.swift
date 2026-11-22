@@ -518,7 +518,7 @@ final class WidgetRenderProbe: XCTestCase {
                 backgroundOpacity: 1,
                 restoredScrollOffset: nil,
                 onScroll: { _ in },
-                resourceFigure: { figures[$0] ?? nil }
+                resourceFigure: { figures[$0.id] ?? nil }
             )
             let height = HUDSessionListView.selfSizedHeight(
                 sessionCount: measured.count, usageLimits: [], background: .graphite, style: .standard)

@@ -43,7 +43,7 @@ class HUDSessionListView: NSView {
     private let onScroll: (NSPoint) -> Void
     private let onHoverChanged: (HUDSessionRowView, Bool) -> Void
     /// A session's memory and CPU now, asked when a row is built and when a reading arrives.
-    private let resourceFigure: (String) -> ResourceFigure?
+    private let resourceFigure: (SessionSnapshot) -> ResourceFigure?
 
     /// How many sessions the counters are currently reporting as out of sight, each way.
     private(set) var hiddenSessions: HiddenRows = .none
@@ -73,7 +73,7 @@ class HUDSessionListView: NSView {
         restoredScrollOffset: NSPoint?,
         onScroll: @escaping (NSPoint) -> Void,
         onHoverChanged: @escaping (HUDSessionRowView, Bool) -> Void = { _, _ in },
-        resourceFigure: @escaping (String) -> ResourceFigure? = { _ in nil }
+        resourceFigure: @escaping (SessionSnapshot) -> ResourceFigure? = { _ in nil }
     ) {
         self.resourceFigure = resourceFigure
         self.models = models
@@ -371,7 +371,7 @@ class HUDSessionListView: NSView {
     @discardableResult
     func refreshResources() -> Int {
         rows.reduce(into: 0) { total, row in
-            total += row.refreshResources(resourceFigure(row.snapshot.id)) ? 1 : 0
+            total += row.refreshResources(resourceFigure(row.snapshot)) ? 1 : 0
         }
     }
 
@@ -475,7 +475,7 @@ class HUDSessionListView: NSView {
             layout: model.layout,
             style: style,
             showsResources: model.showsResources,
-            resourceFigure: model.showsResources ? resourceFigure(snapshot.id) : nil,
+            resourceFigure: model.showsResources ? resourceFigure(snapshot) : nil,
             onFocus: { [focus] in focus(snapshot) },
             dismissal: model.dismissal,
             onRemove: { [remove] in remove(snapshot) },

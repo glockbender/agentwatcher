@@ -69,6 +69,8 @@ final class ResourceMonitor {
 
     private(set) var report: ResourceReport?
     var onReport: ((ResourceReport) -> Void)?
+    /// The report was dropped because no row is open any more: what showed it shows nothing now.
+    var onCleared: (() -> Void)?
     var onLog: ((String) -> Void)?
 
     private var isEnabled: Bool
@@ -77,6 +79,9 @@ final class ResourceMonitor {
     private var sampler: ProcessResourceSampler? = ProcessResourceSampler()
     private var timer: Timer?
     private var lastLoggedAt: Date?
+    /// Moved on whenever watching is switched off, so a pass that was under way then is not taken
+    /// in: its load would span the time nobody watched.
+    private var generation = 0
     private let now: () -> Date
     private let interval: TimeInterval
 
@@ -103,6 +108,7 @@ final class ResourceMonitor {
         if !enabled {
             report = nil
             lastLoggedAt = nil
+            generation += 1
         }
         updateTimer()
     }
@@ -129,6 +135,12 @@ final class ResourceMonitor {
     private func updateTimer() {
         guard Self.shouldSample(isEnabled: isEnabled, sessions: sessions) else {
             stop()
+            // With nothing open there is no next reading, and a report kept now would be shown
+            // as the current one for as long as no row opens.
+            if report != nil {
+                report = nil
+                onCleared?()
+            }
             return
         }
         guard timer == nil else {
@@ -148,15 +160,26 @@ final class ResourceMonitor {
         sampleNow()
     }
 
+    /// The shortest stretch a load is counted over. An opening menu asks for a pass at any point
+    /// of the timer's cycle, and a load over a few milliseconds is noise: the same steady agent
+    /// read 0% on one opening and 400% on the next. A report younger than this is fresh enough.
+    private var minimumInterval: TimeInterval {
+        interval / 5
+    }
+
     private func sampleNow() {
         guard Self.shouldSample(isEnabled: isEnabled, sessions: sessions), let sampler else {
+            return
+        }
+        let moment = now()
+        if let report, moment.timeIntervalSince(report.sampledAt) < minimumInterval {
             return
         }
         self.sampler = nil
         let open = sessions.filter { $0.phase != .sessionClosed }
         let roots = ResourceAttribution.rootProcessIDs(of: open)
         let previous = report
-        let moment = now()
+        let generation = generation
         Task.detached(priority: .utility) { [sampler] in
             var sampler = sampler
             let started = DispatchTime.now().uptimeNanoseconds
@@ -164,14 +187,18 @@ final class ResourceMonitor {
             let report = ResourceAttribution.report(table: table, sessions: open, previous: previous)
             let milliseconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
             await MainActor.run { [weak self, sampler] in
-                self?.finish(report, sampler: sampler, milliseconds: milliseconds)
+                self?.finish(report, sampler: sampler, milliseconds: milliseconds, generation: generation)
             }
         }
     }
 
-    private func finish(_ report: ResourceReport, sampler: ProcessResourceSampler, milliseconds: Double) {
+    private func finish(
+        _ report: ResourceReport, sampler: ProcessResourceSampler, milliseconds: Double, generation: Int
+    ) {
         self.sampler = sampler
-        guard isEnabled else {
+        // A pass that outlived the last open row is not taken in either: it would bring back the
+        // report that closing the row dropped.
+        guard isEnabled, generation == self.generation, isSampling else {
             return
         }
         self.report = report

@@ -14,6 +14,9 @@ final class ResourcesPaneTests: XCTestCase {
         XCTAssertEqual(Set(ResourcesPane.lines(report: nil, isOn: false).map(\.value)), ["Off"])
         XCTAssertEqual(ResourcesPane.lines(report: nil, isOn: true).map(\.title), ResourcesPane.titles)
         XCTAssertEqual(Set(ResourcesPane.lines(report: nil, isOn: true).map(\.value)), ["Reading…"])
+        XCTAssertEqual(
+            Set(ResourcesPane.lines(report: nil, isOn: true, isReading: false).map(\.value)), ["No session open"],
+            "with no row open nothing is read, and the page must not promise a reading")
     }
 
     func testLinesSplitTheMachineIntoAgentsAppsAgentWatchAndTheRest() {

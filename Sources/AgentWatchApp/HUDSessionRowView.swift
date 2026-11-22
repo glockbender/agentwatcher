@@ -408,7 +408,9 @@ final class HUDSessionRowView: NSStackView {
         label.font = style.figuresFont
         label.textColor = background.foregroundColor
         label.alignment = .right
-        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // Below required, so a value wider than the widest expected one is cut rather than
+        // fighting the fixed width.
+        label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
         let insets = label.alignmentRectInsets
         let width = widest.map { labelWidth(of: $0, font: style.figuresFont) }.max() ?? 0

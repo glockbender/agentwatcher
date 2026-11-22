@@ -37,7 +37,7 @@ final class RowResourcesTests: XCTestCase {
         controller.resourcesChanged()
         XCTAssertTrue(controller.currentRow(for: session.id) === row, "a reading rebuilt the row")
         XCTAssertEqual(row.shownResources, ["1.5 GB", "40%"], "two seconds of CPU over five is 40%")
-        XCTAssertFalse(row.refreshResources(resources.figure(forSessionID: session.id)), "the same figures wrote again")
+        XCTAssertFalse(row.refreshResources(resources.figure(for: session)), "the same figures wrote again")
     }
 
     /// The label keeps one width whatever it reads, so a number that grows does not push the
@@ -98,6 +98,24 @@ final class RowResourcesTests: XCTestCase {
         XCTAssertTrue(
             HUDRowModel(snapshot: measuredSession(processID: 100), now: now, layout: template, watchesResources: true)
                 .showsResources)
+    }
+
+    /// A Codex thread in ChatGPT.app has no process number — the agent is the app's shared
+    /// process — and still gets its commands' figures, which are nothing while none runs.
+    func testAThreadInTheAppIsMeasuredWithoutAProcessOfItsOwn() {
+        var thread = testSession(source: .codex, phase: .executing, clientKind: .desktop, lastObservedAt: now)
+        thread.agentProcessID = nil
+        let template = Self.layout(.memory)
+        let reading = report(footprint: megabyte, cpuTime: 0, sessions: [measuredSession(processID: 100)], at: now)
+        let resources = WidgetResources(isWatching: true, showsInCard: true, report: reading)
+
+        XCTAssertTrue(HUDRowModel(snapshot: thread, now: now, layout: template, watchesResources: true).showsResources)
+        XCTAssertEqual(resources.figure(for: thread), ResourceFigure(footprint: 0, cpuLoad: nil))
+        guard case let .measured(session, _) = resources.card(for: thread) else {
+            return XCTFail("a reading that does not hold the thread says it runs nothing")
+        }
+        XCTAssertEqual(
+            resourceCardLines(.measured(session, source: .codex)).first, "Commands only: memory 0 MB")
     }
 
     func testTheCardNamesTheTotalAndTheHeaviestParts() {

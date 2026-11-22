@@ -73,6 +73,48 @@ final class ResourceMonitorTests: XCTestCase {
         XCTAssertNil(monitor.report)
     }
 
+    /// With the last row closed no reading follows, so the last one must not stay on screen as
+    /// the current one: the menu's figure and the Resources page would show it for hours.
+    func testTheLastRowClosingDropsTheReport() async {
+        let monitor = ResourceMonitor(isEnabled: true)
+        let reported = expectation(description: "a report")
+        reported.assertForOverFulfill = false
+        var cleared = 0
+        monitor.onReport = { _ in reported.fulfill() }
+        monitor.onCleared = { cleared += 1 }
+        monitor.sessionsChanged([row("a", processID: getpid())])
+        await fulfillment(of: [reported], timeout: 10)
+
+        monitor.sessionsChanged([row("a", processID: getpid(), phase: .sessionClosed)])
+
+        XCTAssertFalse(monitor.isSampling)
+        XCTAssertNil(monitor.report)
+        XCTAssertEqual(cleared, 1)
+    }
+
+    /// A menu opening right after a tick would count a load over a few milliseconds, which is
+    /// noise. A report that young is fresh enough, and no pass runs.
+    func testAPassAskedForRightAfterAReportWaits() async throws {
+        let monitor = ResourceMonitor(isEnabled: true)
+        let reported = expectation(description: "a report")
+        reported.assertForOverFulfill = false
+        var reports = 0
+        monitor.onReport = { _ in
+            reports += 1
+            reported.fulfill()
+        }
+        monitor.sessionsChanged([row("a", processID: getpid())])
+        await fulfillment(of: [reported], timeout: 10)
+        let first = try XCTUnwrap(monitor.report).sampledAt
+
+        monitor.sampleSoon()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        monitor.stop()
+
+        XCTAssertEqual(reports, 1)
+        XCTAssertEqual(monitor.report?.sampledAt, first)
+    }
+
     /// An open menu runs the main thread in its own mode. The figure in it must keep moving,
     /// so the timer and the hop back from a pass have to work there too.
     func testReportsKeepComingWhileAMenuTracksTheMouse() {

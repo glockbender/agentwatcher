@@ -31,7 +31,10 @@ struct ResourcesPane: View {
                         : "Turn on watching above to show the figures.")
             }
             Section {
-                ForEach(Self.lines(report: model.resourceReport, isOn: isOn), id: \.title) { line in
+                ForEach(
+                    Self.lines(report: model.resourceReport, isOn: isOn, isReading: model.isReadingResources),
+                    id: \.title
+                ) { line in
                     LabeledContent(line.title, value: line.value)
                 }
             } header: {
@@ -56,13 +59,14 @@ struct ResourcesPane: View {
     ]
 
     /// The same lines whatever the state, so nothing moves when watching is switched or a reading
-    /// arrives.
-    static func lines(report: ResourceReport?, isOn: Bool) -> [Line] {
+    /// arrives. With no row open nothing is read, by design: no timer runs while there is
+    /// nothing to watch.
+    static func lines(report: ResourceReport?, isOn: Bool, isReading: Bool = true) -> [Line] {
         guard isOn else {
             return titles.map { Line(title: $0, value: "Off") }
         }
         guard let report else {
-            return titles.map { Line(title: $0, value: "Reading…") }
+            return titles.map { Line(title: $0, value: isReading ? "Reading…" : "No session open") }
         }
         let own = report.agentWatch.map { usage in
             ResourceFormat.short(ResourceFigure(footprint: usage.footprint, cpuLoad: report.agentWatchLoad))
