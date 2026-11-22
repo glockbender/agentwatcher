@@ -37,7 +37,7 @@ quit_app() {
 fresh() {
   quit_app
   rm -rf $copy
-  ditto "$share/old/AgentWatch.app" $copy
+  ditto -x -k "$share/old.zip" ${copy:h}
   defaults delete com.glockbender.agentwatch > /dev/null 2>&1
   rm -rf ~/Library/Caches/com.glockbender.agentwatch
   touch ~/.case-start
