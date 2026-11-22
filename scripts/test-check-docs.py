@@ -122,6 +122,10 @@ class LengthTests(unittest.TestCase):
             [f"{DOCS}a.md: {check.MAX_LINES + 1} lines; split it by subject (the limit is {check.MAX_LINES})"],
         )
 
+    def test_a_generated_index_may_grow_past_the_limit(self):
+        long = "строка\n" * (check.MAX_LINES + 1)
+        self.assertEqual(check.length_problems({DOCS + "measurements.md": long}), [])
+
 
 if __name__ == "__main__":
     unittest.main()
