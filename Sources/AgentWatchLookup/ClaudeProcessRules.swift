@@ -127,6 +127,10 @@ public struct ClaudeProcessRules: AgentProcessRules {
         "CLAUDE_CODE_SESSION_ID"
     }
 
+    public var desktopApplicationBundles: [String] {
+        ["/Applications/Claude.app/"]
+    }
+
     /// Never: one `claude` process is one session.
     public func isSharedHost(
         executableName: String,

@@ -76,6 +76,33 @@ public struct SharedAgentHost: Hashable, Sendable {
     }
 }
 
+/// The process an agent's desktop application starts from — Claude.app, ChatGPT.app — with
+/// everything under it that no row or shared host claims: the windows, and the MCP servers the
+/// application's own chat runs.
+public struct DesktopApplication: Hashable, Sendable {
+    public let processID: Int32
+    /// The bundle's name, «Claude.app».
+    public let name: String
+
+    public init(processID: Int32, name: String) {
+        self.processID = processID
+        self.name = name
+    }
+}
+
+/// Processor time of the whole machine, in the kernel's ticks, counted since it started.
+public struct ProcessorTicks: Equatable, Sendable {
+    public let busy: UInt64
+    public let total: UInt64
+    public let cores: Int
+
+    public init(busy: UInt64, total: UInt64, cores: Int) {
+        self.busy = busy
+        self.total = total
+        self.cores = cores
+    }
+}
+
 /// How hard macOS is pressed for memory, as `kern.memorystatus_vm_pressure_level` says.
 public enum MemoryPressure: Equatable, Sendable {
     case normal
@@ -86,12 +113,18 @@ public enum MemoryPressure: Equatable, Sendable {
 /// The machine's memory, beside which the agents' share is read.
 public struct MachineMemory: Equatable, Sendable {
     public let physical: UInt64
+    /// Memory in use: the processes' own memory, wired memory and the compressor's. File cache
+    /// and memory that can be dropped at once are left out.
+    public let used: UInt64?
     public let swapUsed: UInt64
     public let swapTotal: UInt64
     public let pressure: MemoryPressure?
 
-    public init(physical: UInt64, swapUsed: UInt64, swapTotal: UInt64, pressure: MemoryPressure?) {
+    public init(
+        physical: UInt64, used: UInt64? = nil, swapUsed: UInt64, swapTotal: UInt64, pressure: MemoryPressure?
+    ) {
         self.physical = physical
+        self.used = used
         self.swapUsed = swapUsed
         self.swapTotal = swapTotal
         self.pressure = pressure
@@ -104,21 +137,27 @@ public struct ProcessTable: Equatable, Sendable {
     public let sampledAt: Date
     public let processes: [SampledProcess]
     public let hosts: [SharedAgentHost]
+    public let applications: [DesktopApplication]
     public let agentWatch: ResourceUsage?
     public let machine: MachineMemory?
+    public let processor: ProcessorTicks?
 
     public init(
         sampledAt: Date,
         processes: [SampledProcess],
         hosts: [SharedAgentHost] = [],
+        applications: [DesktopApplication] = [],
         agentWatch: ResourceUsage? = nil,
-        machine: MachineMemory? = nil
+        machine: MachineMemory? = nil,
+        processor: ProcessorTicks? = nil
     ) {
         self.sampledAt = sampledAt
         self.processes = processes
         self.hosts = hosts
+        self.applications = applications
         self.agentWatch = agentWatch
         self.machine = machine
+        self.processor = processor
     }
 }
 
@@ -215,6 +254,20 @@ public struct HostResources: Equatable, Sendable {
     }
 }
 
+/// One desktop application's own processes, from every one of its processes under `launchd`.
+public struct ApplicationResources: Equatable, Sendable {
+    /// «Claude.app».
+    public let name: String
+    public var total: ResourceUsage
+    public var cpuLoad: Double?
+
+    public init(name: String, total: ResourceUsage = .zero, cpuLoad: Double? = nil) {
+        self.name = name
+        self.total = total
+        self.cpuLoad = cpuLoad
+    }
+}
+
 /// The agents' processes counted by kind, each process once.
 public struct ResourceTotals: Equatable, Sendable {
     /// Agents' own processes and shared hosts.
@@ -224,7 +277,9 @@ public struct ResourceTotals: Equatable, Sendable {
     /// Running tool commands and the time of finished ones.
     public var commands = ResourceUsage.zero
     public var orphans = ResourceUsage.zero
-    /// Processes the sampler handed in that no live row answers to.
+    /// The desktop applications' own processes: windows, and their chat's MCP servers.
+    public var applications = ResourceUsage.zero
+    /// Processes the sampler handed in that no live row answers to: what closed sessions left.
     public var unattributed = ResourceUsage.zero
 
     public init() {}
@@ -234,6 +289,7 @@ public struct ResourceTotals: Equatable, Sendable {
         sum.add(helpers)
         sum.add(commands)
         sum.add(orphans)
+        sum.add(applications)
         sum.add(unattributed)
         return sum
     }
@@ -245,11 +301,15 @@ public struct ResourceReport: Equatable, Sendable {
     /// Keyed by `SessionSnapshot.id`.
     public let sessions: [String: SessionResources]
     public let hosts: [HostResources]
+    public let applications: [ApplicationResources]
     public let totals: ResourceTotals
     public let agentWatch: ResourceUsage?
     /// Cores Agent Watch itself used since the previous report.
     public let agentWatchLoad: Double?
     public let machine: MachineMemory?
+    public let processor: ProcessorTicks?
+    /// Cores busy on the whole machine since the previous report.
+    public let machineLoad: Double?
     /// What the next report needs to turn processor time into load. Not shown.
     let rateBasis: RateBasis
 

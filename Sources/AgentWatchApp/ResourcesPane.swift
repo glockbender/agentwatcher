@@ -33,11 +33,12 @@ struct ResourcesPane: View {
                     LabeledContent(line.title, value: line.value)
                 }
             } header: {
-                Text("Now")
+                Text("This Mac now")
             } footer: {
                 Footnote(
-                    "Memory is what Activity Monitor shows. CPU counts one busy core as 100%, as Activity Monitor "
-                        + "does.")
+                    "Memory is what Activity Monitor shows for each process, and the parts can add up to more than "
+                        + "is in use when memory is compressed or swapped. CPU counts one busy core as 100%, as "
+                        + "Activity Monitor does.")
             }
         }
     }
@@ -47,21 +48,40 @@ struct ResourcesPane: View {
         let value: String
     }
 
-    /// The same lines whatever the state, so nothing moves when watching is switched.
+    static let titles = [
+        "Memory in use", "CPU", "Agents", "Claude and ChatGPT apps", "Agent Watch", "Left by closed sessions",
+        "Everything else",
+    ]
+
+    /// The same lines whatever the state, so nothing moves when watching is switched or a reading
+    /// arrives.
     static func lines(report: ResourceReport?, isOn: Bool) -> [Line] {
         guard isOn else {
-            return [Line(title: "Agents", value: "Off"), Line(title: "Agent Watch", value: "Off")]
+            return titles.map { Line(title: $0, value: "Off") }
         }
         guard let report else {
-            return [Line(title: "Agents", value: "Reading…"), Line(title: "Agent Watch", value: "Reading…")]
+            return titles.map { Line(title: $0, value: "Reading…") }
         }
         let own = report.agentWatch.map { usage in
-            ResourceFormat.short(AgentsResourceFigure(footprint: usage.footprint, cpuLoad: report.agentWatchLoad))
+            ResourceFormat.short(ResourceFigure(footprint: usage.footprint, cpuLoad: report.agentWatchLoad))
         }
-        return [
-            Line(title: "Agents", value: ResourceFormat.short(report.agents)),
-            Line(title: "Agent Watch", value: own ?? "Not read"),
+        guard let machine = report.machineFigure else {
+            let values = [
+                "Not read", "Not read", ResourceFormat.short(report.agents), "Not read", own ?? "Not read",
+                ResourceFormat.memory(report.totals.unattributed.footprint), "Not read",
+            ]
+            return zip(titles, values).map { Line(title: $0, value: $1) }
+        }
+        let values = [
+            ResourceFormat.memoryInUse(machine),
+            machine.load.map { ResourceFormat.share($0, of: machine.cores) } ?? "Reading…",
+            ResourceFormat.short(machine.agents),
+            report.applications.isEmpty ? "Not running" : ResourceFormat.short(machine.applications),
+            own ?? "Not read",
+            ResourceFormat.memory(machine.leftBehind.footprint),
+            ResourceFormat.short(machine.everythingElse),
         ]
+        return zip(titles, values).map { Line(title: $0, value: $1) }
     }
 
     private var watches: Binding<Bool> {

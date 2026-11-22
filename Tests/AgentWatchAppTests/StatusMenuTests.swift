@@ -56,7 +56,7 @@ final class StatusMenuTests: XCTestCase {
     func testTheAgentsFigureStandsBesideTheSummaryOnlyWhileThereIsOne() throws {
         let (menu, host, _) = try makeMenu()
         host.attentionCounts = SessionAttentionCounts(needsPerson: 0, working: 2, done: 0, quiet: 0)
-        host.resourceFigure = AgentsResourceFigure(footprint: 3482 << 20, cpuLoad: 1.4)
+        host.resourceFigure = ResourceFigure(footprint: 3482 << 20, cpuLoad: 1.4)
 
         menu.menuWillOpen(menu.menu)
 
@@ -586,7 +586,7 @@ final class KeyRecorder: NSResponder {
 final class FakeAppHost: StatusMenuHost, SettingsHost {
     var calls: [String] = []
     var attentionCounts = SessionAttentionCounts.empty
-    var resourceFigure: AgentsResourceFigure?
+    var resourceFigure: ResourceFigure?
     var isWidgetVisible = false
     var isEventDebugVisible = false
     var checksForUpdatesOnLaunch = true

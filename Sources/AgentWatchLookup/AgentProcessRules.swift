@@ -46,6 +46,10 @@ public protocol AgentProcessRules: Sendable {
     /// starts. The value is raw, for the redactor.
     var sessionMarkerVariable: String { get }
 
+    /// The desktop applications that run this agent's sessions, as the folders of their
+    /// bundles, each ending in a slash. Their own processes are counted apart from the agents.
+    var desktopApplicationBundles: [String] { get }
+
     /// Whether a process holds many sessions at once and names none of them, so that its tree
     /// has to be split by the markers below it.
     ///

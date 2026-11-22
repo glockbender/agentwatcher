@@ -45,13 +45,19 @@ final class SettingsRenderProbe: XCTestCase {
         try draw(AnyView(RowPane(model: model)), height: 900, named: "settings-rows", in: directory)
         try draw(AnyView(MenuBarPane(model: model)), height: 820, named: "settings-menu-bar", in: directory)
         try draw(AnyView(GeneralPane(model: model)), height: 900, named: "settings-general", in: directory)
-        try draw(AnyView(ResourcesPane(model: model)), height: 520, named: "settings-resources-off", in: directory)
+        try draw(AnyView(ResourcesPane(model: model)), height: 660, named: "settings-resources-off", in: directory)
         host.watchesResources = true
         host.resourceReport = ResourceAttribution.report(
             table: ProcessTable(
                 sampledAt: Date(),
-                processes: [SampledProcess(processID: 100, parentProcessID: 1, name: "claude", footprint: 3482 << 20)],
-                agentWatch: ResourceUsage(footprint: 83 << 20, processCount: 1)),
+                processes: [
+                    SampledProcess(processID: 100, parentProcessID: 1, name: "claude", footprint: 3482 << 20),
+                    SampledProcess(processID: 50, parentProcessID: 1, name: "Claude", footprint: 5178 << 20),
+                ],
+                applications: [DesktopApplication(processID: 50, name: "Claude.app")],
+                agentWatch: ResourceUsage(footprint: 83 << 20, processCount: 1),
+                machine: MachineMemory(
+                    physical: 48 << 30, used: 38298 << 20, swapUsed: 5 << 30, swapTotal: 6 << 30, pressure: .normal)),
             sessions: [
                 SessionSnapshot(
                     id: "claude:a", source: .claude, arrivalIndex: 0, phase: .idle, lastObservedAt: Date(),
@@ -59,7 +65,7 @@ final class SettingsRenderProbe: XCTestCase {
             ],
             previous: nil)
         model.refresh()
-        try draw(AnyView(ResourcesPane(model: model)), height: 520, named: "settings-resources-on", in: directory)
+        try draw(AnyView(ResourcesPane(model: model)), height: 660, named: "settings-resources-on", in: directory)
         _ = host
     }
 

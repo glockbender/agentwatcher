@@ -120,6 +120,15 @@ private struct Pass {
                 include(below: processID, reason: .markers)
             }
         }
+        // Last, so that the rows and hosts inside an application keep their own reading.
+        var applications: [DesktopApplication] = []
+        for (processID, found) in ownProcesses.sorted(by: { $0.key < $1.key })
+        where included[processID] == nil && found.parentProcessID == 1 {
+            if let name = desktopApplication(processID) {
+                applications.append(DesktopApplication(processID: processID, name: name))
+                include(below: processID, reason: .tree)
+            }
+        }
 
         let hostIDs = Set(hosts.map(\.processID))
         var processes: [SampledProcess] = []
@@ -155,8 +164,10 @@ private struct Pass {
             sampledAt: moment,
             processes: processes,
             hosts: hosts,
+            applications: applications,
             agentWatch: own,
-            machine: kernel.machineMemory()
+            machine: kernel.machineMemory(),
+            processor: kernel.processorTicks()
         )
     }
 
@@ -232,6 +243,15 @@ private struct Pass {
         return kernel.applicationFolders.contains { path.hasPrefix($0) }
     }
 
+    /// The bundle's name when the process is an agent's desktop application.
+    private mutating func desktopApplication(_ processID: Int32) -> String? {
+        guard let path = executablePath(processID)?.lowercased() else {
+            return nil
+        }
+        let bundle = agents.lazy.flatMap(\.rules.desktopApplicationBundles).first { path.hasPrefix($0.lowercased()) }
+        return bundle.map { URL(fileURLWithPath: $0).lastPathComponent }
+    }
+
     private mutating func executablePath(_ processID: Int32) -> String? {
         var current = facts(processID)
         if !current.pathChecked {
@@ -303,6 +323,7 @@ struct ProcessKernel: Sendable {
     var workingDirectory: @Sendable (Int32) -> String?
     var usage: @Sendable (Int32) -> ProcessUsage?
     var machineMemory: @Sendable () -> MachineMemory?
+    var processorTicks: @Sendable () -> ProcessorTicks?
     var ownProcessID: Int32
     var userID: uid_t
     /// Where installed applications live, each ending in a slash.
@@ -317,6 +338,7 @@ struct ProcessKernel: Sendable {
         workingDirectory: { AgentProcessLocator.workingDirectoryPath(of: $0) },
         usage: { liveUsage(of: $0) },
         machineMemory: { liveMachineMemory() },
+        processorTicks: { liveProcessorTicks() },
         ownProcessID: getpid(),
         userID: getuid(),
         applicationFolders: [
@@ -390,10 +412,57 @@ struct ProcessKernel: Sendable {
             ? memoryPressure(level: level) : nil
         return MachineMemory(
             physical: physical,
+            used: liveMemoryInUse(),
             swapUsed: hasSwap ? swap.xsu_used : 0,
             swapTotal: hasSwap ? swap.xsu_total : 0,
             pressure: pressure
         )
+    }
+
+    /// The processes' own memory less what they marked as droppable, wired memory, and the
+    /// compressor's pages: memory taken, with the file cache left out.
+    private static func liveMemoryInUse() -> UInt64? {
+        var statistics = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &statistics) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else {
+            return nil
+        }
+        let ownPages =
+            UInt64(statistics.internal_page_count)
+            - min(
+                UInt64(statistics.internal_page_count), UInt64(statistics.purgeable_count))
+        let pages = ownPages + UInt64(statistics.wire_count) + UInt64(statistics.compressor_page_count)
+        var pageSize: vm_size_t = 0
+        guard host_page_size(mach_host_self(), &pageSize) == KERN_SUCCESS else {
+            return nil
+        }
+        return pages * UInt64(pageSize)
+    }
+
+    private static func liveProcessorTicks() -> ProcessorTicks? {
+        var load = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &load) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else {
+            return nil
+        }
+        let ticks = withUnsafeBytes(of: load.cpu_ticks) { Array($0.bindMemory(to: natural_t.self)) }
+        let user = UInt64(ticks[Int(CPU_STATE_USER)])
+        let system = UInt64(ticks[Int(CPU_STATE_SYSTEM)])
+        let nice = UInt64(ticks[Int(CPU_STATE_NICE)])
+        let idle = UInt64(ticks[Int(CPU_STATE_IDLE)])
+        return ProcessorTicks(
+            busy: user + system + nice, total: user + system + nice + idle,
+            cores: ProcessInfo.processInfo.activeProcessorCount)
     }
 
     /// The kernel's levels are bits: 1 normal, 2 warning, 4 critical.

@@ -11,7 +11,7 @@ protocol StatusMenuHost: AnyObject {
     var attentionCounts: SessionAttentionCounts { get }
     /// What the agents cost together, while watching is on and the menu is to show it and a
     /// reading exists; `nil` otherwise.
-    var resourceFigure: AgentsResourceFigure? { get }
+    var resourceFigure: ResourceFigure? { get }
     var isWidgetVisible: Bool { get }
     /// Every session the widget has, in the widget's order.
     var sessions: [SessionSnapshot] { get }

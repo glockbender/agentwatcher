@@ -45,6 +45,7 @@ public enum ResourceAttribution {
         let tree = ProcessTree(table: table, rows: RowDirectory(sessions))
         var sessionResources: [String: SessionResources] = [:]
         var hostResources: [Int32: HostResources] = [:]
+        var applicationResources: [String: ApplicationResources] = [:]
         var totals = ResourceTotals()
         var basis = ResourceReport.RateBasis()
 
@@ -80,6 +81,16 @@ public enum ResourceAttribution {
                 totals.add(whole, as: part)
                 basis.cpuTime[ProcessTree.bucket(host: processID), default: 0] += whole.cpuTime
                 hostResources[processID] = resources
+            case let .application(processID):
+                guard let application = tree.applications[processID] else {
+                    continue
+                }
+                var resources =
+                    applicationResources[application.name] ?? ApplicationResources(name: application.name)
+                resources.total.add(whole)
+                totals.applications.add(whole)
+                basis.cpuTime[ProcessTree.bucket(application: application.name), default: 0] += whole.cpuTime
+                applicationResources[application.name] = resources
             case .unattributed:
                 totals.unattributed.add(whole)
             }
@@ -87,7 +98,9 @@ public enum ResourceAttribution {
 
         basis.boundaries = tree.boundaries()
         var agentWatchLoad: Double?
+        var machineLoad: Double?
         if let previous {
+            machineLoad = load(from: previous.processor, to: table.processor)
             agentWatchLoad = load(
                 from: previous.agentWatch, to: table.agentWatch,
                 over: table.sampledAt.timeIntervalSince(previous.sampledAt))
@@ -99,18 +112,32 @@ public enum ResourceAttribution {
             for processID in hostResources.keys {
                 hostResources[processID]?.cpuLoad = loads[ProcessTree.bucket(host: processID)]
             }
+            for name in applicationResources.keys {
+                applicationResources[name]?.cpuLoad = loads[ProcessTree.bucket(application: name)]
+            }
         }
 
         return ResourceReport(
             sampledAt: table.sampledAt,
             sessions: sessionResources,
             hosts: hostResources.values.sorted { $0.host.processID < $1.host.processID },
+            applications: applicationResources.values.sorted { $0.name < $1.name },
             totals: totals,
             agentWatch: table.agentWatch,
             agentWatchLoad: agentWatchLoad,
             machine: table.machine,
+            processor: table.processor,
+            machineLoad: machineLoad,
             rateBasis: basis
         )
+    }
+
+    /// Cores busy: the share of all cores' ticks that were busy, times the cores.
+    private static func load(from before: ProcessorTicks?, to now: ProcessorTicks?) -> Double? {
+        guard let before, let now, now.total > before.total, now.busy >= before.busy else {
+            return nil
+        }
+        return Double(now.busy - before.busy) / Double(now.total - before.total) * Double(now.cores)
     }
 
     private static func load(from before: ResourceUsage?, to now: ResourceUsage?, over interval: TimeInterval)
@@ -211,11 +238,13 @@ final class ProcessTree {
     enum Owner: Equatable {
         case session(String, ResourcePart)
         case host(Int32, HostPart)
+        case application(Int32)
         case unattributed
     }
 
     let processes: [Int32: SampledProcess]
     let hosts: [Int32: SharedAgentHost]
+    let applications: [Int32: DesktopApplication]
     private let rows: RowDirectory
     private var children: [Int32: [Int32]] = [:]
     private var owners: [Int32: Owner] = [:]
@@ -223,6 +252,8 @@ final class ProcessTree {
     init(table: ProcessTable, rows: RowDirectory) {
         processes = Dictionary(table.processes.map { ($0.processID, $0) }, uniquingKeysWith: { first, _ in first })
         hosts = Dictionary(table.hosts.map { ($0.processID, $0) }, uniquingKeysWith: { first, _ in first })
+        applications = Dictionary(
+            table.applications.map { ($0.processID, $0) }, uniquingKeysWith: { first, _ in first })
         self.rows = rows
         for process in table.processes where processes[process.parentProcessID] != nil {
             children[process.parentProcessID, default: []].append(process.processID)
@@ -231,6 +262,12 @@ final class ProcessTree {
 
     static func bucket(host processID: Int32) -> String {
         "host:\(processID)"
+    }
+
+    /// By name: an application can leave more than one process under `launchd`, and they are
+    /// one application's.
+    static func bucket(application name: String) -> String {
+        "application:\(name)"
     }
 
     func owner(of processID: Int32) -> Owner {
@@ -283,6 +320,7 @@ final class ProcessTree {
         switch owner {
         case let .session(id, _): id
         case let .host(processID, _): Self.bucket(host: processID)
+        case let .application(processID): applications[processID].map { Self.bucket(application: $0.name) }
         case .unattributed: nil
         }
     }
@@ -296,6 +334,9 @@ final class ProcessTree {
         }
         if hosts[processID] != nil {
             return .host(processID, .host)
+        }
+        if applications[processID] != nil {
+            return .application(processID)
         }
         guard let parent = processes[process.parentProcessID] else {
             // Nothing of ours above it: an orphan, if anything still names its session.
@@ -334,7 +375,8 @@ final class ProcessTree {
         while index < queue.count {
             let current = queue[index]
             index += 1
-            if current != processID, rows.roots[current] != nil || hosts[current] != nil {
+            if current != processID, rows.roots[current] != nil || hosts[current] != nil || applications[current] != nil
+            {
                 continue
             }
             let markers = (processes[current]?.markers ?? []).filter { source == nil || $0.source == source }

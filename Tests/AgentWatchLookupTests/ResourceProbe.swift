@@ -63,6 +63,21 @@ final class ResourceProbe: XCTestCase {
         lines.append(
             "this test process \(megabytes(report.agentWatch?.footprint ?? 0)); machine \(String(describing: report.machine))"
         )
+        for application in report.applications {
+            lines.append(
+                "application \(application.name) \(megabytes(application.total.footprint))"
+                    + "/\(application.total.processCount)p load \(application.cpuLoad.map { String(format: "%.3f", $0) } ?? "-")"
+            )
+        }
+        if let machine = report.machineFigure {
+            let figure = { (figure: ResourceFigure) in ResourceFormat.short(figure) }
+            lines.append(
+                "machine used \(ResourceFormat.memory(machine.used)) of \(ResourceFormat.memory(machine.physical)),"
+                    + " load \(machine.load.map { String(format: "%.2f", $0) } ?? "-") of \(machine.cores ?? 0) cores;"
+                    + " agents \(figure(machine.agents)), applications \(figure(machine.applications)),"
+                    + " left behind \(figure(machine.leftBehind)), everything else \(figure(machine.everythingElse))"
+            )
+        }
         print(lines.map { "PROBE " + $0 }.joined(separator: "\n"))
     }
 

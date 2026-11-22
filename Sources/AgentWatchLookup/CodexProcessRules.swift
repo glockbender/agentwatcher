@@ -56,6 +56,11 @@ public struct CodexProcessRules: AgentProcessRules {
         "CODEX_THREAD_ID"
     }
 
+    /// The same two `isDesktopProcess` knows.
+    public var desktopApplicationBundles: [String] {
+        ["/Applications/ChatGPT.app/", "/Applications/Codex.app/"]
+    }
+
     /// The desktop application's `codex app-server` that holds every thread's commands and MCP
     /// servers. The smaller ones started with `--listen stdio://` and `codex exec-server` are left
     /// out: nothing says yet what their children would be.

@@ -168,8 +168,12 @@ final class ResourceAttributionTests: XCTestCase {
                 process(501, parent: 500, "zsh", megabytes: 2),
                 process(502, parent: 501, "go", megabytes: 40, cpu: 3, markers: [thread]),
                 process(503, parent: 500, "plata-mcp", megabytes: 300, workingDirectory: "/p"),
+                process(50, parent: 1, "Claude", megabytes: 400),
+                process(51, parent: 50, "disclaimer", megabytes: 1),
+                process(52, parent: 51, "plata-mcp", megabytes: 150),
             ],
-            hosts: [SharedAgentHost(processID: 500, source: .codex)]
+            hosts: [SharedAgentHost(processID: 500, source: .codex)],
+            applications: [DesktopApplication(processID: 50, name: "Claude.app")]
         )
 
         let report = ResourceAttribution.report(
@@ -180,6 +184,7 @@ final class ResourceAttributionTests: XCTestCase {
         var buckets = report.totals.unattributed
         report.sessions.values.forEach { buckets.add($0.total) }
         report.hosts.forEach { buckets.add($0.total) }
+        report.applications.forEach { buckets.add($0.total) }
 
         XCTAssertEqual(report.totals.all.processCount, table.processes.count)
         XCTAssertEqual(report.totals.all.footprint, table.processes.reduce(0) { $0 + $1.footprint })

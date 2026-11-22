@@ -8,19 +8,19 @@ import XCTest
 final class ResourcesPaneTests: XCTestCase {
     private let megabyte: UInt64 = 1 << 20
 
-    /// The same two lines whatever the state, so nothing moves when watching is switched.
+    /// The same lines whatever the state, so nothing moves when watching is switched.
     func testLinesStayPutAndSayWhyThereIsNoFigure() {
-        XCTAssertEqual(
-            ResourcesPane.lines(report: nil, isOn: false).map(\.value), ["Off", "Off"])
-        XCTAssertEqual(
-            ResourcesPane.lines(report: nil, isOn: true).map(\.value), ["Reading…", "Reading…"])
-        XCTAssertEqual(
-            ResourcesPane.lines(report: nil, isOn: true).map(\.title), ["Agents", "Agent Watch"])
+        XCTAssertEqual(ResourcesPane.lines(report: nil, isOn: false).map(\.title), ResourcesPane.titles)
+        XCTAssertEqual(Set(ResourcesPane.lines(report: nil, isOn: false).map(\.value)), ["Off"])
+        XCTAssertEqual(ResourcesPane.lines(report: nil, isOn: true).map(\.title), ResourcesPane.titles)
+        XCTAssertEqual(Set(ResourcesPane.lines(report: nil, isOn: true).map(\.value)), ["Reading…"])
     }
 
-    func testLinesShowTheAgentsAndAgentWatchApart() {
+    func testLinesSplitTheMachineIntoAgentsAppsAgentWatchAndTheRest() {
         let start = Date(timeIntervalSince1970: 1_000_000)
-        func table(at seconds: TimeInterval, agentTime: TimeInterval, ownTime: TimeInterval) -> ProcessTable {
+        func table(at seconds: TimeInterval, agentTime: TimeInterval, ownTime: TimeInterval, busy: UInt64)
+            -> ProcessTable
+        {
             ProcessTable(
                 sampledAt: start.addingTimeInterval(seconds),
                 processes: [
@@ -28,21 +28,24 @@ final class ResourcesPaneTests: XCTestCase {
                         processID: 100, parentProcessID: 1, name: "claude", footprint: 300 * megabyte,
                         cpuTime: agentTime)
                 ],
-                agentWatch: ResourceUsage(footprint: 83 * megabyte, cpuTime: ownTime, processCount: 1))
+                agentWatch: ResourceUsage(footprint: 83 * megabyte, cpuTime: ownTime, processCount: 1),
+                machine: MachineMemory(
+                    physical: 48 << 30, used: 10 << 30, swapUsed: 0, swapTotal: 0, pressure: .normal),
+                processor: ProcessorTicks(busy: busy, total: busy * 4, cores: 4))
         }
         let row = SessionSnapshot(
             id: SessionSnapshot.id(source: .claude, sessionLabel: "a"), source: .claude, arrivalIndex: 0,
             phase: .idle, lastObservedAt: start, agentProcessID: 100)
         let first = ResourceAttribution.report(
-            table: table(at: 0, agentTime: 10, ownTime: 1), sessions: [row], previous: nil)
+            table: table(at: 0, agentTime: 10, ownTime: 1, busy: 1000), sessions: [row], previous: nil)
         let second = ResourceAttribution.report(
-            table: table(at: 5, agentTime: 12.5, ownTime: 1.05), sessions: [row], previous: first)
+            table: table(at: 5, agentTime: 12.5, ownTime: 1.05, busy: 2000), sessions: [row], previous: first)
 
         XCTAssertEqual(
-            ResourcesPane.lines(report: second, isOn: true),
+            ResourcesPane.lines(report: second, isOn: true).map(\.value),
             [
-                ResourcesPane.Line(title: "Agents", value: "300 MB · 50% CPU"),
-                ResourcesPane.Line(title: "Agent Watch", value: "83 MB · 1% CPU"),
+                "10.0 GB of 48.0 GB", "100% of 400%", "300 MB · 50% CPU", "Not running", "83 MB · 1% CPU", "0 MB",
+                "9.6 GB · 49% CPU",
             ])
     }
 

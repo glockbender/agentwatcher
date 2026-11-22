@@ -587,7 +587,7 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         menuBarCounts
     }
 
-    var resourceFigure: AgentsResourceFigure? {
+    var resourceFigure: ResourceFigure? {
         guard resourceSettings.isEnabled, resourceSettings.showsInMenu else {
             return nil
         }

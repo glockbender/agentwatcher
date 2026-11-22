@@ -24,7 +24,10 @@ final class ProcessResourceSamplerTests: XCTestCase {
         let table = sampler.sample(rootProcessIDs: [], at: moment)
 
         XCTAssertEqual(table.hosts, [SharedAgentHost(processID: 500, source: .codex)])
-        XCTAssertEqual(table.processes.map(\.processID), [500, 501, 502, 503])
+        XCTAssertEqual(
+            table.applications, [DesktopApplication(processID: 600, name: "ChatGPT.app")],
+            "the exec-server is the application's own process, not a host")
+        XCTAssertEqual(table.processes.map(\.processID), [500, 501, 502, 503, 600])
         XCTAssertEqual(
             table.processes.first { $0.processID == 502 }?.markers,
             [SessionMarker(source: .codex, label: HookCaptureRedactor.label(forRawIdentifier: "thread-1"))])
@@ -91,6 +94,26 @@ final class ProcessResourceSamplerTests: XCTestCase {
         XCTAssertEqual(table.processes.map(\.processID), [701])
     }
 
+    /// An agent's desktop application is found by where it is installed, and its tree is taken
+    /// as it stands: no environment is read in it, and a row's process inside it stays the row's.
+    func testDesktopApplicationIsFoundByItsBundleAndReadWithoutEnvironments() {
+        let machine = FakeMachine([
+            50: FakeProcess(parent: 1, name: "Claude", path: "/Applications/Claude.app/Contents/MacOS/Claude"),
+            51: FakeProcess(
+                parent: 50, name: "disclaimer", path: "/Applications/Claude.app/Contents/Helpers/disclaimer"),
+            52: FakeProcess(parent: 51, name: "plata-mcp", environment: ["CLAUDE_CODE_SESSION_ID": "chat"]),
+            100: FakeProcess(parent: 51, name: "claude"),
+            70: FakeProcess(parent: 1, name: "Safari", path: "/Applications/Safari.app/Contents/MacOS/Safari"),
+        ])
+        var sampler = ProcessResourceSampler(kernel: machine.kernel)
+
+        let table = sampler.sample(rootProcessIDs: [100], at: moment)
+
+        XCTAssertEqual(table.applications, [DesktopApplication(processID: 50, name: "Claude.app")])
+        XCTAssertEqual(table.processes.map(\.processID), [50, 51, 52, 100])
+        XCTAssertEqual(machine.environmentReads(of: [50, 51, 52, 100]), 0)
+    }
+
     /// The markers of a process do not change while it lives, so they are read once. A new
     /// process under the same number is another process: its own markers are read.
     func testMarkersAreReadOncePerProcessAndAgainForANewProcessUnderTheSameNumber() {
@@ -135,7 +158,13 @@ final class ProcessResourceSamplerTests: XCTestCase {
         XCTAssertGreaterThan(usage.cpuTime, 0)
         XCTAssertEqual(basics.parentProcessID, getppid())
         XCTAssertEqual(basics.userID, getuid())
-        XCTAssertGreaterThan(try XCTUnwrap(kernel.machineMemory()).physical, 0)
+        let memory = try XCTUnwrap(kernel.machineMemory())
+        XCTAssertGreaterThan(memory.physical, 0)
+        XCTAssertGreaterThan(try XCTUnwrap(memory.used), 0)
+        XCTAssertLessThanOrEqual(try XCTUnwrap(memory.used), memory.physical)
+        let ticks = try XCTUnwrap(kernel.processorTicks())
+        XCTAssertGreaterThan(ticks.total, ticks.busy)
+        XCTAssertEqual(ticks.cores, ProcessInfo.processInfo.activeProcessorCount)
     }
 }
 
@@ -198,6 +227,7 @@ private final class FakeMachine: @unchecked Sendable {
                 }
             },
             machineMemory: { MachineMemory(physical: 1, swapUsed: 0, swapTotal: 0, pressure: .normal) },
+            processorTicks: { nil },
             ownProcessID: ownProcessID,
             userID: getuid(),
             applicationFolders: ["/Applications/"]
