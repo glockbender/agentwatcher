@@ -75,8 +75,8 @@ final class SettingsWindowTests: XCTestCase {
     func testARecordingWhoseButtonWentLeavesNothingMuted() throws {
         let (model, shortcuts) = try makeModel()
         model.go(.general)
-        // AppKit may hold a new view in the autorelease pool, which a test method never drains:
-        // without a pool of its own the button outlives this block whenever that happens.
+        // AppKit may hand the button to the autorelease pool while it starts recording; the
+        // button is gone only once that pool drains, as it does after each event in the app.
         autoreleasepool {
             let recorder = ShortcutRecorderButton()
             model.shortcutRecorder = recorder

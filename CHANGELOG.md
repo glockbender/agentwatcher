@@ -3,13 +3,24 @@
 What changed in each release of Agent Watch, for the person updating it. An installed copy shows
 the versions newer than itself in its update window.
 
-## [Unreleased]
+## [0.5.0] - 2026-11-22
+
+### Added
+
+- Git protection: **Settings → Git Protection** installs a hook in each Claude and Codex profile
+  that asks you before a risky push, such as deleting a protected branch.
+- The waiting beacon lists the chats waiting for your reply; click it and choose one to open that
+  chat in desktop Claude or Codex.
+- The waiting beacon can also show on windowed desktops: choose **All modes** in
+  **Settings → Waiting Beacon**.
 
 ### Changed
 
-- If you use Mothership Git protection, register the Agent Watch hook once for each Claude and
-  Codex profile in **Settings → Git Protection**. Approve the new hook in Codex before updating
-  Mothership. Your existing protected branches carry over.
+- After updating, if you use Mothership Git protection, install the hook for each profile in
+  **Settings → Git Protection** and trust it in Codex before updating Mothership.
+- After updating, turn on the waiting beacon in **Settings → Waiting Beacon** if you want it: it
+  replaces the full-screen dot and is off by default.
+- The waiting beacon lights only while a chat waits for your reply, not while a session works.
 
 ## [0.4.0] - 2026-10-10
 
