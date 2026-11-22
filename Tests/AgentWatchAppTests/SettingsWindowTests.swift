@@ -75,7 +75,9 @@ final class SettingsWindowTests: XCTestCase {
     func testARecordingWhoseButtonWentLeavesNothingMuted() throws {
         let (model, shortcuts) = try makeModel()
         model.go(.general)
-        do {
+        // AppKit may hand the button to the autorelease pool while it starts recording; the
+        // button is gone only once that pool drains, as it does after each event in the app.
+        autoreleasepool {
             let recorder = ShortcutRecorderButton()
             model.shortcutRecorder = recorder
             model.startRecordingShortcut()
