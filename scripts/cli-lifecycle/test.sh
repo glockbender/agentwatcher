@@ -1,10 +1,8 @@
 #!/bin/bash
+# Closes a chat in each real client while a deletion waits for approval. The runner refuses to
+# start outside a disposable macOS guest, because the confirmation windows open on its screen.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-for client in "${CLAUDE_BIN:-claude}" "${CODEX_BIN:-codex}"; do
-    "$client" --version
-done
-
 target="${CARGO_TARGET_DIR:-$PWD/.build/git-protection}"
 binary="${AGENT_WATCH_TEST_GIT_BIN:-}"
 if [[ -z "$binary" ]]; then
@@ -16,5 +14,7 @@ mkdir -p .build/cli-lifecycle
 probe="$PWD/.build/cli-lifecycle/windows"
 xcrun swiftc -O scripts/cli-lifecycle/windows.swift -o "$probe"
 for client in codex claude; do
-    python3 -Bu scripts/cli-lifecycle/run.py "$client" --binary "$binary" --windows "$probe"
+    CARGO_TARGET_DIR="$target" rustup run 1.98.1 cargo run --locked --quiet \
+        --manifest-path native/git-protection-e2e/Cargo.toml -- \
+        close "$client" --binary "$binary" --windows "$probe"
 done

@@ -33,6 +33,11 @@ fn run() -> Result<(), String> {
     if command == "update-guest" {
         return update::run_guest(rest);
     }
+    // Git starts a hook at the top of the working tree being committed or pushed; the gate checks
+    // that tree, not the checkout the tool was built from.
+    if command == "pre-commit" || command == "pre-push" {
+        return gates::run(command);
+    }
     if command == "media"
         && let Some(repo) = env::var_os("AW_MEDIA_REPO")
     {
@@ -55,7 +60,6 @@ fn run() -> Result<(), String> {
         "git-e2e" | "test-cli-close" | "test-git-upgrade" => git_tests::run(command, rest),
         "check-docs" | "check-troubleshooting" | "measurements" => documents::run(command, rest),
         "e2e-update" => update::host(rest),
-        "pre-commit" | "pre-push" => gates::run(command),
         _ => Err(USAGE.into()),
     }
 }

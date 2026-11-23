@@ -11,6 +11,7 @@ use std::time::Instant;
 
 struct Repository<'a> {
     path: &'a Path,
+    cancel: &'a Cancellation,
     deadline: Instant,
 }
 
@@ -18,13 +19,7 @@ impl Repository<'_> {
     fn query(&self, args: &[&str]) -> Result<Output, String> {
         let mut command = Command::new("git");
         command.arg("-C").arg(self.path).args(args);
-        process::run(
-            &mut command,
-            &Cancellation::new(),
-            self.deadline,
-            self.deadline,
-        )
-        .map_err(|_| {
+        process::run(&mut command, self.cancel, self.deadline, self.deadline).map_err(|_| {
             if Instant::now() >= self.deadline {
                 super::TIMEOUT
             } else {
@@ -412,6 +407,7 @@ pub(super) fn check(
     parsed: Parsed,
     cwd: &Path,
     home: &Path,
+    cancel: &Cancellation,
     deadline: Instant,
 ) -> Result<Option<String>, String> {
     let mut folders = vec![None; parsed.parents.len()];
@@ -470,6 +466,7 @@ pub(super) fn check(
                 for risk in Push::parse(rest).risks(
                     &Repository {
                         path: &path,
+                        cancel,
                         deadline,
                     },
                     &context,

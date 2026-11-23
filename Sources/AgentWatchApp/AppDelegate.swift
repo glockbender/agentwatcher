@@ -123,12 +123,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         host: self,
         version: updater.ownVersion
     )
-    private var waitingCount = 0
+    private lazy var waitingChats = WaitingChatsModel { [weak self] id in
+        self?.supervisor.focusSession(id: id, requireDesktopLink: true) ?? .nothingRaised
+    }
+    private lazy var waitingWindow = WaitingChatsWindow(model: waitingChats)
     private lazy var fullScreenDot = FullScreenDot(
-        openWaiting: { [weak self] in self?.presentProjects(.waiting) },
+        openWaiting: { [weak self] in self?.waitingWindow.present() },
         openSettings: { [weak self] in
             self?.settingsWindow.model.go(.waitingBeacon)
-            self?.settingsWindow.present()
+            self?.showWidgetSettings()
         })
     private var pendingDestination: WatchDestination?
     private var readyForNavigation = false
@@ -322,6 +325,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MenuBarIconCell.cells(for: menuBarCounts, showing: settings.menuBarIconAttentions)
     }
 
+    private func updateWaitingBeacon() {
+        fullScreenDot.show(
+            waitingCount: waitingChats.rows.count, enabled: settings.showsFullScreenDot,
+            scope: settings.waitingBeaconScope)
+    }
+
     private func makeMenuBarIconView() -> MenuBarIconView {
         let view = MenuBarIconView()
         // The view draws itself and therefore knows its width first; the item's length is not
@@ -362,16 +371,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// view skips a drawing whose cells have not changed, so a number the icon does not show
     /// moves nothing on the bar.
     private func updateMenuBarIcon(sessions: [SessionSnapshot]) {
+        let previousWaitingCount = waitingChats.rows.count
+        waitingChats.update(sessions)
+        if waitingChats.rows.count != previousWaitingCount {
+            updateWaitingBeacon()
+        }
         let counts = SessionAttentionCounts(sessions: sessions)
         let phases = sessions.reduce(into: [SessionPhase: Int]()) { $0[$1.phase, default: 0] += 1 }
         let phasesMatter = ThemeInUse.look.isRedrawn(forPhases: phases, after: ThemeInUse.phases)
         ThemeInUse.phases = phases
-        let waiting = ProjectBrowserCatalog.waiting(sessions).count
-        if waiting != waitingCount {
-            waitingCount = waiting
-            fullScreenDot.show(
-                waitingCount: waiting, enabled: settings.showsFullScreenDot, scope: settings.waitingBeaconScope)
-        }
         guard counts != menuBarCounts || phasesMatter else {
             return
         }
@@ -452,8 +460,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             applyShortcut()
         case .menuBarIcon:
             applyMenuBarIcon()
-            fullScreenDot.show(
-                waitingCount: waitingCount, enabled: settings.showsFullScreenDot, scope: settings.waitingBeaconScope)
+            updateWaitingBeacon()
         case .sessionOrder:
             // A new order is a new set of rows, and the menu's lines follow it as well. Written
             // by the settings window, so nothing else refreshes them.

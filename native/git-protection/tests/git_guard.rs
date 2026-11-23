@@ -195,6 +195,7 @@ fn both_hosts_check_configured_push_routing() {
             )
         };
         for command in [
+            "git push",
             "git push example",
             "git push --repo=example",
             "git push example feature-x",
@@ -208,6 +209,13 @@ fn both_hosts_check_configured_push_routing() {
         );
         assert!(check("git push example HEAD:refs/heads/feature-x").is_empty());
         assert!(check("git push --dry-run backup").is_empty());
+        assert!(
+            denial(&check("git push origin --delete refs/heads/topic"))
+                .contains("deletes branch 'topic'")
+        );
+        assert!(
+            denial(&check("git push origin --delete refs/tags/v1")).contains("deletes tag 'v1'")
+        );
     }
 
     bundle.git(&repo, &["config", "push.default", "upstream"]);
@@ -271,6 +279,73 @@ fn codex_command_workdir_overrides_session_cwd() {
         "codex",
         &json!({"cwd": feature, "tool_input":{"cmd":"git push", "workdir": main}}).to_string(),
     ));
+}
+
+#[test]
+fn incomplete_event_is_denied_before_the_client_timeout() {
+    let bundle = Bundle::new();
+    let mut child = bundle.spawn(&[]);
+    let mut input = child.stdin.take().unwrap();
+    input.write_all(b"{").unwrap();
+    let output = finish(child);
+    drop(input);
+
+    assert!(output.status.success());
+    let reason = denial(std::str::from_utf8(&output.stdout).unwrap());
+    assert!(reason.contains("hook deadline"), "{reason}");
+}
+
+#[test]
+fn cancelling_the_hook_reaps_its_git_query() {
+    use nix::errno::Errno;
+    use nix::sys::signal::{Signal, kill};
+    use nix::unistd::Pid;
+    use std::os::unix::fs::PermissionsExt;
+
+    let bundle = Bundle::new();
+    let marker = bundle.root.path().join("git-query.pid");
+    let inspector = bundle.root.path().join("git");
+    std::fs::write(
+        &inspector,
+        "#!/bin/sh\nprintf '%s\\n' \"$$\" > \"$AW_TEST_GIT_PID_FILE\"\nexec /bin/sleep 30\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&inspector, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+    let mut child = bundle
+        .command(bundle.cli.to_str().unwrap())
+        .arg("hook")
+        .env("PATH", bundle.root.path())
+        .env("AW_TEST_GIT_PID_FILE", &marker)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(br#"{"tool_input":{"command":"git push"}}"#)
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let query = loop {
+        if let Some(pid) = std::fs::read_to_string(&marker)
+            .ok()
+            .and_then(|text| text.trim().parse().ok())
+        {
+            break Pid::from_raw(pid);
+        }
+        assert!(Instant::now() < deadline, "Git inspection did not start");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    kill(
+        Pid::from_raw(i32::try_from(child.id()).unwrap()),
+        Signal::SIGTERM,
+    )
+    .unwrap();
+    let output = finish(child);
+    denial(std::str::from_utf8(&output.stdout).unwrap());
+    assert_eq!(kill(query, None), Err(Errno::ESRCH));
 }
 
 #[test]

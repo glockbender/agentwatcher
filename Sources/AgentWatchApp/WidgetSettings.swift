@@ -296,7 +296,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
         preferences.set(isShown, forKey: Key.showsWidget)
     }
 
-    /// Keep the original enable key when upgrading from the full-screen-only beacon.
+    /// Retain the original enable switch when upgrading from the full-screen dot.
     var showsFullScreenDot: Bool {
         preferences.flag(forKey: Key.showsFullScreenDot) ?? false
     }

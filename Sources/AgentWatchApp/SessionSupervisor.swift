@@ -359,7 +359,7 @@ final class SessionSupervisor {
     /// from the session as it is now. A line ends nothing either: a broken session's click
     /// asks, like its row's (ADR-0013).
     @discardableResult
-    func focusSession(id: String) -> SessionClick {
+    func focusSession(id: String, requireDesktopLink: Bool = false) -> SessionClick {
         guard let snapshot = sessions.first(where: { $0.id == id }) else {
             onNotableEvent("Menu · the session was gone before the click; nothing to bring forward")
             return .nothingRaised
@@ -368,7 +368,7 @@ final class SessionSupervisor {
             onNotableEvent("Menu · the session ended while the menu was open; nothing was done")
             return .nothingRaised
         }
-        return focus(snapshot)
+        return focus(snapshot, requireDesktopLink: requireDesktopLink)
     }
 
     /// A click that reached nothing is said out loud rather than swallowed.
@@ -380,7 +380,7 @@ final class SessionSupervisor {
     /// A broken session's click ends nothing by itself: it answers with the question, and
     /// `endAgent` carries out a yes (ADR-0013).
     @discardableResult
-    func focus(_ snapshot: SessionSnapshot) -> SessionClick {
+    func focus(_ snapshot: SessionSnapshot, requireDesktopLink: Bool = false) -> SessionClick {
         if snapshot.phase == .terminalClosed {
             return askToEndAgent(of: snapshot)
         }
@@ -401,7 +401,9 @@ final class SessionSupervisor {
             return askToEndAgent(of: marked)
         }
         let otherNames = otherSessionNames(than: snapshot)
-        let outcome = focusHost?(snapshot, otherNames) ?? hostRegistry.focus(snapshot, otherSessionNames: otherNames)
+        let outcome =
+            focusHost?(snapshot, otherNames)
+            ?? hostRegistry.focus(snapshot, otherSessionNames: otherNames, requireDesktopLink: requireDesktopLink)
         // The other way a terminal is closed with its agent left behind.
         if case let .gone(evidence) = outcome.tab {
             guard let marked = engine.markTerminalClosed(forSessionWithID: snapshot.id) else {
@@ -1236,6 +1238,8 @@ final class SessionSupervisor {
 
     private static func name(of fact: TranscriptFact) -> String {
         switch fact {
+        case .codexQuestionAsked: "Codex question opened"
+        case .codexQuestionAnswered: "Codex question answered"
         case let .callStarted(_, kind, _): "\(kind.rawValue) call started"
         case .callReturned: "call ended"
         case .callFailed: "call failed"

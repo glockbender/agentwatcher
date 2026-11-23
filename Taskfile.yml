@@ -14,12 +14,14 @@ tasks:
       - task: build-sender
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/devtool}" rustup run 1.98.1 cargo test --locked --manifest-path native/devtool/Cargo.toml
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/devtool}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection-e2e/Cargo.toml
+      - python3 -B scripts/test-setup-git-hooks.py
       - swift test --parallel -Xswiftc -warnings-as-errors
       - task: test-native-git
 
   test-native-git:
     desc: Test the Git hook and the one-shot confirmation executable
     cmds:
+      - python3 -B scripts/test-git-guard.py
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/devtool}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/devtool}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --profile fixture --features mcp-fixture --test push --test protocol -- --test-threads=2
 
@@ -34,28 +36,16 @@ tasks:
       - CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.build/devtool}" rustup run 1.98.1 cargo test --locked --manifest-path native/git-protection/Cargo.toml --profile fixture --features mcp-fixture --test push native_window_cancellation_disconnect_and_server_death_never_push -- --ignored --exact --nocapture
 
   test-cli-close:
-    desc: Verify chat closure in both real clients inside a disposable macOS VM
+    desc: Verify chat closure in both real clients inside a disposable macOS guest
     cmds:
-      - |
-        if [ "${AGENT_WATCH_HOST_GUI_FIXTURES:-0}" = 1 ]; then
-          bash scripts/cli-lifecycle/test.sh
-        else
-          ./scripts/devtool test-cli-close
-        fi
+      - ./scripts/devtool test-cli-close
 
   test-git-upgrade:
-    desc: Verify both clients keep their rules across bundle replacement in a disposable macOS VM
+    desc: Verify both clients keep their rules across bundle replacement and a missing bundle, inside a disposable macOS guest
     requires:
       vars: [AGENT_WATCH_TEST_BUNDLE]
     cmds:
-      - |
-        if [ "${AGENT_WATCH_HOST_GUI_FIXTURES:-0}" = 1 ]; then
-          mkdir -p .build/cli-lifecycle
-          xcrun swiftc -O scripts/cli-lifecycle/windows.swift -o .build/cli-lifecycle/windows
-          python3 -Bu scripts/cli-lifecycle/upgrade.py --bundle "{{.AGENT_WATCH_TEST_BUNDLE}}" --windows .build/cli-lifecycle/windows
-        else
-          ./scripts/devtool test-git-upgrade
-        fi
+      - ./scripts/devtool test-git-upgrade
 
   lint:
     desc: Check Swift formatting and style, the shape of TROUBLESHOOTING.md, the documents, and the list of measurements
@@ -196,9 +186,9 @@ tasks:
       - task: dev
 
   setup:
-    desc: Configure repository-local Git hooks
+    desc: Install the Git gates so that every worktree runs the hooks of its own branch
     cmds:
-      - git config core.hooksPath .githooks
+      - python3 -B scripts/setup-git-hooks.py
 
   doctor:
     desc: Show the local Swift and Apple developer toolchain

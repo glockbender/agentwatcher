@@ -146,6 +146,68 @@ fn exercise(p: &Profiles, c: Client, cli: &ObservedCli, branch: &str, probe: &Pa
     })
 }
 
+/// The registered command outlives a moved or half-replaced bundle, so it must answer with a
+/// denial of its own instead of letting the client run the command unchecked. `moved` is the
+/// executable at the bundle's temporary location, which nothing may start.
+fn exercise_unavailable(
+    p: &Profiles,
+    c: Client,
+    cli: &ObservedCli,
+    moved: &ObservedCli,
+    branch: &str,
+) -> Result<()> {
+    let prompt = "Run the Agent Watch fixture operation.";
+    let exe = cli.path.to_str().context("Expected UTF-8 bundle path")?;
+    let model = Model::start(
+        c,
+        Plan {
+            prompt: prompt.into(),
+            command: format!("git push origin --delete {branch}"),
+            follow: Some((exe.into(), push_command(&cli.path, &p.repo, branch)?)),
+        },
+    )?;
+    let log = p.home.join(format!(
+        "{}-unavailable-{}.log",
+        name(c),
+        branch.replace('/', "-")
+    ));
+    let mut child = foreground(p, c, &model, prompt, &log)?;
+    let result = until(120, "the denial from the unavailable hook", || {
+        model.check()?;
+        if let Some(denial) = model.denial() {
+            // The registered command embeds the same sentence, so a client error that quotes the
+            // command would match too; only the fallback's own output lacks the script path.
+            ensure!(
+                denial.contains("the installed hook could not run")
+                    && !denial.contains("git-guard.sh"),
+                "{} got an unexpected hook response while the bundle was unavailable: {denial}",
+                name(c)
+            );
+            return Ok(Some(()));
+        }
+        ensure!(
+            child.try_wait()?.is_none(),
+            "{} exited without a hook response, see {}",
+            name(c),
+            log.display()
+        );
+        Ok(None)
+    });
+    let _ = child.kill();
+    let stopped = wait(&mut child, Duration::from_secs(8));
+    result?;
+    stopped?;
+    ensure!(
+        cli.pids()?.is_empty() && moved.pids()?.is_empty(),
+        "A confirmation process started while the bundle was unavailable"
+    );
+    println!(
+        "{} {branch}: denied while the bundle was unavailable",
+        name(c)
+    );
+    Ok(())
+}
+
 fn files(p: &Profiles) -> Vec<PathBuf> {
     vec![
         p.repo.join(".git/config"),
@@ -293,8 +355,32 @@ pub(crate) fn run(source: &Path, previous: Option<&Path>, probe: &Path) -> Resul
             contents(&paths, false)? == bytes,
             "Updating or starting the next chat changed the profile bytes"
         );
+        println!("While the bundle is temporarily unavailable");
+        let unavailable = root.join("temporarily unavailable.app");
+        fs::rename(&bundle, &unavailable)?;
+        let moved = ObservedCli {
+            path: unavailable.join("Contents/MacOS/AgentWatchGit"),
+        };
+        let denied = CLIENTS.iter().try_for_each(|&c| -> Result<()> {
+            exercise_unavailable(&profiles, c, &cli, &moved, "feature/example")?;
+            ensure!(
+                fixture.snapshot()? == refs && !marker.exists(),
+                "An unavailable bundle let the deletion reach the local receiver"
+            );
+            Ok(())
+        });
+        // Restore before reporting, so a failure leaves the retained files in a usable state.
+        let restored = fs::rename(&unavailable, &bundle).context("Could not restore the bundle");
+        denied?;
+        restored?;
+        println!("After the bundle returns");
+        check(&["feature/example"])?;
+        ensure!(
+            contents(&paths, false)? == bytes,
+            "The unavailable bundle or the chats around it changed the profile bytes"
+        );
         println!(
-            "PASS: both clients retained their hooks and rule after replacement; all refs unchanged."
+            "PASS: both clients kept their hooks and rule across replacement, denied while the bundle was missing and confirmed again after it returned; all refs unchanged."
         );
         Ok(())
     })

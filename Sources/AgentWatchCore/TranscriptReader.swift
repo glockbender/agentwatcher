@@ -26,6 +26,9 @@ public enum TranscriptFact: Equatable, Sendable {
     /// The one fact here that opens an activity rather than closing one. Everything else the
     /// widget shows as running was announced by a hook first; an advisor call never is.
     case callStarted(activityID: String, kind: ActivityKind, at: Date)
+    /// A Codex async question was delivered, or the user answered that exact question.
+    case codexQuestionAsked(activityID: String, at: Date)
+    case codexQuestionAnswered(activityID: String, at: Date)
     /// The turn was interrupted by a person.
     ///
     /// Measured with a control: an interrupted turn delivers no hook at all — not `Stop`, not
@@ -40,6 +43,7 @@ public enum TranscriptFact: Equatable, Sendable {
         case let .callFailed(_, at): at
         case let .workEnded(_, at): at
         case let .callStarted(_, _, at): at
+        case let .codexQuestionAsked(_, at), let .codexQuestionAnswered(_, at): at
         case let .turnInterrupted(at): at
         }
     }
@@ -54,7 +58,7 @@ public enum TranscriptFact: Equatable, Sendable {
         switch self {
         case let .callReturned(id, _), let .callFailed(id, _), let .workEnded(id, _):
             return SessionReducer.dialogEnds(dialog, atActivityID: id)
-        case .callStarted, .turnInterrupted: return false
+        case .callStarted, .turnInterrupted, .codexQuestionAsked, .codexQuestionAnswered: return false
         }
     }
 }
@@ -276,12 +280,69 @@ public enum TranscriptReader {
             else {
                 return []
             }
-            // Every completed item is reported, not just a command: an item the app never
-            // opened as an activity closes nothing, and listing the item types here would be
-            // a second place to keep in step with a format nobody documents.
+            if item["type"] as? String == "AgentMessage", item["delivery"] as? String == "async",
+                isQuestionCallID(raw), let questions = item["questions"] as? [Any], !questions.isEmpty
+            {
+                return questions.enumerated().compactMap { index, question in
+                    guard let fields = question as? [String: Any], let title = fields["title"] as? String,
+                        !title.isEmpty
+                    else { return nil }
+                    return .codexQuestionAsked(activityID: questionLabel(callID: raw, index: index), at: at)
+                }
+            }
+            if item["type"] as? String == "UserMessage", let answers = codexAnswers(in: item, at: at) {
+                return answers
+            }
             return [.callReturned(activityID: HookCaptureRedactor.label(forRawIdentifier: raw), at: at)]
         default:
             return []
+        }
+    }
+
+    private static func isQuestionCallID(_ raw: String) -> Bool {
+        raw.hasPrefix("call_") && raw != "call_"
+    }
+
+    private static func questionLabel(callID: String, index: Int) -> String {
+        HookCaptureRedactor.label(forRawIdentifier: "request_user_input_async:\(callID):\(index)")
+    }
+
+    /// Codex serializes the question reference as a JSON tuple inside the enclosing JSON reply.
+    private struct QuestionReference: Decodable {
+        let activityID: String
+
+        init(from decoder: Decoder) throws {
+            var fields = try decoder.unkeyedContainer()
+            let tool = try fields.decode(String.self)
+            let callID = try fields.decode(String.self)
+            let index = try fields.decode(Int.self)
+            guard fields.isAtEnd, tool == "request_user_input_async", isQuestionCallID(callID), index >= 0 else {
+                throw DecodingError.dataCorruptedError(in: fields, debugDescription: "Invalid Codex question reference")
+            }
+            activityID = questionLabel(callID: callID, index: index)
+        }
+    }
+
+    private static func codexAnswers(in item: [String: Any], at: Date) -> [TranscriptFact]? {
+        guard let content = item["content"] as? [[String: Any]], content.count == 1,
+            content[0]["type"] as? String == "text", let raw = content[0]["text"] as? String
+        else { return nil }
+        let open = "<send_user_message_question_reply>"
+        let close = "</send_user_message_question_reply>"
+        guard raw.hasPrefix(open) else { return nil }
+        let message = raw.last?.isNewline == true ? raw.dropLast() : raw[...]
+        guard message.hasSuffix(close) else { return nil }
+        let json = message.dropFirst(open.count).dropLast(close.count)
+        guard let answers = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [Any] else { return [] }
+        let decoder = JSONDecoder()
+        var seen = Set<String>()
+        return answers.compactMap { answer in
+            guard let fields = answer as? [String: Any], fields["answer"] is String,
+                let rawID = fields["questionItemId"] as? String,
+                let id = try? decoder.decode(QuestionReference.self, from: Data(rawID.utf8)),
+                seen.insert(id.activityID).inserted
+            else { return nil }
+            return .codexQuestionAnswered(activityID: id.activityID, at: at)
         }
     }
 

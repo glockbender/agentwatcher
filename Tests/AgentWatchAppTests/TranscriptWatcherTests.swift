@@ -189,6 +189,92 @@ final class TranscriptWatcherTests: XCTestCase {
         XCTAssertEqual(next.flatMap(\.facts), [.turnInterrupted(at: start + 2)])
     }
 
+    func testCodexStopBeforeFirstReadStillShowsTheQuestionAndReadsItsReply() async throws {
+        try await checkQuestionAtStop(fileAlreadyLocated: false)
+    }
+
+    func testCodexStopBetweenReadsStillShowsTheQuestionAndReadsItsReply() async throws {
+        try await checkQuestionAtStop(fileAlreadyLocated: true)
+    }
+
+    private func checkQuestionAtStop(fileAlreadyLocated: Bool) async throws {
+        try writeCodex([Self.codexOpening])
+        let watcher = try makeWatcher()
+        var engine = SessionStateEngine()
+        let label = HookCaptureRedactor.label(forRawIdentifier: codexSessionUUID)
+        let working = try engine.ingest(
+            EventEnvelope(source: .codex, sessionID: label, observedAt: start, kind: .turnStarted))
+        watcher.noteHook(at: start)
+        watcher.update(sessions: [working])
+        if fileAlreadyLocated { _ = try await poll(watcher) }
+
+        let timestamp = ISO8601DateFormatter().string(from: start + 1)
+        try appendCodex(
+            """
+            {"type":"event_msg","timestamp":"\(timestamp)","payload":{"type":"item_completed","item":\
+            {"type":"AgentMessage","id":"call_beacon","delivery":"async","questions":[{"title":"Continue?","options":null}]}}}
+            """)
+        clock = start + 2
+        let stopped = try engine.ingest(
+            EventEnvelope(source: .codex, sessionID: label, observedAt: clock, kind: .turnCompleted))
+        watcher.noteHook(at: clock)
+        watcher.update(sessions: [stopped])
+        XCTAssertEqual(stopped.attention, .done)
+        XCTAssertNotNil(watcher.nextReadAt)
+
+        for fact in try await poll(watcher).flatMap(\.facts) {
+            engine.apply(fact, toSessionWithID: stopped.id)
+        }
+        let pending = try XCTUnwrap(engine.snapshots[stopped.id])
+        XCTAssertEqual(pending.attention, .needsPerson)
+        watcher.update(sessions: [pending])
+        XCTAssertTrue(watcher.isPolling)
+        var oldPermissionWait = pending
+        oldPermissionWait.phase = .waitingForUser
+        XCTAssertEqual(
+            TranscriptWatcher.watchableSessions(
+                [oldPermissionWait], now: start + SessionFreshnessEvaluator.defaultDisconnectAfter + 10
+            ).count, 1)
+
+        let answers = #"[{"questionItemId":"[\"request_user_input_async\",\"call_beacon\",0]","answer":"Yes"}]"#
+        let block = [
+            "type": "text",
+            "text": "<send_user_message_question_reply>\n" + answers + "\n</send_user_message_question_reply>\n",
+        ]
+        let item: [String: Any] = ["type": "UserMessage", "id": "item_reply", "content": [block]]
+        let reply: [String: Any] = ["type": "event_msg", "payload": ["type": "item_completed", "item": item]]
+        try appendCodex(String(decoding: try JSONSerialization.data(withJSONObject: reply), as: UTF8.self))
+        clock = start + 3
+        for fact in try await poll(watcher).flatMap(\.facts) {
+            engine.apply(fact, toSessionWithID: stopped.id)
+        }
+        let answered = try XCTUnwrap(engine.snapshots[stopped.id])
+        XCTAssertEqual(answered.attention, .done)
+        watcher.update(sessions: [answered])
+        XCTAssertFalse(watcher.isPolling)
+    }
+
+    func testCodexStopDuringAReadStillSchedulesOneLastAttemptForAMissingFile() async throws {
+        let watcher = try makeWatcher()
+        var row = workingCodex()
+        watcher.update(sessions: [row])
+        let reading = expectation(description: "the read dispatched before Stop finishes")
+        arrival = reading
+        watcher.poll()
+        row.phase = .completed
+        watcher.update(sessions: [row])
+        await fulfillment(of: [reading], timeout: 2)
+        arrival = nil
+        XCTAssertNotNil(watcher.nextReadAt)
+
+        // The first locate failed. The final attempt is allowed inside the usual retry interval.
+        let updates = try await poll(watcher)
+        XCTAssertEqual(updates.map(\.sessionID), [row.id])
+        XCTAssertFalse(watcher.isPolling)
+        watcher.update(sessions: [row])
+        XCTAssertNil(watcher.nextReadAt)
+    }
+
     // MARK: - What a session says about itself
 
     /// Everything else here reads the tail. The branch a session started on and whose thread
@@ -576,6 +662,45 @@ final class TranscriptWatcherTests: XCTestCase {
         XCTAssertEqual(updates.first?.newestRecordAt, lastWritten)
         XCTAssertTrue(updates.flatMap(\.facts).isEmpty, "the file says when, not what")
         XCTAssertNil(updates.first?.fault, "a session from a previous launch is nothing to complain about")
+    }
+
+    func testRestartRecoversQuestionsBeyondTheTailAndResumesAtTheLastCompleteLine() async throws {
+        let first = HookCaptureRedactor.label(forRawIdentifier: "request_user_input_async:call_saved:0")
+        let second = HookCaptureRedactor.label(forRawIdentifier: "request_user_input_async:call_saved:1")
+        let asked =
+            #"{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"AgentMessage","id":"call_saved","delivery":"async","questions":[{"title":"First"},{"title":"Second"}]}}}"#
+        func reply(index: Int) throws -> String {
+            let id = #"["request_user_input_async","call_saved",\#(index)]"#
+            let json = try JSONSerialization.data(withJSONObject: [["questionItemId": id, "answer": "ok"]])
+            let block = [
+                "type": "text",
+                "text": "<send_user_message_question_reply>\n" + String(decoding: json, as: UTF8.self)
+                    + "\n</send_user_message_question_reply>\n",
+            ]
+            let item: [String: Any] = ["type": "UserMessage", "id": "item_reply", "content": [block]]
+            let record: [String: Any] = ["type": "event_msg", "payload": ["type": "item_completed", "item": item]]
+            return String(decoding: try JSONSerialization.data(withJSONObject: record), as: UTF8.self)
+        }
+        let padding = #"{"type":"padding","body":""# + String(repeating: "x", count: 330_000) + #""}"#
+        try writeCodex([Self.codexOpening, asked, try reply(index: 1), padding])
+        let finalReply = try reply(index: 0)
+        let file = try FileHandle(forWritingTo: codexTranscriptURL)
+        defer { try? file.close() }
+        try file.seekToEnd()
+        try file.write(contentsOf: Data(finalReply.prefix(15).utf8))
+
+        let watcher = try makeWatcher()
+        var row = workingCodex()
+        row.phase = .disconnected
+        let wait = SessionHistory.RememberedWait(
+            dialogs: [], observedAt: start, codexQuestions: [first: start, second: start, "absent": start])
+        let recovered = try await catchUp(watcher, sessions: [row], waits: [row.id: wait])
+        XCTAssertEqual(recovered.first?.waitEvidence?.openCodexQuestions, Set([first]))
+
+        try file.write(contentsOf: Data((finalReply.dropFirst(15) + "\n").utf8))
+        watcher.update(sessions: [workingCodex()])
+        let next = try await poll(watcher)
+        XCTAssertEqual(next.flatMap(\.facts), [.codexQuestionAnswered(activityID: first, at: clock)])
     }
 
     func testUndatedHistoricalInterruptionDoesNotRetractARememberedWait() async throws {

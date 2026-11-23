@@ -16,13 +16,16 @@
 
 | Машина | Что в ней | Сколько живёт |
 | --- | --- | --- |
-| `aw-golden` | образ `ghcr.io/cirruslabs/macos-sequoia-base` без изменений: macOS 15.7.7, Homebrew, Command Line Tools, `tart-guest-agent` | всегда; только клонируется |
+| `aw-golden` | клон локальной машины `base-macos-tahoe-65c3133`: macOS 26.6.2, Command Line Tools, `tart-guest-agent` | всегда; только клонируется |
 | `aw-stand` | golden и всё для съёмки: размер экрана, `ffmpeg`, Ghostty, Claude Code, Claude.app ради значка, `task`, два разрешения, одобренные настройки организации. Аккаунта нет | собирается один раз |
 | `aw-take` | копия стенда на одну съёмку, с токеном | до `vm.sh down`: копия удаляется вместе с токеном, мимо корзины |
 
 Tart 2.40.1 стоит из релиза на GitHub (формула в их Homebrew-репозитории сломана): программа в
 `~/Applications/tart.app`, ссылка `~/.local/bin/tart`. Golden получен командой
-`tart clone ghcr.io/cirruslabs/macos-sequoia-base:latest aw-golden`, это около 25 ГБ загрузки.
+`tart clone base-macos-tahoe-65c3133 aw-golden`, без загрузки. Прежний golden на macOS 15.7.7
+брался из `ghcr.io/cirruslabs/macos-sequoia-base:latest`, это около 25 ГБ загрузки. В госте
+macOS 26 общая папка Tart ломает символические ссылки внутри `Sparkle.framework`, поэтому
+комплекты приложения передаются туда архивом.
 Клоны делят блоки диска с исходником (APFS), поэтому `du` показывает у каждой по 30 ГБ, а
 занимают они меньше.
 

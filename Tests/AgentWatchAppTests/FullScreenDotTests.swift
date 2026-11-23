@@ -5,11 +5,11 @@ import XCTest
 
 @MainActor
 final class FullScreenDotTests: XCTestCase {
-    func testAllModesIncludesWindowedDisplaysOnlyWhileWaiting() throws {
-        let screens = NSScreen.screens
-        let display = try XCTUnwrap(screens.first)
+    func testAllModesIncludesWindowedDisplaysOnlyWhileWaiting() {
+        let screens = ["Laptop", "External display"]
+        let display = screens[1]
         var checks = 0
-        func targets(_ scope: WaitingBeaconScope, _ count: Int, enabled: Bool = true) -> [NSScreen] {
+        func targets(_ scope: WaitingBeaconScope, _ count: Int, enabled: Bool = true) -> [String] {
             FullScreenDot.targetScreens(waitingCount: count, enabled: enabled, scope: scope, screens: screens) { _ in
                 checks += 1
                 return []

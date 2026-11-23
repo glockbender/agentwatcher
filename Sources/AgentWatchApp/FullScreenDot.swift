@@ -49,10 +49,10 @@ final class FullScreenDot: NSObject {
         }
     }
 
-    static func targetScreens(
-        waitingCount: Int, enabled: Bool, scope: WaitingBeaconScope, screens: [NSScreen],
-        fullScreen: ([NSScreen]) -> [NSScreen]
-    ) -> [NSScreen] {
+    static func targetScreens<Screen>(
+        waitingCount: Int, enabled: Bool, scope: WaitingBeaconScope, screens: [Screen],
+        fullScreen: ([Screen]) -> [Screen]
+    ) -> [Screen] {
         guard enabled, waitingCount > 0 else { return [] }
         return scope == .allModes ? screens : fullScreen(screens)
     }

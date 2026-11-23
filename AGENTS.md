@@ -23,7 +23,8 @@ Two gates, both installed by `task setup`:
 
 Both gates check the working tree and refuse to run when it is not exactly what goes out: a commit
 with unstaged or untracked files beside it, a push with uncommitted changes, or a push of a branch
-that is not checked out.
+that is not checked out. They run `task` without the `GIT_DIR` and `GIT_INDEX_FILE` Git hands a
+hook in a linked worktree: SwiftPM would read its package tags from this repository instead.
 
 The IDE plugin needs nothing installed: its Gradle wrapper fetches Gradle and a JDK. It compiles
 against GoLand or IntelliJ IDEA 2026.1 or newer from this machine, or downloads one when none is
@@ -49,6 +50,16 @@ can be tested in `AgentWatchCoreTests` without launching an application.
   sender you run by hand, or it reports its default folder as another one.
 - **One Agent Watch runs at a time.** Quit an installed copy before running a build:
   `osascript -e 'quit app "AgentWatch"'`.
+- **Every worktree runs the gates of its own branch, so `core.hooksPath` stays unset.** `task setup`
+  puts a small dispatcher for each hook into the shared `.git/hooks/`; it runs `.githooks/<hook>` of
+  the worktree Git is working in. Claude rewrites `core.hooksPath` when it creates a worktree:
+  Claude Code turns a relative value into the main checkout's absolute path in the shared
+  `.git/config`, and the desktop app writes the same path into the new worktree's
+  `config.worktree` (замер: Claude.app 5.11492.5, Claude Code 2.1.325). Every branch then ran the
+  main checkout's hooks, uncommitted edits included. With the value unset, Claude Code writes
+  nothing, and the desktop app's code clears its pin when it finds hooks in `.git/hooks/`. Run
+  `task setup` again when `.githooks/` gains a hook or a commit runs another folder's hooks: it
+  removes such pins and stops on anything it did not write.
 - **The shared Xcode scheme is committed on purpose:** Xcode builds only the products a scheme
   names, and a generated scheme leaves out `AgentWatchSend`.
 - When Xcode is installed but `xcode-select -p` still points at the Command Line Tools:

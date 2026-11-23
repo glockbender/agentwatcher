@@ -73,7 +73,7 @@ The small widget opens **Projects & Recent**. The medium widget also opens **Wai
 **Settings**. Both work when the menu bar icon is hidden.
 
 An optional orange beacon appears when a chat is waiting for your reply. Choose **Full screen only** or **All modes** to show it on windowed desktops too.
-Click the ring to see those chats. Right-click it to open **Waiting Beacon Settings…**.
+Click the ring and choose a chat to open it. Right-click it to open **Waiting Beacon Settings…**.
 You can also open **Settings → Waiting Beacon** to turn it on, resize it, or choose its position.
 
 <img src="docs/images/full-screen-beacon.png" alt="An orange light on the rim of the waiting-chat beacon" width="56">
@@ -169,7 +169,7 @@ The theme editor changes:
   lamps; for the sphere, its halo, sway and swell.
 - **Other colours:** the timers, the highlight outline, secondary text and warnings.
 - **Timing:** how long the highlight lasts, how soon a row's card opens, how far lamps dim, and
-  which corner the waiting beacon uses and how far it sits from the edge.
+  the waiting beacon’s size and position.
 
 A change goes into light mode, dark mode, or both. A theme is a JSON file: **Export…** one to
 share it, **Import…** one somebody shared, or edit the file by hand. Glass chosen on an older macOS
