@@ -56,12 +56,15 @@ final class ProjectBrowserTests: XCTestCase {
     }
 
     func testFiltersRunBeforeLimitAndUseTheRecordedPhaseAndAge() throws {
-        let entries = (0...25).map { index in
-            ProjectBrowserEntry(
-                session: testSession(
-                    index: index, source: index == 0 ? .claude : .codex, title: "Chat \(index)",
-                    phase: index == 0 ? .waitingForUser : .executing,
-                    lastObservedAt: now.addingTimeInterval(Double(index) - 80)), copy: nil)
+        // Spelled-out types: the CI compiler gave up inferring this closure in time.
+        let entries: [ProjectBrowserEntry] = (0...25).map { (index: Int) -> ProjectBrowserEntry in
+            let first = index == 0
+            let source: AgentSource = first ? .claude : .codex
+            let phase: SessionPhase = first ? .waitingForUser : .executing
+            let observed: Date = now.addingTimeInterval(Double(index) - 80)
+            let session = testSession(
+                index: index, source: source, title: "Chat \(index)", phase: phase, lastObservedAt: observed)
+            return ProjectBrowserEntry(session: session, copy: nil)
         }
         func list(_ filter: ProjectBrowserFilter, search: String = "") -> [ProjectBrowserEntry] {
             ProjectBrowserCatalog.visible(entries, scope: .recent, filter: filter, search: search, now: now)
@@ -71,7 +74,8 @@ final class ProjectBrowserTests: XCTestCase {
         XCTAssertEqual(list(.waiting).map(\.id), [entries[0].id])
         XCTAssertEqual(list(.working, search: "CLAUDE").count, 0)
         XCTAssertEqual(list(.all, search: "CLAUDE").map(\.id), [entries[0].id])
-        XCTAssertEqual(list(.quiet).map(\.id), entries[1...20].reversed().map(\.id))
+        let quiet: [ProjectBrowserEntry] = Array(entries[1...20].reversed())
+        XCTAssertEqual(list(.quiet).map(\.id), quiet.map(\.id))
     }
 
     @MainActor
