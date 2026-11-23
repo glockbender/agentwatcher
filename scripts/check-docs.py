@@ -27,6 +27,9 @@ STATUS = re.compile(
     r"|частично заменено \[ADR-\d{4}\]\(\d{4}-[a-z0-9-]+\.md\) — .+)\.$"
 )
 MAX_LINES = 500
+# Generated indexes: one subject that grows by a line with every entry, so length says nothing
+# about how many subjects they hold.
+GENERATED = ("docs/measurements.md",)
 # Snapshots: an archived study or a published article is kept as it was written.
 FROZEN = ("docs/research/", "docs/articles/")
 
@@ -147,7 +150,12 @@ def length_problems(files: dict[str, str]) -> list[str]:
     """Past this, a document is several subjects, and the next edit lands under the nearest heading."""
     found = []
     for name, text in files.items():
-        if is_living_doc(name) and Path(name).parent == Path("docs") and text.count("\n") > MAX_LINES:
+        if (
+            is_living_doc(name)
+            and Path(name).parent == Path("docs")
+            and name not in GENERATED
+            and text.count("\n") > MAX_LINES
+        ):
             found.append(f"{name}: {text.count(chr(10))} lines; split it by subject (the limit is {MAX_LINES})")
     return found
 

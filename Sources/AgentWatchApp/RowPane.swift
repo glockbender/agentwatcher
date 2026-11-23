@@ -13,7 +13,7 @@ struct RowPane: View {
             Section {
                 SampleRowsPreview(
                     look: model.themes.look, dark: model.themes.isDark, layout: model.layout,
-                    samples: SampleRowsPreview.pair
+                    samples: SampleRowsPreview.pair, watchesResources: model.watchesResources
                 )
                 .frame(height: SampleRowsPreview.pairHeight)
                 .listRowInsets(EdgeInsets())
@@ -80,9 +80,18 @@ enum RowPartList {
     }
 
     /// What is said beside a part's switch, where it can be read without hovering: when the
-    /// part appears, or why the last one cannot be switched off.
-    static func note(for part: RowPart, in layout: RowLayout) -> String {
-        isLast(part, in: layout) ? "stays: a row has to draw something" : part.appearsWhenBriefly
+    /// part appears, why the last one cannot be switched off, or that the figures are off.
+    ///
+    /// The resources part stays switchable while watching is off — it is the template, and a
+    /// person may arrange it first — but a row then draws nothing there, and this says why.
+    static func note(for part: RowPart, in layout: RowLayout, watchesResources: Bool = true) -> String {
+        if isLast(part, in: layout) {
+            return "stays: a row has to draw something"
+        }
+        if part == .resources, !watchesResources {
+            return "off: turn on watching in Resources"
+        }
+        return part.appearsWhenBriefly
     }
 }
 
@@ -101,7 +110,7 @@ private struct PartRow: View {
                     .toggleStyle(.checkbox)
                     .disabled(RowPartList.isLast(part, in: layout))
                     .help("\(part.settingsName): \(part.appearsWhen)")
-                Text(RowPartList.note(for: part, in: layout))
+                Text(RowPartList.note(for: part, in: layout, watchesResources: model.watchesResources))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -170,16 +179,24 @@ enum RowPartText {
             case .tokens: 1
             case .both: 2
             }
+        case .resources:
+            switch layout.resourceStyle {
+            case .memory: 0
+            case .processor: 1
+            case .both: 2
+            }
         default: 0
         }
     }
 
     static func layout(_ layout: RowLayout, choosing index: Int, for part: RowPart) -> RowLayout {
         let contextStyles: [RowLayout.ContextStyle] = [.percent, .tokens, .both]
+        let resourceStyles: [RowLayout.ResourceStyle] = [.memory, .processor, .both]
         return layout.changing(
             nameStyle: part == .name ? (index == 1 ? .title : .fallback) : nil,
             modelStyle: part == .model ? (index == 1 ? .effort : .plain) : nil,
-            contextStyle: part == .context ? contextStyles[min(max(index, 0), contextStyles.count - 1)] : nil
+            contextStyle: part == .context ? contextStyles[min(max(index, 0), contextStyles.count - 1)] : nil,
+            resourceStyle: part == .resources ? resourceStyles[min(max(index, 0), resourceStyles.count - 1)] : nil
         )
     }
 }

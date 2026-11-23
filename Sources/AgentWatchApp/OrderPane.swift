@@ -88,7 +88,8 @@ struct OrderPreview: NSViewRepresentable {
             look: { [themes = model.themes] in themes.look },
             background: { [themes = model.themes] in themes.textBackground },
             opacity: { [themes = model.themes] in themes.look.widgetOpacity },
-            rowLayouts: model.rowLayouts
+            rowLayouts: model.rowLayouts,
+            watchesResources: { [model] in model.watchesResources }
         )
     }
 

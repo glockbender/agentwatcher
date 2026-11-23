@@ -47,6 +47,12 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     var order: ([SessionSnapshot], Date) -> [SessionSnapshot] = { sessions, _ in orderedForDisplay(sessions) }
     /// The sessions on screen, top to bottom, as last laid out.
     private(set) var shownOrder: [String] = []
+    /// What the widget knows about memory and CPU, read at every rebuild. `resourcesChanged`
+    /// says a new reading or a switch arrived.
+    var resources: () -> WidgetResources = { WidgetResources() }
+    /// Asked when a card opens, so its figures are a fresh reading rather than up to five
+    /// seconds old.
+    var wantsFreshResources: () -> Void = {}
 
     init(
         reach: @escaping (SessionSnapshot) -> SessionReach,
@@ -324,8 +330,10 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         let shown =
             container.isPointerInside ? SessionOrdering.holdingPlaces(of: shownOrder, in: ordered) : ordered
         shownOrder = shown.map(\.id)
+        let watchesResources = resources().isWatching
         let models = shown.map { snapshot in
-            HUDRowModel(snapshot: snapshot, now: moment, layout: rowLayouts.layout)
+            HUDRowModel(
+                snapshot: snapshot, now: moment, layout: rowLayouts.layout, watchesResources: watchesResources)
         }
 
         if let listView = container.body as? HUDSessionListView,
@@ -360,9 +368,24 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 },
                 onHoverChanged: { [weak self] row, isInside in
                     self?.hoverChanged(row, isInside: isInside)
+                },
+                resourceFigure: { [weak self] snapshot in
+                    self?.resources().figure(for: snapshot)
                 }
             )
         )
+    }
+
+    /// A new reading, or watching switched. A row that gains or loses its resources part is
+    /// rebuilt, once; every other row restates its numbers in place, and an open card is
+    /// rewritten. A rebuild every five seconds would take the row from under the pointer and
+    /// cancel a card that was about to open.
+    func resourcesChanged() {
+        if let panel = window as? HUDPanel, !state.sessions.isEmpty {
+            showRows(in: panel)
+            (container.body as? HUDSessionListView)?.refreshResources()
+        }
+        refreshHoverCardText(now: clock())
     }
 
     /// A click on a row, which a broken session and a headless run answer with a question
@@ -482,6 +505,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             return
         }
         hoverCard.show(text: cardText(for: row.snapshot, now: clock()), below: frame)
+        wantsFreshResources()
     }
 
     /// What the hover card is showing, or `nil` when none is open. The card is a window of
@@ -509,7 +533,8 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             for: snapshot,
             now: now,
             layout: rowLayouts.layout,
-            reach: reach(snapshot)
+            reach: reach(snapshot),
+            resources: resources().card(for: snapshot)
         )
     }
 

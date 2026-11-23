@@ -374,11 +374,36 @@ public enum AgentProcessLocator {
     /// on the machine runs the same binary, and only the arguments say whether this one is a
     /// session or one of the agent's own helpers.
     ///
-    /// The buffer is laid out as a count, the path the process was executed from, then that
-    /// many NUL-separated arguments. The path is skipped rather than returned — it is the
-    /// one part of the answer that must not leave this module, the same rule
-    /// `ProcessSnapshot` states.
+    /// How the kernel lays the answer out is on `parseStartBuffer`.
     static func commandArguments(of processID: Int32) -> [String]? {
+        startBuffer(of: processID).map { parseStartBuffer($0).arguments }
+    }
+
+    /// The values of the named environment variables of a process, and none of the others.
+    ///
+    /// Only the asked-for names leave this function: an environment holds tokens. macOS does
+    /// not show the environment of its own binaries, so a missing value is no proof that the
+    /// variable is unset: `docs/agent-processes.md`, «Маркер сессии в окружении».
+    static func environmentValues(of processID: Int32, named names: Set<String>) -> [String: String] {
+        guard let buffer = startBuffer(of: processID) else {
+            return [:]
+        }
+        var values: [String: String] = [:]
+        for entry in parseStartBuffer(buffer).environment {
+            guard let separator = entry.firstIndex(of: "=") else {
+                continue
+            }
+            let name = String(entry[..<separator])
+            if names.contains(name) {
+                values[name] = String(entry[entry.index(after: separator)...])
+            }
+        }
+        return values
+    }
+
+    /// What the kernel kept of how a process was started (`KERN_PROCARGS2`), or `nil` when it
+    /// will not say.
+    private static func startBuffer(of processID: Int32) -> [UInt8]? {
         var managementInformationBase: [Int32] = [CTL_KERN, KERN_PROCARGS2, processID]
         var size = 0
         guard
@@ -394,7 +419,21 @@ public enum AgentProcessLocator {
         else {
             return nil
         }
-        let argumentCount = Int(buffer.withUnsafeBytes { $0.load(as: Int32.self) })
+        return Array(buffer.prefix(size))
+    }
+
+    /// The arguments and the environment in a `KERN_PROCARGS2` buffer.
+    ///
+    /// The buffer is laid out as a count, the path the process was executed from, padding, that
+    /// many NUL-terminated arguments, then the environment up to an empty string. The path is
+    /// skipped rather than returned — it is the one part of the answer that must not leave
+    /// this module, the same rule `ProcessSnapshot` states.
+    static func parseStartBuffer(_ buffer: [UInt8]) -> (arguments: [String], environment: [String]) {
+        let size = buffer.count
+        guard size > MemoryLayout<Int32>.size else {
+            return ([], [])
+        }
+        let argumentCount = Int(buffer.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) })
         var index = MemoryLayout<Int32>.size
         while index < size, buffer[index] != 0 {
             index += 1
@@ -414,6 +453,19 @@ public enum AgentProcessLocator {
             }
             index += 1
         }
-        return arguments
+
+        var environment: [String] = []
+        while index < size {
+            if buffer[index] != 0 {
+                current.append(buffer[index])
+            } else if current.isEmpty {
+                break
+            } else {
+                environment.append(String(decoding: current, as: UTF8.self))
+                current = []
+            }
+            index += 1
+        }
+        return (arguments, environment)
     }
 }

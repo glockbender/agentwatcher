@@ -120,6 +120,26 @@ public struct ClaudeProcessRules: AgentProcessRules {
         return identifier.isEmpty ? nil : identifier
     }
 
+    /// The identifier, not `CLAUDE_PID`: not every child has the number, and Claude.app continues
+    /// a session in a new process under the same identifier.
+    /// `docs/agent-processes.md`, «Маркер сессии в окружении».
+    public var sessionMarkerVariable: String {
+        "CLAUDE_CODE_SESSION_ID"
+    }
+
+    public var desktopApplicationBundles: [String] {
+        ["/Applications/Claude.app/"]
+    }
+
+    /// Never: one `claude` process is one session.
+    public func isSharedHost(
+        executableName: String,
+        executablePath: () -> String?,
+        arguments: () -> [String]?
+    ) -> Bool {
+        false
+    }
+
     /// Every live Claude session, as much as a row can honestly say about one.
     ///
     /// One `claude` process a person started is one session — the agent's own helpers are

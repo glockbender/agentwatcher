@@ -478,18 +478,83 @@ final class WidgetRenderProbe: XCTestCase {
         return container
     }
 
+    /// The Memory & CPU part in each of its three variants, at the default width and a narrow
+    /// one, beside a card with the session's figures: whether the numbers line up down the
+    /// list and how much of the name the part costs.
+    func testDrawTheResourcesPart() throws {
+        let requested = ProcessInfo.processInfo.environment["WIDGET_RENDER_DIR"]
+        try XCTSkipIf(requested == nil, "a drawing probe, not a check: set WIDGET_RENDER_DIR")
+        let directory = try XCTUnwrap(requested)
+        let measured = orderedForDisplay(sessions()).enumerated().map { index, snapshot in
+            var session = snapshot
+            session.agentProcessID = Int32(100 + index)
+            return session
+        }
+        // Figures of every width a row meets: a quiet agent, a heavy one, a number not read yet.
+        let figures = Dictionary(
+            uniqueKeysWithValues: measured.enumerated().map { index, session in
+                let megabytes: [UInt64] = [612, 3482, 87, 1023, 240, 9, 1800, 455, 130, 64, 2900, 300, 75]
+                return (
+                    session.id,
+                    index == 2
+                        ? nil
+                        : ResourceFigure(
+                            footprint: megabytes[index % megabytes.count] << 20,
+                            cpuLoad: index == 3 ? nil : Double(index * 37 % 140) / 100)
+                )
+            })
+        for (style, width) in [(RowLayout.ResourceStyle.memory, 420.0), (.processor, 420), (.both, 420), (.both, 300)] {
+            let layout = RowLayout.standard.changing(
+                parts: RowLayout.standard.parts + [.resources], resourceStyle: style)
+            let list = HUDSessionListView(
+                models: measured.map { HUDRowModel(snapshot: $0, now: now, layout: layout, watchesResources: true) },
+                usageLimits: [],
+                now: now,
+                availableWidth: width,
+                focus: { _ in },
+                remove: { _ in },
+                background: .graphite,
+                lampScheme: LampScheme(),
+                backgroundOpacity: 1,
+                restoredScrollOffset: nil,
+                onScroll: { _ in },
+                resourceFigure: { figures[$0.id] ?? nil }
+            )
+            let height = HUDSessionListView.selfSizedHeight(
+                sessionCount: measured.count, usageLimits: [], background: .graphite, style: .standard)
+            try draw(
+                list, sized: NSSize(width: width, height: height), named: "resources-\(style.rawValue)-\(Int(width))",
+                in: directory)
+        }
+
+        let claude = SessionResources(
+            sessionID: measured[0].id,
+            parts: [
+                .agent: ResourceUsage(footprint: 237 << 20),
+                .helper("plata-mcp"): ResourceUsage(footprint: 238 << 20),
+                .commands: ResourceUsage(footprint: 6 << 20),
+            ],
+            total: ResourceUsage(footprint: 481 << 20, resident: 300 << 20),
+            cpuLoad: 0.25)
+        try draw(
+            hoverCard(for: measured[0], resources: .measured(claude, source: .claude)), named: "resources-card",
+            in: directory)
+    }
+
     /// Built the way `SessionHoverCard` builds it, which is what makes the image worth
     /// looking at — a mock-up of a card would only prove the mock-up looks right.
     private func hoverCard(
         for snapshot: SessionSnapshot? = nil,
         reach: SessionReach = .anApplication,
-        style: WidgetStyle = .standard
+        style: WidgetStyle = .standard,
+        resources: CardResources? = nil
     ) -> NSView {
         let text = hoverCardText(
             for: snapshot ?? sessions()[0],
             now: now,
             layout: .standard,
-            reach: reach
+            reach: reach,
+            resources: resources
         )
         let label = NSTextField(labelWithString: text)
         label.font = style.secondaryFont

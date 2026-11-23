@@ -1,0 +1,256 @@
+import AgentWatchCore
+import AgentWatchLookup
+import Foundation
+
+/// Whether the app watches what the agents cost, and where it shows it.
+///
+/// Off until a person turns it on in the Resources pane: it adds a timer that runs as long as
+/// any row is open. Each place a figure appears has a switch of its own under the main one.
+/// `docs/proposals/resource-usage.md`, «Что решить до начала».
+final class ResourceSettings: PreferenceDefaults {
+    private enum Key {
+        static let enabled = "resources.enabled"
+        static let showsInMenu = "resources.showsInMenu"
+        static let showsInCard = "resources.showsInCard"
+    }
+
+    private let preferences: PreferenceFile
+
+    init(preferences: PreferenceFile) {
+        self.preferences = preferences
+    }
+
+    var defaultValues: [String: JSONValue] {
+        [Key.enabled: .bool(false), Key.showsInMenu: .bool(true), Key.showsInCard: .bool(true)]
+    }
+
+    var isEnabled: Bool {
+        preferences.flag(forKey: Key.enabled) ?? false
+    }
+
+    /// The agents' figure beside the menu's summary. Read only while `isEnabled` holds.
+    var showsInMenu: Bool {
+        preferences.flag(forKey: Key.showsInMenu) ?? true
+    }
+
+    /// The session's figures in the widget row's hover card. Read only while `isEnabled` holds.
+    /// The row itself carries them as a part of its template, switched in `Rows`.
+    var showsInCard: Bool {
+        preferences.flag(forKey: Key.showsInCard) ?? true
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        preferences.set(enabled, forKey: Key.enabled)
+    }
+
+    func setShowsInMenu(_ shows: Bool) {
+        preferences.set(shows, forKey: Key.showsInMenu)
+    }
+
+    func setShowsInCard(_ shows: Bool) {
+        preferences.set(shows, forKey: Key.showsInCard)
+    }
+}
+
+/// Samples what the agents cost, every five seconds while it is on and a row is open.
+///
+/// A pass runs off the main thread: the first one reads the environment of every process of
+/// the person's that lost its parent, and that is tens of milliseconds. The sampler is a value
+/// handed to the pass and back, so one pass runs at a time and nothing is shared between
+/// threads. The report is kept here and never written into a row: a figure that changes every
+/// five seconds would make every row look changed, and the widget redraws a row only when it
+/// changed.
+@MainActor
+final class ResourceMonitor {
+    static let defaultInterval: TimeInterval = 5
+    /// How often a report goes into the debug log. The log keeps a few hundred lines, and a line
+    /// per pass would push the events out of it within the hour.
+    static let logInterval: TimeInterval = 60
+
+    private(set) var report: ResourceReport?
+    var onReport: ((ResourceReport) -> Void)?
+    /// The report was dropped because no row is open any more: what showed it shows nothing now.
+    var onCleared: (() -> Void)?
+    var onLog: ((String) -> Void)?
+
+    private var isEnabled: Bool
+    private var sessions: [SessionSnapshot] = []
+    /// `nil` while a pass holds it.
+    private var sampler: ProcessResourceSampler? = ProcessResourceSampler()
+    private var timer: Timer?
+    private var lastLoggedAt: Date?
+    /// Moved on whenever the timer stops — watching switched off, the last row closed — so a
+    /// pass that was under way then is not taken in: its load would span the time nobody
+    /// watched, and its rows are not the ones open now.
+    private var generation = 0
+    private let now: () -> Date
+    private let interval: TimeInterval
+
+    init(isEnabled: Bool, interval: TimeInterval = defaultInterval, now: @escaping () -> Date = Date.init) {
+        self.isEnabled = isEnabled
+        self.interval = interval
+        self.now = now
+    }
+
+    /// Whether a timer is kept: the one cost the monitor has while nothing is shown.
+    var isSampling: Bool {
+        timer != nil
+    }
+
+    /// Whether there is anything to sample: the monitor is on and a row is still open. A Codex
+    /// thread in ChatGPT.app counts without a process of its own — its commands are found under
+    /// the application's shared host.
+    static func shouldSample(isEnabled: Bool, sessions: some Collection<SessionSnapshot>) -> Bool {
+        isEnabled && sessions.contains { $0.phase != .sessionClosed }
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        isEnabled = enabled
+        if !enabled {
+            report = nil
+            lastLoggedAt = nil
+        }
+        updateTimer()
+    }
+
+    func sessionsChanged(_ sessions: [SessionSnapshot]) {
+        self.sessions = sessions
+        updateTimer()
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        generation += 1
+    }
+
+    /// Whether a pass is running off the main thread now.
+    var isPassUnderWay: Bool {
+        sampler == nil
+    }
+
+    /// A pass now rather than at the next tick: the menu opening wants a figure that is no
+    /// older than the opening. Nothing happens while a pass runs; its report is that fresh.
+    func sampleSoon() {
+        guard timer != nil else {
+            return
+        }
+        sampleNow()
+    }
+
+    private func updateTimer() {
+        guard Self.shouldSample(isEnabled: isEnabled, sessions: sessions) else {
+            let wasReading = timer != nil || report != nil
+            stop()
+            // With nothing open there is no next reading, and a report kept now would be shown
+            // as the current one for as long as no row opens; a row that closed before its first
+            // reading leaves the Resources page promising one. Switching off refreshes those
+            // places itself.
+            report = nil
+            if isEnabled, wasReading {
+                onCleared?()
+            }
+            return
+        }
+        guard timer == nil else {
+            return
+        }
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.sampleNow()
+            }
+        }
+        // Lets macOS fold this wake-up into others.
+        timer.tolerance = min(1, interval / 5)
+        // The common modes, so the figure in an open menu keeps moving: a menu tracks the mouse
+        // in a mode of its own, and a timer of the default mode waits until it closes.
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+        sampleNow()
+    }
+
+    /// The shortest stretch a load is counted over. An opening menu asks for a pass at any point
+    /// of the timer's cycle, and a load over a few milliseconds is noise: the same steady agent
+    /// read 0% on one opening and 400% on the next. A report younger than this is fresh enough.
+    private var minimumInterval: TimeInterval {
+        interval / 5
+    }
+
+    private func sampleNow() {
+        guard Self.shouldSample(isEnabled: isEnabled, sessions: sessions), let sampler else {
+            return
+        }
+        let moment = now()
+        // A clock set back gives the last report a negative age. It is not fresh, and waiting
+        // for the clock to catch up would freeze the figures.
+        if let report {
+            let age = moment.timeIntervalSince(report.sampledAt)
+            if age >= 0, age < minimumInterval {
+                return
+            }
+        }
+        self.sampler = nil
+        let open = sessions.filter { $0.phase != .sessionClosed }
+        let roots = ResourceAttribution.rootProcessIDs(of: open)
+        let previous = report
+        let generation = generation
+        Task.detached(priority: .utility) { [sampler] in
+            var sampler = sampler
+            let started = DispatchTime.now().uptimeNanoseconds
+            let table = sampler.sample(rootProcessIDs: roots, at: moment)
+            let report = ResourceAttribution.report(table: table, sessions: open, previous: previous)
+            let milliseconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+            await MainActor.run { [weak self, sampler] in
+                self?.finish(report, sampler: sampler, milliseconds: milliseconds, generation: generation)
+            }
+        }
+    }
+
+    private func finish(
+        _ report: ResourceReport, sampler: ProcessResourceSampler, milliseconds: Double, generation: Int
+    ) {
+        self.sampler = sampler
+        // A pass that outlived the last open row is not taken in either: it would bring back the
+        // report that closing the row dropped.
+        guard isEnabled, generation == self.generation, isSampling else {
+            // The timer started again while it ran — a row opened, watching came back on — and
+            // its first pass found the sampler taken. Without this one it waits for the tick.
+            if isSampling {
+                sampleNow()
+            }
+            return
+        }
+        self.report = report
+        onReport?(report)
+        if lastLoggedAt.map({ report.sampledAt.timeIntervalSince($0) >= Self.logInterval }) ?? true {
+            lastLoggedAt = report.sampledAt
+            onLog?(Self.summary(of: report, milliseconds: milliseconds))
+        }
+    }
+
+    /// One line for the debug log. Figures only: no path, no name of a project.
+    static func summary(of report: ResourceReport, milliseconds: Double) -> String {
+        let sessionTotal = report.sessions.values.reduce(into: ResourceUsage.zero) { $0.add($1.total) }
+        let hostTotal = report.hosts.reduce(into: ResourceUsage.zero) { $0.add($1.total) }
+        let loads = report.sessions.values.compactMap(\.cpuLoad) + report.hosts.compactMap(\.cpuLoad)
+        var parts = [
+            "Resources · \(report.sessions.count) sessions \(ResourceFormat.memory(sessionTotal.footprint))",
+            "shared hosts \(ResourceFormat.memory(hostTotal.footprint))",
+            "helpers \(ResourceFormat.memory(report.totals.helpers.footprint))",
+            "commands \(ResourceFormat.memory(report.totals.commands.footprint))",
+            "unattributed \(ResourceFormat.memory(report.totals.unattributed.footprint))",
+        ]
+        if !loads.isEmpty {
+            parts.append(String(format: "%.2f cores", loads.reduce(0, +)))
+        }
+        if let own = report.agentWatch {
+            parts.append("Agent Watch \(ResourceFormat.memory(own.footprint))")
+        }
+        if let machine = report.machine, machine.swapTotal > 0 {
+            parts.append(
+                "swap \(ResourceFormat.memory(machine.swapUsed)) of \(ResourceFormat.memory(machine.swapTotal))")
+        }
+        parts.append(String(format: "pass %.1f ms", milliseconds))
+        return parts.joined(separator: " · ")
+    }
+}

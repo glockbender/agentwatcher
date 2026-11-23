@@ -42,6 +42,8 @@ class HUDSessionListView: NSView {
     private let restoredScrollOffset: NSPoint?
     private let onScroll: (NSPoint) -> Void
     private let onHoverChanged: (HUDSessionRowView, Bool) -> Void
+    /// A session's memory and CPU now, asked when a row is built and when a reading arrives.
+    private let resourceFigure: (SessionSnapshot) -> ResourceFigure?
 
     /// How many sessions the counters are currently reporting as out of sight, each way.
     private(set) var hiddenSessions: HiddenRows = .none
@@ -70,8 +72,10 @@ class HUDSessionListView: NSView {
         style: WidgetStyle = .standard,
         restoredScrollOffset: NSPoint?,
         onScroll: @escaping (NSPoint) -> Void,
-        onHoverChanged: @escaping (HUDSessionRowView, Bool) -> Void = { _, _ in }
+        onHoverChanged: @escaping (HUDSessionRowView, Bool) -> Void = { _, _ in },
+        resourceFigure: @escaping (SessionSnapshot) -> ResourceFigure? = { _ in nil }
     ) {
+        self.resourceFigure = resourceFigure
         self.models = models
         self.usageLimits = usageLimits
         self.now = now
@@ -362,6 +366,15 @@ class HUDSessionListView: NSView {
             }
     }
 
+    /// Restates every row's memory and CPU from the latest reading, rebuilding nothing, and
+    /// answers how many rows read differently.
+    @discardableResult
+    func refreshResources() -> Int {
+        rows.reduce(into: 0) { total, row in
+            total += row.refreshResources(resourceFigure(row.snapshot)) ? 1 : 0
+        }
+    }
+
     @objc private func rowsResized() {
         restoreScrollOffsetIfNeeded()
     }
@@ -461,6 +474,8 @@ class HUDSessionListView: NSView {
             lampScheme: lampScheme,
             layout: model.layout,
             style: style,
+            showsResources: model.showsResources,
+            resourceFigure: model.showsResources ? resourceFigure(snapshot) : nil,
             onFocus: { [focus] in focus(snapshot) },
             dismissal: model.dismissal,
             onRemove: { [remove] in remove(snapshot) },
