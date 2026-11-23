@@ -56,6 +56,27 @@ final class RowResourcesTests: XCTestCase {
         XCTAssertEqual(row.fittingSize.width, narrow, accuracy: 0.5)
     }
 
+    /// Room for every core of a large Mac is a digit in every row that few readings use. The
+    /// column keeps room for three digits, and a load past them is written whole.
+    func testTheLoadColumnKeepsRoomForThreeDigitsAndALargerLoadIsNotCut() throws {
+        XCTAssertEqual(HUDSessionRowView.widestLoad(cores: 14), "999%")
+        XCTAssertEqual(HUDSessionRowView.widestLoad(cores: 10), "999%")
+        XCTAssertEqual(HUDSessionRowView.widestLoad(cores: 8), "800%")
+
+        let row = HUDSessionRowView(
+            snapshot: measuredSession(processID: 100), now: now, background: .graphite, lampScheme: LampScheme(),
+            layout: Self.layout(.processor), showsResources: true,
+            resourceFigure: ResourceFigure(footprint: 9 * megabyte, cpuLoad: 0.01),
+            onFocus: {}, dismissal: .notOffered(until: .distantFuture), onRemove: {})
+        let reserved = row.fittingSize.width
+
+        row.refreshResources(ResourceFigure(footprint: 9 * megabyte, cpuLoad: 13))
+        row.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(row.shownResources, ["1300%"])
+        XCTAssertGreaterThan(row.fittingSize.width, reserved + 0.5, "a load past 999% is cut to the reserved width")
+    }
+
     func testSwitchingWatchingAddsAndRemovesThePartWithOneRebuild() throws {
         var resources = WidgetResources()
         let controller = try makeController(resourceStyle: .memory)

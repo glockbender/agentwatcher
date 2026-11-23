@@ -387,8 +387,15 @@ final class HUDSessionRowView: NSStackView {
     /// with one decimal, and a session past 100 GB is not one this widget will meet.
     private static let widestMemory = ["1023 MB", "99.9 GB"]
 
-    /// Every core of this Mac busy, the most a session can use.
-    private static let widestLoad = [ResourceFormat.percent(Double(ProcessInfo.processInfo.activeProcessorCount))]
+    private static let widestLoad = [widestLoad(cores: ProcessInfo.processInfo.activeProcessorCount)]
+
+    /// The widest load a row keeps room for: every core busy, but no more than `999%`. Room
+    /// for every core of a large Mac — `1400%` on fourteen — took one more digit in every row,
+    /// and a narrow widget had to scroll sideways for it. A load past it widens its label into
+    /// the gap rather than being cut.
+    static func widestLoad(cores: Int) -> String {
+        ResourceFormat.percent(min(Double(cores), 9.99))
+    }
 
     private static let memoryImage = symbol("memorychip", described: "Memory")
     private static let processorImage = symbol("cpu", described: "CPU")
@@ -408,13 +415,14 @@ final class HUDSessionRowView: NSStackView {
         label.font = style.figuresFont
         label.textColor = background.foregroundColor
         label.alignment = .right
-        // Below required, so a value wider than the widest expected one is cut rather than
-        // fighting the fixed width.
+        // A value wider than the widest expected one widens the label into the gap. Below
+        // required, so in a row with no gap left it is cut rather than breaking the row's width.
         label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         label.setContentHuggingPriority(.required, for: .horizontal)
         let insets = label.alignmentRectInsets
         let width = widest.map { labelWidth(of: $0, font: style.figuresFont) }.max() ?? 0
-        label.widthAnchor.constraint(equalToConstant: max(0, width - insets.left - insets.right)).isActive = true
+        label.widthAnchor.constraint(greaterThanOrEqualToConstant: max(0, width - insets.left - insets.right))
+            .isActive = true
         return label
     }
 
