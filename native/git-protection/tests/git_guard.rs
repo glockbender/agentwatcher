@@ -415,9 +415,27 @@ impl Bundle {
         // A branch named like a tag the remote has, and a remote defined outside the config.
         self.git(&repo, &["push", "-q", "origin", "HEAD:refs/tags/v1"]);
         self.git(&repo, &["branch", "v1"]);
+        // A remote whose URL list is cleared, a ref named `@`, and a remote tag whose name
+        // ends like a branch.
+        self.git(&repo, &["config", "remote.empty.url", ""]);
+        self.git(&repo, &["symbolic-ref", "refs/heads/@", "refs/heads/main"]);
+        self.git(
+            &repo,
+            &[
+                "push",
+                "-q",
+                "origin",
+                "HEAD:refs/tags/refs/heads/agent/shadowed",
+            ],
+        );
         std::fs::create_dir_all(repo.join(".git/branches")).unwrap();
         std::fs::write(
             repo.join(".git/branches/legacy"),
+            format!("{remote_path}#main\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            repo.join(".git/branches/empty"),
             format!("{remote_path}#main\n"),
         )
         .unwrap();
@@ -511,6 +529,12 @@ fn branch_types_decide_force_pushes_and_deletions_in_the_hook() {
         ),
         ("git push -f origin 'agent/x'", "force push"),
         ("git push -f legacy", "force push"),
+        ("git push -f empty", "force push"),
+        ("git push -f origin @", "force push"),
+        (
+            "git push -f origin HEAD:refs/heads/agent/shadowed",
+            "force push",
+        ),
         ("X=1 git push -f origin agent/x", "force push"),
         ("git -C . push -f origin agent/x", "force push"),
         ("git push --mirror origin", "force push"),
@@ -586,6 +610,26 @@ fn branch_types_decide_force_pushes_and_deletions_in_the_hook() {
             both.contains("force push. For one intended reference"),
             "{both}"
         );
+    }
+}
+
+#[test]
+fn a_push_that_recurses_into_submodules_keeps_its_window() {
+    let bundle = Bundle::new();
+    let repo = bundle.repo_with_remote();
+    bundle.branch_types(HOOK_TYPES);
+    let check = || {
+        bundle.invoke(
+            "claude",
+            &json!({"cwd": repo, "tool_input": {"command": "git push -f origin agent/x"}})
+                .to_string(),
+        )
+    };
+    assert_eq!(check(), "");
+    for key in ["submodule.recurse", "push.recurseSubmodules"] {
+        bundle.git(&repo, &["config", key, "on-demand"]);
+        assert!(denial(&check()).contains("force push"), "{key}");
+        bundle.git(&repo, &["config", "--unset", key]);
     }
 }
 

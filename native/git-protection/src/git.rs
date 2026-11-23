@@ -128,7 +128,8 @@ impl Git {
         // A remote from `.git/branches` or `.git/remotes` brings push refspecs that no
         // configuration read here can see, so only a remote defined in the config is used.
         let defined = self.run(&root, &["config", "--get", &format!("remote.{remote}.url")])?;
-        if !defined.status.success() {
+        // An empty value clears the list of URLs, and Git falls back to the legacy files.
+        if !defined.status.success() || defined.stdout.trim().is_empty() {
             return Err("Only a remote defined in the Git configuration is supported.".into());
         }
         let urls = self.read(&root, &["remote", "get-url", "--push", "--all", remote])?;
@@ -229,9 +230,20 @@ impl Git {
 
     /// The floor for the hook: whether `main`, `master`, the remote's default branch or a
     /// project rule protects the branch, asked through the same checked remote as a push.
+    ///
+    /// Git matches even a full `refs/heads/x` against the remote's refs by suffix, so a remote
+    /// ref such as `refs/tags/refs/heads/x` would take the push: any listed ref other than the
+    /// branch itself counts as protected, as it stops a push.
     pub fn protected(&self, repo: &str, remote: &str, branch: &str) -> Result<bool, String> {
         let (root, _, url) = self.identity(repo, remote)?;
-        self.protected_branch(&root, &url, &format!("refs/heads/{branch}"))
+        let destination = format!("refs/heads/{branch}");
+        if self.protected_branch(&root, &url, &destination)? {
+            return Ok(true);
+        }
+        let listing = self.read(&root, &["ls-remote", "--refs", "--", &url, &destination])?;
+        Ok(listing
+            .lines()
+            .any(|line| line.split_once('\t').map(|(_, name)| name) != Some(destination.as_str())))
     }
 
     fn risks(args: &Arguments, level: Level) -> Vec<Risk> {

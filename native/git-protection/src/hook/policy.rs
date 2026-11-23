@@ -122,7 +122,23 @@ impl Repository<'_> {
     /// resolving to `refs/heads/trunk` is refused, because the floor would be asked about
     /// another branch than the one pushed.
     fn local_branch(&self, name: &str) -> Result<Option<String>, String> {
-        if !matches!(name, "HEAD" | "@") && !plain(name) {
+        // `rev-parse` reads `@` as HEAD, while `git push` first looks for a ref named `@`.
+        if name == "@" || (name != "HEAD" && !plain(name)) {
+            return Ok(None);
+        }
+        if name == "HEAD"
+            && !self
+                .query(&[
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "refs/heads/HEAD",
+                    "refs/tags/HEAD",
+                    "refs/remotes/HEAD",
+                ])?
+                .stdout
+                .trim()
+                .is_empty()
+        {
             return Ok(None);
         }
         let output = self.query(&["rev-parse", "--symbolic-full-name", name])?;
@@ -130,7 +146,7 @@ impl Repository<'_> {
         let Some(branch) = full.strip_prefix("refs/heads/") else {
             return Ok(None);
         };
-        let exact = matches!(name, "HEAD" | "@") || name == full || name == branch;
+        let exact = name == "HEAD" || name == full || name == branch;
         Ok((output.status.success() && exact && plain(branch)).then(|| branch.to_owned()))
     }
 
@@ -140,7 +156,14 @@ impl Repository<'_> {
         let Some(path) = self.path.to_str() else {
             return false;
         };
+        // A submodule push goes to remotes this check never asks.
+        let recursing = self.query(&[
+            "config",
+            "--get-regexp",
+            r"^(push\.recursesubmodules|submodule\.recurse)$",
+        ]);
         plain(remote)
+            && recursing.is_ok_and(|output| output.status.code() == Some(1))
             && crate::git::Git::new(self.cancel.clone(), self.deadline)
                 .and_then(|git| git.protected(path, remote, branch))
                 == Ok(false)
