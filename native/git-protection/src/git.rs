@@ -121,9 +121,15 @@ impl Git {
                 "Legacy Git grafts are unsupported; the real history must be checked.".into(),
             );
         }
-        let unsafe_config = self.run(&root, &["config", "--get-regexp", r"^(url\..*\.(insteadof|pushinsteadof)|core\.sshcommand|remote\..*\.(receivepack|vcs))$"])?;
+        let unsafe_config = self.run(&root, &["config", "--get-regexp", r"^(url\..*\.(insteadof|pushinsteadof)|core\.sshcommand|remote\..*\.(receivepack|uploadpack|vcs))$"])?;
         if unsafe_config.status.code() != Some(1) {
             return Err("Custom URL rewrites and transport commands are unsupported.".into());
+        }
+        // A remote from `.git/branches` or `.git/remotes` brings push refspecs that no
+        // configuration read here can see, so only a remote defined in the config is used.
+        let defined = self.run(&root, &["config", "--get", &format!("remote.{remote}.url")])?;
+        if !defined.status.success() {
+            return Err("Only a remote defined in the Git configuration is supported.".into());
         }
         let urls = self.read(&root, &["remote", "get-url", "--push", "--all", remote])?;
         let urls: Vec<_> = urls.lines().collect();

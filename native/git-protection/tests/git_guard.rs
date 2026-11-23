@@ -412,6 +412,15 @@ impl Bundle {
         self.git(&repo, &["fetch", "-q", "origin"]);
         self.git(&repo, &["branch", "trunk"]);
         self.git(&repo, &["branch", "heads/trunk"]);
+        // A branch named like a tag the remote has, and a remote defined outside the config.
+        self.git(&repo, &["push", "-q", "origin", "HEAD:refs/tags/v1"]);
+        self.git(&repo, &["branch", "v1"]);
+        std::fs::create_dir_all(repo.join(".git/branches")).unwrap();
+        std::fs::write(
+            repo.join(".git/branches/legacy"),
+            format!("{remote_path}#main\n"),
+        )
+        .unwrap();
         self.git(&repo, &["branch", "locked/x"]);
         self.git(&repo, &["switch", "-q", "-c", "agent/x"]);
         self.git(&repo, &["tag", "agent/tagged"]);
@@ -429,7 +438,7 @@ impl Bundle {
 }
 
 const HOOK_TYPES: &str = r#"{"version":1,"types":[
-    {"name":"Drafts","patterns":["agent/*","heads/*","trunk","main"],"level":"none"},
+    {"name":"Drafts","patterns":["agent/*","heads/*","v*","trunk","main"],"level":"none"},
     {"name":"Locked","patterns":["locked/*"],"level":"forbid"},
     {"name":"Features","patterns":["feature/*"],"level":"click"}]}"#;
 
@@ -486,6 +495,22 @@ fn branch_types_decide_force_pushes_and_deletions_in_the_hook() {
         ),
         ("true && git push -f origin agent/x", "force push"),
         ("bash -c 'git push -f origin agent/x'", "force push"),
+        ("git push -f origin v1:v1", "force push"),
+        ("git push -f origin agent/x:agent/x", "force push"),
+        (
+            "git push -f origin HEAD <<EOF\n$(git symbolic-ref HEAD refs/heads/main)\nEOF",
+            "force push",
+        ),
+        (
+            "git push -f origin HEAD 2>${x:-$(git symbolic-ref HEAD refs/heads/main)}/dev/null",
+            "force push",
+        ),
+        (
+            "git push -f --force-with-lease=${x#$(git symbolic-ref HEAD refs/heads/main)} origin HEAD",
+            "force push",
+        ),
+        ("git push -f origin 'agent/x'", "force push"),
+        ("git push -f legacy", "force push"),
         ("X=1 git push -f origin agent/x", "force push"),
         ("git -C . push -f origin agent/x", "force push"),
         ("git push --mirror origin", "force push"),

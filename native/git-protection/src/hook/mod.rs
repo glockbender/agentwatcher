@@ -55,7 +55,14 @@ fn inspect(
     };
     let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("~"), PathBuf::from);
     let parsed = shell::parse(command, deadline)?;
-    let verdict = policy::check(parsed, &cwd, &home, cancel, deadline)?;
+    let verdict = policy::check(
+        parsed,
+        policy::literal(command),
+        &cwd,
+        &home,
+        cancel,
+        deadline,
+    )?;
     let mut reasons = Vec::new();
     if !verdict.forbidden.is_empty() {
         reasons.push(format!(

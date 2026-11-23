@@ -170,6 +170,15 @@ fn protected(name: &str) -> bool {
         || name.ends_with("/heads/master")
 }
 
+/// Whether the command is plain text the shell runs as written. The parser does not look into
+/// every expansion (a heredoc body, `${x:-$(…)}`), so a push may skip its window only when the
+/// input has no expansion, quote, redirection or second line at all.
+pub(super) fn literal(command: &str) -> bool {
+    command
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || " -_./:+=,@".contains(c))
+}
+
 /// A name with nothing the shell or Git would expand or read as another ref.
 fn plain(name: &str) -> bool {
     !name.is_empty()
@@ -453,11 +462,14 @@ impl<'a> Push<'a> {
                     .push("pushes matching branches, main/master included".into());
                 forced.push(Outcome::Checked);
             } else {
-                let (source, destination) = reference
+                let destination = reference
                     .split_once(':')
-                    .map_or((reference, reference), |(source, dest)| {
-                        (source, if dest.is_empty() { source } else { dest })
-                    });
+                    .map_or(
+                        reference,
+                        |(source, dest)| {
+                            if dest.is_empty() { source } else { dest }
+                        },
+                    );
                 if protected(destination) {
                     verdict.risks.push("push targets main/master".into());
                 } else if matches!(destination, "HEAD" | "@")
@@ -475,7 +487,8 @@ impl<'a> Push<'a> {
                     forced.push(if tag {
                         Outcome::Checked
                     } else {
-                        rewritten(repo, types, allow, remote, source, destination)?
+                        let local = !reference.contains(':');
+                        rewritten(repo, types, allow, remote, local, destination)?
                     });
                 }
             }
@@ -558,7 +571,7 @@ fn rewritten(
     types: &BranchTypes,
     allow: bool,
     remote: Option<&str>,
-    source: &str,
+    local: bool,
     destination: &str,
 ) -> Result<Outcome, String> {
     let candidate = (!matches!(destination, "HEAD" | "@")).then(|| {
@@ -574,7 +587,8 @@ fn rewritten(
             let Some(remote) = remote else {
                 return Ok(None);
             };
-            let branch = if destination == source {
+            // `name:name` is not a local push: its `<dst>` is matched on the remote.
+            let branch = if local {
                 repo.local_branch(destination)?
             } else {
                 explicit_branch(destination)
@@ -703,6 +717,7 @@ fn repository(here: &Path, home: &Path, prefix: &[String], options: &[String]) -
 
 pub(super) fn check(
     parsed: Parsed,
+    literal: bool,
     cwd: &Path,
     home: &Path,
     cancel: &Cancellation,
@@ -714,7 +729,7 @@ pub(super) fn check(
     let mut types = None;
     let mut verdict = Verdict::default();
     let mut seen = HashSet::new();
-    let alone = parsed.total == 1 && parsed.commands.len() == 1;
+    let alone = literal && parsed.total == 1 && parsed.commands.len() == 1;
     for command in parsed.commands {
         if Instant::now() >= deadline {
             return Err(super::TIMEOUT.into());
