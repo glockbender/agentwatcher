@@ -30,7 +30,7 @@ Mothership больше не регистрирует свой обработч�
 подтверждение Agent Watch.
 
 Типы веток с уровнями `none`, `click`, `name` и `forbid` и пол, который тип не опускает,
-сделаны в ветке после 0.5.0 ([ADR-0024](adr/0024-a-branch-type-chooses-the-check-above-a-floor.md)).
+сделаны в ветке после 0.5.0 ([ADR-0025](adr/0025-a-branch-type-chooses-the-check-above-a-floor.md)).
 Осталось проверить их владельцу на живой установке: окна `click` и `name`, отказ `forbid` и
 отправку без окна при `none` в Claude и Codex.
 

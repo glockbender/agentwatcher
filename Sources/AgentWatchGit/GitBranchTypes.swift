@@ -52,7 +52,7 @@ extension GitBranchType: Equatable {
 ///
 /// The Rust side reads `~/Library/Application Support/AgentWatch/git-branch-types.json` through
 /// `HOME` and treats an unreadable file as no types; it lowers nothing below the floor of
-/// ADR-0024, whatever the file says.
+/// ADR-0025, whatever the file says.
 public struct GitBranchTypes: Codable, Equatable, Sendable {
     public static let fileName = "git-branch-types.json"
     public static let currentVersion = 1

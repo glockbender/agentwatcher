@@ -2,7 +2,7 @@
 //!
 //! The app writes the table; this side only reads it. An agent runs as the same user and can
 //! edit the file, so nothing read here may lower the floor: `main`, `master`, the remote's
-//! default branch, branches listed in `mothership.protectedBranch` and tags. See ADR-0024.
+//! default branch, branches listed in `mothership.protectedBranch` and tags. See ADR-0025.
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
