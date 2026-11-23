@@ -41,7 +41,14 @@ fn context(plan: &Plan) -> String {
         .reason
         .as_ref()
         .map_or_else(String::new, |reason| format!("\nЦель запроса: {reason}"));
-    format!("Репозиторий: {}\nНазначение: {location}{reason}", plan.name)
+    let kind = plan
+        .branch_type
+        .as_ref()
+        .map_or_else(String::new, |kind| format!("\nТип ветки: {kind}"));
+    format!(
+        "Репозиторий: {}\nНазначение: {location}{kind}{reason}",
+        plan.name
+    )
 }
 
 fn risk_heading(plan: &Plan, risk: Risk) -> &'static str {
@@ -96,19 +103,27 @@ pub fn risk_form(plan: &Plan, risk: Risk, index: usize, titled_choices: bool) ->
             "Разрешить удаление метки",
         ),
     };
-    let single_click = plan.single_click_delete();
+    let single_click = plan.single_click();
+    // The button of a single window runs the push, so it names the push, not a permission.
+    let permission = if single_click && risk == Risk::ForceUpdate {
+        "Перезаписать историю ветки"
+    } else {
+        permission
+    };
     let total = plan.risks.len() + usize::from(!single_click);
     let next = if single_click {
-        "Кнопка «Удалить ветку» выполнит операцию. При отмене появится команда для ручного запуска."
+        format!(
+            "Кнопка «{permission}» выполнит операцию. При отмене появится команда для ручного запуска."
+        )
     } else if index + 1 == plan.risks.len() {
-        "На этом шаге ничего не меняется. Далее: последний шаг с вводом имени репозитория."
+        "На этом шаге ничего не меняется. Далее: последний шаг с вводом имени репозитория.".into()
     } else {
-        "На этом шаге ничего не меняется. Далее: отдельное подтверждение следующего риска."
+        "На этом шаге ничего не меняется. Далее: отдельное подтверждение следующего риска.".into()
     };
-    let title = if single_click {
-        "Удалить ветку?"
-    } else {
-        "Можно продолжить?"
+    let title = match (single_click, plan.delete) {
+        (true, true) => "Удалить ветку?",
+        (true, false) => "Перезаписать историю ветки?",
+        (false, _) => "Можно продолжить?",
     };
     let mut decision = json!({"type":"string","title":title});
     if titled_choices {
@@ -123,8 +138,9 @@ pub fn risk_form(plan: &Plan, risk: Risk, index: usize, titled_choices: bool) ->
             "stop — отменить всю операцию. continue — {permission}."
         ));
     }
+    // A single window is also the last one, so it carries what the final step would show.
     let address = if single_click {
-        local_address(plan)
+        format!("{}{}", version(plan), local_address(plan))
     } else {
         String::new()
     };
@@ -147,13 +163,17 @@ fn local_address(plan: &Plan) -> String {
     }
 }
 
-pub fn execution_form(plan: &Plan) -> Form {
-    let total = plan.risks.len() + 1;
-    let version = if plan.delete {
+fn version(plan: &Plan) -> String {
+    if plan.delete {
         String::new()
     } else {
         format!("\nВерсия кода: {} ({})", plan.source, &plan.new[..12])
-    };
+    }
+}
+
+pub fn execution_form(plan: &Plan) -> Form {
+    let total = plan.risks.len() + 1;
+    let version = version(plan);
     let address = local_address(plan);
     Form {
         message: format!(

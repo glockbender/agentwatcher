@@ -165,3 +165,17 @@ comes back.
 **Checked on:** Claude.app 2.26454.0 with Claude Code 2.1.289. Tested: opening a session starts it,
 archiving ends it, and a continued session keeps its identifier. Read in the app's code but not
 seen: the app stopping an unused session on its own.
+
+## The agent says a Git push is "forbidden by branch type"
+
+**Why:** A branch type in `Settings… → Git Protection → Branch types` has the level `Forbid`, and
+the branch matched its pattern first. Agent Watch refuses a force push or a remote deletion of such
+a branch without a window, both in the Git hook and in `AgentWatchGit push`. Types are checked from
+the top, so a broad pattern such as `*` above a narrower one takes the branch first.
+
+**What to do:** Run the command yourself in a terminal; the refusal names the branch and the type,
+and `AgentWatchGit push` also returns the command. To let the agent do it, choose another level for
+the type or move a narrower type above it.
+
+**Checked on:** not recorded. Tests with local repositories cover the hook and `AgentWatchGit
+push`; a live Claude Code or Codex session has not been tried yet.

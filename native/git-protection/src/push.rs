@@ -1,6 +1,7 @@
 use crate::confirmation::{self, Form};
-use crate::domain::Arguments;
+use crate::domain::{Arguments, Plan};
 use crate::git::Git;
+use crate::levels::Level;
 use crate::process::{self, Cancellation};
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -14,9 +15,18 @@ pub fn execute(
     let deadline = Instant::now() + Duration::from_secs(300);
     let git = Git::new(cancel.clone(), deadline)?;
     let plan = git.prepare(args)?;
+    if plan.level == Level::Forbid {
+        return Ok(plan.stopped(&forbidden(&plan)));
+    }
     let confirmed = || -> Result<(), String> {
         cancel.check(deadline)?;
-        for (index, risk) in plan.risks.iter().enumerate() {
+        // At `none` the person chose no window for this branch type, so nothing is asked.
+        let risks = if plan.level == Level::None {
+            &[][..]
+        } else {
+            &plan.risks[..]
+        };
+        for (index, risk) in risks.iter().enumerate() {
             let form = confirmation::risk_form(&plan, *risk, index, titled_choices);
             let answer = confirm(form, deadline)?;
             if answer.get("action") != Some(&json!("accept"))
@@ -25,7 +35,7 @@ pub fn execute(
                 return Err(format!("Confirmation stopped at risk {}.", index + 1));
             }
         }
-        if !plan.single_click_delete() {
+        if plan.level != Level::None && !plan.single_click() {
             let form = confirmation::execution_form(&plan);
             let answer = confirm(form, deadline)?;
             if answer.get("action") != Some(&json!("accept"))
@@ -67,4 +77,20 @@ pub fn execute(
             json!({"status":"outcome_unknown","message":"Git was interrupted or could not finish after confirmation. Check the remote before retrying."}),
         ),
     }
+}
+
+fn forbidden(plan: &Plan) -> String {
+    let operation = if plan.delete {
+        "deletion"
+    } else {
+        "force push"
+    };
+    let branch = plan
+        .destination
+        .strip_prefix("refs/heads/")
+        .unwrap_or(&plan.destination);
+    let kind = plan.branch_type.as_deref().unwrap_or_default();
+    format!(
+        "Agent Watch settings forbid the {operation} of branch '{branch}' (branch type '{kind}'). Nothing was pushed and no window was shown. Do not call AgentWatchGit for it again."
+    )
 }

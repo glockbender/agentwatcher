@@ -1,0 +1,36 @@
+{
+  "types" : [
+    {
+      "level" : "click",
+      "name" : "Features",
+      "patterns" : [
+        "feature/*",
+        "fix/*"
+      ]
+    },
+    {
+      "level" : "name",
+      "name" : "Releases",
+      "patterns" : [
+        "release/*",
+        "hotfix/*"
+      ]
+    },
+    {
+      "level" : "none",
+      "name" : "Agent drafts",
+      "patterns" : [
+        "agent/*",
+        "tmp/*"
+      ]
+    },
+    {
+      "level" : "forbid",
+      "name" : "Archive",
+      "patterns" : [
+        "archive/*"
+      ]
+    }
+  ],
+  "version" : 1
+}

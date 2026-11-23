@@ -1,4 +1,5 @@
 use crate::domain::{Arguments, Plan, Risk, repository_name, valid_oid, valid_text};
+use crate::levels::{self, BranchTypes, Level};
 use crate::process::{self, Cancellation, Output};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -197,16 +198,45 @@ impl Git {
         }
     }
 
-    fn risks(&self, args: &Arguments, repo: &str, url: &str) -> Result<Vec<Risk>, String> {
+    /// The level of a force push or deletion of a branch. The remote is asked for its
+    /// default branch only when the chosen level is below the floor, so an operation the
+    /// branch types leave alone asks exactly what it asked before they existed.
+    fn level(
+        &self,
+        repo: &str,
+        url: &str,
+        destination: &str,
+        delete: bool,
+    ) -> Result<(Level, Option<String>), String> {
+        let branch = destination
+            .strip_prefix("refs/heads/")
+            .unwrap_or(destination);
+        let (chosen, kind) = levels::chosen(&BranchTypes::load(), branch, delete);
+        let level = if chosen < Level::Name {
+            levels::with_floor(chosen, self.protected_branch(repo, url, destination)?)
+        } else {
+            chosen
+        };
+        Ok((level, kind))
+    }
+
+    /// The floor for the hook: whether `main`, `master`, the remote's default branch or a
+    /// project rule protects the branch, asked through the same checked remote as a push.
+    pub fn protected(&self, repo: &str, remote: &str, branch: &str) -> Result<bool, String> {
+        let (root, _, url) = self.identity(repo, remote)?;
+        self.protected_branch(&root, &url, &format!("refs/heads/{branch}"))
+    }
+
+    fn risks(args: &Arguments, level: Level) -> Vec<Risk> {
         if args.delete {
             let risk = if !args.destination.starts_with("refs/heads/") {
                 Risk::DeleteTag
-            } else if self.protected_branch(repo, url, &args.destination)? {
+            } else if level >= Level::Name {
                 Risk::DeleteProtectedBranch
             } else {
                 Risk::DeleteBranch
             };
-            return Ok(vec![risk]);
+            return vec![risk];
         }
         let mut risks = Vec::new();
         if main_branch(&args.destination) {
@@ -215,7 +245,7 @@ impl Git {
         if args.force {
             risks.push(Risk::ForceUpdate);
         }
-        Ok(risks)
+        risks
     }
 
     fn pin_remote(&self, repo: &str, remote: &str, url: &str) -> Result<Vec<String>, String> {
@@ -341,7 +371,13 @@ impl Git {
                 return Err("A normal push must preserve existing history. Fetch the remote ref first; if rewriting it is intended, request force=true.".into());
             }
         }
-        let risks = self.risks(args, &root, &url)?;
+        let (level, branch_type) =
+            if args.destination.starts_with("refs/heads/") && (args.delete || args.force) {
+                self.level(&root, &url, &args.destination, args.delete)?
+            } else {
+                (Level::Name, None)
+            };
+        let risks = Self::risks(args, level);
         let options = self.pin_remote(&root, &args.remote, &url)?;
         let mut command = vec![self.binary.clone(), "-C".into(), root.clone()];
         command.extend(options.clone());
@@ -367,6 +403,8 @@ impl Git {
             old,
             delete: args.delete,
             risks,
+            level,
+            branch_type,
             reason: args.reason.clone(),
             remote_options: options,
             command,
@@ -383,12 +421,18 @@ impl Git {
             return Ok(false);
         }
 
-        // The remote HEAD lookup can block. Revalidate the destination after it.
-        if plan.single_click_delete()
-            && (self.protected_branch(&plan.repository, &plan.url, &plan.destination)?
-                || self.identity(&plan.repository, &plan.remote)? != approved_identity)
-        {
-            return Ok(false);
+        // The table can change while a window is open, and below the floor the remote can
+        // start calling the branch its default. A level that rose stops the push.
+        if plan.governed() {
+            let (level, _) =
+                self.level(&plan.repository, &plan.url, &plan.destination, plan.delete)?;
+            // The remote HEAD lookup can block. Revalidate the destination after it.
+            if level > plan.level
+                || (level < Level::Name
+                    && self.identity(&plan.repository, &plan.remote)? != approved_identity)
+            {
+                return Ok(false);
+            }
         }
 
         Ok(
