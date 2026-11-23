@@ -1,9 +1,9 @@
-import AgentWatchCore
 import AgentWatchTestSupport
 import Foundation
 import XCTest
 
 @testable import AgentWatchApp
+@testable import AgentWatchCore
 
 final class ProjectBrowserTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 5_000)
@@ -26,33 +26,35 @@ final class ProjectBrowserTests: XCTestCase {
     }
 
     @MainActor
-    func testWaitingDestinationOpensAllInteractiveWaitsAndDropsResolvedChats() {
-        let waiting = (0...22).map { index in
-            testSession(
-                index: index, source: index.isMultiple(of: 2) ? .claude : .codex,
-                phase: .waitingForUser, clientKind: index.isMultiple(of: 2) ? .cli : .desktop,
-                lastObservedAt: now.addingTimeInterval(Double(index)))
-        }
-        let other = [
-            testSession(index: 23, phase: .executing, lastObservedAt: now),
-            testSession(index: 24, phase: .failed, lastObservedAt: now),
-            testSession(index: 25, phase: .waitingForUser, clientKind: .headless, lastObservedAt: now),
-        ]
-        let folders = AgentFolders(
-            home: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+    func testNavigatingStartsTheChosenScopeWithoutAnOldSearchOrFilter() {
         let model = ProjectBrowserModel()
         defer { model.stop() }
-        model.update(waiting + other, folders: folders, claudeUsage: [:], readsTranscripts: false)
         model.scope = .profiles
         model.search = "an old search"
         model.filter = .quiet
-        model.navigate(to: .waiting)
-        XCTAssertEqual(model.scope, .waiting)
+        model.navigate(to: .recent)
+        XCTAssertEqual(model.scope, .recent)
         XCTAssertTrue(model.search.isEmpty)
         XCTAssertEqual(model.filter, .all)
-        XCTAssertEqual(model.waiting.map(\.id), waiting.reversed().map(\.id))
-        model.update(other, folders: folders, claudeUsage: [:], readsTranscripts: false)
-        XCTAssertTrue(model.waiting.isEmpty)
+    }
+
+    /// The waiting filter and the waiting beacon's list agree: a Codex question counts while the
+    /// chat keeps working, and an answered one leaves both.
+    @MainActor
+    func testTheWaitingFilterMatchesTheBeaconsList() {
+        var question = testSession(index: 1, source: .codex, phase: .executing, lastObservedAt: now)
+        question.pendingCodexQuestions = ["question-1": now]
+        let reply = testSession(index: 2, phase: .waitingForUser, lastObservedAt: now)
+        let working = testSession(index: 3, phase: .executing, lastObservedAt: now)
+        var answered = question
+        answered.pendingCodexQuestions = nil
+        let beacon = WaitingChatsModel { _ in .raised }
+        for sessions in [[question, reply, working], [answered, reply, working]] {
+            beacon.update(sessions)
+            let filtered = sessions.filter { ProjectBrowserFilter.waiting.includes($0, now: now) }
+            XCTAssertEqual(Set(filtered.map(\.id)), Set(beacon.rows.map(\.id)))
+        }
+        XCTAssertEqual(beacon.rows.map(\.id), [reply.id])
     }
 
     func testFiltersRunBeforeLimitAndUseTheRecordedPhaseAndAge() throws {

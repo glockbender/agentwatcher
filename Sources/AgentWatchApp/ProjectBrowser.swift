@@ -19,14 +19,15 @@ enum ProjectBrowserFilter: String, CaseIterable {
         switch self {
         case .all: true
         case .working: session.phase.claimsWork
-        case .waiting: session.phase == .waitingForUser
+        // The same test as the waiting beacon's list, so a Codex question counts in both.
+        case .waiting: session.needsUserReply
         case .quiet: SessionFreshnessEvaluator.evaluate(session, now: now) == .noRecentActivity
         }
     }
 }
 
 enum ProjectBrowserScope: Hashable {
-    case recent, waiting, project(URL), unknown, profiles
+    case recent, project(URL), unknown, profiles
 }
 
 enum WatchDestination: String, CaseIterable {
@@ -42,13 +43,6 @@ enum WatchDestination: String, CaseIterable {
 
 enum ProjectBrowserCatalog {
     static let recentLimit = 20
-
-    static func waiting(_ sessions: [SessionSnapshot]) -> [SessionSnapshot] {
-        sessions.filter { $0.phase == .waitingForUser && !$0.isHeadlessRun }
-            .sorted { lhs, rhs in
-                lhs.lastObservedAt == rhs.lastObservedAt ? lhs.id < rhs.id : lhs.lastObservedAt > rhs.lastObservedAt
-            }
-    }
 
     static func visible(
         _ entries: [ProjectBrowserEntry], scope: ProjectBrowserScope, filter: ProjectBrowserFilter,
@@ -84,7 +78,6 @@ final class ProjectBrowserModel: ObservableObject {
     @Published var scope: ProjectBrowserScope? = .recent
     @Published var filter = ProjectBrowserFilter.all
     @Published var search = ""
-    @Published private(set) var waiting: [SessionSnapshot] = []
 
     func navigate(to scope: ProjectBrowserScope) {
         self.scope = scope
@@ -110,7 +103,6 @@ final class ProjectBrowserModel: ObservableObject {
         _ sessions: [SessionSnapshot], folders: AgentFolders, claudeUsage: [String: AgentUsageLimits],
         readsTranscripts: Bool, refresh: Bool = false
     ) {
-        waiting = ProjectBrowserCatalog.waiting(sessions)
         profileSessions = sessions.filter { $0.source == .codex && $0.phase != .sessionClosed }
         if self.claudeUsage != claudeUsage { self.claudeUsage = claudeUsage }
         let candidates = sessions.filter(ProjectSessionLookup.isCandidate).sorted { $0.id < $1.id }
@@ -179,7 +171,6 @@ final class ProjectBrowserModel: ObservableObject {
         entries = []
         snapshots = []
         folders = nil
-        waiting = []
         profileSessions = []
         claudeUsage = [:]
         reading = false
@@ -251,8 +242,6 @@ private struct ProjectBrowserView: View {
         NavigationSplitView {
             List(selection: $model.scope) {
                 Label("Recent", systemImage: "clock").tag(ProjectBrowserScope.recent)
-                Label("Waiting for you", systemImage: "bubble.left.and.exclamationmark.bubble.right").tag(
-                    ProjectBrowserScope.waiting)
                 Label("Usage profiles", systemImage: "chart.bar").tag(ProjectBrowserScope.profiles)
                 Section("Projects") {
                     ForEach(projects, id: \.commonDirectory) { copy in
@@ -270,9 +259,7 @@ private struct ProjectBrowserView: View {
             }
             .navigationSplitViewColumnWidth(min: 150, ideal: 205)
         } detail: {
-            if model.scope == .waiting {
-                waitingChats
-            } else if model.scope == .profiles, let folders = model.folders {
+            if model.scope == .profiles, let folders = model.folders {
                 UsageProfilesView(
                     folders: folders, claude: model.claudeUsage, sessions: model.profileSessions,
                     readsTranscripts: model.readsTranscripts)
@@ -282,34 +269,6 @@ private struct ProjectBrowserView: View {
         }
         .toolbar {
             Button(action: settings) { Label("Settings", systemImage: "gearshape") }
-        }
-    }
-
-    @ViewBuilder
-    private var waitingChats: some View {
-        if model.waiting.isEmpty {
-            ContentUnavailableView("No chats waiting for a reply", systemImage: "checkmark.bubble")
-        } else {
-            VStack(alignment: .leading) {
-                List(model.waiting) { row in
-                    Button {
-                        if let entry = model.entries.first(where: { $0.id == row.id }) {
-                            model.open(entry)
-                        } else if openSession(row.id) != .raised {
-                            model.message = "Could not bring this chat to the front."
-                        }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(row.title ?? row.projectName ?? "Untitled chat").font(.headline)
-                            Text(
-                                [row.source == .claude ? "Claude" : "Codex", row.projectName, row.gitBranch]
-                                    .compactMap { $0 }.joined(separator: " · ")
-                            ).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                }
-                if let message = model.message { Text(message).foregroundStyle(.secondary).padding(.horizontal) }
-            }
         }
     }
 

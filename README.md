@@ -69,8 +69,8 @@ It comes in two styles, chosen in **Settings… → Menu Bar**:
 <img src="docs/images/clip-counts.avif" alt="The same scene with the Counts icon: the one session moves from done to working, to needs you, and back to done" width="640">
 
 Click the date and time to open Notification Center, choose **Edit Widgets**, and add **Agent Watch**.
-The small widget opens **Projects & Recent**. The medium widget also opens **Waiting for you** or
-**Settings**. Both work when the menu bar icon is hidden.
+The small widget opens **Projects & Recent**. The medium widget also has **Waiting for you**, which
+opens the same list of waiting chats as the beacon, and **Settings**. Both work when the menu bar icon is hidden.
 
 An optional orange beacon appears when a chat is waiting for your reply. Choose **Full screen only** or **All modes** to show it on windowed desktops too.
 Click the ring and choose a chat to open it. Right-click it to open **Waiting Beacon Settings…**.

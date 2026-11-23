@@ -767,7 +767,8 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
     private func navigate(to destination: WatchDestination) {
         switch destination {
         case .projects: showProjects()
-        case .waiting: presentProjects(.waiting)
+        // The widget's link opens the same list as the beacon: one list of waiting chats.
+        case .waiting: waitingWindow.present()
         case .settings: showWidgetSettings()
         }
     }
