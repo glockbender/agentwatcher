@@ -191,9 +191,10 @@ impl Git {
                 Ok(true)
             }
             Some(0 | 1) if head.is_some() => Ok(false),
-            Some(0 | 1) => {
-                Err("The remote did not advertise its default branch. Deletion was stopped.".into())
-            }
+            Some(0 | 1) => Err(
+                "The remote did not advertise its default branch. The operation was stopped."
+                    .into(),
+            ),
             _ => Err("Git could not read the configured protected branches.".into()),
         }
     }

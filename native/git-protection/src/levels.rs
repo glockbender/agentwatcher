@@ -26,8 +26,9 @@ pub const TABLE_PATH: &str = "Library/Application Support/AgentWatch/git-branch-
 const TABLE_VERSION: u32 = 1;
 const MAX_TABLE_BYTES: u64 = 1024 * 1024;
 
+// Unknown fields are ignored, as the app's decoder ignores them, so both sides read one
+// file the same way.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct BranchType {
     pub name: String,
     pub patterns: Vec<String>,
@@ -35,7 +36,6 @@ pub struct BranchType {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Table {
     version: u32,
     types: Vec<BranchType>,
@@ -241,10 +241,15 @@ mod tests {
             "{",
             r#"{"version":2,"types":[]}"#,
             r#"{"version":1,"types":[{"name":"A","patterns":["*"],"level":"never"}]}"#,
-            r#"{"version":1,"types":[{"name":"A","patterns":["*"],"level":"none","x":1}]}"#,
+            r#"{"version":1,"types":[{"name":"A","level":"none"}]}"#,
         ] {
             assert!(BranchTypes::parse(text).is_none(), "{text}");
         }
+        // A field this version does not know is ignored, as the app ignores it.
+        let newer = BranchTypes::parse(
+            r#"{"version":1,"types":[{"name":"A","patterns":["a"],"level":"none","colour":"red"}]}"#,
+        );
+        assert_eq!(newer.unwrap().matching("a").unwrap().level, Level::None);
         let missing = BranchTypes::load_from(Path::new("/nonexistent/agent-watch/types.json"));
         assert!(missing.matching("anything").is_none());
     }

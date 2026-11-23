@@ -12,7 +12,11 @@ pub(super) struct Command {
 
 pub(super) struct Parsed {
     pub(super) parents: Vec<usize>,
+    /// Only the commands the policy reads: `git`, `cd` and `pushd`.
     pub(super) commands: Vec<Command>,
+    /// Every simple command in the input, the dropped ones included, so the policy can tell
+    /// a lone `git push` from one that shares the input with commands it never sees.
+    pub(super) total: usize,
 }
 
 const DEPTH_LIMIT: usize = 6;
@@ -23,6 +27,7 @@ pub(super) fn parse(text: &str, deadline: Instant) -> Check<Parsed> {
     let mut parsed = Parsed {
         parents: vec![0],
         commands: Vec::new(),
+        total: 0,
     };
     Parser::new(&normalized, 0, 0, 0, &mut parsed, deadline)?.scan(false)?;
     Ok(parsed)
@@ -136,6 +141,7 @@ impl<'a, 'p> Parser<'a, 'p> {
 
     fn end_command(&mut self) -> Check<()> {
         if !self.words.is_empty() || self.redirected {
+            self.parsed.total += 1;
             let words = mem::take(&mut self.words);
             self.pipe.interpreters.push(commands::reads_stdin(&words));
             if let Some(command) = self.nested_command(words, self.depth)? {

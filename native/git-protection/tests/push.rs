@@ -1567,7 +1567,10 @@ fn a_click_level_force_push_runs_from_its_only_window() {
     assert_eq!(prompts, 1);
     let params = &fixture.prompts[0]["params"];
     let message = params["message"].as_str().unwrap();
-    assert!(message.starts_with("Шаг 1 из 1: Принудительная отправка"), "{message}");
+    assert!(
+        message.starts_with("Шаг 1 из 1: Принудительная отправка"),
+        "{message}"
+    );
     assert!(message.contains("Тип ветки: Features"), "{message}");
     assert!(message.contains("Версия кода: HEAD"), "{message}");
     assert!(message.contains("Кнопка «Перезаписать историю ветки» выполнит операцию"));
@@ -1584,7 +1587,13 @@ fn the_floor_keeps_the_repository_name_whatever_the_type_says() {
     );
     fixture.git(&["config", "--add", "mothership.protectedBranch", "stable"]);
     let remote = fixture.remote.to_str().unwrap().to_owned();
-    fixture.git(&["--git-dir", &remote, "symbolic-ref", "HEAD", "refs/heads/trunk"]);
+    fixture.git(&[
+        "--git-dir",
+        &remote,
+        "symbolic-ref",
+        "HEAD",
+        "refs/heads/trunk",
+    ]);
     for (destination, delete, windows) in [
         ("refs/heads/main", true, 2),
         ("refs/heads/master", true, 2),
@@ -1608,7 +1617,11 @@ fn the_floor_keeps_the_repository_name_whatever_the_type_says() {
             }
         });
         assert_eq!(result["status"], "not_pushed", "{destination}: {result}");
-        assert_eq!(fixture.prompts.len(), windows, "{destination} delete={delete}");
+        assert_eq!(
+            fixture.prompts.len(),
+            windows,
+            "{destination} delete={delete}"
+        );
         let last = &fixture.prompts[windows - 1]["params"]["requestedSchema"]["properties"];
         assert!(last["repository_name"].is_object(), "{destination}");
         assert!(fixture.remote_refs().contains(destination), "{destination}");
@@ -1626,7 +1639,10 @@ fn the_first_matching_type_decides() {
     let (result, prompts) = run_level(&mut fixture, "agent/first", true);
     assert_eq!((result["status"].as_str(), prompts), (Some("completed"), 0));
     let (result, prompts) = run_level(&mut fixture, "other/second", true);
-    assert_eq!((result["status"].as_str(), prompts), (Some("not_pushed"), 0));
+    assert_eq!(
+        (result["status"].as_str(), prompts),
+        (Some("not_pushed"), 0)
+    );
     assert!(result["message"].as_str().unwrap().contains("'Everything'"));
 }
 
@@ -1663,7 +1679,10 @@ fn a_project_rule_only_raises_a_type() {
         assert_eq!(prompts, windows, "{branch}");
     }
     let (result, prompts) = run_level(&mut fixture, "locked/kept", true);
-    assert_eq!((result["status"].as_str(), prompts), (Some("not_pushed"), 0));
+    assert_eq!(
+        (result["status"].as_str(), prompts),
+        (Some("not_pushed"), 0)
+    );
 }
 
 #[test]
@@ -1678,6 +1697,11 @@ fn a_level_raised_during_the_window_stops_the_push() {
         Fixture::accept(prompt)
     });
     assert_eq!(result["status"], "not_pushed", "{result}");
-    assert!(result["message"].as_str().unwrap().contains("changed during confirmation"));
+    assert!(
+        result["message"]
+            .as_str()
+            .unwrap()
+            .contains("changed during confirmation")
+    );
     assert!(fixture.remote_refs().contains(branch));
 }

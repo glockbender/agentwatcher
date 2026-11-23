@@ -89,7 +89,7 @@ private struct GitBranchTypeRow: View {
         }
         .onAppear { patterns = type.patterns.joined(separator: " ") }
         .onChange(of: patterns) {
-            type.patterns = patterns.split(whereSeparator: { $0.isWhitespace || $0 == "," }).map(String.init)
+            type.patterns = patterns.split(whereSeparator: \.isWhitespace).map(String.init)
         }
     }
 }

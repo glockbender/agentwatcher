@@ -101,13 +101,6 @@ impl Repository<'_> {
         Ok(risks)
     }
 
-    fn exists(&self, reference: &str) -> Result<bool, String> {
-        Ok(self
-            .query(&["show-ref", "--verify", "--quiet", reference])?
-            .status
-            .success())
-    }
-
     /// The remote a push without a remote operand goes to, in Git's own order.
     fn implicit_remote(&self, branch: &str) -> Result<String, String> {
         for key in [
@@ -124,35 +117,21 @@ impl Repository<'_> {
         Ok("origin".into())
     }
 
-    /// The branch a push of a local name updates. Without `:<dst>` Git updates the same full
-    /// ref as the source, so a local branch that no local tag shadows can only be a branch.
-    fn local_branch(&self, context: &Context, name: &str) -> Result<Option<String>, String> {
-        if matches!(name, "HEAD" | "@") {
-            return self.branch(context).map(Some);
+    /// The branch a push of a local name updates. Without `:<dst>` Git updates the source's
+    /// own full ref, so the name must resolve to exactly `refs/heads/<name>`: `heads/trunk`
+    /// resolving to `refs/heads/trunk` is refused, because the floor would be asked about
+    /// another branch than the one pushed.
+    fn local_branch(&self, name: &str) -> Result<Option<String>, String> {
+        if !matches!(name, "HEAD" | "@") && !plain(name) {
+            return Ok(None);
         }
-        if let Some(branch) = name.strip_prefix("refs/heads/") {
-            return Ok(plain(branch).then(|| branch.to_owned()));
-        }
-        Ok((plain(name)
-            && !name.starts_with("refs/")
-            && self.exists(&format!("refs/heads/{name}"))?
-            && !self.exists(&format!("refs/tags/{name}"))?)
-        .then(|| name.to_owned()))
-    }
-
-    /// The branch a short remote name refers to. Git matches a short `<dst>` against the
-    /// remote's refs, where it can be a tag, so the name must be a known remote branch and
-    /// not a local tag.
-    fn remote_branch(&self, remote: &str, name: &str) -> Result<Option<String>, String> {
-        if let Some(branch) = name.strip_prefix("refs/heads/") {
-            return Ok(plain(branch).then(|| branch.to_owned()));
-        }
-        Ok((plain(name)
-            && plain(remote)
-            && !name.starts_with("refs/")
-            && self.exists(&format!("refs/remotes/{remote}/{name}"))?
-            && !self.exists(&format!("refs/tags/{name}"))?)
-        .then(|| name.to_owned()))
+        let output = self.query(&["rev-parse", "--symbolic-full-name", name])?;
+        let full = output.stdout.trim();
+        let Some(branch) = full.strip_prefix("refs/heads/") else {
+            return Ok(None);
+        };
+        let exact = matches!(name, "HEAD" | "@") || name == full || name == branch;
+        Ok((output.status.success() && exact && plain(branch)).then(|| branch.to_owned()))
     }
 
     /// Whether the floor leaves the branch alone, asked of the remote the way a push asks.
@@ -161,9 +140,10 @@ impl Repository<'_> {
         let Some(path) = self.path.to_str() else {
             return false;
         };
-        crate::git::Git::new(self.cancel.clone(), self.deadline)
-            .and_then(|git| git.protected(path, remote, branch))
-            == Ok(false)
+        plain(remote)
+            && crate::git::Git::new(self.cancel.clone(), self.deadline)
+                .and_then(|git| git.protected(path, remote, branch))
+                == Ok(false)
     }
 
     fn known_branch(&self, name: &str) -> Result<bool, String> {
@@ -200,6 +180,14 @@ fn plain(name: &str) -> bool {
             .any(|c| c.is_whitespace() || c.is_control() || "$`*?[\\~^:@{}".contains(c))
 }
 
+/// A destination Git can only read as a branch: a short `<dst>` is matched against the
+/// remote's refs, where `v1`, `tags/v1` or `heads/main` name something else.
+fn explicit_branch(name: &str) -> Option<String> {
+    name.strip_prefix("refs/heads/")
+        .filter(|branch| plain(branch))
+        .map(str::to_owned)
+}
+
 /// What a branch type says about one force push or deletion.
 enum Outcome {
     /// The type is `none`, the destination is a branch and the floor leaves it alone.
@@ -216,6 +204,7 @@ enum Outcome {
 /// matching type a command is inspected exactly as before types existed.
 fn outcome(
     types: &BranchTypes,
+    allow: bool,
     candidate: Option<&str>,
     resolve: impl FnOnce() -> Result<Option<(String, String)>, String>,
     repo: &Repository,
@@ -236,7 +225,7 @@ fn outcome(
             branch,
             kind: kind.name.clone(),
         },
-        Some(kind) if kind.level == Level::None && repo.below_floor(&remote, &branch) => {
+        Some(kind) if kind.level == Level::None && allow && repo.below_floor(&remote, &branch) => {
             Outcome::Allowed
         }
         _ => Outcome::Checked,
@@ -285,6 +274,35 @@ struct Push<'a> {
     prune: bool,
     remote_option: Option<&'a str>,
     operands: Vec<&'a str>,
+    /// Set by any option outside the few a branch type may let through without a window.
+    unusual: bool,
+}
+
+/// Whether an argument of `git push` can do more than force or delete the named refs. Only a
+/// push made of plain options and ref names may skip the window; `--mirror`, `--tags`,
+/// `--all`, `--prune`, `--receive-pack`, submodule pushes and anything unknown may not.
+fn unusual(arg: &str) -> bool {
+    if !arg.starts_with('-') || arg == "--" {
+        return false;
+    }
+    if let Some(letters) = arg.strip_prefix('-').filter(|rest| !rest.starts_with('-')) {
+        return !letters.bytes().all(|letter| b"fduqv".contains(&letter));
+    }
+    let name = arg.split_once('=').map_or(arg, |(option, _)| option);
+    !matches!(
+        name,
+        "--force"
+            | "--force-with-lease"
+            | "--force-if-includes"
+            | "--delete"
+            | "--set-upstream"
+            | "--quiet"
+            | "--verbose"
+            | "--no-verify"
+            | "--progress"
+            | "--no-progress"
+            | "--porcelain"
+    )
 }
 
 fn abbreviated(arg: &str, names: &[&str]) -> bool {
@@ -304,7 +322,10 @@ impl<'a> Push<'a> {
     }
 
     fn parse(arguments: &'a [String]) -> Self {
-        let mut push = Self::default();
+        let mut push = Self {
+            unusual: arguments.iter().any(|arg| unusual(arg)),
+            ..Self::default()
+        };
         let mut args = arguments.iter();
         while let Some(arg) = args.next() {
             let arg = arg.as_str();
@@ -382,11 +403,15 @@ impl<'a> Push<'a> {
         context: &Context,
         overrides: bool,
         types: &BranchTypes,
+        sole: bool,
     ) -> Result<Verdict, String> {
         let mut verdict = Verdict::default();
         if self.dry {
             return Ok(verdict);
         }
+        // What the hook reads (HEAD, refs, configuration, the folder) must be what the push
+        // will see, so only a lone `git push` of plain options may skip the window.
+        let allow = sole && !self.unusual && context.switched.is_empty();
         let risks = &mut verdict.risks;
         if self.prune {
             risks.push("push --prune may delete remote branches or tags".into());
@@ -419,7 +444,7 @@ impl<'a> Push<'a> {
                 let decided = if tag {
                     Outcome::Checked
                 } else {
-                    deleted(repo, types, remote, name)?
+                    deleted(repo, types, allow, remote, name)?
                 };
                 verdict.delete(decided, || deletion(repo, context, name, tag))?;
             } else if reference == ":" || reference.contains('*') {
@@ -450,33 +475,14 @@ impl<'a> Push<'a> {
                     forced.push(if tag {
                         Outcome::Checked
                     } else {
-                        rewritten(repo, context, types, remote, source, destination)?
+                        rewritten(repo, types, allow, remote, source, destination)?
                     });
                 }
             }
             tag = false;
         }
         if implicit {
-            let branch = repo.branch(context)?;
-            if matches!(branch.as_str(), "main" | "master") {
-                verdict
-                    .risks
-                    .push(format!("current branch is '{branch}' (protected)"));
-            }
-            if self.force && !self.delete {
-                forced.push(outcome(
-                    types,
-                    Some(&branch),
-                    || {
-                        let remote = match remote {
-                            Some(remote) => remote.to_owned(),
-                            None => repo.implicit_remote(&branch)?,
-                        };
-                        Ok(Some((branch.clone(), remote)))
-                    },
-                    repo,
-                )?);
-            }
+            self.current_branch(repo, context, types, allow, &mut verdict, &mut forced)?;
         }
         if self.force {
             verdict.force(forced, usize::from(self.prune));
@@ -485,23 +491,62 @@ impl<'a> Push<'a> {
     }
 }
 
+impl Push<'_> {
+    /// A push without refspecs, which goes to the current branch.
+    fn current_branch(
+        &self,
+        repo: &Repository,
+        context: &Context,
+        types: &BranchTypes,
+        allow: bool,
+        verdict: &mut Verdict,
+        forced: &mut Vec<Outcome>,
+    ) -> Result<(), String> {
+        let branch = repo.branch(context)?;
+        if matches!(branch.as_str(), "main" | "master") {
+            verdict
+                .risks
+                .push(format!("current branch is '{branch}' (protected)"));
+        }
+        if self.force && !self.delete {
+            let remote = self.operands.first().copied().or(self.remote_option);
+            forced.push(outcome(
+                types,
+                allow,
+                Some(&branch),
+                || {
+                    let Some(branch) = repo.local_branch("HEAD")? else {
+                        return Ok(None);
+                    };
+                    let remote = match remote {
+                        Some(remote) => remote.to_owned(),
+                        None => repo.implicit_remote(&branch)?,
+                    };
+                    Ok(Some((branch, remote)))
+                },
+                repo,
+            )?);
+        }
+        Ok(())
+    }
+}
+
 /// How a deletion of `name` is decided.
 fn deleted(
     repo: &Repository,
     types: &BranchTypes,
+    allow: bool,
     remote: Option<&str>,
     name: &str,
 ) -> Result<Outcome, String> {
     outcome(
         types,
+        allow,
         Some(name.strip_prefix("refs/heads/").unwrap_or(name)),
         || {
-            let Some(remote) = remote else {
-                return Ok(None);
-            };
-            Ok(repo
-                .remote_branch(remote, name)?
-                .map(|branch| (branch, remote.to_owned())))
+            Ok(remote
+                .zip(explicit_branch(name))
+                .map(|(remote, branch)| (branch, remote.to_owned())))
         },
         repo,
     )
@@ -510,8 +555,8 @@ fn deleted(
 /// How a force push of `source` to `destination` is decided.
 fn rewritten(
     repo: &Repository,
-    context: &Context,
     types: &BranchTypes,
+    allow: bool,
     remote: Option<&str>,
     source: &str,
     destination: &str,
@@ -523,15 +568,16 @@ fn rewritten(
     });
     outcome(
         types,
+        allow,
         candidate,
         || {
             let Some(remote) = remote else {
                 return Ok(None);
             };
             let branch = if destination == source {
-                repo.local_branch(context, destination)?
+                repo.local_branch(destination)?
             } else {
-                repo.remote_branch(remote, destination)?
+                explicit_branch(destination)
             };
             Ok(branch.map(|branch| (branch, remote.to_owned())))
         },
@@ -668,6 +714,7 @@ pub(super) fn check(
     let mut types = None;
     let mut verdict = Verdict::default();
     let mut seen = HashSet::new();
+    let alone = parsed.total == 1 && parsed.commands.len() == 1;
     for command in parsed.commands {
         if Instant::now() >= deadline {
             return Err(super::TIMEOUT.into());
@@ -725,6 +772,7 @@ pub(super) fn check(
                     &context,
                     overrides,
                     types.get_or_insert_with(BranchTypes::load),
+                    alone && i == 0 && pos == 0 && command.words[0] == "git",
                 )?;
                 for risk in found.risks {
                     if seen.insert(risk.clone()) {
