@@ -598,17 +598,20 @@ class HUDSessionListView: NSView {
         sessionCount: Int,
         usageLimits: [AgentUsageLimits],
         background: WidgetBackground,
-        style: WidgetStyle = .standard
+        style: WidgetStyle = .standard,
+        navigation: Bool = false
     ) -> CGFloat {
         guard sessionCount > 0 else {
             return 0
         }
+        // The Projects and Settings strip sits under the list, inside the same view.
+        let strip = navigation ? style.navigationHeight : 0
         // No trailing gap after the last row: the stack puts spacing between rows, not after
         // the final one, so counting a full row height per row would leave a blank strip.
         let rows =
             CGFloat(sessionCount) * (style.rowHeight + style.rowSpacing) - style.rowSpacing
         return 2 * style.listVerticalPadding + rows
-            + usageHeight(for: usageLimits, background: background, style: style)
+            + usageHeight(for: usageLimits, background: background, style: style) + strip
     }
 
     /// How much height the usage block needs, including the divider and the gaps around it.

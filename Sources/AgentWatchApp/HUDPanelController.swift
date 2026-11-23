@@ -595,13 +595,14 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             sessionCount: min(state.sessions.count, Self.maximumAutoSizedRowCount),
             usageLimits: state.usageLimits,
             background: background,
-            style: style
+            style: style,
+            navigation: true
         )
         // Never shorter than the widget's own minimum, which is the height the empty state
         // needs: a one-row list that came out shorter would leave the widget below the size
         // a person is allowed to drag it to.
         let floor = style.minimumWindowSize.height
-        let height = state.sessions.isEmpty ? floor : max(floor, listHeight + style.navigationHeight)
+        let height = state.sessions.isEmpty ? floor : max(floor, listHeight)
         // Only when it actually changes. Resizing and repositioning a window are requests to
         // the window server, and this runs on every event — asking it to make the window the
         // size it already is, twice a second, is work nobody sees.

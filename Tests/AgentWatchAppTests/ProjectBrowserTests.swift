@@ -1,3 +1,4 @@
+import AgentWatchLookup
 import AgentWatchTestSupport
 import Foundation
 import XCTest
@@ -36,6 +37,35 @@ final class ProjectBrowserTests: XCTestCase {
         XCTAssertEqual(model.scope, .recent)
         XCTAssertTrue(model.search.isEmpty)
         XCTAssertEqual(model.filter, .all)
+    }
+
+    /// A new chat appearing while a click is being resolved rereads the list; the click still
+    /// opens the chat it was made on. Only closing the window drops it.
+    @MainActor
+    func testAClickSurvivesARereadForANewChat() async {
+        let folders = AgentFolders(
+            home: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let chat = testSession(index: 1, phase: .waitingForUser, clientKind: .desktop, lastObservedAt: now)
+        let newcomer = testSession(index: 2, phase: .executing, clientKind: .desktop, lastObservedAt: now)
+        let link = URL(string: "claude://resume?session=chat")!
+        let model = ProjectBrowserModel()
+        defer { model.stop() }
+        model.locate = { _, _ in ProjectSessionLocation(link: link, directory: nil) }
+        let opened = expectation(description: "the chat's link reaches macOS")
+        var links: [URL] = []
+        model.openLink = {
+            links.append($0)
+            opened.fulfill()
+            return true
+        }
+        model.update([chat], folders: folders, claudeUsage: [:], readsTranscripts: false)
+
+        model.open(ProjectBrowserEntry(session: chat, copy: nil))
+        model.update([chat, newcomer], folders: folders, claudeUsage: [:], readsTranscripts: false)
+
+        await fulfillment(of: [opened], timeout: 5)
+        XCTAssertEqual(links, [link])
+        XCTAssertNil(model.message)
     }
 
     /// The waiting filter and the waiting beacon's list agree: a Codex question counts while the

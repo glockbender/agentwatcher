@@ -8,9 +8,17 @@ public struct CodexProfileUsage: Equatable, Sendable {
     public let sessionLabel: String
 
     public static func latest(in folder: URL, sessionLabels: [String], transcriptFiles: TitleFileSystem?) -> Self? {
+        guard transcriptFiles != nil else { return nil }
+        var index = CodexTranscriptIndex()
+        index.locate(Set(sessionLabels), in: folder)
+        return latest(in: index, sessionLabels: sessionLabels, transcriptFiles: transcriptFiles)
+    }
+
+    public static func latest(
+        in index: CodexTranscriptIndex, sessionLabels: [String], transcriptFiles: TitleFileSystem?
+    ) -> Self? {
         guard let transcriptFiles, !Task.isCancelled else { return nil }
-        let root = TranscriptLocator.root(for: .codex, inFolder: folder)
-        let files = TranscriptLocator.uniqueMatches(sessionLabels: Set(sessionLabels), source: .codex, roots: [root])
+        let files = index.files
         var newest: Self?
         for label in sessionLabels {
             guard !Task.isCancelled else { break }
@@ -76,5 +84,25 @@ public struct CodexProfileUsage: Equatable, Sendable {
                     usedPercentage: usedPercent, resetsAt: UsageWindow.resetDate(unixSeconds: resetsAt))
             }
         }
+    }
+}
+
+/// Where the observed chats' transcripts are in one profile folder. Each chat is looked for once,
+/// so a new chat costs one walk of the folder's transcripts and a closed one costs none. A chat
+/// whose transcript appears after it was looked for stays unfound until the index is replaced.
+public struct CodexTranscriptIndex: Equatable, Sendable {
+    public private(set) var searched: Set<String> = []
+    public private(set) var files: [String: URL] = [:]
+
+    public init() {}
+
+    public mutating func locate(_ labels: Set<String>, in folder: URL) {
+        let missing = labels.subtracting(searched)
+        guard !missing.isEmpty, !Task.isCancelled else { return }
+        let found = TranscriptLocator.uniqueMatches(
+            sessionLabels: missing, source: .codex, roots: [TranscriptLocator.root(for: .codex, inFolder: folder)])
+        guard !Task.isCancelled else { return }
+        searched.formUnion(missing)
+        files.merge(found) { _, latest in latest }
     }
 }

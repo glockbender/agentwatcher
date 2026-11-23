@@ -62,4 +62,32 @@ final class CodexProfileUsageTests: XCTestCase {
             XCTAssertNil(CodexProfileUsage.latest(in: folder, sessionLabels: ["unobserved"], transcriptFiles: .live))
         }
     }
+
+    /// Each chat is looked for once: a closed chat costs nothing, and a chat whose transcript
+    /// appears after its search stays unfound until the index is replaced (the page's Refresh).
+    func testTheIndexLooksForEachChatOnce() throws {
+        let scratch =
+            ProcessInfo.processInfo.environment["AGENT_WATCH_TEST_SCRATCH"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory
+        let folder = scratch.appendingPathComponent(UUID().uuidString)
+        let root = TranscriptLocator.root(for: .codex, inFolder: folder)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let label = HookCaptureRedactor.label(forRawIdentifier: id)
+        var index = CodexTranscriptIndex()
+
+        index.locate([label], in: folder)
+        XCTAssertEqual(index.searched, [label])
+        XCTAssertNil(index.files[label])
+
+        let file = root.appendingPathComponent("rollout-" + id + ".jsonl")
+        try line(percent: 30, at: "2026-11-01T12:00:01Z", minutes: 10_080, tokens: 5, reset: -1).write(to: file)
+        index.locate([label], in: folder)
+        XCTAssertNil(index.files[label], "a label already searched is not looked for again")
+
+        var fresh = CodexTranscriptIndex()
+        fresh.locate([label], in: folder)
+        XCTAssertEqual(fresh.files[label]?.lastPathComponent, file.lastPathComponent)
+        let reading = try XCTUnwrap(CodexProfileUsage.latest(in: fresh, sessionLabels: [label], transcriptFiles: .live))
+        XCTAssertEqual(reading.limits.sevenDay?.usedPercentage, 30)
+    }
 }

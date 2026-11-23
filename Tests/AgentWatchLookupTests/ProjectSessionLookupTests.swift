@@ -64,6 +64,24 @@ final class ProjectSessionLookupTests: XCTestCase {
         XCTAssertNil(namesOnly.location(of: row))
     }
 
+    /// A headless run or a session whose client is not known still has a process and a folder;
+    /// one of them open must not turn the answer for every working copy into "unknown".
+    func testRunsOutsideATerminalReportTheirProcessFolder() throws {
+        let home = try folder()
+        let lookup = ProjectSessionLookup(
+            folders: AgentFolders(home: home), transcriptFiles: nil, workingDirectory: { _ in home.path })
+        for kind in [SessionClientKind.headless, nil] {
+            var run = session(.claude, phase: .executing)
+            run.clientKind = kind
+            run.agentProcessID = getpid()
+            XCTAssertEqual(
+                lookup.openWorkingFolders(of: [run]), [home.resolvingSymlinksInPath().standardizedFileURL],
+                "\(String(describing: kind))")
+            run.agentProcessID = nil
+            XCTAssertNil(lookup.openWorkingFolders(of: [run]), "no process, no folder")
+        }
+    }
+
     func testAmbiguousAndSymbolicCodexTranscriptsCannotOpenAChat() throws {
         let home = try folder()
         let extra = home.appendingPathComponent("work-profile")

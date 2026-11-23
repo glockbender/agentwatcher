@@ -35,6 +35,11 @@ public struct GitWorkingCopy: Equatable, Sendable {
 public struct ProjectSessionLocation: Equatable, Sendable {
     public let link: URL
     public let directory: URL?
+
+    public init(link: URL, directory: URL?) {
+        self.link = link
+        self.directory = directory
+    }
 }
 
 public struct ProjectSessionLookup: Sendable {
@@ -71,8 +76,10 @@ public struct ProjectSessionLookup: Sendable {
                 guard let directory = directories[session.id]?.directory else { return nil }
                 folders.insert(directory.resolvingSymlinksInPath().standardizedFileURL)
             } else {
-                guard session.clientKind == .cli || session.clientKind == .background,
-                    let pid = session.agentProcessID, pid > 1,
+                // Any session that runs in its own agent process has that process's folder:
+                // a terminal, a background session, `claude -p` or an IDE alike. Only a
+                // session with no live process of its own leaves the answer unknown.
+                guard let pid = session.agentProcessID, pid > 1,
                     let birth = AgentProcessLocator.startTime(of: pid), birth <= session.lastObservedAt,
                     let path = workingDirectory(pid), let directory = Self.absoluteDirectory(path),
                     AgentProcessLocator.startTime(of: pid) == birth

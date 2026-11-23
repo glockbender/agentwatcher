@@ -219,6 +219,8 @@ newer, classic and reworked terminals), and needs the Agent Watch app.
 ## Manage projects and Git rules
 
 Open **Projects & Recent…** from the menu bar to find an observed Claude or Codex desktop chat.
+Opening Agent Watch again from Finder or Spotlight opens the same window, even with the menu bar
+icon hidden.
 Linked Git working folders appear under the same project. Filter by activity, search by branch or
 chat name, and open the matching conversation. Recent shows up to 20 chats. **Usage profiles**
 shows the last observed limits for each configured agent folder and when they were recorded.

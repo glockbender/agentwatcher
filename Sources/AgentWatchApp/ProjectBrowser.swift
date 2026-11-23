@@ -96,6 +96,14 @@ final class ProjectBrowserModel: ObservableObject {
     @Published private(set) var claudeUsage: [String: AgentUsageLimits] = [:]
     private var job: Task<Void, Never>?
     private var generation = 0
+    /// Changes only when the window closes. A reread for a new session must not swallow a click
+    /// on a chat that is still listed.
+    private var openGeneration = 0
+    /// Seams for tests: where a chat is now, and how its link is handed to macOS.
+    var locate: @Sendable (SessionSnapshot, AgentFolders) -> ProjectSessionLocation? = { snapshot, folders in
+        ProjectSessionLookup(folders: folders, transcriptFiles: nil).location(of: snapshot)
+    }
+    var openLink: (URL) -> Bool = { NSWorkspace.shared.open($0) }
 
     /// Live phase/title changes are cheap. Only new identities, a changed host or an explicit
     /// refresh require another disk lookup; no monitor is started for a hidden window.
@@ -166,6 +174,7 @@ final class ProjectBrowserModel: ObservableObject {
 
     func stop() {
         generation += 1
+        openGeneration += 1
         job?.cancel()
         job = nil
         entries = []
@@ -180,19 +189,18 @@ final class ProjectBrowserModel: ObservableObject {
 
     func open(_ entry: ProjectBrowserEntry) {
         guard let folders, let snapshot = snapshots.first(where: { $0.id == entry.id }) else { return }
-        let expected = generation
+        let expected = openGeneration
+        let locate = locate
         Task {
             // Archive, closure or PID reuse between presentation and click invalidates the link.
-            let location = await Task.detached(priority: .userInitiated) {
-                ProjectSessionLookup(folders: folders, transcriptFiles: nil).location(of: snapshot)
-            }.value
-            guard generation == expected else { return }
+            let location = await Task.detached(priority: .userInitiated) { locate(snapshot, folders) }.value
+            guard openGeneration == expected else { return }
             guard let location else {
                 entries.removeAll { $0.id == entry.id }
                 message = "This chat is no longer available in its desktop app."
                 return
             }
-            if !NSWorkspace.shared.open(location.link) { message = "macOS could not open this chat." }
+            if !openLink(location.link) { message = "macOS could not open this chat." }
         }
     }
 }

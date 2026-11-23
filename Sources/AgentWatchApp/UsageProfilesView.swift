@@ -10,7 +10,21 @@ struct UsageProfilesView: View {
     let sessions: [SessionSnapshot]
     let readsTranscripts: Bool
     @State private var codex: [URL: CodexProfileUsage] = [:]
+    @State private var indexes: [URL: CodexTranscriptIndex] = [:]
+    @State private var loading = false
     @State private var reload = 0
+
+    enum CodexStatus: Equatable {
+        case transcriptsOff, reading, found(CodexProfileUsage), none
+    }
+
+    /// A reading already shown stays while a newer one is read; with none yet, the page says it
+    /// is still reading rather than that there is nothing to find.
+    static func codexStatus(readsTranscripts: Bool, usage: CodexProfileUsage?, loading: Bool) -> CodexStatus {
+        guard readsTranscripts else { return .transcriptsOff }
+        if let usage { return .found(usage) }
+        return loading ? .reading : .none
+    }
 
     private struct Request: Equatable {
         let folders: [URL]
@@ -28,7 +42,10 @@ struct UsageProfilesView: View {
             HStack {
                 Text("Usage by profile").font(.title2.bold())
                 Spacer()
-                Button("Refresh") { reload += 1 }.keyboardShortcut("r", modifiers: .command)
+                Button("Refresh") {
+                    indexes = [:]
+                    reload += 1
+                }.keyboardShortcut("r", modifiers: .command)
             }
             Text("Each profile is a local agent folder. Its last reading may belong to a previous sign-in.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -38,12 +55,17 @@ struct UsageProfilesView: View {
                         ForEach(folders.folders(for: source), id: \.self) { folder in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(folder.path).font(.headline).textSelection(.enabled)
+                                let status = Self.codexStatus(
+                                    readsTranscripts: readsTranscripts, usage: codex[folder], loading: loading)
                                 if source == .claude, let limits = claude[AgentFolders.label(of: folder)] {
                                     reading(limits)
-                                } else if source == .codex && !readsTranscripts {
+                                } else if source == .codex && status == .transcriptsOff {
                                     Text("Transcript reading is off in General settings.")
                                         .font(.caption).foregroundStyle(.secondary)
-                                } else if source == .codex, let usage = codex[folder] {
+                                } else if source == .codex && status == .reading {
+                                    Text("Reading this profile’s transcripts…")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                } else if source == .codex, case .found(let usage) = status {
                                     reading(usage.limits)
                                     if let count = usage.chatTokens,
                                         let session = sessions.first(where: {
@@ -70,23 +92,35 @@ struct UsageProfilesView: View {
             }
         }.padding()
             .task(id: request) {
-                codex = [:]
-                guard request.readsTranscripts, !Task.isCancelled else { return }
+                guard request.readsTranscripts, !Task.isCancelled else {
+                    codex = [:]
+                    loading = false
+                    return
+                }
+                loading = true
+                let known = indexes
                 let worker = Task.detached(priority: .utility) {
                     var values: [URL: CodexProfileUsage] = [:]
+                    var updated = known
                     for folder in request.folders {
                         guard !Task.isCancelled else { break }
+                        var index = updated[folder] ?? CodexTranscriptIndex()
+                        index.locate(Set(request.labels), in: folder)
+                        updated[folder] = index
                         values[folder] = CodexProfileUsage.latest(
-                            in: folder, sessionLabels: request.labels, transcriptFiles: .live)
+                            in: index, sessionLabels: request.labels, transcriptFiles: .live)
                     }
-                    return values
+                    return (values, updated)
                 }
-                let values = await withTaskCancellationHandler {
+                let (values, updated) = await withTaskCancellationHandler {
                     await worker.value
                 } onCancel: {
                     worker.cancel()
                 }
-                if !Task.isCancelled { codex = values }
+                guard !Task.isCancelled else { return }
+                codex = values
+                indexes = updated
+                loading = false
             }
     }
 
