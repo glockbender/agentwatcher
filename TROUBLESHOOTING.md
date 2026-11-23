@@ -165,3 +165,20 @@ comes back.
 **Checked on:** Claude.app 2.26454.0 with Claude Code 2.1.289. Tested: opening a session starts it,
 archiving ends it, and a continued session keeps its identifier. Read in the app's code but not
 seen: the app stopping an unused session on its own.
+
+## A Codex thread in ChatGPT shows a few MB beside Claude sessions of hundreds
+
+**Why:** In ChatGPT.app every Codex thread runs inside one shared `codex app-server` process, and
+its MCP servers run under that process too. Nothing in that process says which part belongs to
+which thread, so a thread's row counts only the commands that thread started. A Claude session has
+an agent process of its own, so its row counts the agent and its MCP servers as well. The thread's
+hover card says "Commands only". A command is found by the thread id in its environment, and some
+programs that come with macOS, `/bin/zsh` and `/bin/sleep` among them, do not show their
+environment to other programs. So a command made only of such programs counts in the shared process, and the
+thread can show 0 MB while it runs.
+
+**What to do:** Nothing is wrong. To see the shared process, open **Settings › Resources**: the
+line "Agents" counts every session together with ChatGPT's `app-server` and its MCP servers, and
+"Claude and ChatGPT apps" counts the apps' own windows and helpers.
+
+**Checked on:** ChatGPT.app 26.1117.31558.

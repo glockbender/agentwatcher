@@ -15,6 +15,10 @@ enum RowPart: String, CaseIterable {
     case thread
     case counters
     case context
+    /// Memory and CPU of the session with everything it runs. Draws only while Agent Watch
+    /// watches what agents use, and not in the template a fresh install gets: room in a row is
+    /// dear (ADR-0011).
+    case resources
     /// Where the row's slack collects. Everything before it is packed to the left and
     /// everything after it sits at the right edge.
     ///
@@ -33,7 +37,7 @@ enum RowPart: String, CaseIterable {
     var canGiveWay: Bool {
         switch self {
         case .name, .project, .branch, .model, .thread: true
-        case .timer, .lamp, .agent, .fault, .host, .counters, .context, .gap: false
+        case .timer, .lamp, .agent, .fault, .host, .counters, .context, .resources, .gap: false
         }
     }
 }
@@ -69,6 +73,13 @@ struct RowLayout: Equatable {
         case both
     }
 
+    /// Which of the session's two figures the row carries.
+    enum ResourceStyle: String {
+        case memory
+        case processor
+        case both
+    }
+
     /// The parts in the order they are drawn, each appearing once, with exactly one `.gap`.
     let parts: [RowPart]
     /// The one part that narrows when the widget does, or nothing when the template holds
@@ -79,6 +90,7 @@ struct RowLayout: Equatable {
     let nameStyle: NameStyle
     let modelStyle: ModelStyle
     let contextStyle: ContextStyle
+    let resourceStyle: ResourceStyle
     /// Whether a row whose session is still at work holds the dismiss button's column open.
     ///
     /// The button belongs to a session that has stopped (`SessionPresence.dismissal`), so
@@ -93,11 +105,13 @@ struct RowLayout: Equatable {
         nameStyle: NameStyle = .fallback,
         modelStyle: ModelStyle = .plain,
         contextStyle: ContextStyle = .percent,
+        resourceStyle: ResourceStyle = .memory,
         reservesDismissColumn: Bool = false
     ) {
         self.nameStyle = nameStyle
         self.modelStyle = modelStyle
         self.contextStyle = contextStyle
+        self.resourceStyle = resourceStyle
         self.reservesDismissColumn = reservesDismissColumn
         // Nothing chosen is not "count nothing": a block drawing nothing looks exactly like a
         // session with no work, and cannot say which of the two it is. Fail open, the way
@@ -143,6 +157,7 @@ struct RowLayout: Equatable {
         nameStyle: NameStyle? = nil,
         modelStyle: ModelStyle? = nil,
         contextStyle: ContextStyle? = nil,
+        resourceStyle: ResourceStyle? = nil,
         reservesDismissColumn: Bool? = nil
     ) -> RowLayout {
         RowLayout(
@@ -152,6 +167,7 @@ struct RowLayout: Equatable {
             nameStyle: nameStyle ?? self.nameStyle,
             modelStyle: modelStyle ?? self.modelStyle,
             contextStyle: contextStyle ?? self.contextStyle,
+            resourceStyle: resourceStyle ?? self.resourceStyle,
             reservesDismissColumn: reservesDismissColumn ?? self.reservesDismissColumn
         )
     }

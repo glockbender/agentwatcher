@@ -9,6 +9,9 @@ import AppKit
 protocol StatusMenuHost: AnyObject {
     /// The same counts the icon shows. Read when the menu opens.
     var attentionCounts: SessionAttentionCounts { get }
+    /// What the agents cost together, while watching is on and the menu is to show it and a
+    /// reading exists; `nil` otherwise.
+    var resourceFigure: ResourceFigure? { get }
     var isWidgetVisible: Bool { get }
     /// Every session the widget has, in the widget's order.
     var sessions: [SessionSnapshot] { get }
@@ -137,11 +140,29 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// move, the menu open or not. The one line kept live: it is never a target, so nothing can
     /// move out from under a click. The session lines below it keep their wording until the
     /// menu opens again, and a click on one is checked against the session as it is then.
+    ///
+    /// With the agents' figure the line is drawn by `MenuSummaryView`, which looks the same; the
+    /// title stays the phrase either way. Without it the line is the menu's own header again.
     func refreshSummary() {
-        guard let host else {
+        guard let host, let summaryItem else {
             return
         }
-        summaryItem?.title = MenuBarSummaryText.line(for: host.attentionCounts)
+        let phrase = MenuBarSummaryText.line(for: host.attentionCounts)
+        summaryItem.title = phrase
+        guard let figure = host.resourceFigure else {
+            summaryItem.view = nil
+            return
+        }
+        let view = summaryItem.view as? MenuSummaryView ?? MenuSummaryView()
+        view.show(phrase: phrase, figure: ResourceFormat.short(figure), spoken: ResourceFormat.spoken(figure))
+        if summaryItem.view !== view {
+            summaryItem.view = view
+        }
+    }
+
+    /// The summary as drawn with the figure beside it, while it is.
+    var summaryView: MenuSummaryView? {
+        summaryItem?.view as? MenuSummaryView
     }
 
     /// The listed sessions, read again from the setting and the sessions. Called on opening,

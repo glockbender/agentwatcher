@@ -89,7 +89,8 @@ before implementing: it holds status, next milestones and deferred decisions.
 
 `docs/` holds one document per subject, and each says in its opening lines what it holds and what
 it leaves out — find the owner of a subject there, not in a list. `task lint` checks the links
-between documents, the opening, a limit of 500 lines and the status line of every ADR.
+between documents, the opening, a limit of 500 lines (not for the generated `docs/measurements.md`)
+and the status line of every ADR.
 
 - **Behaviour** goes into the document that owns the subject, in the present tense. History stays
   in git. A document past 500 lines holds several subjects: split it.

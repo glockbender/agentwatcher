@@ -34,15 +34,20 @@ struct HUDRowModel: Equatable {
     /// button without an event of its own, which is why `now` is an input. The date inside
     /// `notYet` does not move between ticks, so a row does not rebuild for holding one.
     let dismissal: RowDismissal
+    /// Whether the row draws its memory and CPU part. Only whether, never the figures: those
+    /// change every five seconds and are restated in place, while this changes when watching is
+    /// switched, and then the row is rebuilt once.
+    let showsResources: Bool
 
     var id: String {
         snapshot.id
     }
 
-    init(snapshot: SessionSnapshot, now: Date, layout: RowLayout) {
+    init(snapshot: SessionSnapshot, now: Date, layout: RowLayout, watchesResources: Bool = false) {
         self.snapshot = snapshot
         self.layout = layout
         flexibleText = layout.flexible.flatMap { rowPartText($0, for: snapshot, layout: layout) }
         dismissal = SessionPresence.dismissal(of: snapshot, now: now)
+        showsResources = watchesResources && layout.shows(.resources) && WidgetResources.canMeasure(snapshot)
     }
 }

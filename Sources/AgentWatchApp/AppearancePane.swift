@@ -11,7 +11,8 @@ struct AppearancePane: View {
         Form {
             Section {
                 SampleRowsPreview(
-                    look: themes.look, dark: themes.isDark, layout: model.layout, samples: SampleRowsPreview.phases
+                    look: themes.look, dark: themes.isDark, layout: model.layout, samples: SampleRowsPreview.phases,
+                    watchesResources: model.watchesResources
                 )
                 .frame(height: SampleRowsPreview.phasesHeight)
                 .listRowInsets(EdgeInsets())

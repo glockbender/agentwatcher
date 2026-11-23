@@ -3,9 +3,8 @@ import AppKit
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case widget, rows, order, appearance, theme, timing, themes, menuBar, waitingBeacon, general, tooling,
-        gitProtection, worktreeDisk,
-        diagnostics
+    case widget, rows, order, appearance, theme, timing, themes, menuBar, waitingBeacon, resources, general, tooling,
+        gitProtection, worktreeDisk, diagnostics
 
     var id: String { rawValue }
 
@@ -19,7 +18,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     }
 
     static let sidebar: [SettingsPage] = [
-        .general, .tooling, .gitProtection, .worktreeDisk, .appearance, .menuBar, .waitingBeacon, .widget, .diagnostics,
+        .general, .tooling, .gitProtection, .worktreeDisk, .appearance, .menuBar, .waitingBeacon, .widget, .resources,
+        .diagnostics,
     ]
 
     var title: String {
@@ -33,6 +33,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .themes: "Your Themes"
         case .menuBar: "Menu Bar"
         case .waitingBeacon: "Waiting Beacon"
+        case .resources: "Resources"
         case .general: "General"
         case .tooling: "Tooling"
         case .gitProtection: "Git Protection"
@@ -47,6 +48,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .appearance, .theme, .timing, .themes: "paintpalette"
         case .menuBar: "menubar.rectangle"
         case .waitingBeacon: "circle.dotted"
+        case .resources: "gauge.with.dots.needle.33percent"
         case .general: "gearshape"
         case .tooling: "wrench.and.screwdriver"
         case .gitProtection: "shield"
@@ -80,6 +82,7 @@ struct SettingsView: View {
                 case .timing: TimingPane(model: model)
                 case .themes: ThemesPane(model: model)
                 case .menuBar: MenuBarPane(model: model)
+                case .resources: ResourcesPane(model: model)
                 case .waitingBeacon: WaitingBeaconPane(model: model)
                 case .general: GeneralPane(model: model)
                 case .tooling: ToolingPane(tooling: model.tooling)

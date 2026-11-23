@@ -18,7 +18,8 @@ struct ThemeEditorPane: View {
             ThemeNameSection(model: model)
             Section {
                 SampleRowsPreview(
-                    look: look, dark: model.editedLookIsDark, layout: model.layout, samples: SampleRowsPreview.phases
+                    look: look, dark: model.editedLookIsDark, layout: model.layout, samples: SampleRowsPreview.phases,
+                    watchesResources: model.watchesResources
                 )
                 .frame(height: SampleRowsPreview.phasesHeight)
                 .listRowInsets(EdgeInsets())

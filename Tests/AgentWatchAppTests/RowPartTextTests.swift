@@ -101,7 +101,7 @@ final class RowPartTextTests: XCTestCase {
     func testThePartsThatAreNotTextHaveNoneOfIt() {
         let session = testSession(title: "Fix the row", lastObservedAt: now)
 
-        for part in [RowPart.timer, .lamp, .agent, .fault, .counters, .context, .gap] {
+        for part in [RowPart.timer, .lamp, .agent, .fault, .counters, .context, .resources, .gap] {
             XCTAssertNil(rowPartText(part, for: session, layout: .standard), "\(part) is not a word")
         }
     }

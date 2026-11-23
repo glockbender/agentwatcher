@@ -180,10 +180,14 @@ pub(super) fn openings(files: &Files) -> Vec<String> {
         .collect()
 }
 
+// Generated indexes: one subject that grows by a line with every entry, so length says nothing
+// about how many subjects they hold.
+const GENERATED: &[&str] = &["docs/measurements.md"];
+
 pub(super) fn lengths(files: &Files) -> Vec<String> {
     files
         .iter()
-        .filter(|(n, _)| under(n, "docs") && n.ends_with(".md"))
+        .filter(|(n, _)| under(n, "docs") && n.ends_with(".md") && !GENERATED.contains(&n.as_str()))
         .filter_map(|(n, t)| {
             let lines = t.bytes().filter(|&c| c == b'\n').count();
             (lines > 500)

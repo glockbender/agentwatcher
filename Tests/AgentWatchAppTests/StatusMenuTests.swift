@@ -51,6 +51,27 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertEqual(menu.widgetItem?.title, "Hide Widget")
     }
 
+    /// The agents' figure stands beside the summary in a view of its own; the phrase stays the
+    /// one the icon's tooltip and VoiceOver read, and without the figure the line is the menu's
+    /// own header again.
+    func testTheAgentsFigureStandsBesideTheSummaryOnlyWhileThereIsOne() throws {
+        let (menu, host, _) = try makeMenu()
+        host.attentionCounts = SessionAttentionCounts(needsPerson: 0, working: 2, done: 0, quiet: 0)
+        host.resourceFigure = ResourceFigure(footprint: 3482 << 20, cpuLoad: 1.4)
+
+        menu.menuWillOpen(menu.menu)
+
+        XCTAssertEqual(menu.summaryItem?.title, "2 working")
+        XCTAssertEqual(menu.summaryView?.phraseText, "2 working")
+        XCTAssertEqual(menu.summaryView?.figureText, "3.4 GB · 140% CPU")
+
+        host.resourceFigure = nil
+        menu.refreshSummary()
+
+        XCTAssertNil(menu.summaryItem?.view)
+        XCTAssertEqual(menu.summaryItem?.title, "2 working")
+    }
+
     /// One line in one place, whether the widget is shown or not: only its title follows.
     func testTheWidgetLineStaysAndSaysWhatItsClickDoes() throws {
         let (menu, host, _) = try makeMenu()
@@ -569,9 +590,15 @@ final class FakeAppHost: StatusMenuHost, SettingsHost {
 
     var calls: [String] = []
     var attentionCounts = SessionAttentionCounts.empty
+    var resourceFigure: ResourceFigure?
     var isWidgetVisible = false
     var isEventDebugVisible = false
     var checksForUpdatesOnLaunch = true
+    var watchesResources = false
+    var showsResourcesInMenu = true
+    var showsResourcesInCard = true
+    var resourceReport: ResourceReport?
+    var isReadingResources = true
     var isReadingTranscripts = false
     var transcriptFaultedSessionCount = 0
     var sessions: [SessionSnapshot] = []

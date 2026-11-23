@@ -325,7 +325,7 @@ func rowPartText(_ part: RowPart, for snapshot: SessionSnapshot, layout: RowLayo
         return snapshot.hostKind?.displayName
     case .thread:
         return threadText(for: snapshot)
-    case .timer, .lamp, .agent, .fault, .counters, .context, .gap:
+    case .timer, .lamp, .agent, .fault, .counters, .context, .resources, .gap:
         // Not text: a dot, a picture, a number beside a symbol, or the row's slack.
         return nil
     }
@@ -381,7 +381,10 @@ func hoverCardText(
     /// Optional, and `nil` is not `.nowhere`: one means nobody asked whether the session can
     /// be reached, the other means somebody asked and the answer was no. Only the second is
     /// worth a line.
-    reach: SessionReach? = nil
+    reach: SessionReach? = nil,
+    /// `nil` says nothing: watching is off, the card is not to show it, or the session has no
+    /// process to measure.
+    resources: CardResources? = nil
 ) -> String {
     let identity = [
         AgentIcon.name(for: snapshot.source),
@@ -425,8 +428,11 @@ func hoverCardText(
     let name = layout.shows(.name) ? snapshot.title?.nonEmpty ?? noNameText(for: snapshot) : nil
 
     let focus = focusHint(reach, runsWithoutAWindow: snapshot.hostKind == .background)
+    // Below the context, which is also about what the session holds, and above the fault,
+    // which qualifies every line before it.
+    let resourceLines: [String?] = (resources.map(resourceCardLines) ?? []).map { $0 }
 
-    return [
+    let lines: [String?] = [
         name,
         identity,
         model.isEmpty ? nil : model,
@@ -435,6 +441,8 @@ func hoverCardText(
         work.isEmpty ? nil : work,
         leftRunning.isEmpty ? nil : leftRunning,
         context,
+    ]
+    let closing: [String?] = [
         // After everything the session itself has to say, because it qualifies all of it: how
         // much of the lines above is still being watched. The focus hint stays below it, being
         // the one line that is about the click rather than about the session — and, most
@@ -443,8 +451,51 @@ func hoverCardText(
         focus,
         dismissHint(SessionPresence.dismissal(of: snapshot, now: now), now: now),
     ]
-    .compactMap { $0 }
-    .joined(separator: "\n")
+    return (lines + resourceLines + closing)
+        .compactMap { $0 }
+        .joined(separator: "\n")
+}
+
+/// What the card says about memory and CPU, decided before the text is written.
+enum CardResources: Equatable {
+    /// Watching is on and the session's process runs, but no reading has named it yet.
+    case notRead
+    case measured(SessionResources, source: AgentSource)
+}
+
+/// The session's total, then the parts that hold the most of it: «plata-mcp 238 MB · agent
+/// 237 MB · commands 6 MB». The memory in RAM is Activity Monitor's resident column, beside
+/// the footprint the row shows (ADR-0024).
+///
+/// A Codex thread in ChatGPT.app owns only its commands — the agent is the app's shared
+/// process — and its line says so rather than reading like a light session.
+///
+/// Each line fits the card at its widest values: the card is 340 points, and a qualifier
+/// added to the end of the total wrapped it, so qualifiers stand on a line of their own.
+func resourceCardLines(_ resources: CardResources) -> [String] {
+    guard case let .measured(session, source) = resources else {
+        return ["Memory and CPU: not read yet"]
+    }
+    let processor = session.cpuLoad.map { "CPU \(ResourceFormat.percent($0))" }
+    guard session.hasAgentProcess else {
+        let figures = ["memory \(ResourceFormat.memory(session.total.footprint))", processor]
+            .compactMap { $0 }.joined(separator: " · ")
+        return ["Commands only: \(figures)", "The agent itself runs inside the app"]
+    }
+    let memory =
+        "Memory \(ResourceFormat.memory(session.total.footprint))"
+        + " (\(ResourceFormat.memory(session.total.resident)) in RAM)"
+    let total = [memory, processor].compactMap { $0 }.joined(separator: " · ")
+    let heaviest = session.heaviestParts(3)
+    // One part is the total again.
+    let parts =
+        heaviest.count > 1
+        ? heaviest.map { "\(ResourceFormat.name(of: $0.part)) \(ResourceFormat.memory($0.usage.footprint))" }
+            .joined(separator: " · ")
+        : nil
+    // Claude's subagents run inside the agent's own process, so its figure holds theirs.
+    let subagents = source == .claude ? "Subagents run inside the agent and count with it" : nil
+    return [total, parts, subagents].compactMap { $0 }
 }
 
 /// Why the `×` on this row is greyed, and when it stops being.
@@ -678,6 +729,7 @@ extension RowPart {
         case .thread: "Thread"
         case .counters: "Counters"
         case .context: "Context"
+        case .resources: "Memory & CPU"
         case .gap: "Gap"
         }
     }
@@ -723,6 +775,11 @@ extension RowPart {
             "Only while the session has work to count."
         case .context:
             "Only when the agent reports how much of its context is used."
+        case .resources:
+            """
+            Only while Agent Watch watches what agents use (Resources), and only while the \
+            session's process runs. Counts the agent and everything it started.
+            """
         }
     }
 
@@ -743,6 +800,7 @@ extension RowPart {
         case .thread: "only a subagent"
         case .counters: "only while at work"
         case .context: "when reported"
+        case .resources: "while its process runs"
         }
     }
 
@@ -754,6 +812,7 @@ extension RowPart {
         case .name: ["Name, else project", "Name only"]
         case .model: ["Name", "Name · effort"]
         case .context: ["Percent", "Tokens", "Percent · tokens"]
+        case .resources: ["Memory", "CPU", "Memory · CPU"]
         case .timer, .lamp, .agent, .fault, .project, .branch, .host, .thread, .counters, .gap: []
         }
     }

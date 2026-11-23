@@ -50,6 +50,12 @@ fn length_limit_applies_to_living_documents_at_the_top_level() {
 }
 
 #[test]
+fn a_generated_index_may_grow_past_the_limit() {
+    let files = Files::from([("docs/measurements.md".to_string(), "строка\n".repeat(501))]);
+    assert!(checks::lengths(&files).is_empty());
+}
+
+#[test]
 fn rust_comment_measurement_links_back_to_its_file() {
     let source = "native/helper.rs";
     let comment = "// Measured on macOS 26.6: an observed result.";
