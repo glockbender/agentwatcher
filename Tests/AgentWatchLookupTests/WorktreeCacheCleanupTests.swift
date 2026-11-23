@@ -82,6 +82,39 @@ final class WorktreeCacheCleanupTests: XCTestCase {
         XCTAssertThrowsError(try WorktreeCacheCleanup.verifiedTrashURL(candidate, activeFolders: []))
     }
 
+    func testADescriptorClosingDuringTheScanIsScannedAgain() throws {
+        func scan(_ lines: [String]) -> Data { Data((lines.joined(separator: "\n") + "\n").utf8) }
+        let complete = scan(["p7\0", "f3\0tREG\0D0x1000011\0i42\0"])
+        let closing = scan(["p7\0", "f3\0tREG\0D0x1000011\0i42\0", "f16\0"])
+        XCTAssertThrowsError(try WorktreeCacheCleanup.parseOpenFileIDs(closing, ownProcess: 7)) {
+            XCTAssertTrue($0 is WorktreeCacheCleanup.IncompleteDescriptor, "\($0)")
+        }
+
+        var outputs = [closing, complete]
+        let found = try WorktreeCacheCleanup.openFileIDs(attempts: 3, ownProcess: 7) { outputs.removeFirst() }
+        XCTAssertEqual(found.map(\.inode), [42])
+        XCTAssertTrue(outputs.isEmpty)
+
+        var scans = 0
+        XCTAssertThrowsError(
+            try WorktreeCacheCleanup.openFileIDs(attempts: 3, ownProcess: 7) {
+                scans += 1
+                return closing
+            })
+        XCTAssertEqual(scans, 3, "a descriptor that stays incomplete still refuses")
+
+        scans = 0
+        XCTAssertThrowsError(
+            try WorktreeCacheCleanup.openFileIDs(attempts: 3, ownProcess: 7) {
+                scans += 1
+                return nil
+            })
+        XCTAssertEqual(scans, 1, "a failed lsof is not retried")
+        XCTAssertThrowsError(
+            try WorktreeCacheCleanup.openFileIDs(attempts: 3, ownProcess: 8) { complete },
+            "a scan that does not list this process proves nothing")
+    }
+
     func testIncompleteTreeCannotBeCleanedEvenIfGitReportsItAsClean() throws {
         let fixture = try Fixture(tag: signature)
         let candidate = try XCTUnwrap(fixture.candidate())

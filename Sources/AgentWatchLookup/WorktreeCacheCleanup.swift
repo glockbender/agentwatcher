@@ -207,43 +207,75 @@ public enum WorktreeCacheCleanup {
         return Data(fingerprint.finalize())
     }
 
-    private struct OpenFileID: Hashable {
+    struct OpenFileID: Hashable {
         let device: dev_t
         let inode: ino_t
     }
 
+    /// A descriptor lsof listed without its type or identity: it was closing while lsof read it.
+    struct IncompleteDescriptor: Error {}
+
     // lsof prints only numeric identities and object types. Comparing identities also
     // catches a file held open through a hard link or an alternate mount path.
     private static func openFileIDs(deadline: Date) throws -> Set<OpenFileID> {
-        let result = try BoundedCommand.run(
-            executable: URL(fileURLWithPath: "/usr/sbin/lsof"),
-            arguments: ["-n", "-P", "-w", "-a", "-u", String(getuid()), "-F0pftDi"],
-            in: URL(fileURLWithPath: "/", isDirectory: true), timeout: min(8, try remaining(deadline)),
-            outputLimit: 24 * 1024 * 1024)
+        try openFileIDs(attempts: 3) {
+            let result = try BoundedCommand.run(
+                executable: URL(fileURLWithPath: "/usr/sbin/lsof"),
+                arguments: ["-n", "-P", "-w", "-a", "-u", String(getuid()), "-F0pftDi"],
+                in: URL(fileURLWithPath: "/", isDirectory: true), timeout: min(8, try remaining(deadline)),
+                outputLimit: 24 * 1024 * 1024)
+            return result.status == 0 ? result.output : nil
+        }
+    }
+
+    /// A descriptor that closes during the scan leaves an incomplete line; another scan no longer
+    /// lists it. One that stays incomplete through every scan still refuses.
+    /// Measured on macOS 27.2: one scan in 25 on a busy machine, more while tests start and stop
+    /// processes.
+    static func openFileIDs(
+        attempts: Int, ownProcess: Int32 = getpid(), scan: () throws -> Data?
+    ) throws -> Set<OpenFileID> {
         let failure = Refusal("Could not verify open files for your account.")
-        guard result.status == 0, result.output.last == 10 else { throw failure }
-        let ownProcess = "p\(getpid())"
+        for _ in 0..<attempts {
+            guard let output = try scan() else { throw failure }
+            do {
+                return try parseOpenFileIDs(output, ownProcess: ownProcess)
+            } catch is IncompleteDescriptor {
+                continue
+            } catch {
+                throw failure
+            }
+        }
+        throw failure
+    }
+
+    static func parseOpenFileIDs(_ output: Data, ownProcess: Int32) throws -> Set<OpenFileID> {
+        struct Malformed: Error {}
+        guard output.last == 10 else { throw Malformed() }
+        let ownLine = "p\(ownProcess)"
         var sawSelf = false
         var objects = Set<OpenFileID>()
-        for line in String(decoding: result.output, as: UTF8.self).split(separator: "\n") {
+        for line in String(decoding: output, as: UTF8.self).split(separator: "\n") {
             let fields = line.split(separator: "\0")
-            guard let first = fields.first else { throw failure }
+            guard let first = fields.first else { throw Malformed() }
             if first.first == "p" {
-                if first == ownProcess { sawSelf = true }
+                if first == ownLine { sawSelf = true }
                 continue
             }
-            guard first.first == "f", let type = fields.first(where: { $0.first == "t" }) else { throw failure }
-            if type == "tunknown" || type == "t?" { throw failure }
+            guard first.first == "f" else { throw Malformed() }
+            guard let type = fields.first(where: { $0.first == "t" }), type != "tunknown", type != "t?" else {
+                throw IncompleteDescriptor()
+            }
             guard type == "tREG" || type == "tDIR" else { continue }
             guard let dev = fields.first(where: { $0.hasPrefix("D0x") }),
                 let value = UInt32(dev.dropFirst(3), radix: 16),
                 let node = fields.first(where: { $0.first == "i" }), let inode = ino_t(node.dropFirst())
             else {
-                throw failure
+                throw IncompleteDescriptor()
             }
             objects.insert(OpenFileID(device: dev_t(bitPattern: value), inode: inode))
         }
-        guard sawSelf, !objects.isEmpty else { throw failure }
+        guard sawSelf, !objects.isEmpty else { throw Malformed() }
         return objects
     }
 
