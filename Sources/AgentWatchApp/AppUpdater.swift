@@ -27,6 +27,7 @@ final class AppUpdater: NSObject, PreferenceDefaults {
     }
 
     private let preferences: PreferenceFile
+    private let development: Bool
     private var controller: SPUStandardUpdaterController?
     private var launchCheck: Task<Void, Never>?
 
@@ -38,6 +39,7 @@ final class AppUpdater: NSObject, PreferenceDefaults {
 
     init(preferences: PreferenceFile, bundle: Bundle = .main) {
         self.preferences = preferences
+        development = bundle.bundleIdentifier == AgentWatchPaths.developmentBundleIdentifier
         ownVersion =
             bundle.bundleURL.pathExtension == "app"
             ? bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -46,12 +48,13 @@ final class AppUpdater: NSObject, PreferenceDefaults {
     }
 
     nonisolated var defaultValues: [String: JSONValue] {
-        [Key.checksOnLaunch: .bool(true)]
+        [Key.checksOnLaunch: .bool(!development)]
     }
 
     var checksOnLaunch: Bool {
-        get { preferences.flag(forKey: Key.checksOnLaunch) ?? true }
+        get { !development && (preferences.flag(forKey: Key.checksOnLaunch) ?? true) }
         set {
+            guard !development else { return }
             preferences.set(newValue, forKey: Key.checksOnLaunch)
             controller?.updater.automaticallyChecksForUpdates = newValue
             if !newValue {
@@ -65,7 +68,7 @@ final class AppUpdater: NSObject, PreferenceDefaults {
     @discardableResult
     func checkAfterLaunch(after delay: Duration = .seconds(5)) -> Task<Void, Never>? {
         launchCheck?.cancel()
-        guard ownVersion != nil else {
+        guard !development, ownVersion != nil else {
             return nil
         }
         let task = Task { [weak self] in
@@ -90,6 +93,7 @@ final class AppUpdater: NSObject, PreferenceDefaults {
 
     /// The check a person asked for, which answers even when there is nothing to say.
     func checkNow() {
+        guard !development else { return }
         guard ownVersion != nil else {
             let alert = NSAlert()
             alert.messageText = updateNoVersionTitle

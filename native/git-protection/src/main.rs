@@ -3,6 +3,7 @@
 mod confirmation;
 mod domain;
 mod git;
+mod hook;
 mod process;
 #[cfg(feature = "mcp-fixture")]
 mod protocol;
@@ -29,6 +30,7 @@ fn push_once(request: &str) -> Result<(), String> {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.as_slice() {
+        [cmd, arguments @ ..] if cmd == "hook" => hook::run(arguments),
         [cmd, request] if cmd == "push" => push_once(request),
         #[cfg(feature = "mcp-fixture")]
         [] => protocol::run(!cfg!(target_os = "macos")),

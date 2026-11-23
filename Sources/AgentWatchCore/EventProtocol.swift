@@ -613,8 +613,8 @@ public enum HookEventNormalizer {
         fields: [String: JSONValue],
         observedAt: Date
     ) -> AgentUsageLimits? {
-        let fiveHour = usageWindow(usedPercentageKey: "five_hour_used_percentage", in: fields)
-        let sevenDay = usageWindow(usedPercentageKey: "seven_day_used_percentage", in: fields)
+        let fiveHour = usageWindow("five_hour", in: fields)
+        let sevenDay = usageWindow("seven_day", in: fields)
         guard fiveHour != nil || sevenDay != nil else {
             return nil
         }
@@ -626,8 +626,13 @@ public enum HookEventNormalizer {
         )
     }
 
-    private static func usageWindow(usedPercentageKey: String, in fields: [String: JSONValue]) -> UsageWindow? {
-        percentage(usedPercentageKey, in: fields).map(UsageWindow.init(usedPercentage:))
+    private static func usageWindow(_ window: String, in fields: [String: JSONValue]) -> UsageWindow? {
+        guard let percentage = percentage(window + "_used_percentage", in: fields) else { return nil }
+        let reset: Date? =
+            if case let .number(seconds)? = fields[window + "_resets_at"] {
+                UsageWindow.resetDate(unixSeconds: seconds)
+            } else { nil }
+        return UsageWindow(usedPercentage: percentage, resetsAt: reset)
     }
 
     private static func percentage(_ key: String, in fields: [String: JSONValue]) -> Double? {

@@ -31,7 +31,7 @@ struct GitProtectionProfiles: View {
             if let error { Text(error).foregroundStyle(.red) }
             Footnote(
                 source == .codex
-                    ? "After installation, open /hooks in Codex and approve this PreToolUse hook. Reopen the chat to load the configuration."
+                    ? "In Codex desktop, open Settings → Hooks and click Trust for this PreToolUse hook. In the terminal, open /hooks. Start a new chat to use it."
                     : "Open a new Claude conversation to load the registered hook.")
             if legacy == .registered {
                 Label(

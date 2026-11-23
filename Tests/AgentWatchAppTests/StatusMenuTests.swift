@@ -22,6 +22,7 @@ final class StatusMenuTests: XCTestCase {
                 "No active sessions",
                 "Show Widget",
                 "---",
+                "Projects & Recent…",
                 "Settings…",
                 "---",
                 "Quit Agent Watch",
@@ -70,6 +71,7 @@ final class StatusMenuTests: XCTestCase {
         let (menu, host, _) = try makeMenu()
         let expected: [(title: String, call: String)] = [
             ("Show Widget", "toggleWidget"),
+            ("Projects & Recent…", "showProjects"),
             ("Settings…", "showWidgetSettings"),
             ("Quit Agent Watch", "quit"),
         ]
@@ -563,6 +565,8 @@ final class KeyRecorder: NSResponder {
 
 @MainActor
 final class FakeAppHost: StatusMenuHost, SettingsHost {
+    func worktreeSessionFolders() async -> WorktreeSessionReading? { nil }
+
     var calls: [String] = []
     var attentionCounts = SessionAttentionCounts.empty
     var isWidgetVisible = false
@@ -594,6 +598,7 @@ final class FakeAppHost: StatusMenuHost, SettingsHost {
     func menuWillOpen() { calls.append("menuWillOpen") }
     func showShortcut(on item: NSMenuItem) { calls.append("showShortcut") }
     func toggleWidget() { calls.append("toggleWidget") }
+    func showProjects() { calls.append("showProjects") }
     func showWidgetSettings() { calls.append("showWidgetSettings") }
     var toolingReading = ToolingFacts.unavailable
     func toolingFacts() -> ToolingFacts { toolingReading }

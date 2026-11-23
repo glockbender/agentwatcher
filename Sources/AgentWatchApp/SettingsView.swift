@@ -3,7 +3,9 @@ import AppKit
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case widget, rows, order, appearance, theme, timing, themes, menuBar, general, tooling, gitProtection, diagnostics
+    case widget, rows, order, appearance, theme, timing, themes, menuBar, waitingBeacon, general, tooling,
+        gitProtection, worktreeDisk,
+        diagnostics
 
     var id: String { rawValue }
 
@@ -17,7 +19,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     }
 
     static let sidebar: [SettingsPage] = [
-        .general, .tooling, .gitProtection, .appearance, .menuBar, .widget, .diagnostics,
+        .general, .tooling, .gitProtection, .worktreeDisk, .appearance, .menuBar, .waitingBeacon, .widget, .diagnostics,
     ]
 
     var title: String {
@@ -30,9 +32,11 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .timing: "Timing"
         case .themes: "Your Themes"
         case .menuBar: "Menu Bar"
+        case .waitingBeacon: "Waiting Beacon"
         case .general: "General"
         case .tooling: "Tooling"
         case .gitProtection: "Git Protection"
+        case .worktreeDisk: "Working Copies"
         case .diagnostics: "Diagnostics"
         }
     }
@@ -42,9 +46,11 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .widget, .rows, .order: "rectangle.split.3x1"
         case .appearance, .theme, .timing, .themes: "paintpalette"
         case .menuBar: "menubar.rectangle"
+        case .waitingBeacon: "circle.dotted"
         case .general: "gearshape"
         case .tooling: "wrench.and.screwdriver"
         case .gitProtection: "shield"
+        case .worktreeDisk: "externaldrive"
         case .diagnostics: "stethoscope"
         }
     }
@@ -74,12 +80,14 @@ struct SettingsView: View {
                 case .timing: TimingPane(model: model)
                 case .themes: ThemesPane(model: model)
                 case .menuBar: MenuBarPane(model: model)
+                case .waitingBeacon: WaitingBeaconPane(model: model)
                 case .general: GeneralPane(model: model)
                 case .tooling: ToolingPane(tooling: model.tooling)
                 case .gitProtection:
                     GitProtectionPane(
                         profiles: AgentFolders(
                             home: AgentWatchPaths.homeDirectory(), extra: model.settings.extraAgentFolders))
+                case .worktreeDisk: WorktreeDiskView(activeFolders: model.worktreeSessionFolders)
                 case .diagnostics: DiagnosticsPane(model: model)
                 }
             }

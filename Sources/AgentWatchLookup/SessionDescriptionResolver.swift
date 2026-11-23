@@ -273,7 +273,8 @@ public enum SessionDescriptionResolver {
     /// anyone who moved it with no title and no explanation.
     public static func codexSessionIndexPath() -> String {
         let home =
-            ProcessInfo.processInfo.environment["CODEX_HOME"].map(URL.init(fileURLWithPath:))
+            (AgentWatchPaths.isDevelopmentBuild ? nil : ProcessInfo.processInfo.environment["CODEX_HOME"]).map(
+                URL.init(fileURLWithPath:))
             ?? AgentFolders.defaultFolder(for: .codex, home: AgentWatchPaths.homeDirectory())
         return home.appendingPathComponent("session_index.jsonl").path
     }

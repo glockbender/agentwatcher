@@ -1,201 +1,87 @@
-import AgentWatchCore
 import AppKit
 
-/// A small dot in a top corner of a full-screen display, as macOS shows one for the
-/// microphone: the menu bar — and the sphere in it — is hidden there, and this is what is left.
-///
-/// Shown only while something needs a person or is working, and only on a screen a full-screen
-/// window covers. It cycles through the theme colour of every state that holds sessions, each
-/// for its share of them. Checked when the space or the frontmost
-/// application changes and when the counts move, never on a timer. Steps aside while the pointer
-/// is in the menu bar, which the system slides down over the dot, and returns after the theme's delay.
 @MainActor
-final class FullScreenDot {
-    private static var timing: WidgetTheme.Timing.Dot { ThemeInUse.timing.dot }
+final class FullScreenDot: NSObject {
+    private var panels: [WaitingBeaconPanel] = []
+    private let openWaiting: () -> Void
+    private let openSettings: () -> Void
+    private var waitingCount = 0
+    private var isEnabled = false
+    private var scope = WaitingBeaconScope.fullScreenOnly
 
-    private let panel: NSPanel
-    private let dot = NSView()
-    private var counts = SessionAttentionCounts(needsPerson: 0, working: 0, done: 0, quiet: 0)
-    private var isEnabled = true
-    private var observers: [NSObjectProtocol] = []
-    private var pointerMonitor: Any?
-    private var screenFrame: NSRect?
-    private var menuBarHeight: CGFloat = 0
-    private var menuBarShown = false
-    private var comeBack: DispatchWorkItem?
-
-    init() {
-        panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 8, height: 8),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: true
-        )
-        panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        panel.ignoresMouseEvents = true
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        dot.wantsLayer = true
-        panel.contentView = dot
-        let center = NSWorkspace.shared.notificationCenter
+    init(openWaiting: @escaping () -> Void, openSettings: @escaping () -> Void) {
+        self.openWaiting = openWaiting
+        self.openSettings = openSettings
+        super.init()
+        let workspace = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
-            observers.append(
-                center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.refreshAfterTheMove() }
-                })
+            workspace.addObserver(self, selector: #selector(spaceChanged(_:)), name: name, object: nil)
         }
+        workspace.addObserver(
+            self, selector: #selector(displayChanged(_:)),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(displayChanged(_:)),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
-    func show(_ counts: SessionAttentionCounts, enabled: Bool) {
-        self.counts = counts
+    func show(waitingCount: Int, enabled: Bool, scope: WaitingBeaconScope) {
+        self.waitingCount = waitingCount
         isEnabled = enabled
+        self.scope = scope
         refresh()
     }
 
     func refresh() {
-        let active = counts.count(of: .needsPerson) > 0 || counts.count(of: .working) > 0
-        guard isEnabled, active, let screen = Self.fullScreenDisplay() else {
-            stopWatchingPointer()
+        let screens = Self.targetScreens(
+            waitingCount: waitingCount, enabled: isEnabled, scope: scope, screens: NSScreen.screens,
+            fullScreen: Self.fullScreenDisplays)
+        while panels.count > screens.count {
+            let panel = panels.removeLast()
+            panel.button.setRotating(false)
             panel.orderOut(nil)
-            return
         }
-        watchPointer(on: screen)
-        guard !menuBarShown else {
-            panel.orderOut(nil)
-            return
+        for (index, screen) in screens.enumerated() {
+            if index == panels.count {
+                panels.append(WaitingBeaconPanel(openWaiting: openWaiting, openSettings: openSettings))
+            }
+            panels[index].show(waitingCount: waitingCount, on: screen)
         }
-        let shares = SessionAttention.counted.compactMap { state -> (NSColor, Double)? in
-            let count = counts.count(of: state)
-            return count > 0 ? (state.accent, Double(count)) : nil
-        }
-        let diameter = Self.timing.diameter
-        dot.layer?.cornerRadius = diameter / 2
-        show(Self.cycle(shares, fade: Self.timing.fadeShare), on: dot.layer)
-        panel.setFrame(
-            NSRect(origin: Self.origin(on: screen), size: NSSize(width: diameter, height: diameter)), display: true)
-        panel.orderFrontRegardless()
     }
 
-    /// Each state's colour for its share of the sessions, fading into the next, over one cycle:
-    /// the keyframe times and colours, starting and ending on the first so the loop is seamless.
-    static func cycle(_ shares: [(NSColor, Double)], fade: Double = 0.3) -> [(time: Double, color: NSColor)] {
-        let total = shares.map(\.1).reduce(0, +)
-        guard let first = shares.first, total > 0 else {
-            return []
-        }
-        var frames: [(time: Double, color: NSColor)] = []
-        var start = 0.0
-        for (color, count) in shares {
-            let span = count / total
-            frames.append((start, color))
-            frames.append((start + span * (1 - fade), color))
-            start += span
-        }
-        frames.append((1, first.0))
-        return frames
+    static func targetScreens(
+        waitingCount: Int, enabled: Bool, scope: WaitingBeaconScope, screens: [NSScreen],
+        fullScreen: ([NSScreen]) -> [NSScreen]
+    ) -> [NSScreen] {
+        guard enabled, waitingCount > 0 else { return [] }
+        return scope == .allModes ? screens : fullScreen(screens)
     }
 
-    private func show(_ frames: [(time: Double, color: NSColor)], on layer: CALayer?) {
-        guard let layer, let first = frames.first else {
-            return
-        }
-        layer.removeAnimation(forKey: "cycle")
-        layer.backgroundColor = first.color.cgColor
-        guard Set(frames.map { $0.color.srgbHex ?? "" }).count > 1 else {
-            return
-        }
-        let animation = CAKeyframeAnimation(keyPath: "backgroundColor")
-        animation.values = frames.map(\.color.cgColor)
-        animation.keyTimes = frames.map { NSNumber(value: $0.time) }
-        animation.duration = Self.timing.cycle
-        animation.repeatCount = .infinity
-        animation.calculationMode = .linear
-        layer.add(animation, forKey: "cycle")
-    }
+    @objc private func displayChanged(_ notification: Notification) { refresh() }
 
-    /// Now and again once the move has settled: a space change is announced as it starts, and
-    /// the full-screen window it brings is not yet where it will be.
-    private func refreshAfterTheMove() {
+    @objc private func spaceChanged(_ notification: Notification) {
+        guard isEnabled, waitingCount > 0 else { return }
         refresh()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            self?.refresh()
-        }
+        // The system announces a space change before its windows reach their final positions.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refresh() }
     }
 
-    private func watchPointer(on screen: NSScreen) {
-        screenFrame = screen.frame
-        menuBarHeight = max(NSStatusBar.system.thickness, screen.safeAreaInsets.top)
-        guard pointerMonitor == nil else {
-            return
-        }
-        pointerMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pointerMoved() }
-        }
-    }
-
-    private func stopWatchingPointer() {
-        if let pointerMonitor {
-            NSEvent.removeMonitor(pointerMonitor)
-        }
-        pointerMonitor = nil
-        screenFrame = nil
-        comeBack?.cancel()
-        comeBack = nil
-        menuBarShown = false
-    }
-
-    private func pointerMoved() {
-        guard let screenFrame else {
-            return
-        }
-        if Self.isInMenuBar(NSEvent.mouseLocation, screen: screenFrame, height: menuBarHeight) {
-            comeBack?.cancel()
-            comeBack = nil
-            if !menuBarShown {
-                menuBarShown = true
-                panel.orderOut(nil)
-            }
-        } else if menuBarShown, comeBack == nil {
-            let work = DispatchWorkItem { [weak self] in
-                self?.menuBarShown = false
-                self?.comeBack = nil
-                self?.refresh()
-            }
-            comeBack = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.timing.returnDelay, execute: work)
-        }
-    }
-
-    static func isInMenuBar(_ point: NSPoint, screen: NSRect, height: CGFloat) -> Bool {
-        point.x >= screen.minX && point.x < screen.maxX && point.y <= screen.maxY && point.y >= screen.maxY - height
-    }
-
-    /// In the corner the theme names, beside the notch where the screen has one — in the band the
-    /// system leaves unobscured — and in the screen's own corner otherwise.
-    static func origin(on screen: NSScreen) -> NSPoint {
-        let diameter = timing.diameter
-        let inset = timing.inset
-        let right = timing.isOnTheRight
-        let band = right ? screen.auxiliaryTopRightArea : screen.auxiliaryTopLeftArea
-        let area =
-            band.flatMap { $0.height > diameter ? $0 : nil }
-            ?? NSRect(
-                x: screen.frame.minX, y: screen.frame.maxY - 2 * inset - diameter, width: screen.frame.width,
-                height: 2 * inset + diameter)
-        return NSPoint(x: right ? area.maxX - inset - diameter : area.minX + inset, y: area.midY - diameter / 2)
+    static func frame(on screen: NSRect, menuHeight: CGFloat, right: Bool, inset: CGFloat) -> NSRect {
+        let side = WaitingBeaconButton.side
+        return NSRect(
+            x: right ? screen.maxX - inset - side : screen.minX + inset,
+            y: screen.maxY - menuHeight - 4 - side, width: side, height: side)
     }
 
     /// The screen another application's windows cover edge to edge, which is what a full-screen
     /// space looks like from outside. Window bounds are readable without screen-recording rights.
-    static func fullScreenDisplay() -> NSScreen? {
+    static func fullScreenDisplays(_ screens: [NSScreen]) -> [NSScreen] {
         guard
             let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
                 as? [[String: Any]],
-            let primaryHeight = NSScreen.screens.first?.frame.height
+            let primaryHeight = screens.first?.frame.height
         else {
-            return nil
+            return []
         }
         let ownProcess = ProcessInfo.processInfo.processIdentifier
         let others: [(owner: pid_t, bounds: CGRect)] = windows.compactMap { window in
@@ -209,7 +95,7 @@ final class FullScreenDot {
             }
             return (owner, rect)
         }
-        return NSScreen.screens.first { screen in
+        return screens.filter { screen in
             isCovered(screen.frame, topInset: screen.safeAreaInsets.top, primaryHeight: primaryHeight, by: others)
         }
     }
@@ -241,5 +127,137 @@ final class FullScreenDot {
             }
             return reach >= bottom - 1
         }
+    }
+}
+
+@MainActor
+private final class WaitingBeaconPanel: NSPanel {
+    let button: WaitingBeaconButton
+
+    init(openWaiting: @escaping () -> Void, openSettings: @escaping () -> Void) {
+        button = WaitingBeaconButton(openSettings: openSettings, openWaiting: openWaiting)
+        super.init(
+            contentRect: button.bounds, styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered, defer: true)
+        level = .statusBar
+        collectionBehavior = [
+            .canJoinAllSpaces, .canJoinAllApplications, .fullScreenAuxiliary, .stationary, .ignoresCycle,
+        ]
+        hidesOnDeactivate = false
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        contentView = button
+    }
+
+    func show(waitingCount: Int, on screen: NSScreen) {
+        button.showCount(waitingCount)
+        button.setRotating(!NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        let position = ThemeInUse.timing.dot
+        button.setDiameter(position.ringDiameter)
+        setFrame(
+            FullScreenDot.frame(
+                on: screen.frame, menuHeight: max(NSStatusBar.system.thickness, screen.safeAreaInsets.top),
+                right: position.isOnTheRight, inset: position.inset), display: true)
+        orderFrontRegardless()
+    }
+}
+
+/// A native button so the whole target can be clicked on the first press or activated with VoiceOver.
+@MainActor
+final class WaitingBeaconButton: NSButton {
+    static let side: CGFloat = 44
+    private let orbit = CALayer()
+    private let light = CALayer()
+    private(set) var diameter: CGFloat = WidgetTheme.Timing.Dot().ringDiameter
+    private let openSettings: () -> Void
+    private let openWaiting: () -> Void
+
+    init(openSettings: @escaping () -> Void = {}, openWaiting: @escaping () -> Void) {
+        self.openSettings = openSettings
+        self.openWaiting = openWaiting
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.side, height: Self.side))
+        isBordered = false
+        target = self
+        action = #selector(openList)
+        wantsLayer = true
+        orbit.frame = bounds
+        light.backgroundColor = NSColor.systemOrange.cgColor
+        orbit.addSublayer(light)
+        layer?.addSublayer(orbit)
+        setDiameter(diameter)
+        let options = NSMenu()
+        let settings = options.addItem(
+            withTitle: "Waiting Beacon Settings…", action: #selector(configure), keyEquivalent: "")
+        settings.target = self
+        menu = options
+        toolTip = "Click to open waiting chats. Right-click for beacon settings."
+    }
+
+    func setDiameter(_ value: CGFloat) {
+        diameter = value
+        let lightSize = value * 7 / 30
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        light.bounds.size = CGSize(width: lightSize, height: lightSize)
+        light.cornerRadius = lightSize / 2
+        light.position = CGPoint(x: bounds.midX, y: bounds.midY + value / 2)
+        CATransaction.commit()
+        needsDisplay = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    @objc private func configure() { openSettings() }
+
+    @objc private func openList() { openWaiting() }
+
+    func showCount(_ count: Int) {
+        title = count > 99 ? "99+" : String(count)
+        setAccessibilityLabel(count == 1 ? "1 chat waiting for a reply" : "\(count) chats waiting for a reply")
+        needsDisplay = true
+    }
+
+    var isRotating: Bool { orbit.animation(forKey: "beacon") != nil }
+
+    func setRotating(_ rotate: Bool) {
+        guard rotate != isRotating else { return }
+        if rotate {
+            let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+            turn.fromValue = 0
+            turn.toValue = -2 * Double.pi
+            turn.duration = 2
+            turn.repeatCount = .infinity
+            turn.timingFunction = CAMediaTimingFunction(name: .linear)
+            orbit.add(turn, forKey: "beacon")
+        } else {
+            orbit.removeAnimation(forKey: "beacon")
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // A transparent window passes clicks through its clear pixels. Keep the full target hittable.
+        NSColor.black.withAlphaComponent(0.02).setFill()
+        bounds.fill()
+        let face = NSBezierPath(
+            ovalIn: bounds.insetBy(dx: (bounds.width - diameter) / 2, dy: (bounds.height - diameter) / 2))
+        NSColor(white: isHighlighted ? 0.22 : 0.12, alpha: 1).setFill()
+        face.fill()
+        NSColor.systemOrange.withAlphaComponent(0.85).setStroke()
+        face.lineWidth = diameter / 15
+        face.stroke()
+        let number = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: NSFont.monospacedDigitSystemFont(
+                    ofSize: min(title.count > 2 ? 10 : 13, diameter * (title.count > 2 ? 0.34 : 0.5)), weight: .semibold
+                ),
+                .foregroundColor: NSColor.white,
+            ])
+        let size = number.size()
+        number.draw(at: NSPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2))
     }
 }

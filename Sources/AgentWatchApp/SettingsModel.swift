@@ -2,6 +2,11 @@ import AgentWatchCore
 import AppKit
 import SwiftUI
 
+struct WorktreeSessionReading {
+    let folders: Set<URL>
+    let isCurrent: @MainActor () -> Bool
+}
+
 /// What the settings window reads and asks for from the application, beside the stores it
 /// writes itself. A protocol for the reason `StatusMenuHost` is one.
 @MainActor
@@ -11,6 +16,7 @@ protocol SettingsHost: AnyObject {
     var checksForUpdatesOnLaunch: Bool { get set }
     var isReadingTranscripts: Bool { get }
     var transcriptFaultedSessionCount: Int { get }
+    func worktreeSessionFolders() async -> WorktreeSessionReading?
     func toggleWidget()
     /// One reading of what the Tooling page shows. See `ToolingFacts`.
     func toolingFacts() -> ToolingFacts
@@ -40,6 +46,10 @@ final class SettingsModel: ObservableObject {
     let version: String?
     /// The Tooling page's state. Here rather than in the page, which goes when the window closes.
     let tooling: ToolingModel
+    func worktreeSessionFolders() async -> WorktreeSessionReading? {
+        await host?.worktreeSessionFolders()
+    }
+
     private weak var host: SettingsHost?
 
     @Published private(set) var revision = 0
@@ -51,7 +61,7 @@ final class SettingsModel: ObservableObject {
     @Published private(set) var page: SettingsPage = SettingsPage.sidebar[0] {
         didSet {
             stopRecordingShortcut()
-            if page.parent == .appearance {
+            if page.parent == .appearance || page == .waitingBeacon {
                 themes.reload()
             }
         }

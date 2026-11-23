@@ -106,6 +106,7 @@ public enum HookCaptureRedactor {
             for window in ["five_hour", "seven_day"] {
                 if case let .object(usage)? = limits[window] {
                     fields["\(window)_used_percentage"] = usage["used_percentage"]
+                    fields["\(window)_resets_at"] = usage["resets_at"]
                 }
             }
         }
@@ -312,6 +313,8 @@ public enum HookCaptureRedactor {
         "context_used_percentage",
         "five_hour_used_percentage",
         "seven_day_used_percentage",
+        "five_hour_resets_at",
+        "seven_day_resets_at",
     ]
     private static let numberValueKeys: Set<String> = Set(["duration_ms"]).union(telemetryNumberValueKeys)
     private static let booleanValueKeys: Set<String> = ["stop_hook_active", "success"]

@@ -42,7 +42,7 @@ Claude Code загружает любой каталог под `~/.claude/skill
 
 Перед очисткой отправитель выбирает только агрегаты из настоящей вложенной структуры Claude:
 `context_window.total_input_tokens`, `context_window.used_percentage`,
-`rate_limits.five_hour.used_percentage` и `rate_limits.seven_day.used_percentage`.
+`used_percentage` и `resets_at` для каждого из окон `rate_limits.five_hour` и `rate_limits.seven_day`.
 По socket они идут плоскими числовыми полями; повторная очистка на приёме их сохраняет.
 
 Фоновая передача не только не мешает — она же убирает задержку: отправитель ценой почти в

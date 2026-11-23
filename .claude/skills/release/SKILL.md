@@ -50,7 +50,7 @@ IDE не выпускает: у него `publish-plugin.yml` и свой тек
   `### Removed`, `### Fixed`.
 - Пункт говорит, что человек видит, в настоящем времени, начиная с самой вещи: «The update window
   lists what changed since your version.» Не «Added …» — это уже сказал подраздел. До 25 слов;
-  `scripts/changelog.py` отказывает после 50.
+  `scripts/devtool changelog` отказывает после 50.
 - Названия — как на экране (Settings → Tooling, Check for Updates…); команды и пути — в обратных
   кавычках. Ни имён типов, ни ADR, ни файлов исходников.
 - Несколько коммитов об одном — один пункт. Исправление того, что появилось в этом же релизе, —
@@ -69,7 +69,7 @@ IDE не выпускает: у него `publish-plugin.yml` и свой тек
 Версия: новое, что человек заметит, — minor; только исправления — patch; несовместимое на 0.x —
 тоже minor. Переход на 1.0 решает `docs/release-plan.md`, не скилл.
 
-Проверка: `python3 scripts/changelog.py check X.Y.Z`. Владельцу показать раздел целиком, версию и
+Проверка: `scripts/devtool changelog check X.Y.Z`. Владельцу показать раздел целиком, версию и
 одной строкой, какие коммиты не вошли и почему, — чтобы было видно, что выброшено.
 
 ## После «да»
@@ -80,7 +80,7 @@ IDE не выпускает: у него `publish-plugin.yml` и свой тек
 2. `task e2e-update` — обновление этой сборки в чистой машине, со всеми сбоями.
 3. `task release` — zip и образ; zip распаковывается и проходит `codesign --verify --strict`,
    как его проверят установленные 0.3.0. Предупреждение о `SPARKLE_PRIVATE_KEY` здесь ожидаемо:
-   фид подписывает CI. Затем `./scripts/release-notes.sh X.Y.Z` должен отработать без ошибки.
+   фид подписывает CI. Затем `./scripts/devtool release-notes X.Y.Z` должен отработать без ошибки.
 4. `git push origin HEAD:main` — одинаково с `main` и с ветки worktree. Проверка пуша —
    `task verify-all`; `git-guard` спросит владельца.
 5. `git tag -a vX.Y.Z -m "Agent Watch X.Y.Z"`, затем `git push origin vX.Y.Z`.

@@ -47,14 +47,21 @@ public struct SessionContextTelemetry: Codable, Equatable, Sendable {
 
 /// How much of an account-level window has been spent.
 ///
-/// The percentage alone. The reset time is reported by the provider and would make a useful
-/// line one day — "5h 17% · resets in 40m" — but nothing shows it today, and a field that
-/// crosses a process boundary without a reader is surface with no benefit.
+/// The next renewal is known only when the provider reported it with this measurement.
 public struct UsageWindow: Codable, Equatable, Sendable {
     public let usedPercentage: Double
+    public let resetsAt: Date?
 
-    public init(usedPercentage: Double) {
+    public init(usedPercentage: Double, resetsAt: Date? = nil) {
         self.usedPercentage = usedPercentage
+        self.resetsAt = resetsAt
+    }
+
+    public static func resetDate(unixSeconds: Double?) -> Date? {
+        guard let unixSeconds, unixSeconds.rounded() == unixSeconds, (1...253_402_300_799).contains(unixSeconds) else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: unixSeconds)
     }
 }
 

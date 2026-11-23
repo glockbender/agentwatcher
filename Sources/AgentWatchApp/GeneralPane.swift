@@ -34,8 +34,11 @@ struct GeneralPane: View {
             } header: {
                 Text(shortcutSectionTitle)
             } footer: {
-                Footnote(model.shortcutStatus)
+                Footnote(
+                    AgentWatchPaths.isDevelopmentBuild
+                        ? "Global shortcuts are disabled in Agent Watch Dev." : model.shortcutStatus)
             }
+            .disabled(AgentWatchPaths.isDevelopmentBuild)
             Section {
                 Toggle("Show headless runs", isOn: showsHeadlessRuns)
             } header: {
@@ -72,6 +75,7 @@ struct GeneralPane: View {
                 }
                 Toggle("Check for updates automatically", isOn: checksOnLaunch)
             }
+            .disabled(AgentWatchPaths.isDevelopmentBuild)
         }
     }
 

@@ -36,6 +36,8 @@ struct InstalledJetBrainsIDE: Equatable {
 enum JetBrainsIDEs {
     /// Every IDE this machine has, the running ones first.
     static func installed(fileManager: FileManager = .default) -> [InstalledJetBrainsIDE] {
+        // A development build has no IDEs to ping or open on the working desktop.
+        guard !AgentWatchPaths.isDevelopmentBuild else { return [] }
         let running = runningBundlePaths()
         var found: [String: InstalledJetBrainsIDE] = [:]
 

@@ -562,7 +562,7 @@ final class UnixSocketIngressTests: XCTestCase {
         XCTAssertEqual(event.usageLimits?.sevenDay?.usedPercentage, 31)
         let wire = String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
         XCTAssertFalse(wire.contains("secret-context"))
-        XCTAssertFalse(wire.contains("resets_at"))
+        XCTAssertEqual(event.usageLimits?.fiveHour?.resetsAt, Date(timeIntervalSince1970: 2_000_000_000))
     }
 
     func testSocketHasOwnerOnlyPermissions() throws {

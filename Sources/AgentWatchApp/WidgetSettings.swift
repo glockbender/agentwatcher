@@ -1,6 +1,11 @@
 import AgentWatchCore
 import Foundation
 
+enum WaitingBeaconScope: String {
+    case fullScreenOnly
+    case allModes
+}
+
 /// What happens to a session once the app knows it is over.
 enum ClosedSessionRetention: Equatable {
     /// Keep it until the person dismisses it with `×`.
@@ -125,6 +130,7 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let sessionBlockOrder = "sessionBlockOrder"
         static let showsWidget = "showsWidget"
         static let showsFullScreenDot = "showsFullScreenDot"
+        static let waitingBeaconScope = "waitingBeaconScope"
         static let showsHeadlessRuns = "showsHeadlessRuns"
         static let claudeFolders = "claudeFolders"
         static let codexFolders = "codexFolders"
@@ -157,7 +163,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.closedSessionRetention: .number(Self.defaultClosedSessionRetention),
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
             Key.scale: .number(Double(Self.defaultScale)),
-            Key.toggleShortcut: .string(Self.defaultToggleShortcut),
+            Key.toggleShortcut: .string(
+                AgentWatchPaths.isDevelopmentBuild ? Self.noToggleShortcut : Self.defaultToggleShortcut),
             Key.menuBarIconStyle: .string(MenuBarIconStyle.sphere.rawValue),
             Key.menuBarIconAttentions: .array(Self.stored(Set(SessionAttention.counted)).map(JSONValue.string)),
             Key.listsSessionsInMenu: .bool(true),
@@ -166,7 +173,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.sessionOrder: .string(SessionOrder.arrival.rawValue),
             Key.sessionBlockOrder: .array(SessionBlock.defaultOrder.map { .string($0.rawValue) }),
             Key.showsWidget: .bool(true),
-            Key.showsFullScreenDot: .bool(true),
+            Key.showsFullScreenDot: .bool(false),
+            Key.waitingBeaconScope: .string(WaitingBeaconScope.fullScreenOnly.rawValue),
             Key.showsHeadlessRuns: .bool(false),
             Key.claudeFolders: .array([]),
             Key.codexFolders: .array([]),
@@ -256,7 +264,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     /// The combination that hides and shows the widget from anywhere, or nothing.
     var toggleShortcut: WidgetShortcut? {
-        WidgetShortcut(
+        guard !AgentWatchPaths.isDevelopmentBuild else { return nil }
+        return WidgetShortcut(
             stored: preferences.string(forKey: Key.toggleShortcut) ?? Self.defaultToggleShortcut
         )
     }
@@ -287,13 +296,23 @@ final class WidgetSettingsStore: PreferenceDefaults {
         preferences.set(isShown, forKey: Key.showsWidget)
     }
 
-    /// Whether a full-screen display gets the dot that stands in for the hidden menu bar.
+    /// Keep the original enable key when upgrading from the full-screen-only beacon.
     var showsFullScreenDot: Bool {
-        preferences.flag(forKey: Key.showsFullScreenDot) ?? true
+        preferences.flag(forKey: Key.showsFullScreenDot) ?? false
     }
 
     func setShowsFullScreenDot(_ isShown: Bool) {
         preferences.set(isShown, forKey: Key.showsFullScreenDot)
+        onChange?(.menuBarIcon)
+    }
+
+    var waitingBeaconScope: WaitingBeaconScope {
+        preferences.string(forKey: Key.waitingBeaconScope).flatMap(WaitingBeaconScope.init(rawValue:))
+            ?? .fullScreenOnly
+    }
+
+    func setWaitingBeaconScope(_ scope: WaitingBeaconScope) {
+        preferences.set(scope.rawValue, forKey: Key.waitingBeaconScope)
         onChange?(.menuBarIcon)
     }
 

@@ -68,10 +68,15 @@ It comes in two styles, chosen in **Settings… → Menu Bar**:
 
 <img src="docs/images/clip-counts.avif" alt="The same scene with the Counts icon: the one session moves from done to working, to needs you, and back to done" width="640">
 
-On a full-screen display, where the menu bar is hidden, a small dot in a top corner shows while a
-session needs you or works.
+Click the date and time to open Notification Center, choose **Edit Widgets**, and add **Agent Watch**.
+The small widget opens **Projects & Recent**. The medium widget also opens **Waiting for you** or
+**Settings**. Both work when the menu bar icon is hidden.
 
-<img src="docs/images/clip-fullscreen.avif" alt="A terminal fills the screen and the menu bar is hidden; a dot in the top right corner turns blue while a session works and orange when it asks; the menu bar slides down with the icon, and the dot goes out once the session is done" width="800">
+An optional orange beacon appears when a chat is waiting for your reply. Choose **Full screen only** or **All modes** to show it on windowed desktops too.
+Click the ring to see those chats. Right-click it to open **Waiting Beacon Settings…**.
+You can also open **Settings → Waiting Beacon** to turn it on, resize it, or choose its position.
+
+<img src="docs/images/full-screen-beacon.png" alt="An orange light on the rim of the waiting-chat beacon" width="56">
 
 ## What it works with
 
@@ -164,7 +169,7 @@ The theme editor changes:
   lamps; for the sphere, its halo, sway and swell.
 - **Other colours:** the timers, the highlight outline, secondary text and warnings.
 - **Timing:** how long the highlight lasts, how soon a row's card opens, how far lamps dim, and
-  where the full-screen dot sits and how big it is.
+  which corner the waiting beacon uses and how far it sits from the edge.
 
 A change goes into light mode, dark mode, or both. A theme is a JSON file: **Export…** one to
 share it, **Import…** one somebody shared, or edit the file by hand. Glass chosen on an older macOS
@@ -211,10 +216,16 @@ newer, classic and reworked terminals), and needs the Agent Watch app.
 2. In the IDE: **Settings → Plugins → ⚙ → Install Plugin from Disk**, select the ZIP, restart if asked.
 3. In Agent Watch: **Settings… → Tooling**, press **Check** beside the IDE.
 
-## Git protection
+## Manage projects and Git rules
+
+Open **Projects & Recent…** from the menu bar to find an observed Claude or Codex desktop chat.
+Linked Git working folders appear under the same project. Filter by activity, search by branch or
+chat name, and open the matching conversation. Recent shows up to 20 chats. **Usage profiles**
+shows the last observed limits for each configured agent folder and when they were recorded.
 
 In **Settings… → Git Protection**, select the client and profile, then click **Install Git Hook**.
-In Codex, approve the new entry in `/hooks` once. Start a new chat in each client. Install the
+In Codex desktop, open **Settings → Hooks** and click **Trust**. In the terminal, use `/hooks`.
+Start a new chat in each client. Install the
 hook before updating from a Mothership version that provides Git protection. Keep Agent Watch
 at the same path when updating. Both clients continue using the existing project rules.
 
@@ -223,6 +234,10 @@ require the repository name before deleting that branch on the remote, or remove
 directly in that repository. The change applies to its linked working folders. The installed
 Git guard enforces the rule. If the outcome depends on the remote’s default branch, the preview
 explains both possibilities.
+
+In **Settings… → Working Copies**, scan a repository to see its working copies, largest first.
+Expand a copy to see local changes, build folders and what Agent Watch can safely move to the
+Trash. Each proposed action names the folder and explains why it qualifies.
 
 ## Privacy
 
@@ -256,13 +271,13 @@ A session does not appear, has no name, or a lamp looks stuck: see [Troubleshoot
 
 ## Build from source
 
-Requires Xcode 16 or newer, [Task](https://taskfile.dev/) and Rust 1.98.1 installed through rustup.
-Liquid Glass needs Xcode 26 and its
+Requires Xcode 16 or newer, [Task](https://taskfile.dev/) and Rust 1.98.1 installed through rustup. Liquid Glass needs Xcode 26 and its
 macOS 26 SDK; with an older Xcode the widget is frosted instead.
 
 ```sh
 task verify   # formatting, tests, debug and release builds, app bundle
-task run      # run the app
+task dev      # build and open Agent Watch Dev beside the installed app
+task dev:git  # run Dev with Git protection in fresh local agent profiles
 ```
 
 Development notes are in [AGENTS.md](AGENTS.md); project documents, in Russian, are in

@@ -17,11 +17,15 @@ final class HUDEmptyStateView: NSView {
         backgroundOpacity: CGFloat,
         style: WidgetStyle = .standard,
         complaint: String? = nil,
+        navigation: HUDNavigation? = nil,
         openSetup: @escaping () -> Void = {}
     ) {
         self.openSetup = openSetup
         super.init(frame: .zero)
         let effectView = makeBackgroundView(for: background, opacity: backgroundOpacity)
+
+        appearance = background.controlAppearance
+        navigation?.install(in: effectView, background: background, style: style)
 
         let icon = NSImageView()
         icon.image = NSImage(
@@ -80,7 +84,8 @@ final class HUDEmptyStateView: NSView {
                 equalTo: effectView.leadingAnchor, constant: style.contentInset),
             contentStack.trailingAnchor.constraint(
                 lessThanOrEqualTo: effectView.trailingAnchor, constant: -style.contentInset),
-            contentStack.centerYAnchor.constraint(equalTo: effectView.centerYAnchor),
+            contentStack.centerYAnchor.constraint(
+                equalTo: effectView.centerYAnchor, constant: navigation == nil ? 0 : -style.navigationHeight / 2),
         ])
 
         addSubview(effectView)

@@ -6,6 +6,13 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// Everything the widget is currently showing. Replaced whole, by `render`, and by
     /// nothing else — see `WidgetState`.
     var openSetup: () -> Void = {}
+    var openProjects: () -> Void = {}
+    var openSettings: () -> Void = {}
+    private var navigation: HUDNavigation {
+        HUDNavigation(
+            projects: { [weak self] in self?.openProjects() }, settings: { [weak self] in self?.openSettings() })
+    }
+
     private var state = WidgetState()
     private var freshnessTimer: Timer?
     private var dismissalTimer: Timer?
@@ -116,6 +123,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 backgroundOpacity: backgroundOpacity,
                 style: style,
                 complaint: state.complaint,
+                navigation: navigation,
                 openSetup: { [weak self] in self?.openSetup() }
             )
         )
@@ -287,6 +295,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                     backgroundOpacity: backgroundOpacity,
                     style: style,
                     complaint: state.complaint,
+                    navigation: navigation,
                     openSetup: { [weak self] in self?.openSetup() }
                 )
             )
@@ -354,6 +363,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 lampScheme: lampScheme,
                 backgroundOpacity: backgroundOpacity,
                 style: style,
+                navigation: navigation,
                 restoredScrollOffset: savedScrollOffset,
                 onScroll: { [weak self] offset in
                     self?.savedScrollOffset = offset
@@ -566,7 +576,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
         // needs: a one-row list that came out shorter would leave the widget below the size
         // a person is allowed to drag it to.
         let floor = style.minimumWindowSize.height
-        let height = state.sessions.isEmpty ? floor : max(floor, listHeight)
+        let height = state.sessions.isEmpty ? floor : max(floor, listHeight + style.navigationHeight)
         // Only when it actually changes. Resizing and repositioning a window are requests to
         // the window server, and this runs on every event — asking it to make the window the
         // size it already is, twice a second, is work nobody sees.

@@ -116,7 +116,10 @@ final class TranscriptLocatorTests: XCTestCase {
     }
 
     private func makeRoot(named relativePaths: [String]) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
+        let scratch = ProcessInfo.processInfo.environment["AGENT_WATCH_TEST_SCRATCH"]
+        let parent = scratch.map { URL(fileURLWithPath: $0) } ?? FileManager.default.temporaryDirectory
+        let root =
+            parent
             .appendingPathComponent("AgentWatchLocatorTests.\(UUID().uuidString)", isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         for relativePath in relativePaths {
