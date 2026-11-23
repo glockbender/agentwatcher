@@ -53,6 +53,7 @@ final class OrderPreviewPlayer: NSObject {
     private let background: () -> WidgetBackground
     private let opacity: () -> CGFloat
     private let rowLayouts: RowLayoutStore
+    private let watchesResources: () -> Bool
     let preview = SessionOrderPreviewView()
 
     private var demo = SessionOrderDemo()
@@ -70,8 +71,10 @@ final class OrderPreviewPlayer: NSObject {
         look: @escaping () -> WidgetTheme.Look,
         background: @escaping () -> WidgetBackground,
         opacity: @escaping () -> CGFloat,
-        rowLayouts: RowLayoutStore
+        rowLayouts: RowLayoutStore,
+        watchesResources: @escaping () -> Bool = { false }
     ) {
+        self.watchesResources = watchesResources
         self.settings = settings
         self.look = look
         self.background = background
@@ -142,6 +145,8 @@ final class OrderPreviewPlayer: NSObject {
             background: background(),
             lampScheme: look().lampScheme,
             layout: layout,
+            showsResources: watchesResources() && layout.shows(.resources),
+            resourceFigure: SampleRowsPreview.sampleFigure,
             onFocus: {},
             dismissal: SessionPresence.dismissal(of: snapshot, now: now),
             onRemove: {}

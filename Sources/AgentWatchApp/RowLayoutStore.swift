@@ -16,6 +16,7 @@ final class RowLayoutStore: PreferenceDefaults {
         static let nameStyle = "rowLayout.nameStyle"
         static let modelStyle = "rowLayout.modelStyle"
         static let contextStyle = "rowLayout.contextStyle"
+        static let resourceStyle = "rowLayout.resourceStyle"
         static let counterKinds = "rowLayout.counterKinds"
         static let reservesDismissColumn = "rowLayout.reservesDismissColumn"
     }
@@ -48,6 +49,7 @@ final class RowLayoutStore: PreferenceDefaults {
             nameStyle: read(Key.nameStyle, RowLayout.NameStyle.init(rawValue:)) ?? .fallback,
             modelStyle: read(Key.modelStyle, RowLayout.ModelStyle.init(rawValue:)) ?? .plain,
             contextStyle: read(Key.contextStyle, RowLayout.ContextStyle.init(rawValue:)) ?? .percent,
+            resourceStyle: read(Key.resourceStyle, RowLayout.ResourceStyle.init(rawValue:)) ?? .memory,
             reservesDismissColumn: preferences.flag(forKey: Key.reservesDismissColumn) ?? false
         )
     }
@@ -84,6 +86,7 @@ final class RowLayoutStore: PreferenceDefaults {
             Key.nameStyle: .string(layout.nameStyle.rawValue),
             Key.modelStyle: .string(layout.modelStyle.rawValue),
             Key.contextStyle: .string(layout.contextStyle.rawValue),
+            Key.resourceStyle: .string(layout.resourceStyle.rawValue),
             // Spelled in the order the row draws them, so the line reads the way the row does
             // rather than in whatever order a set happens to iterate.
             Key.counterKinds: .string(

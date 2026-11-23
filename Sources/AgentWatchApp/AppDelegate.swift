@@ -23,7 +23,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let rowLayouts: RowLayoutStore
     private let preferences: PreferenceFile
     private let updater: AppUpdater
+    private let resourceSettings: ResourceSettings
     private let heard = AgentHeardStore()
+    /// Each session's peak memory and CPU time, for when it has closed.
+    private let resourceHistory = ResourceHistoryStore()
+    private lazy var resourceMonitor: ResourceMonitor = {
+        let monitor = ResourceMonitor(isEnabled: resourceSettings.isEnabled)
+        monitor.onLog = { [weak self] message in
+            self?.recordDebug(message)
+        }
+        monitor.onCleared = { [weak self] in
+            guard let self else { return }
+            statusMenu?.refreshSummary()
+            hudController.resourcesChanged()
+            if settingsWindow.model.isShowingResources {
+                settingsWindow.model.refresh()
+            }
+        }
+        monitor.onReport = { [weak self] report in
+            guard let self else { return }
+            resourceHistory.add(report)
+            statusMenu?.refreshSummary()
+            hudController.resourcesChanged()
+            if settingsWindow.model.isShowingResources {
+                settingsWindow.model.refresh()
+            }
+        }
+        return monitor
+    }()
     /// Keeps the combination that hides and shows the widget agreeing with the setting.
     private lazy var shortcuts = WidgetShortcutController(
         settings: settings,
@@ -73,6 +100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.readToolingComplaint()
             }
             self?.renderWidget(sessions: sessions, usageLimits: usageLimits)
+            self?.resourceMonitor.sessionsChanged(sessions)
+            self?.resourceHistory.sessionsChanged(sessions)
         },
         onNotableEvent: { [weak self] message in
             self?.recordDebug(message)
@@ -102,6 +131,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         controller.openSetup = { [weak self] in
             self?.showSetupGuide()
+        }
+        controller.resources = { [weak self] in
+            guard let self else { return WidgetResources() }
+            return WidgetResources(
+                isWatching: resourceSettings.isEnabled,
+                showsInCard: resourceSettings.showsInCard,
+                report: resourceMonitor.report)
+        }
+        controller.wantsFreshResources = { [weak self] in
+            self?.resourceMonitor.sampleSoon()
         }
         // The order the menu shows too — see `SessionOrderBook`.
         controller.order = { [orderBook] sessions, now in
@@ -159,6 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.singleInstanceCoordinator = singleInstanceCoordinator
         self.preferences = preferences
         self.updater = AppUpdater(preferences: preferences)
+        resourceSettings = ResourceSettings(preferences: preferences)
         settings = WidgetSettingsStore(preferences: preferences)
         frameStore = HUDFrameStore(preferences: preferences)
         themes = ThemeStore(
@@ -190,7 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Before anything reads a setting: a fresh install gets the whole configuration
         // written out, and a version that adds one fills in that key alone.
         let owners: [PreferenceDefaults] = [
-            settings, frameStore, themes, rowLayouts, updater,
+            settings, frameStore, themes, rowLayouts, updater, resourceSettings,
         ]
         var everyDefault: [String: JSONValue] = [:]
         for owner in owners {
@@ -261,6 +301,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         ingress.stop()
         supervisor.stop()
+        resourceMonitor.stop()
+        resourceHistory.save()
         debugController.close()
         hudController.shutdown()
         if let statusItem {
@@ -569,6 +611,13 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         menuBarCounts
     }
 
+    var resourceFigure: ResourceFigure? {
+        guard resourceSettings.isEnabled, resourceSettings.showsInMenu else {
+            return nil
+        }
+        return resourceMonitor.report?.agents
+    }
+
     var isWidgetVisible: Bool {
         hudController.window?.isVisible == true
     }
@@ -580,6 +629,40 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
     var checksForUpdatesOnLaunch: Bool {
         get { updater.checksOnLaunch }
         set { updater.checksOnLaunch = newValue }
+    }
+
+    var watchesResources: Bool {
+        get { resourceSettings.isEnabled }
+        set {
+            resourceSettings.setEnabled(newValue)
+            resourceMonitor.setEnabled(newValue)
+            statusMenu?.refreshSummary()
+            hudController.resourcesChanged()
+        }
+    }
+
+    var showsResourcesInMenu: Bool {
+        get { resourceSettings.showsInMenu }
+        set {
+            resourceSettings.setShowsInMenu(newValue)
+            statusMenu?.refreshSummary()
+        }
+    }
+
+    var showsResourcesInCard: Bool {
+        get { resourceSettings.showsInCard }
+        set {
+            resourceSettings.setShowsInCard(newValue)
+            hudController.resourcesChanged()
+        }
+    }
+
+    var resourceReport: ResourceReport? {
+        resourceMonitor.report
+    }
+
+    var isReadingResources: Bool {
+        resourceMonitor.isSampling
     }
 
     var isReadingTranscripts: Bool {
@@ -613,6 +696,8 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         // the app has never heard from is most worth finding. It costs about a millisecond
         // and saves a timer: see `SessionSupervisor.discoverAgentProcesses`.
         supervisor.discoverAgentProcesses()
+        // The figure beside the summary should be no older than the opening.
+        resourceMonitor.sampleSoon()
         // The files belong to other programs and other people, so what the widget complains
         // about is read again rather than remembered from the last time this app looked.
         refreshToolingComplaint()

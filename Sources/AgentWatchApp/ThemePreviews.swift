@@ -65,6 +65,13 @@ struct SampleRowsPreview: NSViewRepresentable {
     let dark: Bool
     let layout: RowLayout
     let samples: [Sample]
+    /// Whether a template's Memory & CPU part draws, as it does in the widget only while
+    /// watching is on.
+    var watchesResources = false
+
+    /// What the samples' Memory & CPU part reads: a session about the size of a Claude Code
+    /// agent with one MCP server.
+    static let sampleFigure = ResourceFigure(footprint: 612 << 20, cpuLoad: 0.4)
 
     func makeNSView(context: Context) -> NSView {
         NSView()
@@ -97,6 +104,8 @@ struct SampleRowsPreview: NSViewRepresentable {
                 background: background,
                 lampScheme: look.lampScheme,
                 layout: layout,
+                showsResources: watchesResources && layout.shows(.resources),
+                resourceFigure: Self.sampleFigure,
                 onFocus: {},
                 dismissal: sample.dismissal,
                 onRemove: {}

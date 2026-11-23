@@ -9,6 +9,15 @@ protocol SettingsHost: AnyObject {
     var isWidgetVisible: Bool { get }
     var isEventDebugVisible: Bool { get }
     var checksForUpdatesOnLaunch: Bool { get set }
+    /// Whether the app watches what the agents cost, and whether the menu shows it
+    /// (`ResourceSettings`).
+    var watchesResources: Bool { get set }
+    var showsResourcesInMenu: Bool { get set }
+    var showsResourcesInCard: Bool { get set }
+    /// The last reading while watching, for the Resources page.
+    var resourceReport: ResourceReport? { get }
+    /// Whether a reading is coming: watching is on and a row is open.
+    var isReadingResources: Bool { get }
     var isReadingTranscripts: Bool { get }
     var transcriptFaultedSessionCount: Int { get }
     func toggleWidget()
@@ -174,6 +183,32 @@ final class SettingsModel: ObservableObject {
         get { host?.checksForUpdatesOnLaunch ?? false }
         set { update { host?.checksForUpdatesOnLaunch = newValue } }
     }
+
+    var watchesResources: Bool {
+        get { host?.watchesResources ?? false }
+        set { update { host?.watchesResources = newValue } }
+    }
+
+    var showsResourcesInMenu: Bool {
+        get { host?.showsResourcesInMenu ?? false }
+        set { update { host?.showsResourcesInMenu = newValue } }
+    }
+
+    var showsResourcesInCard: Bool {
+        get { host?.showsResourcesInCard ?? false }
+        set { update { host?.showsResourcesInCard = newValue } }
+    }
+
+    var resourceReport: ResourceReport? {
+        host?.resourceReport
+    }
+
+    var isReadingResources: Bool {
+        host?.isReadingResources ?? false
+    }
+
+    /// Whether the Resources page is on screen to go stale with each reading.
+    var isShowingResources: Bool { isShown && page == .resources }
 
     var transcriptSummary: String {
         transcriptReadingSummary(

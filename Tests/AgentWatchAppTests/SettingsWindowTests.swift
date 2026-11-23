@@ -13,7 +13,7 @@ final class SettingsWindowTests: XCTestCase {
             SettingsPage.sidebar.map(\.title),
             [
                 "General", "Tooling", "Git Protection", "Appearance", "Menu Bar", "Waiting Beacon", "Widget",
-                "Diagnostics",
+                "Resources", "Diagnostics",
             ]
         )
     }
