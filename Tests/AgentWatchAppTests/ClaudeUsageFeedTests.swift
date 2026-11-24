@@ -27,16 +27,16 @@ final class ClaudeUsageFeedTests: XCTestCase {
             })
         var delivered: [AgentUsageLimits] = []
 
-        feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: false) { delivered.append($0) }
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: false) { delivered.append($0) }
         await settle(feed)
-        feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: false) { delivered.append($0) }
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: false) { delivered.append($0) }
         await settle(feed)
 
         XCTAssertEqual(reads.value, 1)
         XCTAssertEqual(delivered.map(\.fiveHour?.usedPercentage), [18])
 
         modified.value = start.addingTimeInterval(30)
-        feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: false) { delivered.append($0) }
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: false) { delivered.append($0) }
         await settle(feed)
         XCTAssertEqual(reads.value, 2)
     }
@@ -46,7 +46,7 @@ final class ClaudeUsageFeedTests: XCTestCase {
         let feed = makeFeed(asks: asks, reply: .limits(limits(at: start)))
         var delivered: [AgentUsageLimits] = []
 
-        feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: true) { delivered.append($0) }
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: true) { delivered.append($0) }
         await settle(feed)
 
         XCTAssertEqual(asks.value, 1)
@@ -60,29 +60,29 @@ final class ClaudeUsageFeedTests: XCTestCase {
         let clock = Box(start)
         let feed = makeFeed(asks: asks, reply: nil, now: { clock.value })
 
-        feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: true) { _ in }
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: true) { _ in }
         await settle(feed)
         clock.value = start.addingTimeInterval(SessionSupervisor.maintenanceInterval)
-        feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: true) { _ in }
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: true) { _ in }
         await settle(feed)
         XCTAssertEqual(asks.value, 1)
 
         clock.value = start.addingTimeInterval(ClaudeUsageProbePolicy.interval)
-        feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: true) { _ in }
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: true) { _ in }
         await settle(feed)
         XCTAssertEqual(asks.value, 2)
     }
 
     func testARefusalStopsTheRunsUntilARestart() async {
-        for reply: ClaudeUsageSnapshot.Reply in [.refused, .noPlanLimits] {
+        for reply: ClaudeUsageSnapshot.Reply in [.refused, .noPlanLimits, .unknownShape] {
             let asks = Counter()
             let clock = Box(start)
             let feed = makeFeed(asks: asks, reply: reply, now: { clock.value })
 
-            feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: true) { _ in }
+            feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: true) { _ in }
             await settle(feed)
             clock.value = start.addingTimeInterval(10 * ClaudeUsageProbePolicy.interval)
-            feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: true) { _ in }
+            feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: true) { _ in }
             await settle(feed)
 
             XCTAssertEqual(asks.value, 1, "after \(reply)")
@@ -93,7 +93,7 @@ final class ClaudeUsageFeedTests: XCTestCase {
         let asks = Counter()
         let feed = makeFeed(asks: asks, reply: .limits(limits(at: start)))
 
-        feed.tick(knownLimitsObservedAt: nil, claudeIsWorking: false) { _ in }
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: false) { _ in }
         await settle(feed)
 
         XCTAssertEqual(asks.value, 0)
@@ -104,10 +104,49 @@ final class ClaudeUsageFeedTests: XCTestCase {
         let asks = Counter()
         let feed = makeFeed(asks: asks, reply: .limits(limits(at: start)))
 
-        feed.tick(knownLimitsObservedAt: start.addingTimeInterval(-60), claudeIsWorking: true) { _ in }
+        feed.tick(knownLimitsObservedAt: { self.start.addingTimeInterval(-60) }, claudeIsWorking: true) { _ in }
         await settle(feed)
 
         XCTAssertEqual(asks.value, 0)
+    }
+
+    /// Right after a launch the app knows of no limits until the first read lands; a snapshot
+    /// two minutes old must stop the run that the empty state would otherwise start.
+    func testAFreshSnapshotReadOnTheFirstSweepPreventsARun() async {
+        let asks = Counter()
+        let contents = Self.snapshotFile(fetchedAt: start.addingTimeInterval(-120))
+        let moment = start
+        let feed = ClaudeUsageFeed(
+            configFile: file,
+            ask: {
+                asks.increment()
+                return nil
+            },
+            now: { moment },
+            modificationDate: { _ in moment },
+            readFile: { _ in contents })
+        var known: AgentUsageLimits?
+
+        feed.tick(knownLimitsObservedAt: { known?.observedAt }, claudeIsWorking: true) { known = $0 }
+        await settle(feed)
+
+        XCTAssertNotNil(known)
+        XCTAssertEqual(asks.value, 0)
+    }
+
+    /// Offline, Claude Code answers without limits; the next attempt still comes on time.
+    func testAReplyWithoutLimitsThisTimeDoesNotStopTheRuns() async {
+        let asks = Counter()
+        let clock = Box(start)
+        let feed = makeFeed(asks: asks, reply: .unavailableNow, now: { clock.value })
+
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: true) { _ in }
+        await settle(feed)
+        clock.value = start.addingTimeInterval(ClaudeUsageProbePolicy.interval)
+        feed.tick(knownLimitsObservedAt: { nil }, claudeIsWorking: true) { _ in }
+        await settle(feed)
+
+        XCTAssertEqual(asks.value, 2)
     }
 
     /// The app's own run is a headless Claude Code; it must not count as the work that

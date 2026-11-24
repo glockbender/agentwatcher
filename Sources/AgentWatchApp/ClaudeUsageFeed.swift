@@ -57,24 +57,23 @@ final class ClaudeUsageFeed {
         return ClaudeUsageFeed(configFile: home.appendingPathComponent(".claude.json"), ask: ask)
     }
 
-    /// One sweep: reads the snapshot if the file changed, and starts a run if the policy says so.
+    /// One sweep: reads the snapshot if the file changed, then starts a run if the policy says so.
+    ///
+    /// The run is decided after the read has landed: a snapshot two minutes old, from `/usage`
+    /// or another tool, is fresher than anything a run would bring, and on the first sweep
+    /// after a launch the app knows of no limits at all until it has read one.
     ///
     /// - Parameters:
     ///   - knownLimitsObservedAt: how old the freshest Claude limits the app holds are, from
-    ///     either source; a recent status line makes a run unnecessary.
+    ///     either source, asked after the read; a recent status line makes a run unnecessary.
     ///   - claudeIsWorking: a person's Claude session claims work — a headless run, the app's
     ///     own included, does not count.
     ///   - deliver: called on the main actor with each set of limits found.
     func tick(
-        knownLimitsObservedAt: Date?,
+        knownLimitsObservedAt: @escaping @MainActor () -> Date?,
         claudeIsWorking: Bool,
         deliver: @escaping @MainActor (AgentUsageLimits) -> Void
     ) {
-        readSnapshotIfChanged(deliver: deliver)
-        probeIfDue(knownLimitsObservedAt: knownLimitsObservedAt, claudeIsWorking: claudeIsWorking, deliver: deliver)
-    }
-
-    private func readSnapshotIfChanged(deliver: @escaping @MainActor (AgentUsageLimits) -> Void) {
         guard !reading else {
             return
         }
@@ -84,20 +83,29 @@ final class ClaudeUsageFeed {
         let moment = now()
         let lastRead = readModificationDate
         reading = true
-        Task.detached {
+        DispatchQueue.global(qos: .utility).async {
             let modified = modificationDate(file)
-            let limits: AgentUsageLimits? =
-                if let modified, modified != lastRead {
-                    readFile(file).flatMap { ClaudeUsageSnapshot.limits(inConfigFile: $0, now: moment) }
-                } else {
-                    nil
+            var limits: AgentUsageLimits?
+            var settled = modified
+            if let modified, modified != lastRead {
+                let data = readFile(file)
+                limits = data.flatMap { ClaudeUsageSnapshot.limits(inConfigFile: $0, now: moment) }
+                // A file caught mid-write is read again on the next sweep; a whole file that
+                // holds nothing usable is not, until it changes.
+                let isWhole = data.map { (try? JSONSerialization.jsonObject(with: $0)) != nil } ?? false
+                if !isWhole {
+                    settled = lastRead
                 }
-            await MainActor.run {
+            }
+            Task { @MainActor in
                 self.reading = false
-                self.readModificationDate = modified
+                self.readModificationDate = settled
                 if let limits {
                     deliver(limits)
                 }
+                self.probeIfDue(
+                    knownLimitsObservedAt: knownLimitsObservedAt(), claudeIsWorking: claudeIsWorking,
+                    deliver: deliver)
             }
         }
     }
@@ -121,18 +129,21 @@ final class ClaudeUsageFeed {
         }
         policy.recordAttempt(at: moment)
         probing = true
-        Task.detached {
+        // A dispatch queue, not a task: the run blocks for up to fourteen seconds, and a task
+        // would hold one of the few threads Swift's concurrency shares out for that long.
+        DispatchQueue.global(qos: .utility).async {
             let reply = ask()
-            await MainActor.run {
+            Task { @MainActor in
                 self.probing = false
                 switch reply {
                 case let .limits(limits)?:
                     deliver(limits)
-                case .noPlanLimits?, .refused?:
+                case .noPlanLimits?, .refused?, .unknownShape?:
                     // Asking again cannot help: the sign-in has no plan limits, or this Claude
-                    // Code does not know the request. A restart asks once more.
+                    // Code does not know the request or answers it in a shape the app cannot
+                    // read. A restart asks once more.
                     self.policy.stop()
-                case .unrecognised?, nil:
+                case .unavailableNow?, .unrecognised?, nil:
                     break
                 }
             }

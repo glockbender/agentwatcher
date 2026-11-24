@@ -45,6 +45,33 @@ final class UsageLimitsMergeTests: XCTestCase {
         XCTAssertEqual(engine.usageLimitsBySource[.claude]?.fiveHour, UsageWindow(usedPercentage: 2))
     }
 
+    /// The status line can carry one window without the other.
+    func testAWindowANewerReportLeavesOutStaysUntilItResets() {
+        var engine = SessionStateEngine()
+        engine.mergeUsageLimits(
+            AgentUsageLimits(
+                source: .claude,
+                fiveHour: UsageWindow(usedPercentage: 20, resetsAt: resets),
+                sevenDay: UsageWindow(usedPercentage: 40, resetsAt: start.addingTimeInterval(4 * 24 * 60 * 60)),
+                observedAt: start))
+
+        engine.mergeUsageLimits(limits(fiveHour: 25, at: start.addingTimeInterval(60)))
+
+        XCTAssertEqual(engine.usageLimitsBySource[.claude]?.sevenDay?.usedPercentage, 40)
+    }
+
+    func testAWindowWithoutAResetTimeIsNotKeptWhenLeftOut() {
+        var engine = SessionStateEngine()
+        engine.mergeUsageLimits(
+            AgentUsageLimits(
+                source: .claude, fiveHour: UsageWindow(usedPercentage: 20), sevenDay: UsageWindow(usedPercentage: 40),
+                observedAt: start))
+
+        engine.mergeUsageLimits(limits(fiveHour: 25, at: start.addingTimeInterval(60)))
+
+        XCTAssertNil(engine.usageLimitsBySource[.claude]?.sevenDay)
+    }
+
     func testTheSameReportAgainChangesNothing() {
         var engine = SessionStateEngine()
         engine.mergeUsageLimits(limits(fiveHour: 20, resetsAt: resets, at: start))

@@ -25,8 +25,15 @@ final class ClaudeUsageSnapshotTests: XCTestCase {
     }
 
     /// A clock that ran backwards is no reason to call an old figure new.
-    func testASnapshotFromTheFutureIsNotTrusted() {
-        XCTAssertNil(ClaudeUsageSnapshot.limits(inConfigFile: configFile(), now: fetchedAt.addingTimeInterval(-60)))
+    func testASnapshotFarInTheFutureIsNotTrusted() {
+        let now = fetchedAt.addingTimeInterval(-ClaudeUsageSnapshot.clockTolerance - 1)
+        XCTAssertNil(ClaudeUsageSnapshot.limits(inConfigFile: configFile(), now: now))
+    }
+
+    /// The file is read right after Claude Code writes it; the moment the app took for "now"
+    /// can be a little earlier than the fetch.
+    func testASnapshotMomentsAheadOfTheClockIsRead() {
+        XCTAssertNotNil(ClaudeUsageSnapshot.limits(inConfigFile: configFile(), now: fetchedAt.addingTimeInterval(-5)))
     }
 
     /// Claude Code drops a snapshot of another account on its own next read; until then the
@@ -98,6 +105,25 @@ final class ClaudeUsageSnapshotTests: XCTestCase {
             #"{"type":"control_response","response":{"subtype":"error","request_id":"r-1","error":"Unsupported control request subtype: get_usage"}}"#
                 .utf8)
         XCTAssertEqual(ClaudeUsageSnapshot.reply(in: line, requestID: "r-1", now: fetchedAt), .refused)
+    }
+
+    /// Offline, or held back after a 429: Claude Code still answers `success`, with no limits.
+    /// That is no reason to stop asking.
+    func testAReplyWithoutLimitsThisTimeIsTemporary() {
+        let line = reply(body: #"{"rate_limits_available":true,"rate_limits":null}"#)
+        XCTAssertEqual(ClaudeUsageSnapshot.reply(in: line, requestID: "r-1", now: fetchedAt), .unavailableNow)
+    }
+
+    func testAReplyOfAnUnknownShapeIsSaidSo() {
+        for body in [
+            #"{"rate_limits_available":true,"rate_limits":{"five_hour":null,"seven_day":null}}"#,
+            #"{"plan":{"usage":[]}}"#,
+            #""text""#,
+        ] {
+            XCTAssertEqual(
+                ClaudeUsageSnapshot.reply(in: reply(body: body), requestID: "r-1", now: fetchedAt), .unknownShape,
+                body)
+        }
     }
 
     func testAReplyToAnotherRequestIsNotThisOne() {

@@ -15,6 +15,10 @@ public enum ClaudeUsageSnapshot {
     /// Claude Code does not trust its own snapshot past an hour, and neither does the app.
     public static let maximumAge: TimeInterval = 60 * 60
 
+    /// How far ahead of the app's clock a fetch may be dated. The file is read right after
+    /// Claude Code writes it, and the moment the app takes for "now" can precede the write.
+    public static let clockTolerance: TimeInterval = 60
+
     /// The limits in a `.claude.json`, or `nil` when it holds none the app can trust.
     ///
     /// `nil` covers a file caught mid-write, a snapshot older than `maximumAge`, one fetched
@@ -36,7 +40,7 @@ public enum ClaudeUsageSnapshot {
         }
         let fetchedAt = Date(timeIntervalSince1970: fetchedAtMilliseconds / 1_000)
         let age = now.timeIntervalSince(fetchedAt)
-        guard age >= 0, age <= maximumAge else {
+        guard age >= -clockTolerance, age <= maximumAge else {
             return nil
         }
         return limits(in: utilization, observedAt: fetchedAt)
@@ -48,9 +52,17 @@ public enum ClaudeUsageSnapshot {
         /// The sign-in has no plan limits: an API key, Bedrock, Vertex, or a token without the
         /// scope that reads them. Asking again will not change that.
         case noPlanLimits
-        /// Claude Code refused the request — one too old to know it does that.
+        /// Claude Code refused the request — one too old to know it does that. A failure to
+        /// reach the server is not a refusal: Claude Code answers that with `success` and no
+        /// limits (`unavailableNow`). Read from the Claude Code 2.1.326 binary.
         case refused
-        /// Not the reply to this request, or one of a shape the app does not know.
+        /// The sign-in has plan limits, but Claude Code could not read them this time —
+        /// offline, or held back after the server said "too many". The next run may succeed.
+        case unavailableNow
+        /// The reply to this request, in a shape the app does not know — a newer Claude Code
+        /// that changed it. The same Claude Code will answer the same way next time.
+        case unknownShape
+        /// Not the reply to this request.
         case unrecognised
     }
 
@@ -72,18 +84,18 @@ public enum ClaudeUsageSnapshot {
             return .refused
         }
         guard let body = response["response"] as? [String: Any] else {
-            return .unrecognised
+            return .unknownShape
         }
-        if body["rate_limits_available"] as? Bool == false {
+        switch (body["rate_limits_available"] as? Bool, body["rate_limits"]) {
+        case (false?, _):
             return .noPlanLimits
+        case (true?, is NSNull), (true?, nil):
+            return .unavailableNow
+        case let (true?, windows as [String: Any]):
+            return limits(in: windows, observedAt: now).map(Reply.limits) ?? .unknownShape
+        default:
+            return .unknownShape
         }
-        guard
-            let windows = body["rate_limits"] as? [String: Any],
-            let limits = limits(in: windows, observedAt: now)
-        else {
-            return .unrecognised
-        }
-        return .limits(limits)
     }
 
     /// The request, as the one line written to Claude Code's standard input.

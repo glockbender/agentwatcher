@@ -1035,7 +1035,7 @@ final class SessionSupervisor {
 
     private func tickClaudeUsage() {
         claudeUsage?.tick(
-            knownLimitsObservedAt: engine.usageLimitsBySource[.claude]?.observedAt,
+            knownLimitsObservedAt: { [weak self] in self?.engine.usageLimitsBySource[.claude]?.observedAt },
             claudeIsWorking: Self.claudeIsWorking(engine.snapshots.values),
             deliver: { [weak self] limits in self?.applyUsageLimits(limits) }
         )

@@ -45,7 +45,7 @@ public enum ClaudeUsageProbe {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.currentDirectoryURL = workingDirectory
-        process.environment = environment(home: home)
+        process.environment = environment(home: home, executable: executable)
         let input = Pipe()
         let output = Pipe()
         process.standardInput = input
@@ -90,11 +90,17 @@ public enum ClaudeUsageProbe {
         return reader.reply
     }
 
-    /// Only what Claude Code needs to find its own files and its sign-in. An app started from
-    /// Finder has little more than this, and nothing a shell profile exports belongs in a run
-    /// the person did not start.
-    static func environment(home: URL) -> [String: String] {
-        var environment = ["HOME": home.path, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]
+    /// Only what Claude Code needs to find its own files, its sign-in and, when it was
+    /// installed with npm, the Node it starts through `#!/usr/bin/env node`. An app started
+    /// from Finder has little more than this, and nothing a shell profile exports belongs in a
+    /// run the person did not start.
+    ///
+    /// `PATH` leads with the agent's own directory: npm, nvm, Volta and Bun put `node` beside
+    /// the `claude` they installed, and Homebrew's Node lives in the two directories after it.
+    static func environment(home: URL, executable: String) -> [String: String] {
+        let directory = URL(fileURLWithPath: executable).deletingLastPathComponent().path
+        let path = [directory, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        var environment = ["HOME": home.path, "PATH": path.joined(separator: ":")]
         let inherited = ProcessInfo.processInfo.environment
         for name in ["USER", "LOGNAME", "TMPDIR"] {
             environment[name] = inherited[name]
