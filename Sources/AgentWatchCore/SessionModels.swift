@@ -45,16 +45,19 @@ public struct SessionContextTelemetry: Codable, Equatable, Sendable {
     }
 }
 
-/// How much of an account-level window has been spent.
+/// How much of an account-level window has been spent, and when it starts again.
 ///
-/// The percentage alone. The reset time is reported by the provider and would make a useful
-/// line one day — "5h 17% · resets in 40m" — but nothing shows it today, and a field that
-/// crosses a process boundary without a reader is surface with no benefit.
+/// `resetsAt` comes only from Claude's own usage snapshot and its `get_usage` reply
+/// (`ClaudeUsageSnapshot`). The status line carries one too, and it still does not cross the
+/// socket: the snapshot already brings it, and a second copy on the wire would be surface
+/// with no reader of its own.
 public struct UsageWindow: Codable, Equatable, Sendable {
     public let usedPercentage: Double
+    public let resetsAt: Date?
 
-    public init(usedPercentage: Double) {
+    public init(usedPercentage: Double, resetsAt: Date? = nil) {
         self.usedPercentage = usedPercentage
+        self.resetsAt = resetsAt
     }
 }
 

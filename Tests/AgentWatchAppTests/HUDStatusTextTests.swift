@@ -243,10 +243,48 @@ final class HUDStatusTextTests: XCTestCase {
             for: AgentUsageLimits(
                 source: .claude,
                 fiveHour: .init(usedPercentage: 17),
-                observedAt: start
-            ))
+                observedAt: utc("2026-11-20T14:05:00Z")
+            ),
+            timeZone: TimeZone(identifier: "UTC")!,
+            locale: Locale(identifier: "en_GB")
+        )
 
-        XCTAssertEqual(text, "Claude  ·  5h 17%")
+        XCTAssertEqual(text, "Claude  ·  5h 17%  ·  as of 14:05")
+    }
+
+    /// A reset within a day is its time; the weekly one, days away, is its weekday.
+    func testSaysWhenEachWindowStartsAgain() {
+        let text = widgetUsageText(
+            for: AgentUsageLimits(
+                source: .claude,
+                fiveHour: .init(usedPercentage: 21, resetsAt: utc("2026-11-20T22:30:00Z")),
+                sevenDay: .init(usedPercentage: 3, resetsAt: utc("2026-11-27T19:00:00Z")),
+                observedAt: utc("2026-11-20T14:05:00Z")
+            ),
+            timeZone: TimeZone(identifier: "UTC")!,
+            locale: Locale(identifier: "en_GB")
+        )
+
+        XCTAssertEqual(text, "Claude  ·  5h 21% till 22:30  ·  7d 3% till Fri  ·  as of 14:05")
+    }
+
+    /// A reset already behind the figure says nothing about the window now.
+    func testAResetBeforeTheFigureIsLeftOut() {
+        let text = widgetUsageText(
+            for: AgentUsageLimits(
+                source: .claude,
+                fiveHour: .init(usedPercentage: 21, resetsAt: utc("2026-11-20T12:00:00Z")),
+                observedAt: utc("2026-11-20T14:05:00Z")
+            ),
+            timeZone: TimeZone(identifier: "UTC")!,
+            locale: Locale(identifier: "en_GB")
+        )
+
+        XCTAssertEqual(text, "Claude  ·  5h 21%  ·  as of 14:05")
+    }
+
+    private func utc(_ text: String) -> Date {
+        ISO8601DateFormatter().date(from: text)!
     }
 
     private func snapshot(
