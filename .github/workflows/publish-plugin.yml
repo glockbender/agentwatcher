@@ -28,15 +28,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check that the tag and build.gradle.kts agree on the version
+      - name: Install Rust
+        run: rustup toolchain install 1.98.1 --profile minimal
+
+      - name: Check the plugin version against the tag
         if: github.event_name == 'push'
-        run: |
-          tag_version="${GITHUB_REF_NAME#plugin-v}"
-          build_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' ide-plugin/build.gradle.kts)"
-          if [[ "$tag_version" != "$build_version" ]]; then
-            echo "tag $GITHUB_REF_NAME says $tag_version, ide-plugin/build.gradle.kts says $build_version" >&2
-            exit 1
-          fi
+        run: scripts/devtool ci plugin-version "$GITHUB_REF_NAME"
 
       # Only to start Gradle: the build fetches the JDK the target IDE needs by itself.
       - uses: actions/setup-java@v4
@@ -55,19 +52,7 @@ jobs:
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
-        run: |
-          missing=0
-          for name in CERTIFICATE_CHAIN PRIVATE_KEY PRIVATE_KEY_PASSWORD; do
-            if [[ -z "${!name}" ]]; then
-              echo "secret $name is not set" >&2
-              missing=1
-            fi
-          done
-          if [[ "$GITHUB_EVENT_NAME" == "push" && -z "$PUBLISH_TOKEN" ]]; then
-            echo "secret PUBLISH_TOKEN is not set, and a tag push publishes" >&2
-            missing=1
-          fi
-          exit "$missing"
+        run: scripts/devtool ci plugin-signing
 
       # No IDE on a runner, so Gradle fetches one — the path `task plugin-download` exercises
       # locally. `verifyPlugin` is the check `build.gradle.kts` asks for before publishing.

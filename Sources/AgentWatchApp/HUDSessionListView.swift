@@ -70,6 +70,7 @@ class HUDSessionListView: NSView {
         lampScheme: LampScheme,
         backgroundOpacity: CGFloat,
         style: WidgetStyle = .standard,
+        navigation: HUDNavigation? = nil,
         restoredScrollOffset: NSPoint?,
         onScroll: @escaping (NSPoint) -> Void,
         onHoverChanged: @escaping (HUDSessionRowView, Bool) -> Void = { _, _ in },
@@ -93,7 +94,7 @@ class HUDSessionListView: NSView {
         self.overflowBadgeBelow = HUDOverflowBadge(background: background, style: style)
         super.init(frame: .zero)
         appearance = background.controlAppearance
-        buildContent()
+        buildContent(navigation: navigation)
     }
 
     @available(*, unavailable)
@@ -101,8 +102,10 @@ class HUDSessionListView: NSView {
         nil
     }
 
-    private func buildContent() {
+    private func buildContent(navigation: HUDNavigation?) {
         let container = makeBackgroundView(for: background, opacity: backgroundOpacity)
+
+        let bottom = navigation?.install(in: container, background: background, style: style) ?? container.bottomAnchor
 
         // Built nameless, measured, then named. Measuring happens here, while every row is
         // still detached: asking a view for its fitting size lays that view out, and a layout
@@ -205,7 +208,7 @@ class HUDSessionListView: NSView {
                 ),
                 usageStack.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: style.usageDividerGap),
                 usageStack.bottomAnchor.constraint(
-                    equalTo: container.bottomAnchor, constant: -style.listVerticalPadding),
+                    equalTo: bottom, constant: -style.listVerticalPadding),
                 // The lower badge stops above the divider. What is under it there is a block
                 // of account figures — not a row, and nothing announces it — so the badge may
                 // have the gap before the separator and no more.
@@ -217,10 +220,10 @@ class HUDSessionListView: NSView {
                 // its top pinned and a `lessThanOrEqualTo` at the bottom nothing would stretch
                 // it and the list would collapse.
                 scrollView.bottomAnchor.constraint(
-                    equalTo: container.bottomAnchor, constant: -style.listVerticalPadding),
+                    equalTo: bottom, constant: -style.listVerticalPadding),
                 // Nothing under the list but the widget's own edge, so the lower badge goes
                 // all the way down into the corner.
-                overflowBadgeBelow.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -badgeInset),
+                overflowBadgeBelow.bottomAnchor.constraint(equalTo: bottom, constant: -badgeInset),
             ]
         }
 
@@ -595,17 +598,20 @@ class HUDSessionListView: NSView {
         sessionCount: Int,
         usageLimits: [AgentUsageLimits],
         background: WidgetBackground,
-        style: WidgetStyle = .standard
+        style: WidgetStyle = .standard,
+        navigation: Bool = false
     ) -> CGFloat {
         guard sessionCount > 0 else {
             return 0
         }
+        // The Projects and Settings strip sits under the list, inside the same view.
+        let strip = navigation ? style.navigationHeight : 0
         // No trailing gap after the last row: the stack puts spacing between rows, not after
         // the final one, so counting a full row height per row would leave a blank strip.
         let rows =
             CGFloat(sessionCount) * (style.rowHeight + style.rowSpacing) - style.rowSpacing
         return 2 * style.listVerticalPadding + rows
-            + usageHeight(for: usageLimits, background: background, style: style)
+            + usageHeight(for: usageLimits, background: background, style: style) + strip
     }
 
     /// How much height the usage block needs, including the divider and the gaps around it.

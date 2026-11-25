@@ -163,7 +163,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.closedSessionRetention: .number(Self.defaultClosedSessionRetention),
             Key.transcriptPollInterval: .number(Self.defaultTranscriptPollInterval),
             Key.scale: .number(Double(Self.defaultScale)),
-            Key.toggleShortcut: .string(Self.defaultToggleShortcut),
+            Key.toggleShortcut: .string(
+                AgentWatchPaths.isDevelopmentBuild ? Self.noToggleShortcut : Self.defaultToggleShortcut),
             Key.menuBarIconStyle: .string(MenuBarIconStyle.sphere.rawValue),
             Key.menuBarIconAttentions: .array(Self.stored(Set(SessionAttention.counted)).map(JSONValue.string)),
             Key.listsSessionsInMenu: .bool(true),
@@ -263,7 +264,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
 
     /// The combination that hides and shows the widget from anywhere, or nothing.
     var toggleShortcut: WidgetShortcut? {
-        WidgetShortcut(
+        guard !AgentWatchPaths.isDevelopmentBuild else { return nil }
+        return WidgetShortcut(
             stored: preferences.string(forKey: Key.toggleShortcut) ?? Self.defaultToggleShortcut
         )
     }

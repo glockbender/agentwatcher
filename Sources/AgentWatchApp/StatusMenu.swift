@@ -27,6 +27,7 @@ protocol StatusMenuHost: AnyObject {
     /// Puts the registered combination on the widget line, or takes it off.
     func showShortcut(on item: NSMenuItem)
     func toggleWidget()
+    func showProjects()
     func showWidgetSettings()
     func quit()
 }
@@ -81,6 +82,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(widget)
         widgetItem = widget
         menu.addItem(.separator())
+        menu.addItem(line("Projects & Recent…", #selector(showProjects)))
         let settings = line(Self.settingsItemTitle, #selector(showWidgetSettings))
         settings.keyEquivalent = ","
         menu.addItem(settings)
@@ -292,6 +294,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     @objc private func toggleWidget() {
         host?.toggleWidget()
+    }
+
+    @objc private func showProjects() {
+        host?.showProjects()
     }
 
     @objc private func showWidgetSettings() {

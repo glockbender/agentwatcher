@@ -966,7 +966,7 @@ final class EventProtocolTests: XCTestCase {
         XCTAssertEqual(snapshot.lastObservedAt, start.addingTimeInterval(-1))
         XCTAssertEqual(
             engine.usageLimitsBySource[.claude]?.fiveHour,
-            .init(usedPercentage: 17)
+            .init(usedPercentage: 17, resetsAt: Date(timeIntervalSince1970: 2_000_000_000))
         )
         XCTAssertEqual(engine.usageLimitsBySource[.claude]?.sevenDay, .init(usedPercentage: 31))
     }

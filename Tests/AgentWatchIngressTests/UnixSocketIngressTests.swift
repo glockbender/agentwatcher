@@ -243,26 +243,25 @@ final class UnixSocketIngressTests: XCTestCase {
         }
         defer { ingress.stop() }
 
+        let startFailure = ControlStartFailure()
         DispatchQueue.global().async {
             delivery.set(
                 LocalControlSender.requestRevealExistingInstance(
                     to: socketPath,
                     onFirstFailure: {
+                        // The listener appears between the failed attempt and the next one, on
+                        // the sender's own thread. Starting it from the test's thread after a
+                        // sleep raced the retry budget: a late wake-up on a CI runner let the
+                        // budget run out first.
+                        do { try ingress.start() } catch { startFailure.set(error) }
                         firstFailure.fulfill()
                     }
                 ))
             senderCompleted.fulfill()
         }
 
-        wait(for: [firstFailure], timeout: 1)
-        // Derived from the retry budget rather than fixed: the listener has to appear while
-        // the sender is still trying, and half of whatever that budget is says so. A number
-        // written here instead would have to be changed by hand whenever the budget is
-        // retuned, which is how a test comes to assert a tuning constant.
-        Thread.sleep(forTimeInterval: Double(LocalControlSender.startupRetryMilliseconds) / 2_000)
-        try ingress.start()
-
-        wait(for: [senderCompleted], timeout: 1)
+        wait(for: [firstFailure, senderCompleted], timeout: 5, enforceOrder: true)
+        if let error = startFailure.value { throw error }
         XCTAssertTrue(delivery.value)
         wait(for: [received], timeout: 1)
         let request = try XCTUnwrap(try results.snapshot().first?.get())
@@ -562,7 +561,7 @@ final class UnixSocketIngressTests: XCTestCase {
         XCTAssertEqual(event.usageLimits?.sevenDay?.usedPercentage, 31)
         let wire = String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
         XCTAssertFalse(wire.contains("secret-context"))
-        XCTAssertFalse(wire.contains("resets_at"))
+        XCTAssertEqual(event.usageLimits?.fiveHour?.resetsAt, Date(timeIntervalSince1970: 2_000_000_000))
     }
 
     func testSocketHasOwnerOnlyPermissions() throws {
@@ -968,6 +967,23 @@ private final class IngressResults: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return values
+    }
+}
+
+private final class ControlStartFailure: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedError: Error?
+
+    var value: Error? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedError
+    }
+
+    func set(_ error: Error) {
+        lock.lock()
+        storedError = error
+        lock.unlock()
     }
 }
 

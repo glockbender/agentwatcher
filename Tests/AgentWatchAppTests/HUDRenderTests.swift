@@ -74,10 +74,56 @@ final class HUDRenderTests: XCTestCase {
         )
     }
 
-    private func makeController() throws -> HUDPanelController {
+    func testNavigationStaysReachableWithAndWithoutSessionsAndWithTheWidgetLocked() throws {
+        for scale in [0.5, 1, 2.0] {
+            for locked in [false, true] {
+                let controller = try makeController(show: false, scale: scale, locked: locked)
+                let panel = try XCTUnwrap(controller.window)
+                let view = try XCTUnwrap(panel.contentView)
+                panel.setContentSize(WidgetStyle(scale: scale).minimumWindowSize)
+                var opened: [String] = []
+                controller.openProjects = { opened.append("Projects") }
+                controller.openSettings = { opened.append("Settings") }
+                for state in [
+                    WidgetState(), WidgetState(sessions: [testSession(title: "session", lastObservedAt: now)]),
+                    WidgetState(complaint: "Connect an agent to start watching sessions"),
+                ] {
+                    controller.render(state)
+                    view.layoutSubtreeIfNeeded()
+                    for title in ["Projects", "Settings"] {
+                        let button = try XCTUnwrap(button(named: title, in: view))
+                        XCTAssertEqual(button.accessibilityLabel(), "Open " + title)
+                        XCTAssertTrue(button.acceptsFirstMouse(for: nil))
+                        XCTAssertFalse(button.mouseDownCanMoveWindow)
+                        let bounds = button.convert(button.bounds, to: view)
+                        XCTAssertTrue(
+                            view.bounds.contains(bounds), "\(title) at \(scale)x: \(bounds) in \(view.bounds)")
+                        let center = NSPoint(x: bounds.midX, y: bounds.midY)
+                        XCTAssertTrue(view.hitTest(center) === button, "\(title) behind an overlay")
+                        button.performClick(nil)
+                    }
+                    XCTAssertEqual(opened, ["Projects", "Settings"])
+                    opened.removeAll()
+                }
+                controller.shutdown()
+            }
+        }
+    }
+
+    private func button(named title: String, in view: NSView) -> NSButton? {
+        if let button = view as? NSButton, button.title == title { return button }
+        return view.subviews.lazy.compactMap { self.button(named: title, in: $0) }.first
+    }
+
+    private func makeController(show: Bool = true, scale: CGFloat = 1, locked: Bool = false) throws
+        -> HUDPanelController
+    {
         let preferences = try isolatedPreferences()
         let frameStore = HUDFrameStore(preferences: preferences)
         preferences.seed(frameStore.defaultValues)
+        let settings = WidgetSettingsStore(preferences: preferences)
+        settings.setLocksPosition(locked)
+        settings.setLocksSize(locked)
         let controller = HUDPanelController(
             reach: { _ in .nowhere },
             focus: { _ in .nothingRaised },
@@ -85,11 +131,12 @@ final class HUDRenderTests: XCTestCase {
             background: .graphite,
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
+            style: WidgetStyle(scale: scale),
             frameStore: frameStore,
-            settings: WidgetSettingsStore(preferences: preferences),
+            settings: settings,
             rowLayouts: RowLayoutStore(preferences: preferences)
         )
-        controller.showWindow(nil)
+        if show { controller.showWindow(nil) }
         return controller
     }
 

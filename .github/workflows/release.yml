@@ -23,35 +23,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check that the tag and the bundle agree on the version
-        run: |
-          tag_version="${GITHUB_REF_NAME#v}"
-          bundle_version="$(plutil -extract CFBundleShortVersionString raw -o - Resources/Info.plist)"
-          if [[ "$tag_version" != "$bundle_version" ]]; then
-            echo "tag $GITHUB_REF_NAME says $tag_version, Resources/Info.plist says $bundle_version" >&2
-            exit 1
-          fi
+      - name: Install Rust
+        run: rustup toolchain install 1.98.1 --profile minimal
 
-      # What changed has to be written before anything is built: the draft's notes and the
-      # update window both read this section, and a release without it has nothing to say.
-      - name: Check that CHANGELOG.md describes this version
-        run: python3 scripts/changelog.py check "${GITHUB_REF_NAME#v}"
+      - name: Check the bundle version and changelog against the tag
+        run: scripts/devtool ci app-version "$GITHUB_REF_NAME"
 
-      # Installed copies accept a build only when its EdDSA signature matches the key they carry,
-      # so a release without the key, or with a key the bundle does not know, reaches nobody.
       - name: Check that the update signing key is set up
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
-            echo "the SPARKLE_PRIVATE_KEY secret is not set — docs/distribution.md, «Ключ подписи обновлений»" >&2
-            exit 1
-          fi
-          plutil -extract SUPublicEDKey raw -o - Resources/Info.plist >/dev/null \
-            || { echo "Resources/Info.plist has no SUPublicEDKey" >&2; exit 1; }
-
-      - name: Install the Rust toolchain for Git protection
-        run: rustup toolchain install 1.98.1 --profile minimal
+        run: scripts/devtool ci app-signing
 
       - name: Install Task
         run: brew install go-task
@@ -72,15 +53,4 @@ jobs:
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          ./scripts/release-notes.sh "$version" > dist/notes.md
-          gh release create "$GITHUB_REF_NAME" \
-            --draft \
-            --title "Agent Watch $version" \
-            --notes-file dist/notes.md \
-            "dist/AgentWatch-$version.dmg" \
-            "dist/AgentWatch-$version.dmg.sha256" \
-            "dist/AgentWatch-$version.zip" \
-            "dist/AgentWatch-$version.zip.sha256" \
-            dist/appcast.xml
+        run: scripts/devtool ci draft "$GITHUB_REF_NAME"

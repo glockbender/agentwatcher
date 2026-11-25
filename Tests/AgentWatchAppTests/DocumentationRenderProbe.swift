@@ -56,7 +56,7 @@ final class DocumentationRenderProbe: XCTestCase {
             gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
         let legend = ReadmeShowcase.legend()
         for frame in 0..<frames {
-            let list = widget(legend, width: 300, layout: RowLayout(parts: [.lamp, .name]))
+            let list = widget(legend, width: 300, layout: RowLayout(parts: [.lamp, .name]), showNavigation: false)
             let canvas = framed(list, padding: 12, color: NSColor(sRGB: "#F4F6F8"))
             sampleAnimations(in: list, at: Double(frame) / fps)
             let image = try XCTUnwrap(bitmap(canvas).cgImage)
@@ -89,17 +89,21 @@ final class DocumentationRenderProbe: XCTestCase {
         width: CGFloat,
         layout: RowLayout = .standard,
         look: WidgetTheme.Look = WidgetTheme.standard.dark,
-        usage: [AgentUsageLimits] = []
+        usage: [AgentUsageLimits] = [],
+        showNavigation: Bool = true
     ) -> HUDSessionListView {
         let background = look.widgetBackground
         let list = HUDSessionListView(
             models: sessions.map { HUDRowModel(snapshot: $0, now: now, layout: layout) },
             usageLimits: usage, now: now, availableWidth: width, focus: { _ in }, remove: { _ in },
             background: background, lampScheme: look.lampScheme, backgroundOpacity: 1, style: .standard,
+            navigation: showNavigation ? HUDNavigation(projects: {}, settings: {}) : nil,
             restoredScrollOffset: nil, onScroll: { _ in })
         let height = HUDSessionListView.selfSizedHeight(
             sessionCount: sessions.count, usageLimits: usage, background: background, style: .standard)
-        place(list, size: NSSize(width: width, height: height))
+        place(
+            list,
+            size: NSSize(width: width, height: height + (showNavigation ? WidgetStyle.standard.navigationHeight : 0)))
         return list
     }
 

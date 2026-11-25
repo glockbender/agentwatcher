@@ -34,6 +34,8 @@ final class HookIngressController {
         self.log = log
     }
 
+    var isListening: Bool { ingress != nil }
+
     /// Starts listening, or says why it could not.
     ///
     /// Never throws: monitoring is fail-open, so an app that cannot hear its hooks still runs

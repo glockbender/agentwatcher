@@ -13,7 +13,10 @@ extension XCTestCase {
     /// them had collected in the running person's home folder. A file in the temporary folder
     /// is deleted by asking, needs no cross-process lock, and cannot outlive the test.
     func isolatedPreferences() throws -> PreferenceFile {
-        let directory = FileManager.default.temporaryDirectory
+        let scratch = ProcessInfo.processInfo.environment["AGENT_WATCH_TEST_SCRATCH"]
+        let parent = scratch.map { URL(fileURLWithPath: $0) } ?? FileManager.default.temporaryDirectory
+        let directory =
+            parent
             .appendingPathComponent("AgentWatchPreferences.\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock {

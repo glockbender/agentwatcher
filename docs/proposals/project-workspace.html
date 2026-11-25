@@ -1,0 +1,1144 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; media-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="explainer-doc" content="project-workspace@ff85099823e5">
+<title>Будущее Agent Watch</title>
+<meta name="description" content="План развития Agent Watch, цена изменений, результаты проверок и решения для выпуска.">
+<!-- Built from project-workspace.md (5431e1348be4). Edit the Markdown and rebuild. -->
+<script>
+try {
+  const savedTheme = localStorage.getItem("explainer-theme");
+  if (savedTheme === "light" || savedTheme === "dark") {
+    document.documentElement.setAttribute("data-theme", savedTheme);
+  }
+} catch (error) {
+  console.warn("[explainer] theme: the saved choice could not be read", error);
+}
+</script>
+<style>
+/* Explainer shell. Every colour is a token: light on :root, dark under the media query
+   (unless the reader forced light) and again under [data-theme="dark"] and the toggle's
+   dark radio button. */
+:root {
+  --bg: #fbfaf7;
+  --surface: #ffffff;
+  --text: #1d1d1f;
+  --muted: #5f6368;
+  --border: #e3dfd6;
+  --accent: #b4461f;
+  --accent-soft: #f7e8e0;
+  --ok: #2b7248;
+  --ok-soft: #e2f1e7;
+  --warn: #9a5b00;
+  --warn-soft: #fbf0dc;
+  --bad: #b3261e;
+  --bad-soft: #fbe3e1;
+  --info: #1d6a85;
+  --info-soft: #e6f0f4;
+  --code-bg: #f2efe8;
+  --row-alt: #f6f4ef;
+  --on-accent: #ffffff;
+  --note-bg: #fbe7a6;
+  --note-bg-active: #f4cf63;
+  --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16171a;
+    --surface: #1f2125;
+    --text: #ececec;
+    --muted: #a3a7ad;
+    --border: #34373d;
+    --accent: #ee9068;
+    --accent-soft: #3a2720;
+    --ok: #74c597;
+    --ok-soft: #1f3327;
+    --warn: #e2a562;
+    --warn-soft: #2c2217;
+    --bad: #ff8f86;
+    --bad-soft: #3d2321;
+    --info: #63b4d1;
+    --info-soft: #15282f;
+    --code-bg: #26282d;
+    --row-alt: #1b1d21;
+    --on-accent: #16171a;
+    --note-bg: #4d3d10;
+    --note-bg-active: #6e5716;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #16171a;
+  --surface: #1f2125;
+  --text: #ececec;
+  --muted: #a3a7ad;
+  --border: #34373d;
+  --accent: #ee9068;
+  --accent-soft: #3a2720;
+  --ok: #74c597;
+  --ok-soft: #1f3327;
+  --warn: #e2a562;
+  --warn-soft: #2c2217;
+  --bad: #ff8f86;
+  --bad-soft: #3d2321;
+  --info: #63b4d1;
+  --info-soft: #15282f;
+  --code-bg: #26282d;
+  --row-alt: #1b1d21;
+  --on-accent: #16171a;
+  --note-bg: #4d3d10;
+  --note-bg-active: #6e5716;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+/* The toggle's radio buttons switch the theme by themselves, so it works on a page whose
+   scripts do not run; shell.js also sets data-theme, which applies a saved choice before
+   first paint. Rules of their own: a browser without :has() drops only these. */
+:root:has(#explainer-theme-dark:checked) {
+  --bg: #16171a;
+  --surface: #1f2125;
+  --text: #ececec;
+  --muted: #a3a7ad;
+  --border: #34373d;
+  --accent: #ee9068;
+  --accent-soft: #3a2720;
+  --ok: #74c597;
+  --ok-soft: #1f3327;
+  --warn: #e2a562;
+  --warn-soft: #2c2217;
+  --bad: #ff8f86;
+  --bad-soft: #3d2321;
+  --info: #63b4d1;
+  --info-soft: #15282f;
+  --code-bg: #26282d;
+  --row-alt: #1b1d21;
+  --on-accent: #16171a;
+  --note-bg: #4d3d10;
+  --note-bg-active: #6e5716;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:has(#explainer-theme-light:checked) {
+    --bg: #fbfaf7;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #5f6368;
+    --border: #e3dfd6;
+    --accent: #b4461f;
+    --accent-soft: #f7e8e0;
+    --ok: #2b7248;
+    --ok-soft: #e2f1e7;
+    --warn: #9a5b00;
+    --warn-soft: #fbf0dc;
+    --bad: #b3261e;
+    --bad-soft: #fbe3e1;
+    --info: #1d6a85;
+    --info-soft: #e6f0f4;
+    --code-bg: #f2efe8;
+    --row-alt: #f6f4ef;
+    --on-accent: #ffffff;
+    --note-bg: #fbe7a6;
+    --note-bg-active: #f4cf63;
+    color-scheme: light;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 16px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+/* Layout: one reading column; on wide screens the table of contents sits on the left and stays in view. */
+.page { max-width: 1120px; margin: 0 auto; padding: 24px 16px 96px; }
+main { max-width: 740px; margin: 0 auto; min-width: 0; }
+@media (min-width: 1100px) {
+  .page { display: grid; grid-template-columns: 230px minmax(0, 740px); gap: 48px; justify-content: center; }
+  main { margin: 0; }
+}
+
+/* Table of contents */
+.toc { font-size: 14px; margin-bottom: 20px; }
+.toc details { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 8px 12px; }
+.toc summary { cursor: pointer; font-weight: 500; color: var(--muted); font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; }
+.toc ol { list-style: none; margin: 8px 0 4px; padding: 0; }
+.toc ol ol { margin: 4px 0 6px 12px; }
+.toc li { margin: 0 0 6px; }
+.toc a { color: var(--text); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.toc a[aria-current="true"] { color: var(--accent); font-weight: 500; }
+@media (min-width: 1100px) {
+  .toc { position: sticky; top: calc(24px + env(safe-area-inset-top, 0px)); align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; margin: 0; }
+  .toc details { border: 0; background: none; padding: 0; }
+}
+
+/* Top bar: reader notes and the theme toggle */
+.topbar { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.byline { margin: 0 auto 0 0; color: var(--muted); font-size: 13px; }
+.theme-toggle, .depth-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 2px; background: var(--surface); }
+.notes-open[hidden], .note-add[hidden] { display: none; }
+/* The radio button itself is kept for the keyboard and screen readers; its label is what shows. */
+.theme-toggle input, .depth-toggle input { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.theme-toggle label, .depth-toggle label {
+  font-size: 13px;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.theme-toggle input:checked + label, .depth-toggle input:checked + label { background: var(--accent-soft); color: var(--text); font-weight: 500; }
+.theme-toggle input:focus-visible + label, .depth-toggle input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The help mark next to Brief / Full. The tip is display: none until shown, so a hidden tip
+   never widens the page on a phone. */
+.depth-help { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin: auto 4px auto 2px; border: 1px solid var(--border); border-radius: 50%; color: var(--muted); font-size: 12px; cursor: help; }
+.depth-help::after { content: attr(data-tip); display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 260px; max-width: calc(100vw - 32px); padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; line-height: 1.4; text-align: left; white-space: normal; z-index: 20; }
+.depth-help:hover::after, .depth-help:focus::after { display: block; }
+.notes-open {
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.notes-count { display: inline-block; min-width: 1.4em; margin-left: 4px; padding: 0 5px; border-radius: 999px; background: var(--note-bg); color: var(--text); text-align: center; }
+button:focus-visible, .to-top:focus-visible, .toc a:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Back to top */
+.to-top {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--on-accent);
+  text-decoration: none;
+  font-size: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.to-top[hidden] { display: none; }
+
+/* Text: one plain sans-serif face; headings differ by size, not by a heavy weight. */
+a { color: var(--accent); text-underline-offset: 2px; overflow-wrap: anywhere; }
+h1, h2, h3, h4 { line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: clamp(26px, 5.5vw, 34px); margin: 8px 0 16px; }
+h2 { font-size: clamp(21px, 4vw, 25px); margin: 48px 0 12px; }
+h3 { font-size: 19px; margin: 28px 0 8px; }
+h4 { font-size: 17px; margin: 20px 0 6px; }
+.headerlink { margin-left: 8px; color: var(--muted); text-decoration: none; opacity: 0; font-weight: 400; font-size: 0.7em; }
+h2:hover .headerlink, h3:hover .headerlink, .headerlink:focus { opacity: 1; }
+p { margin: 0 0 14px; }
+ul, ol { padding-left: 22px; margin: 0 0 14px; }
+li { margin-bottom: 6px; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+strong { font-weight: 600; }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre { font-family: var(--mono); font-size: 14px; line-height: 1.5; background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; margin: 0 0 14px; }
+pre code { background: none; padding: 0; font-size: inherit; }
+/* Long paths and identifiers wrap instead of pushing the column wider than a phone screen. */
+:not(pre) > code { overflow-wrap: anywhere; }
+blockquote { margin: 16px 0; padding: 2px 16px; border-left: 3px solid var(--border); color: var(--muted); }
+
+/* Tables scroll inside their own box; the page never scrolls sideways. */
+.table-wrap { overflow-x: auto; margin: 16px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { font-weight: 600; background: var(--row-alt); }
+
+/* Images and diagrams */
+img { display: block; max-width: 100%; height: auto; margin: 18px auto; border: 1px solid var(--border); border-radius: 8px; }
+figure { margin: 20px 0; }
+figure img { margin: 0 auto; }
+figure.diagram { overflow-x: auto; }
+figure.diagram svg { display: block; max-width: 100%; height: auto; margin: 0 auto; color: var(--text); }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 8px; }
+
+/* Callouts: a blockquote that starts with a bold label such as **Analogy.** */
+.callout { margin: 18px 0; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.callout > :last-child { margin-bottom: 0; }
+.callout > p:first-child > strong:first-child { color: var(--accent); }
+.callout-analogy { background: var(--accent-soft); border-color: transparent; }
+.callout-guess { border-style: dashed; }
+.callout-note { background: var(--info-soft); border-color: transparent; }
+.callout-note > p:first-child > strong:first-child { color: var(--info); }
+.callout-warning { background: var(--warn-soft); border-color: transparent; }
+.callout-warning > p:first-child > strong:first-child { color: var(--warn); }
+.callout-summary { border-left: 4px solid var(--accent); }
+.callout-example { background: var(--ok-soft); border-color: transparent; }
+.callout-example > p:first-child > strong:first-child { color: var(--ok); }
+
+/* Folded detail */
+details.more, details.context { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin: 16px 0; background: var(--surface); }
+details.more > summary, details.context > summary { cursor: pointer; font-weight: 500; }
+details.more[open] > summary, details.context[open] > summary { margin-bottom: 8px; }
+/* Full on a page whose scripts do not run: the radio button shows every folded block, since CSS
+   cannot open one. A browser without ::details-content keeps them folded. With the script the
+   blocks open for real, and folding one back unchecks Full, which ends these two rules. */
+:root:has(#explainer-depth-full:checked) main details.more::details-content { content-visibility: visible; display: block; }
+:root:has(#explainer-depth-full:checked) main details.more > summary { list-style-type: disclosure-open; margin-bottom: 8px; }
+
+.footer { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 14px; color: var(--muted); }
+
+/* Reader notes */
+mark.note-mark { background: var(--note-bg); color: inherit; border-radius: 2px; padding: 0 1px; cursor: pointer; }
+mark.note-mark:hover, mark.note-mark.is-active { background: var(--note-bg-active); }
+.note-add {
+  position: fixed;
+  z-index: 20;
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+dialog.note-dialog, dialog.notes-list {
+  width: min(560px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 16px 18px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+/* Four actions in one row on a laptop screen */
+dialog.notes-list { width: min(640px, calc(100vw - 32px)); }
+.dialog-title { font-weight: 600; margin: 0 0 10px; }
+.note-quote { margin: 0 0 12px; padding-left: 10px; border-left: 3px solid var(--note-bg-active); color: var(--muted); font-size: 14px; max-height: 7.5em; overflow: auto; white-space: pre-wrap; }
+.note-dialog textarea { width: 100%; min-height: 110px; font: inherit; font-size: 15px; color: var(--text); background: var(--bg); border: 1px solid var(--muted); border-radius: 8px; padding: 8px 10px; resize: vertical; }
+.dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.dialog-actions .spacer { flex: 1; }
+.btn { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn-danger { color: var(--bad); }
+.btn[hidden] { display: none; }
+.notes-hint { font-size: 14px; color: var(--muted); margin: 0 0 10px; }
+.notes-list ol { margin: 0; padding-left: 22px; max-height: 55vh; overflow: auto; }
+.notes-list li { margin-bottom: 14px; }
+.notes-list .note-section { font-size: 13px; color: var(--muted); }
+.notes-list .note-quote { margin: 4px 0 6px; }
+.notes-list .note-text { margin: 0 0 6px; white-space: pre-wrap; }
+.notes-list .note-missing { color: var(--bad); font-size: 13px; margin-bottom: 6px; }
+.notes-list .note-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.notes-status { font-size: 14px; margin: 10px 0 0; }
+.notes-status:empty { display: none; }
+.notes-copy-text { display: block; width: 100%; margin-top: 8px; font: 13px/1.4 var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--muted); border-radius: 8px; padding: 8px 10px; resize: vertical; }
+.notes-copy-text[hidden] { display: none; }
+
+@media print {
+  .toc, .topbar > :not(.byline), .to-top, .headerlink, .note-add, dialog { display: none !important; }
+  mark.note-mark { background: none; }
+  body { background: #fff; color: #000; font-size: 12pt; }
+  .page { display: block; padding: 0; }
+  details { display: block; }
+  a { color: inherit; }
+}
+</style>
+</head>
+<body id="top">
+<div class="page" lang="ru">
+<nav class="toc" aria-label="Содержание"><details open><summary>Содержание</summary><ol><li><a href="#что-можно-попробовать-в-рабочей-версии">Что можно попробовать в рабочей версии</a></li><li><a href="#правило-git-на-примере-одной-ветки">Правило Git на примере одной ветки</a></li><li><a href="#проекты-и-недавние-сессии">Проекты и недавние сессии</a></li><li><a href="#сколько-места-можно-вернуть">Сколько места можно вернуть</a></li><li><a href="#подписки-и-доступ-к-секретам">Подписки и доступ к секретам</a></li><li><a href="#нативные-окна-и-настольные-клиенты-windows">Нативные окна и настольные клиенты Windows</a></li><li><a href="#что-изменилось-после-независимого-разбора">Что изменилось после независимого разбора</a></li><li><a href="#вехи-и-первая-задача">Вехи и первая задача</a></li><li><a href="#стоимость-и-порядок-работы">Стоимость и порядок работы</a></li></ol></details></nav>
+<main>
+<div class="topbar"><p class="byline">Предложение для обсуждения · 19.11.2026</p><button type="button" class="notes-open" hidden>Заметки<span class="notes-count">0</span></button><div class="depth-toggle" role="radiogroup" aria-label="Режим чтения"><input type="radio" name="explainer-depth" id="explainer-depth-brief" value="brief" checked><label for="explainer-depth-brief">Кратко</label><input type="radio" name="explainer-depth" id="explainer-depth-full" value="full"><label for="explainer-depth-full">Подробно</label><span class="depth-help" tabindex="0" role="img" aria-label="Основной текст рассказывает суть. Подробности спрятаны в блоках, которые раскрываются по клику. «Кратко» сворачивает подробности, «Подробно» раскрывает их." data-tip="Основной текст рассказывает суть. Подробности спрятаны в блоках, которые раскрываются по клику. «Кратко» сворачивает подробности, «Подробно» раскрывает их.">?</span></div><div class="theme-toggle" role="radiogroup" aria-label="Тема оформления"><input type="radio" name="explainer-theme" id="explainer-theme-auto" value="auto" checked><label for="explainer-theme-auto">Авто</label><input type="radio" name="explainer-theme" id="explainer-theme-light" value="light"><label for="explainer-theme-light">Светлая</label><input type="radio" name="explainer-theme" id="explainer-theme-dark" value="dark"><label for="explainer-theme-dark">Тёмная</label></div></div>
+<h1 id="agent-watch-для-работы-с-проектами">Agent Watch для работы с проектами<a class="headerlink" href="#agent-watch-для-работы-с-проектами" title="Ссылка на раздел">#</a></h1>
+<p>Здесь собраны решения о развитии продукта, их цена и порядок проверки. План выпуска существующей версии ведётся отдельно.</p>
+<details class="context" open="open">
+<summary>Почему одного списка сессий стало мало</summary>
+<p>В терминале внутри среды разработки Agent Watch помогает найти вкладку, где агент ждёт ответа. В настольных приложениях Claude и ChatGPT уже есть списки чатов. При работе с обоими агентами остаются общие вопросы. Какие сессии относятся к одному проекту? Что им разрешено делать с его ветками? Можно ли освободить место после сборки и через неделю вернуться к чату? За ответами сегодня приходится идти в разные приложения.</p>
+</details>
+<aside class="callout callout-summary">
+<p><strong>Коротко.</strong> Предлагаю дать человеку возможность открыть проект в Agent Watch, увидеть правило удаления ветки на сервере, изменить его и проверить на примере. Параллельно стоит проверить общую для Claude и Codex страницу проекта и запуск той же защиты из настольного клиента Windows.</p>
+<p>Mothership остаётся полигоном. После переноса Agent Watch отвечает за установку и работу функции. Первым вложением станет защита Git. Вторым я бы выбрал менеджер рабочих копий: для него уже известен случай, когда место удалось вернуть и сохранить сами копии.</p>
+</aside>
+<h2 id="что-можно-попробовать-в-рабочей-версии">Что можно попробовать в рабочей версии<a class="headerlink" href="#что-можно-попробовать-в-рабочей-версии" title="Ссылка на раздел">#</a></h2>
+<p>В настройках Mac можно выбрать репозиторий и потребовать ввод его имени при удалении конкретной ветки с сервера. Когда правило больше не нужно, его можно снять. Общий список веток действует во всех рабочих копиях репозитория.</p>
+<p>Защита прошла отдельную проверку в чистых профилях Claude Code и Codex. При отмене запроса и при разрыве связи ветки остались на месте. Обычное создание ветки обработчик пропустил. Эта проверка охватывает командные клиенты и тестовый сервер Git. Для перехода с Mothership есть отдельная проверка двух пакетов: она замечает двойную регистрацию защиты и потерю другого обработчика. Перед выпуском предстоит проверить подтверждение человеком в настольном чате и переход действующей установки Mothership с сохранением остальных защит.</p>
+<p>В меню Mac появилось окно <strong>Projects &amp; Recent…</strong>. Оно ведёт в наблюдаемые чаты двух агентов, объединяет рабочие копии одного проекта и показывает последние известные лимиты по папкам агентов. В настройках <strong>Working Copies</strong> можно найти каталоги сборки и открыть их в Finder. У каждой рабочей копии видно, встречается ли её коммит в известной Git истории удалённых веток. Ещё предстоит проверить, какие из них можно убрать во время работы агентов.</p>
+<p>Для доверенной программы проверены повторный запуск и отказ после замены файла. Опыт использует вымышленное значение. Запросы самой Связки ключей и работа двух настольных клиентов на Windows остаются отдельными испытаниями. Для Windows подготовлен учебный проект с локальным сервером, где после отмены можно сверить каждую ветку. Приведённые ниже оценки относятся к исходному объёму работ.</p>
+<h2 id="правило-git-на-примере-одной-ветки">Правило Git на примере одной ветки<a class="headerlink" href="#правило-git-на-примере-одной-ветки" title="Ссылка на раздел">#</a></h2>
+<p>Предположим, Claude собирается удалить ветку <code>release</code> на сервере. Сегодня Mothership уже останавливает такую команду, если она требует подтверждения. Новая польза появляется <strong>до запроса</strong>: можно выбрать проект и увидеть, почему в нём сработает конкретное правило.</p>
+<ol>
+<li>В разделе проекта «Защита» видно общее правило для Claude и Codex и исключения этого проекта. Например, для удаления обычной ветки достаточно подтверждения. Для ветки <code>release</code> дополнительно требуется ввести имя репозитория.</li>
+<li>Человек выбирает готовый уровень и видит образец будущего запроса с названием ветки, репозитория и адресом назначения. Просмотр примера ничего не меняет в Git. Настройку сохраняет сам человек.</li>
+<li>При реальной попытке удаления проверка перед командой направляет агента к инструменту MCP (протоколу вызова внешних инструментов). Инструмент запрашивает подтверждение в исходном чате. Непосредственно перед исполнением он сверяет версию ветки и применимое правило. Если ветка изменилась, прежнее согласие теряет силу.</li>
+</ol>
+<p>В первом переносе я бы сохранил действующие минимальные требования к защищённым веткам. Общая настройка задаёт поведение для всех проектов, исключение усиливает его для выбранной ветки. Ослабление защиты потребует отдельного решения. Закрытое окно Agent Watch не должно мешать работе. Если недоступен сам инструмент подтверждения, защищённая операция останавливается с понятным объяснением. Сбой наблюдения за сессиями по-прежнему позволяет агенту продолжить работу.</p>
+<details class="more">
+<summary>Как проверить передачу функции из Mothership</summary>
+<p>Проверить на чистой установке и при переходе с Mothership. В обоих случаях обычная операция проходит, защищённая вызывает ровно один процесс подтверждения, отказ сохраняет ветку. При передаче владения сначала проверяется новая установка, затем отключается старая регистрация. Сбой на середине должен оставлять работающую защиту и понятный путь восстановления. Испытания выполняются на отдельном тестовом репозитории.</p>
+<p>У Mothership есть и другие проверки. Следующий кандидат — удаление файлов с показом пути, размера и последствий. Запрет бесконечной записи в файл уже полезен как автоматическая проверка. Основания для отдельного окна у него пока нет. Напоминание о языке ответа и проверка установки самого Mothership принадлежат своему продукту. <a href="https://github.com/glockbender/mothership/blob/main/plugins/mothership/hooks/codex-hooks.json">Действующие проверки</a> · <a href="https://github.com/glockbender/mothership/blob/main/openspec/specs/push-confirmation/spec.md">Правила подтверждения Git</a></p>
+</details>
+<h2 id="проекты-и-недавние-сессии">Проекты и недавние сессии<a class="headerlink" href="#проекты-и-недавние-сессии" title="Ссылка на раздел">#</a></h2>
+<p><strong>Проект — локальный репозиторий со всеми его рабочими копиями</strong> (<code>git worktree</code> позволяет работать в нескольких папках одного репозитория одновременно). В дереве проекта рядом видны сессии Claude и Codex, их ветки и папки. Размещение копии внутри репозитория удобно для навигации, но потребовало бы договариваться о расположении с каждым настольным клиентом. Git уже хранит связь между папками. Её можно использовать и для копии, созданной самим клиентом в другом месте. Имя папки служит подписью: два разных проекта с папкой <code>src</code> должны оставаться разными. <a href="https://git-scm.com/docs/git-worktree">Как Git связывает рабочие копии</a></p>
+<p><strong>«Недавние» — короткий общий вход в работу.</strong> Вверху текущие сессии, ниже — завершённые, к которым ещё можно вернуться. Внутри каждой части действует знакомый порядок Agent Watch по последней активности сессии. Архивирование в исходном клиенте должно убирать запись из этого списка, когда состояние архива можно достоверно прочитать. Объём раздела ограничен. Конкретное число строк лучше подобрать на собственных сессиях по тому, сколько прокрутки требуется, чтобы найти нужную.</p>
+<p>Над списком — быстрые фильтры «Все», «Работают», «Ждут ответа» и «Давно без активности». Последний показывает время и последнее известное действие. Даже несколько минут тишины могут означать нормальную работу. Щелчок открывает точный чат, когда известна его ссылка. Для завершённой беседы одного названия мало. До включения такого чата в «Недавние» нужно подтвердить на каждом клиенте, что после перезапуска открывается именно он. Если клиент умеет вернуть только на главную, список охватывает лишь те чаты этого клиента, к которым подтверждён возврат. Обычный виджет и переход в терминал остаются полезны во время работы в среде разработки.</p>
+<details class="more">
+<summary>Почему одним изменением сортировки здесь не обойтись</summary>
+<p>Сейчас подпись проекта может быть последней частью пути. Текущая история восстанавливает открытые сессии и исключает закрытые. Поэтому предстоит отдельно проверить принадлежность сессии проекту и возможность открыть завершённый чат после перезапуска. Достаточная проверка — два репозитория с одинаково названными папками, рабочая копия вне репозитория, оба агента и по завершённому и архивированному чату в каждом клиенте. Неизвестная папка остаётся без привязки до появления достоверных сведений. <a href="https://github.com/glockbender/agentwatcher/blob/main/Sources/AgentWatchLookup/SessionDescriptionResolver.swift">Подпись проекта</a> · <a href="https://github.com/glockbender/agentwatcher/blob/main/Sources/AgentWatchCore/SessionHistory.swift">История</a> · <a href="https://github.com/glockbender/agentwatcher/blob/main/docs/session-focus.md">Переход к сессии</a></p>
+</details>
+<h2 id="сколько-места-можно-вернуть">Сколько места можно вернуть<a class="headerlink" href="#сколько-места-можно-вернуть" title="Ссылка на раздел">#</a></h2>
+<p>В разборе «Быстрое заполнение диска» очистка результатов сборки в 13 рабочих копиях вернула около 31 ГБ без удаления самих копий. В другом разборе Claude продолжал учитывать копии, папки которых уже удалили. Эти два наблюдения определяют, что стоит показать человеку перед действием.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Что видит человек</th>
+<th>Что может сделать</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>«Идёт сборка», название сессии и ветка</td>
+<td>Открыть сессию и вернуться к очистке позже.</td>
+</tr>
+<tr>
+<td>«Сборка занимает место», размер и причина, по которой очистка доступна</td>
+<td>Убрать воспроизводимые результаты сборки. Исходники и рабочая копия остаются. Следующая сборка займёт больше времени.</td>
+</tr>
+<tr>
+<td>«Есть изменения только в этой копии», причина и путь</td>
+<td>Открыть папку и разобраться с изменениями. Действие удаления недоступно.</td>
+</tr>
+<tr>
+<td>«Копией управляет Claude» или «Копией управляет Codex»</td>
+<td>Перейти к действиям исходного приложения. Для обычной завершённой копии отдельно проверить возможность удаления.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Сверху нужны две цифры — сколько занимают сборки и сколько сейчас можно очистить. Возле действия нужны подпись риска, причина и ожидаемый результат. Цвет и значок помогают заметить предупреждение. Если часть проверок не удалась, строка показывает «Не удалось проверить» и предлагает повторить проверку. Перед очисткой состояние проверяется заново. Для перемещения в Корзину стоит прямо сказать, что свободное место появится после её опустошения.</p>
+<h2 id="подписки-и-доступ-к-секретам">Подписки и доступ к секретам<a class="headerlink" href="#подписки-и-доступ-к-секретам" title="Ссылка на раздел">#</a></h2>
+<p>У подписки своя граница — <strong>учётная запись</strong>. Лимит одного профиля может расходоваться в нескольких проектах. Предлагаю отдельный обзор профилей с остатком лимита, временем очередного обновления и расходом в токенах (единицах обработанного текста). Расход по моделям полезен как подробность. Календарь рабочих дней, график тенденций и расход по проектам можно отложить. Если позже появится денежная оценка по расценкам модели, её нужно явно отличать от фактической платы за подписку.</p>
+<p><strong>Досрочное восстановление лимита Codex</strong> расходует одну доступную попытку. В Vorssaint уже есть дополнительное подтверждение. Улучшение для Agent Watch — показать последствия до первого нажатия: выбранный профиль, остатки текущего и недельного лимитов, дату планового обновления, число доступных попыток сейчас и после операции. Если профиль или результат прошлой попытки неизвестен, сначала обновить данные. <a href="https://github.com/vorssaint/vorssaint-utils/blob/v3.4.4/Sources/Vorssaint/Core/NotchAgentStrings.swift#L263-L278">Что делает восстановление в Vorssaint</a></p>
+<p><strong>У секретов граница другая — доверенная программа.</strong> В проекте музыкального бота три отдельные записи в Связке ключей (системном хранилище учётных данных macOS) могли вызывать три запроса при запуске. В проекте объединили нужные программе данные в одну запись, которую бот читает один раз. Это уменьшает число обращений. Будет ли система спрашивать пароль при следующем запуске, зависит ещё и от разрешений программы. <a href="https://github.com/glockbender/svalka-muz-repostov-tgbot/blob/main/openspec/changes/archive/2026-11-18-keychain-credential-bundle/proposal.md">Решение проекта бота</a> · <a href="https://support.apple.com/guide/mac-help/kychn002/mac">Как macOS запоминает разрешение</a></p>
+<p>Первый сценарий — подключить проект к системному хранилищу, выбрать доверенную программу и повторно запустить её. В карточке достаточно названия подключения, назначения и состояния доступа. Секрет читает сама выбранная программа. Он не проходит через аргументы запроса агента, ответ инструмента или журнал приложения. Доверие относится и к сценариям, и к подключаемым модулям. Даже подписанный интерпретатор может выполнить изменённый сценарий, который напечатает секрет. Для первого примера подойдёт заранее выбранная программа с проверяемым составом кода и ограниченным ответом о результате. Повторный запуск изменённого кода требует пересмотра разрешения. Давать агенту произвольное чтение записей или переносить значения через чат для этого не требуется. Отдельную возможность переноса из файлов стоит обсуждать после проверки запуска. На Windows есть Диспетчер учётных данных. Его разрешения и поведение при повторном запуске придётся проверить на этой системе. <a href="https://learn.microsoft.com/en-us/windows/win32/api/wincred/">Системное хранилище Windows</a></p>
+<h2 id="нативные-окна-и-настольные-клиенты-windows">Нативные окна и настольные клиенты Windows<a class="headerlink" href="#нативные-окна-и-настольные-клиенты-windows" title="Ссылка на раздел">#</a></h2>
+<p>На Mac я бы начал с одного обычного окна проекта с боковой панелью, поиском, переходами с клавиатуры и стандартным подтверждением опасного действия. В настройках Agent Watch уже используется SwiftUI (средство Apple для построения интерфейсов), а плавающий виджет использует AppKit (средство управления окнами macOS). Можно улучшить нужное окно и проверить удобство на двух действиях: открыть ожидающий чат с клавиатуры и понять последствия очистки до подтверждения. Перерисовка всего приложения увеличила бы первый выпуск. <a href="https://github.com/glockbender/agentwatcher/blob/main/Sources/AgentWatchApp/SettingsWindowController.swift">Существующее окно настроек</a></p>
+<p>На Windows первым испытанием должна стать защита Git <strong>в установленных настольных клиентах</strong>. Открыть тестовый проект в каждом, проверить получение события, запрос подтверждения, отмену и один подтверждённый результат. Записать версию клиента и фактическую среду выполнения Git. Результат из отдельно запущенного терминала не отвечает на этот вопрос. Сегодня запуск и установка инструмента Mothership зависят от системных функций Unix. Если один клиент не поддерживает нужный шаг, зафиксировать границу поддержки для этого клиента до оценки полноценного переноса. <a href="https://github.com/glockbender/mothership/blob/main/plugins/mothership/native/src/process.rs">Как запускается инструмент</a></p>
+<p>Режим у выреза камеры имеет смысл как отключённый по умолчанию способ заметить ожидающий запрос. Возможность удерживать Mac от сна в один щелчок уже даёт Vorssaint. Возвращаться к ней в Agent Watch стоит ради конкретной задачи, например «пока выполняется эта сборка», если у задачи надёжно определяется завершение. <a href="https://vorssaint.com/">Возможности Vorssaint</a></p>
+<h2 id="что-изменилось-после-независимого-разбора">Что изменилось после независимого разбора<a class="headerlink" href="#что-изменилось-после-независимого-разбора" title="Ссылка на раздел">#</a></h2>
+<p>Рецензент поддержал перенос защиты по одной операции. У удаления ветки уже есть проверяемый результат для согласия, отказа и изменения ветки во время подтверждения. У очистки диска отдельное достоинство — пользу можно измерить возвращённым местом при сохранённой рабочей копии.</p>
+<p>После разбора в предложение вошли три условия. Завершённый чат попадает в «Недавние» после проверки точного перехода. Поддержка Windows оценивается по реальному запуску из каждого настольного клиента. Разрешение на доступ к секрету относится ко всему запускаемому коду, включая сценарии. Эти проверки могут уменьшить первый выпуск и напрямую влияют на оценку.</p>
+<h2 id="вехи-и-первая-задача">Вехи и первая задача<a class="headerlink" href="#вехи-и-первая-задача" title="Ссылка на раздел">#</a></h2>
+<ol>
+<li><strong>Просмотр защиты Git на Mac.</strong> Первая задача реализована в рабочей копии. В настройках на странице <code>Git Protection</code> выберите папку проекта и введите <code>release</code>. Видно, требует ли локальное правило ввода имени репозитория и когда ответ зависит от основной ветки сервера.</li>
+<li><strong>Настройка и исполнение защиты.</strong> Уровень для одной ветки уже можно изменить. Форма запроса проверена на отдельном репозитории. До завершения вехи остаются проверка одобренного действия в настольном чате и переход действующего профиля с Mothership.</li>
+<li><strong>Испытание на Windows.</strong> Параллельно с работой на Mac проверить один запрос в обоих настольных клиентах. Решение о поставке зависит от результата.</li>
+<li><strong>Проекты и недавние сессии.</strong> Найти по проекту нужный чат любого агента, открыть его после перезапуска и проверить архивирование.</li>
+<li><strong>Рабочие копии и место.</strong> Увидеть, что занимает диск, очистить результаты сборки и проверить сохранность исходников. Отдельно подтвердить пригодность удаления целой копии.</li>
+<li><strong>Подписки.</strong> Увидеть лимиты двух профилей, затем проверить предварительный просмотр и подтверждение досрочного восстановления.</li>
+<li><strong>Доверенная программа.</strong> Подключить один проект к системному хранилищу и повторно запустить программу с проверенным доступом.</li>
+</ol>
+<h2 id="стоимость-и-порядок-работы">Стоимость и порядок работы<a class="headerlink" href="#стоимость-и-порядок-работы" title="Ссылка на раздел">#</a></h2>
+<p>Ниже моя предварительная оценка труда одного разработчика, знакомого с обоими проектами. Рабочий день включает реализацию и проверку. Диапазоны нужны для выбора очередности. Сроки публикации, доступ к компьютеру Windows и ожидание внешних разрешений оцениваются отдельно.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Часть</th>
+<th>Оценка</th>
+<th>Что покупает эта работа и где остановиться</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Правило Git на Mac, установка и переход с Mothership</td>
+<td>5–10 рабочих дней</td>
+<td>Один законченный пример в двух клиентах, проверка отказа и восстановления установки. Если пользователю всё ещё приходится читать исходники, чтобы объяснить правило, улучшить экран до переноса других защит.</td>
+</tr>
+<tr>
+<td>Проверка Windows</td>
+<td>2–4 дня при наличии компьютера с обоими клиентами</td>
+<td>Определить, какие части сработали в каждом клиенте и какие системные функции нужно заменить. Оценку установки и поддержки Windows дать по результатам.</td>
+</tr>
+<tr>
+<td>Дерево проектов и «Недавние» на Mac</td>
+<td>5–10 дней</td>
+<td>Общий список, фильтры, восстановление после перезапуска, переход в исходный чат. Отдельно проверить завершённые и архивные чаты.</td>
+</tr>
+<tr>
+<td>Рабочие копии на Mac после распознавания проектов</td>
+<td>4–8 дней</td>
+<td>Начать с отчёта и очистки результатов сборки. Измерить время просмотра, число полезных кандидатов и фактически возвращённый объём. Удаление целых копий выпускать после проверки занятости и владения.</td>
+</tr>
+<tr>
+<td>Профили и лимиты</td>
+<td>3–7 дней на проверку и обзор только для чтения</td>
+<td>Проверить источники на двух реальных профилях. Применение досрочного восстановления оценить отдельно после доказанной привязки к учётной записи.</td>
+</tr>
+<tr>
+<td>Подключение программы к Связке ключей</td>
+<td>3–6 дней на один пример на Mac</td>
+<td>Проверить повторный запуск, отказ, изменённый сценарий и попытку напечатать вымышленный секрет. Обобщать после второго проекта с другой программой.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Первое вложение — <strong>7–14 рабочих дней труда</strong> на перенос Git на Mac и проверку Windows. Это две задачи, которые можно исследовать параллельно. Для работы над списком проектов и очисткой общая зависимость одна — достоверная связь сессии, репозитория и рабочей папки. Один поток работ определяет эту связь, а другой может независимо проверить объяснения риска на уже известных случаях. Подписки и секреты можно исследовать отдельно, не расширяя первый выпуск.</p>
+<p>Цена дальнейшего развития — поддержка изменений двух настольных клиентов на каждой заявленной системе. Оставить функции в Mothership дешевле сегодня, но тогда пользователю приходится устанавливать отдельный инструмент и выяснять правила проекта вручную. Перенос даёт одно место для настройки и объяснения решений. Его ценность стоит оценивать после первого законченного сценария, прежде чем обещать весь перечень.</p>
+
+</main>
+</div>
+<a class="to-top" href="#top" aria-label="Наверх" title="Наверх" hidden>↑</a>
+<button type="button" class="note-add" hidden>+ Заметка</button>
+<dialog class="note-dialog" aria-labelledby="note-dialog-title">
+<p class="dialog-title" id="note-dialog-title">Заметка к фрагменту</p>
+<blockquote class="note-quote"></blockquote>
+<textarea rows="4" placeholder="Что здесь неясно, неверно или чего не хватает?"></textarea>
+<div class="dialog-actions">
+<button type="button" class="btn btn-danger" data-action="delete">Удалить</button>
+<span class="spacer"></span>
+<button type="button" class="btn" data-action="cancel">Отмена</button>
+<button type="button" class="btn btn-primary" data-action="save">Сохранить</button>
+</div>
+</dialog>
+<dialog class="notes-list" aria-labelledby="notes-list-title">
+<p class="dialog-title" id="notes-list-title">Заметки</p>
+<p class="notes-hint">Выделите текст, чтобы оставить заметку. Заметки хранятся только в этом браузере. Чтобы отправить их автору, скопируйте заметки и вставьте в чат.</p>
+<ol></ol>
+<p class="notes-status" role="status"></p>
+<textarea class="notes-copy-text" rows="6" readonly hidden></textarea>
+<div class="dialog-actions">
+<button type="button" class="btn btn-danger" data-action="clear">Удалить все</button>
+<span class="spacer"></span>
+<button type="button" class="btn" data-action="close">Закрыть</button>
+<button type="button" class="btn" data-action="download">Скачать заметки</button>
+<button type="button" class="btn btn-primary" data-action="copy">Скопировать заметки</button>
+</div>
+</dialog>
+<script>
+window.EXPLAINER_PAGE = {"doc": "project-workspace@ff85099823e5", "stem": "project-workspace", "title": "Будущее Agent Watch", "labels": {"toc": "Содержание", "top": "Наверх", "theme": "Тема оформления", "auto": "Авто", "light": "Светлая", "dark": "Тёмная", "depth": "Режим чтения", "brief": "Кратко", "full": "Подробно", "depthHelp": "Основной текст рассказывает суть. Подробности спрятаны в блоках, которые раскрываются по клику. «Кратко» сворачивает подробности, «Подробно» раскрывает их.", "sources": "Источники", "sourcesSummary": "Ссылки на источники", "anchor": "Ссылка на раздел", "notes": "Заметки", "addNote": "+ Заметка", "noteTitle": "Заметка к фрагменту", "placeholder": "Что здесь неясно, неверно или чего не хватает?", "save": "Сохранить", "cancel": "Отмена", "delete": "Удалить", "copy": "Скопировать заметки", "copied": "Заметки скопированы. Вставьте их в чат автору или агенту.", "copyByHand": "Браузер не дал скопировать. Текст ниже выделен: нажмите ⌘C или Ctrl+C.", "download": "Скачать заметки", "clear": "Удалить все", "close": "Закрыть", "show": "Показать в тексте", "hint": "Выделите текст, чтобы оставить заметку. Заметки хранятся только в этом браузере. Чтобы отправить их автору, скопируйте заметки и вставьте в чат.", "confirmClear": "Точно удалить все?", "notFound": "Этого фрагмента нет в текущей версии текста.", "notesFor": "Заметки к", "documentLabel": "Документ", "countLabel": "заметок", "noSection": "Без раздела", "agentData": "Данные для агента"}, "notesKey": "explainer-notes:project-workspace:5431e1348be4"};
+(function () {
+  // One key for every explainer page, so a reader picks a theme once.
+  const storageKey = "explainer-theme";
+  const root = document.documentElement;
+
+  const toggle = document.querySelector(".theme-toggle");
+  if (toggle) {
+    // The radio buttons switch the theme through :has() in shell.css even with this script
+    // off. Here the choice is remembered, and data-theme follows it: the head script applies
+    // a saved choice through data-theme before the buttons exist.
+    const choices = toggle.querySelectorAll('input[name="explainer-theme"]');
+    const saved = root.getAttribute("data-theme") || "auto";
+    choices.forEach(function (input) {
+      input.checked = input.value === saved;
+      input.addEventListener("change", function () {
+        const choice = input.value;
+        if (choice === "auto") root.removeAttribute("data-theme");
+        else root.setAttribute("data-theme", choice);
+        try {
+          if (choice === "auto") localStorage.removeItem(storageKey);
+          else localStorage.setItem(storageKey, choice);
+        } catch (error) {
+          // The page keeps the theme; only the next visit will not remember it.
+          console.warn("[explainer] theme: could not save the choice", error);
+        }
+      });
+    });
+  }
+
+  // Brief closes every folded detail block, Full opens them all. Not remembered: the
+  // author folded the page for the reader who opens it first.
+  const depthToggle = document.querySelector(".depth-toggle");
+  const folds = document.querySelectorAll("main details.more");
+  if (depthToggle && folds.length) {
+    const depthChoices = depthToggle.querySelectorAll('input[name="explainer-depth"]');
+    const markDepth = function () {
+      let openCount = 0;
+      folds.forEach(function (fold) { if (fold.open) openCount += 1; });
+      // A reader who opened some blocks by hand is in neither mode, so neither stays checked:
+      // a checked Full would keep showing a block folded back, through the CSS for pages
+      // without scripts.
+      const current = openCount === 0 ? "brief" : openCount === folds.length ? "full" : "";
+      depthChoices.forEach(function (input) { input.checked = input.value === current; });
+    };
+    depthChoices.forEach(function (input) {
+      input.addEventListener("change", function () {
+        const full = input.value === "full";
+        folds.forEach(function (fold) { fold.open = full; });
+        markDepth();
+      });
+    });
+    folds.forEach(function (fold) { fold.addEventListener("toggle", markDepth); });
+    markDepth();
+  }
+
+  // On a narrow screen an open table of contents pushes the text a full screen down.
+  const narrow = window.matchMedia("(max-width: 1099px)");
+  const tocDetails = document.querySelector(".toc details");
+  const syncToc = function () { if (tocDetails) tocDetails.open = !narrow.matches; };
+  syncToc();
+  if (narrow.addEventListener) narrow.addEventListener("change", syncToc);
+  document.querySelectorAll(".toc a").forEach(function (link) {
+    link.addEventListener("click", function () {
+      if (tocDetails && narrow.matches) tocDetails.open = false;
+    });
+  });
+
+  const toTop = document.querySelector(".to-top");
+  if (toTop) {
+    const updateToTop = function () { toTop.hidden = window.scrollY < window.innerHeight; };
+    window.addEventListener("scroll", updateToTop, { passive: true });
+    updateToTop();
+    toTop.addEventListener("click", function (event) {
+      event.preventDefault();
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+    });
+  }
+
+  // Mark the section being read in the table of contents.
+  // A Map, not an object: a heading id such as "__proto__" stays an ordinary key.
+  const tocLinks = new Map();
+  document.querySelectorAll(".toc a[href^='#']").forEach(function (link) {
+    // The href holds the id as written: decoding would throw on "{#part%}".
+    tocLinks.set(link.getAttribute("href").slice(1), link);
+  });
+  if ("IntersectionObserver" in window) {
+    const headings = document.querySelectorAll("main h2[id], main h3[id]");
+    const observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        const link = tocLinks.get(entry.target.id);
+        if (!entry.isIntersecting || !link) return;
+        tocLinks.forEach(function (other) { other.removeAttribute("aria-current"); });
+        link.setAttribute("aria-current", "true");
+      });
+    }, { rootMargin: "0px 0px -70% 0px" });
+    headings.forEach(function (heading) { observer.observe(heading); });
+  }
+})();
+
+(function () {
+  // Reader notes: select text, write a note, copy or download all notes as one Markdown text.
+  // A note is anchored by its quote plus the text around it (prefix, suffix), so the agent
+  // can find the place in the Markdown source and the page can restore the highlight.
+  const page = window.EXPLAINER_PAGE;
+  const main = document.querySelector("main");
+  const addButton = document.querySelector(".note-add");
+  const openButton = document.querySelector(".notes-open");
+  const editor = document.querySelector(".note-dialog");
+  const list = document.querySelector(".notes-list");
+  if (!page || !main || !addButton || !openButton || !editor || !list || !window.HTMLDialogElement) return;
+
+  const labels = page.labels;
+  const storageKey = page.notesKey;
+  const CONTEXT = 32;
+  // Declared before loadNotes() runs below: a const is not readable above its line.
+  const NOTE_FIELDS = ["id", "exact", "prefix", "suffix", "section", "sectionTitle", "note", "doc", "created"];
+  const editorQuote = editor.querySelector(".note-quote");
+  const editorText = editor.querySelector("textarea");
+  const editorDelete = editor.querySelector("[data-action=delete]");
+  const listItems = list.querySelector("ol");
+  const listStatus = list.querySelector(".notes-status");
+  const copyText = list.querySelector(".notes-copy-text");
+  const clearButton = list.querySelector("[data-action=clear]");
+  const countBadge = openButton.querySelector(".notes-count");
+
+  let notes = loadNotes();
+  let lastRange = null;
+  let pending = null;
+  let editingId = null;
+
+  // A stored note is used only if every field has the type this script writes: an entry
+  // in another shape would stop the script when the list renders.
+  function isNote(value) {
+    if (!value || typeof value !== "object") return false;
+    const allStrings = NOTE_FIELDS.every(function (field) { return typeof value[field] === "string"; });
+    return allStrings && /^[a-z0-9]{1,64}$/.test(value.id);
+  }
+
+  function loadNotes() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
+      return Array.isArray(saved) ? saved.filter(isNote) : [];
+    } catch (error) {
+      console.warn("[explainer] notes: could not read the saved notes (" + storageKey + ")", error);
+      return [];
+    }
+  }
+
+  function saveNotes() {
+    const clean = notes.map(function (note) {
+      return {
+        id: note.id, exact: note.exact, prefix: note.prefix, suffix: note.suffix,
+        section: note.section, sectionTitle: note.sectionTitle, note: note.note,
+        doc: note.doc, created: note.created
+      };
+    });
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(clean));
+    } catch (error) {
+      // The notes stay on the page until it closes; copying or downloading still saves them.
+      console.error("[explainer] notes: could not save (" + storageKey + "); copy or download them before closing", error);
+    }
+  }
+
+  // The article text as one string, without what the build adds around it.
+  function isSkipped(node) {
+    for (let el = node.parentElement; el && el !== main; el = el.parentElement) {
+      if (el.matches(".headerlink, .topbar, .footer, dialog, svg, script, style")) return true;
+    }
+    return false;
+  }
+
+  // Text of two blocks is joined with a space, as a line break separates them in the
+  // Markdown; without it a note that spans two paragraphs cannot be found in the source.
+  const BLOCKS = "p, li, dt, dd, h1, h2, h3, h4, h5, h6, pre, blockquote, th, td, figcaption, summary";
+
+  function indexText() {
+    const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) { return isSkipped(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
+    });
+    const nodes = [];
+    let text = "";
+    let node;
+    let lastBlock = null;
+    while ((node = walker.nextNode())) {
+      const block = node.parentElement.closest(BLOCKS);
+      if (text && block !== lastBlock && !/\s$/.test(text) && !/^\s/.test(node.data)) text += " ";
+      nodes.push({ node: node, start: text.length });
+      text += node.data;
+      lastBlock = block;
+    }
+    return { nodes: nodes, text: text };
+  }
+
+  function rangeOffsets(index, range) {
+    let start = -1;
+    let end = -1;
+    index.nodes.forEach(function (entry) {
+      if (!range.intersectsNode(entry.node)) return;
+      const from = entry.node === range.startContainer ? range.startOffset : 0;
+      const to = entry.node === range.endContainer ? range.endOffset : entry.node.data.length;
+      if (to <= from) return;
+      if (start < 0) start = entry.start + from;
+      end = entry.start + to;
+    });
+    if (start < 0) return null;
+    while (start < end && /\s/.test(index.text[start])) start++;
+    while (end > start && /\s/.test(index.text[end - 1])) end--;
+    return end > start ? { start: start, end: end } : null;
+  }
+
+  function nodeAt(index, offset) {
+    for (let i = index.nodes.length - 1; i >= 0; i--) {
+      if (index.nodes[i].start <= offset) return index.nodes[i].node;
+    }
+    return main;
+  }
+
+  function headingBefore(node) {
+    let found = null;
+    main.querySelectorAll("h2[id], h3[id]").forEach(function (heading) {
+      if (heading === node || heading.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) found = heading;
+    });
+    return found;
+  }
+
+  function headingTitle(heading) {
+    const copy = heading.cloneNode(true);
+    copy.querySelectorAll(".headerlink").forEach(function (link) { link.remove(); });
+    return copy.textContent.trim();
+  }
+
+  function sharedEnd(a, b) {
+    let n = 0;
+    while (n < a.length && n < b.length && a[a.length - 1 - n] === b[b.length - 1 - n]) n++;
+    return n;
+  }
+
+  function sharedStart(a, b) {
+    let n = 0;
+    while (n < a.length && n < b.length && a[n] === b[n]) n++;
+    return n;
+  }
+
+  // The occurrence of the quote whose surroundings match best: the quote may repeat.
+  function locate(index, note) {
+    let best = -1;
+    let bestScore = -1;
+    let at = index.text.indexOf(note.exact);
+    while (at !== -1) {
+      const before = index.text.slice(Math.max(0, at - note.prefix.length), at);
+      const after = index.text.slice(at + note.exact.length, at + note.exact.length + note.suffix.length);
+      const score = sharedEnd(before, note.prefix) + sharedStart(after, note.suffix);
+      if (score > bestScore) {
+        best = at;
+        bestScore = score;
+      }
+      at = index.text.indexOf(note.exact, at + 1);
+    }
+    return best < 0 ? null : { start: best, end: best + note.exact.length };
+  }
+
+  function wrap(index, start, end, id) {
+    index.nodes.forEach(function (entry) {
+      const nodeStart = entry.start;
+      const nodeEnd = entry.start + entry.node.data.length;
+      if (nodeEnd <= start || nodeStart >= end) return;
+      const from = Math.max(start, nodeStart) - nodeStart;
+      const to = Math.min(end, nodeEnd) - nodeStart;
+      // A line break between two blocks is not a place to put a highlight.
+      if (!entry.node.data.slice(from, to).trim()) return;
+      let target = entry.node;
+      if (to < target.data.length) target.splitText(to);
+      if (from > 0) target = target.splitText(from);
+      const mark = document.createElement("mark");
+      mark.className = "note-mark";
+      mark.dataset.noteId = id;
+      target.parentNode.insertBefore(mark, target);
+      mark.appendChild(target);
+    });
+  }
+
+  function removeNote(id) {
+    unwrap(id);
+    notes = notes.filter(function (item) { return item.id !== id; });
+    saveNotes();
+    render();
+  }
+
+  function unwrap(id) {
+    main.querySelectorAll('mark.note-mark[data-note-id="' + id + '"]').forEach(function (mark) {
+      const parent = mark.parentNode;
+      while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+      parent.removeChild(mark);
+      parent.normalize();
+    });
+  }
+
+  function anchor(index, offsets) {
+    const heading = headingBefore(nodeAt(index, offsets.start));
+    return {
+      exact: index.text.slice(offsets.start, offsets.end),
+      prefix: index.text.slice(Math.max(0, offsets.start - CONTEXT), offsets.start),
+      suffix: index.text.slice(offsets.end, offsets.end + CONTEXT),
+      section: heading ? heading.id : "",
+      sectionTitle: heading ? headingTitle(heading) : ""
+    };
+  }
+
+  function selectedRange() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    const element = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+    // Diagram text and the page's own controls are not part of the article text.
+    if (!main.contains(element) || element.closest(".topbar, .footer, dialog, svg, .headerlink")) return null;
+    return range.toString().trim() ? range : null;
+  }
+
+  function placeAddButton() {
+    const range = selectedRange();
+    if (!range) {
+      addButton.hidden = true;
+      return;
+    }
+    lastRange = range.cloneRange();
+    const rects = range.getClientRects();
+    const last = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+    addButton.hidden = false;
+    const width = addButton.offsetWidth;
+    const height = addButton.offsetHeight;
+    // Below the selection: on a phone the system menu takes the space above it.
+    let top = last.bottom + 8;
+    if (top + height > window.innerHeight - 8) top = Math.max(8, last.top - height - 8);
+    const left = Math.min(Math.max(8, last.right - width / 2), window.innerWidth - width - 8);
+    addButton.style.top = top + "px";
+    addButton.style.left = left + "px";
+  }
+
+  let placeTimer = null;
+  document.addEventListener("selectionchange", function () {
+    clearTimeout(placeTimer);
+    placeTimer = setTimeout(placeAddButton, 150);
+  });
+  window.addEventListener("scroll", function () { addButton.hidden = true; }, { passive: true });
+  // Keep the selection alive while the button is pressed.
+  addButton.addEventListener("mousedown", function (event) { event.preventDefault(); });
+
+  function openEditor(quote, text, editing) {
+    editorQuote.textContent = quote.length > 400 ? quote.slice(0, 400) + "…" : quote;
+    editorText.value = text;
+    editorDelete.hidden = !editing;
+    editor.showModal();
+    editorText.focus();
+  }
+
+  addButton.addEventListener("click", function () {
+    addButton.hidden = true;
+    if (!lastRange) return;
+    const index = indexText();
+    const offsets = rangeOffsets(index, lastRange);
+    if (!offsets) return;
+    pending = anchor(index, offsets);
+    editingId = null;
+    openEditor(pending.exact, "", false);
+  });
+
+  main.addEventListener("click", function (event) {
+    const mark = event.target.closest ? event.target.closest("mark.note-mark") : null;
+    if (!mark || !window.getSelection().isCollapsed) return;
+    const note = notes.filter(function (item) { return item.id === mark.dataset.noteId; })[0];
+    if (!note) return;
+    editingId = note.id;
+    pending = null;
+    openEditor(note.exact, note.note, true);
+  });
+
+  // A closed editor forgets its draft, so a later click cannot save it a second time.
+  editor.addEventListener("close", function () {
+    pending = null;
+    editingId = null;
+  });
+
+  editor.addEventListener("click", function (event) {
+    const action = event.target.dataset ? event.target.dataset.action : null;
+    if (!editor.open) return;
+    if (action === "save") {
+      const text = editorText.value.trim();
+      if (!text) return editorText.focus();
+      if (editingId) {
+        notes.forEach(function (item) { if (item.id === editingId) item.note = text; });
+      } else if (pending) {
+        const note = Object.assign({}, pending, {
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          note: text,
+          doc: page.doc,
+          created: new Date().toISOString()
+        });
+        const index = indexText();
+        const place = locate(index, note);
+        if (place) wrap(index, place.start, place.end, note.id);
+        notes.push(note);
+        window.getSelection().removeAllRanges();
+      }
+      saveNotes();
+      render();
+      editor.close();
+    } else if (action === "delete" && editingId) {
+      removeNote(editingId);
+      editor.close();
+    } else if (action === "cancel") {
+      editor.close();
+    }
+  });
+
+  function markdownExport() {
+    const date = new Date().toISOString().slice(0, 10);
+    const lines = [
+      "# " + labels.notesFor + " «" + page.title + "»",
+      "",
+      labels.documentLabel + ": `" + page.doc + "` · " + date + " · " + labels.countLabel + ": " + notes.length,
+      ""
+    ];
+    notes.forEach(function (note, i) {
+      lines.push("## " + (i + 1) + ". " + (note.sectionTitle || labels.noSection), "");
+      note.exact.split("\n").forEach(function (line) { lines.push("> " + line); });
+      lines.push("", note.note, "");
+    });
+    const data = { doc: page.doc, notes: notes.map(function (note) {
+      return {
+        exact: note.exact, prefix: note.prefix, suffix: note.suffix, section: note.section,
+        sectionTitle: note.sectionTitle, note: note.note, doc: note.doc, created: note.created
+      };
+    }) };
+    lines.push("## " + labels.agentData, "", "```json", JSON.stringify(data, null, 2), "```", "");
+    return lines.join("\n");
+  }
+
+  function download() {
+    const blob = new Blob([markdownExport()], { type: "text/markdown;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = page.stem + ".notes.md";
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(function () {
+      URL.revokeObjectURL(link.href);
+      link.remove();
+    }, 0);
+  }
+
+  // Copying runs inside the click: execCommand first, as the Claude app's browser pane
+  // refuses navigator.clipboard even then. The text area sits in the open dialog: a modal
+  // dialog makes the rest of the page inert, and text there cannot be selected.
+  // Closing the list ends the attempt: a writeText() that settles later leaves it alone.
+  let copyAttempt = 0;
+
+  function copyNotes() {
+    const attempt = ++copyAttempt;
+    const text = markdownExport();
+    copyText.value = text;
+    copyText.hidden = false;
+    copyText.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } catch (error) {
+      console.warn("[explainer] notes: execCommand copy failed; trying the clipboard API", error);
+      copied = false;
+    }
+    if (copied) return showCopied();
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(
+        function () { if (attempt === copyAttempt) showCopied(); },
+        function () { if (attempt === copyAttempt) showCopyByHand(); }
+      );
+    } else {
+      showCopyByHand();
+    }
+  }
+  // The copied text is a snapshot of the notes: once the list closes or a note changes it
+  // is stale, and a writeText() answer still on its way must not bring it back.
+  function resetCopy() {
+    copyAttempt++;
+    listStatus.textContent = "";
+    copyText.hidden = true;
+    copyText.value = "";
+  }
+
+  function showCopied() {
+    copyText.hidden = true;
+    listStatus.textContent = labels.copied;
+    list.querySelector("[data-action=copy]").focus();
+  }
+
+  // The last way that always works: the reader copies the selected text with the keyboard.
+  function showCopyByHand() {
+    copyText.hidden = false;
+    copyText.focus();
+    copyText.select();
+    listStatus.textContent = labels.copyByHand;
+  }
+
+  // "Delete all" asks again on the button itself: a browser dialog may never show.
+  let clearArmed = false;
+  let clearTimer = null;
+
+  function disarmClear() {
+    clearArmed = false;
+    clearTimeout(clearTimer);
+    clearButton.textContent = labels.clear;
+  }
+
+  function clearAll() {
+    if (!clearArmed) {
+      clearArmed = true;
+      clearButton.textContent = labels.confirmClear;
+      clearTimer = setTimeout(disarmClear, 5000);
+      return;
+    }
+    disarmClear();
+    notes.forEach(function (note) { unwrap(note.id); });
+    notes = [];
+    saveNotes();
+    render();
+  }
+
+  function render() {
+    countBadge.textContent = String(notes.length);
+    listItems.textContent = "";
+    notes.forEach(function (note) {
+      const item = document.createElement("li");
+      const section = document.createElement("div");
+      section.className = "note-section";
+      section.textContent = note.sectionTitle || labels.noSection;
+      const quote = document.createElement("blockquote");
+      quote.className = "note-quote";
+      quote.textContent = note.exact.length > 200 ? note.exact.slice(0, 200) + "…" : note.exact;
+      const text = document.createElement("p");
+      text.className = "note-text";
+      text.textContent = note.note;
+      item.append(section, quote, text);
+      const actions = document.createElement("div");
+      actions.className = "note-actions";
+      if (!main.querySelector('mark.note-mark[data-note-id="' + note.id + '"]')) {
+        const missing = document.createElement("div");
+        missing.className = "note-missing";
+        missing.textContent = labels.notFound;
+        item.append(missing);
+      } else {
+        const show = document.createElement("button");
+        show.type = "button";
+        show.className = "btn";
+        show.textContent = labels.show;
+        show.addEventListener("click", function () {
+          list.close();
+          const mark = main.querySelector('mark.note-mark[data-note-id="' + note.id + '"]');
+          // A mark inside a closed <details> cannot be shown: open each one around it.
+          for (let box = mark.closest("details"); box; box = box.parentElement.closest("details")) {
+            box.open = true;
+          }
+          mark.scrollIntoView({ block: "center" });
+          mark.classList.add("is-active");
+          setTimeout(function () { mark.classList.remove("is-active"); }, 1600);
+        });
+        actions.append(show);
+      }
+      // A note whose passage is gone has no highlight to click: this button is its way out.
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn-danger";
+      remove.textContent = labels.delete;
+      remove.dataset.action = "remove";
+      remove.dataset.noteId = note.id;
+      actions.append(remove);
+      item.append(actions);
+      listItems.append(item);
+    });
+    ["copy", "download", "clear"].forEach(function (action) {
+      list.querySelector("[data-action=" + action + "]").disabled = notes.length === 0;
+    });
+  }
+
+  openButton.addEventListener("click", function () {
+    render();
+    list.showModal();
+  });
+
+  list.addEventListener("click", function (event) {
+    const action = event.target.dataset ? event.target.dataset.action : null;
+    if (action !== "clear") disarmClear();
+    if (action === "remove" || action === "clear") resetCopy();
+    if (action === "copy") copyNotes();
+    if (action === "download") download();
+    if (action === "close") list.close();
+    if (action === "clear") clearAll();
+    if (action === "remove") removeNote(event.target.dataset.noteId);
+  });
+
+  // An opened list starts clean: no message, no text area, no armed "Delete all".
+  list.addEventListener("close", function () {
+    resetCopy();
+    disarmClear();
+  });
+
+  // Restore the highlights of notes saved in this browser.
+  notes.forEach(function (note) {
+    const index = indexText();
+    const place = locate(index, note);
+    if (place) wrap(index, place.start, place.end, note.id);
+  });
+  openButton.hidden = false;
+  render();
+})();
+</script>
+</body>
+</html>

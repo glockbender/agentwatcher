@@ -242,6 +242,13 @@ class GateTests(unittest.TestCase):
         self.repo.env["PATH"] = f"{bin}:{self.repo.env['PATH']}"
         for name in ("pre-commit", "pre-push"):
             (self.repo.worktree / ".githooks" / name).write_text((GATES / name).read_text())
+        # The gates hand over to the development tool, which builds from this repository's
+        # sources and runs in the fixture's folder.
+        devtool = self.repo.worktree / "scripts" / "devtool"
+        devtool.parent.mkdir(exist_ok=True)
+        devtool.write_text(f'#!/bin/sh\nexec "{GATES.parent / "scripts" / "devtool"}" "$@"\n')
+        devtool.chmod(0o755)
+        self.repo.git(self.repo.worktree, "add", "scripts/devtool")
         self.repo.git(self.repo.worktree, "commit", "--quiet", "--no-verify", "-am", "real gates")
         self.assertEqual(self.repo.setup().returncode, 0)
 

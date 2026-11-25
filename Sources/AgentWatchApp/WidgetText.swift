@@ -623,17 +623,45 @@ func compactElapsed(_ interval: TimeInterval) -> String {
 // No actor: nothing here touches AppKit. It was `@MainActor` only because everything in this
 // file was, which put three string functions on the main actor and every test around them
 // with it. `AgentIcons.swift` already carries the one-word fix (`nonisolated static func`).
-func widgetUsageText(for limits: AgentUsageLimits) -> String {
+
+/// The line under the divider: an account's windows, when they start again, and when the
+/// figures were taken.
+///
+/// Times are written out, never counted down: the list is rebuilt whenever this text changes,
+/// and "12m ago" would change it on every sweep. So the reset is "till 22:30", a reset more
+/// than a day after the figure was taken is its weekday, and the figure's own age is the time
+/// it was taken, "as of 14:05" — old figures are the honest cost of not asking the server
+/// often (ADR-0026), and the reader needs to see that they are old.
+func widgetUsageText(
+    for limits: AgentUsageLimits,
+    timeZone: TimeZone = .current,
+    locale: Locale = .current
+) -> String {
     // The account, not the product: these are the limits of a Claude subscription, not of
     // Claude Code. `AgentIcon.name` answers the other question and deliberately differs.
     let source = limits.source == .claude ? "Claude" : "Codex"
-    let windows = [
-        limits.fiveHour.map { "5h \(Int($0.usedPercentage.rounded()))%" },
-        limits.sevenDay.map { "7d \(Int($0.usedPercentage.rounded()))%" },
-    ]
-    .compactMap { $0 }
-    .joined(separator: "  ·  ")
-    return "\(source)  ·  \(windows)"
+    func formatter(_ template: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter
+    }
+    let time = formatter("jmm")
+    let weekday = formatter("EEE")
+    func window(_ name: String, _ window: UsageWindow?) -> String? {
+        guard let window else {
+            return nil
+        }
+        let used = "\(name) \(Int(window.usedPercentage.rounded()))%"
+        guard let resetsAt = window.resetsAt, resetsAt > limits.observedAt else {
+            return used
+        }
+        let isWithinADay = resetsAt.timeIntervalSince(limits.observedAt) < 24 * 60 * 60
+        return "\(used) till \((isWithinADay ? time : weekday).string(from: resetsAt))"
+    }
+    let windows = [window("5h", limits.fiveHour), window("7d", limits.sevenDay)].compactMap { $0 }
+    return ([source] + windows + ["as of \(time.string(from: limits.observedAt))"]).joined(separator: "  ·  ")
 }
 
 private func compactTokenCount(_ value: Int) -> String {

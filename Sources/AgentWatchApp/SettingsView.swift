@@ -4,7 +4,7 @@ import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
     case widget, rows, order, appearance, theme, timing, themes, menuBar, waitingBeacon, resources, general, tooling,
-        gitProtection, diagnostics
+        gitProtection, worktreeDisk, diagnostics
 
     var id: String { rawValue }
 
@@ -18,7 +18,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     }
 
     static let sidebar: [SettingsPage] = [
-        .general, .tooling, .gitProtection, .appearance, .menuBar, .waitingBeacon, .widget, .resources, .diagnostics,
+        .general, .tooling, .gitProtection, .worktreeDisk, .appearance, .menuBar, .waitingBeacon, .widget, .resources,
+        .diagnostics,
     ]
 
     var title: String {
@@ -36,6 +37,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "General"
         case .tooling: "Tooling"
         case .gitProtection: "Git Protection"
+        case .worktreeDisk: "Working Copies"
         case .diagnostics: "Diagnostics"
         }
     }
@@ -50,6 +52,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .tooling: "wrench.and.screwdriver"
         case .gitProtection: "shield"
+        case .worktreeDisk: "externaldrive"
         case .diagnostics: "stethoscope"
         }
     }
@@ -87,6 +90,7 @@ struct SettingsView: View {
                     GitProtectionPane(
                         profiles: AgentFolders(
                             home: AgentWatchPaths.homeDirectory(), extra: model.settings.extraAgentFolders))
+                case .worktreeDisk: WorktreeDiskView(activeFolders: model.worktreeSessionFolders)
                 case .diagnostics: DiagnosticsPane(model: model)
                 }
             }

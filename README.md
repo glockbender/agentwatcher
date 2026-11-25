@@ -68,6 +68,10 @@ It comes in two styles, chosen in **Settings… → Menu Bar**:
 
 <img src="docs/images/clip-counts.avif" alt="The same scene with the Counts icon: the one session moves from done to working, to needs you, and back to done" width="640">
 
+Click the date and time to open Notification Center, choose **Edit Widgets**, and add **Agent Watch**.
+The small widget opens **Projects & Recent**. The medium widget also has **Waiting for you**, which
+opens the same list of waiting chats as the beacon, and **Settings**. Both work when the menu bar icon is hidden.
+
 An optional orange beacon appears when a chat is waiting for your reply. Choose **Full screen only** or **All modes** to show it on windowed desktops too.
 Click the ring and choose a chat to open it. Right-click it to open **Waiting Beacon Settings…**.
 You can also open **Settings → Waiting Beacon** to turn it on, resize it, or choose its position.
@@ -212,7 +216,14 @@ newer, classic and reworked terminals), and needs the Agent Watch app.
 2. In the IDE: **Settings → Plugins → ⚙ → Install Plugin from Disk**, select the ZIP, restart if asked.
 3. In Agent Watch: **Settings… → Tooling**, press **Check** beside the IDE.
 
-## Git protection
+## Manage projects and Git rules
+
+Open **Projects & Recent…** from the menu bar to find an observed Claude or Codex desktop chat.
+Opening Agent Watch again from Finder or Spotlight opens the same window, even with the menu bar
+icon hidden.
+Linked Git working folders appear under the same project. Filter by activity, search by branch or
+chat name, and open the matching conversation. Recent shows up to 20 chats. **Usage profiles**
+shows the last observed limits for each configured agent folder and when they were recorded.
 
 In **Settings… → Git Protection**, select the client and profile, then click **Install Git Hook**.
 In Codex desktop, open **Settings → Hooks** and click **Trust**. In the terminal, use `/hooks`.
@@ -225,6 +236,10 @@ require the repository name before deleting that branch on the remote, or remove
 directly in that repository. The change applies to its linked working folders. The installed
 Git guard enforces the rule. If the outcome depends on the remote’s default branch, the preview
 explains both possibilities.
+
+In **Settings… → Working Copies**, scan a repository to see its working copies, largest first.
+Expand a copy to see local changes, build folders and what Agent Watch can safely move to the
+Trash. Each proposed action names the folder and explains why it qualifies.
 
 ## Privacy
 
@@ -258,13 +273,13 @@ A session does not appear, has no name, or a lamp looks stuck: see [Troubleshoot
 
 ## Build from source
 
-Requires Xcode 16 or newer, [Task](https://taskfile.dev/) and Rust 1.98.1 installed through rustup.
-Liquid Glass needs Xcode 26 and its
+Requires Xcode 16 or newer, [Task](https://taskfile.dev/) and Rust 1.98.1 installed through rustup. Liquid Glass needs Xcode 26 and its
 macOS 26 SDK; with an older Xcode the widget is frosted instead.
 
 ```sh
 task verify   # formatting, tests, debug and release builds, app bundle
-task run      # run the app
+task dev      # build and open Agent Watch Dev beside the installed app
+task dev:git  # run Dev with Git protection in fresh local agent profiles
 ```
 
 Development notes are in [AGENTS.md](AGENTS.md); project documents, in Russian, are in
