@@ -517,51 +517,24 @@ final class UnixSocketIngressTests: XCTestCase {
         XCTAssertFalse(wire.contains("tail -f"), "the command must not cross the wire")
     }
 
-    func testExecutableDeliversStatusLineTelemetryWithAShortExplicitDeadline() throws {
+    func testAnOldStatusLineInvocationExitsWithoutSending() throws {
         let directoryURL = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directoryURL) }
 
         let socketPath = directoryURL.appendingPathComponent("agent-watch.sock").path
-        let results = IngressResults()
-        let received = expectation(description: "status line arrives")
-        let ingress = UnixSocketIngress(socketPath: socketPath) { result in
-            results.append(result)
-            received.fulfill()
-        }
+        let received = expectation(description: "the obsolete event must not reach the socket")
+        received.isInverted = true
+        let ingress = UnixSocketIngress(socketPath: socketPath) { _ in received.fulfill() }
         try ingress.start()
         defer { ingress.stop() }
 
         let sender = try runSender(
-            input: Data(
-                """
-                {"session_id":"session-secret","context_window":{"total_input_tokens":85000,"used_percentage":42.5,"private":"secret-context"},"rate_limits":{"five_hour":{"used_percentage":17,"resets_at":2000000000},"seven_day":{"used_percentage":31}}}
-                """.utf8
-            ),
-            arguments: [
-                "--source", "claude",
-                "--event", "StatusLine",
-                "--socket", socketPath,
-                "--timeout-ms", "100",
-            ]
+            input: Data(#"{"session_id":"old-session","context_window":{"used_percentage":42.5}}"#.utf8),
+            arguments: ["--source", "claude", "--event", "StatusLine", "--socket", socketPath]
         )
 
         XCTAssertEqual(sender.status, 0)
-        wait(for: [received], timeout: 1)
-        let request = try XCTUnwrap(try results.snapshot().first?.get())
-        XCTAssertEqual(request.declaredEvent, "StatusLine")
-        guard case let .object(fields) = request.payload else {
-            return XCTFail("Expected an object payload")
-        }
-        XCTAssertEqual(fields["context_total_input_tokens"], .number(85_000))
-        XCTAssertEqual(fields["context_used_percentage"], .number(42.5))
-        XCTAssertNotEqual(fields["session_id"], .string("session-secret"))
-        let event = try HookIngressProcessor.normalize(request, observedAt: Date())
-        XCTAssertEqual(event.contextTelemetry, .init(totalInputTokens: 85_000, usedPercentage: 42.5))
-        XCTAssertEqual(event.usageLimits?.fiveHour?.usedPercentage, 17)
-        XCTAssertEqual(event.usageLimits?.sevenDay?.usedPercentage, 31)
-        let wire = String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
-        XCTAssertFalse(wire.contains("secret-context"))
-        XCTAssertEqual(event.usageLimits?.fiveHour?.resetsAt, Date(timeIntervalSince1970: 2_000_000_000))
+        wait(for: [received], timeout: 0.2)
     }
 
     func testSocketHasOwnerOnlyPermissions() throws {

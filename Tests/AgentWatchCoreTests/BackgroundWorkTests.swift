@@ -64,7 +64,7 @@ final class BackgroundWorkTests: XCTestCase {
         let afterSilentEvent = try engine.ingest(
             try HookEventNormalizer.normalize(
                 source: .claude,
-                declaredEvent: "StatusLine",
+                declaredEvent: "Stop",
                 payload: .object(["session_id": .string("id_session")]),
                 observedAt: start.addingTimeInterval(1)
             )

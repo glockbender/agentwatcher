@@ -38,7 +38,7 @@ on the row»): его дифф — рабочий пример каждого ш
   **Компилятор этого не потребует.** Установленные копии после обновления покажут «Hooks missing»
   с кнопкой Repair, а Claude Code ещё нужен `/reload-plugins`.
 - `HookEventNormalizer.normalize` (`EventProtocol.swift`): switch исчерпывающий. Событие одного
-  агента — `guard source == .claude`, как у `statusLine`. Не требовать полей: тест
+  агента — `guard source == .claude`, как у `elicitation`. Не требовать полей: тест
   `testEveryHookAskedForIsOneTheProtocolUnderstands` шлёт обобщённую нагрузку.
 - Нет `tool_use_id` и своего идентификатора — один фиксированный на сессию
   (`compactionActivityID`, `elicitationActivityID`).

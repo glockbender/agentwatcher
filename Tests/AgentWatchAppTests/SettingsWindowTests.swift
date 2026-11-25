@@ -48,7 +48,7 @@ final class SettingsWindowTests: XCTestCase {
         let settings = WidgetSettingsStore(preferences: preferences)
         let host = FakeAppHost()
         host.toolingReading = ToolingFacts(
-            hookState: { _ in .absent }, statusLineState: .notSet, hooksPath: { _ in "" }, statusLinePath: "",
+            hookState: { _ in .absent }, hooksPath: { _ in "" },
             senderPath: "", senderIsTiedToThisBuild: false, idePlugins: [], stagedPlugin: nil,
             idePluginDirectoryPath: "")
         addTeardownBlock { _ = host }

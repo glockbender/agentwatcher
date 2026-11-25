@@ -18,7 +18,7 @@ final class ToolingCoordinatorTests: XCTestCase {
         coordinator.onLog = { logged.append($0) }
         coordinator.onChange = { changes += 1 }
 
-        coordinator.press(.integration(ToolingIntegration(source: .claude, kind: .hooks)))
+        coordinator.press(.defaultHooks(.claude))
 
         XCTAssertEqual(coordinator.hookState(for: .claude), .unheard)
         XCTAssertEqual(changes, 1, "whoever draws the widget has to be told to look again")
@@ -29,25 +29,19 @@ final class ToolingCoordinatorTests: XCTestCase {
         let (coordinator, home) = try makeCoordinator()
         let installer = ToolingInstaller(home: home)
         for source in AgentSource.allCases {
-            let integration = ToolingIntegration(source: source, kind: .hooks)
-            coordinator.press(.integration(integration))
+            coordinator.press(.defaultHooks(source))
             let installed = try Data(contentsOf: installer.hooksPath(for: source))
-            coordinator.press(.install(integration))
+            coordinator.press(.installHooks(source))
             XCTAssertEqual(try Data(contentsOf: installer.hooksPath(for: source)), installed)
             XCTAssertEqual(coordinator.hookState(for: source), .unheard)
         }
-        let statusLine = ToolingIntegration(source: .claude, kind: .statusLine)
-        coordinator.press(.integration(statusLine))
-        let connected = try Data(contentsOf: installer.statusLinePath)
-        coordinator.press(.install(statusLine))
-        XCTAssertEqual(try Data(contentsOf: installer.statusLinePath), connected)
     }
 
     func testPressingTheSameIntegrationAgainTakesTheRecordsBackOut() throws {
         let (coordinator, _) = try makeCoordinator()
-        coordinator.press(.integration(ToolingIntegration(source: .claude, kind: .hooks)))
+        coordinator.press(.defaultHooks(.claude))
 
-        coordinator.press(.integration(ToolingIntegration(source: .claude, kind: .hooks)))
+        coordinator.press(.defaultHooks(.claude))
 
         XCTAssertEqual(coordinator.hookState(for: .claude), .absent)
     }
@@ -63,7 +57,7 @@ final class ToolingCoordinatorTests: XCTestCase {
         let nothingInstalled = coordinator.complaint()
         XCTAssertNotNil(nothingInstalled, "nothing is installed, so the widget has to say so")
 
-        coordinator.press(.integration(ToolingIntegration(source: .claude, kind: .hooks)))
+        coordinator.press(.defaultHooks(.claude))
 
         XCTAssertNotEqual(
             coordinator.complaint(), nothingInstalled,
@@ -85,7 +79,7 @@ final class ToolingCoordinatorTests: XCTestCase {
         coordinator.onLog = { logged.append($0) }
         coordinator.onChange = { changes += 1 }
 
-        coordinator.press(.integration(ToolingIntegration(source: .claude, kind: .hooks)))
+        coordinator.press(.defaultHooks(.claude))
 
         XCTAssertEqual(changes, 1)
         XCTAssertNotNil(coordinator.lastError)
@@ -107,7 +101,7 @@ final class ToolingCoordinatorTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: link.path))
         XCTAssertEqual(first.refreshSenderLink(), link.path)
         for source in AgentSource.allCases {
-            first.press(.integration(ToolingIntegration(source: source, kind: .hooks)))
+            first.press(.defaultHooks(source))
         }
 
         let installer = ToolingInstaller(home: home)

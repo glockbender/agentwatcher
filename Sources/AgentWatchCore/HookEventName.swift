@@ -35,7 +35,6 @@ public enum HookEventName: String, CaseIterable, Sendable {
     /// An MCP server asks the person something, and the answer it got. Claude only.
     case elicitation = "Elicitation"
     case elicitationResult = "ElicitationResult"
-    case statusLine = "StatusLine"
 
     /// Every name, as the agents write them.
     public static let allNames = Set(allCases.map(\.rawValue))

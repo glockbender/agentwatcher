@@ -1074,37 +1074,6 @@ final class SessionSupervisorTests: XCTestCase {
     /// Codex wants its hooks approved in every folder separately, so an event is remembered for
     /// the folder it came from. The default folder's label, or none from an older sender, is
     /// the default folder.
-    func testClaudeQuotaRequiresAnExplicitConfiguredFolderAndStaysWithIt() throws {
-        let scratch =
-            ProcessInfo.processInfo.environment["AGENT_WATCH_TEST_SCRATCH"]
-            .map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory
-        let home = scratch.appendingPathComponent(UUID().uuidString)
-        let work = home.appendingPathComponent(".claude-work")
-        let folders = AgentFolders(home: home, extra: [.claude: [work.path]])
-        let supervisor = try makeSupervisor(
-            heard: AgentHeardStore(directoryURL: home), history: SessionHistoryStore(directoryURL: home),
-            settings: WidgetSettingsStore(preferences: PreferenceFile(directoryURL: home)), home: home,
-            extraAgentFolders: { [.claude: [work.path]] })
-        let personal = AgentFolders.label(of: folders.defaultFolder(for: .claude))
-        let other = AgentFolders.label(of: work)
-        func report(_ label: String?, _ percent: Double) {
-            _ = supervisor.ingest(
-                HookIngressRequest(
-                    source: .claude, declaredEvent: "StatusLine",
-                    payload: .object([
-                        "session_id": .string("session-id"), "five_hour_used_percentage": .number(percent),
-                    ]),
-                    agentFolderLabel: label))
-        }
-        report(personal, 17)
-        report(other, 73)
-        report(nil, 99)
-        report(AgentFolders.label(of: home.appendingPathComponent("unlisted")), 98)
-        XCTAssertEqual(supervisor.claudeUsageByFolder.count, 2)
-        XCTAssertEqual(supervisor.claudeUsageByFolder[personal]?.fiveHour?.usedPercentage, 17)
-        XCTAssertEqual(supervisor.claudeUsageByFolder[other]?.fiveHour?.usedPercentage, 73)
-    }
-
     func testAnEventIsHeardForTheFolderItCameFrom() throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

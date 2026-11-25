@@ -17,12 +17,11 @@ public enum EventKind: String, Codable, Sendable {
     /// A person stopped the turn. Only Codex reports this; for Claude the same fact is
     /// readable only from the transcript, which is why reading it on silence exists.
     case turnInterrupted
-    case statusUpdated
 }
 
 /// What the sender learned about a session from files only the hook process can read.
 ///
-/// Grouped rather than passed as four more parameters: every branch of the normalizer has to
+/// Grouped rather than passed as separate parameters: every branch of the normalizer has to
 /// carry these through untouched, and a list of optional strings threaded through a dozen
 /// call sites is where a field quietly stops being copied.
 public struct SessionDescription: Codable, Equatable, Sendable {
@@ -31,28 +30,18 @@ public struct SessionDescription: Codable, Equatable, Sendable {
     /// The project directory's own name — never the path that leads to it.
     public let projectName: String?
     public let gitBranch: String?
-    /// Tokens the last turn carried into the model. No percentage: a transcript never says
-    /// what its counts are a fraction of.
-    public let contextInputTokens: Int?
-
     public init(
         title: String? = nil,
         projectName: String? = nil,
-        gitBranch: String? = nil,
-        contextInputTokens: Int? = nil
+        gitBranch: String? = nil
     ) {
         self.title = title
         self.projectName = projectName
         self.gitBranch = gitBranch
-        self.contextInputTokens = contextInputTokens
     }
 
-    /// Far past any real context window, and far short of a number that would stretch a row
-    /// past the width it was measured for. A count above this is not a count.
-    public static let maximumContextInputTokens = 100_000_000
-
     public var isEmpty: Bool {
-        title == nil && projectName == nil && gitBranch == nil && contextInputTokens == nil
+        title == nil && projectName == nil && gitBranch == nil
     }
 }
 
@@ -82,8 +71,6 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
     public let agentID: String?
     public let agentProcessID: Int32?
     public let clientKind: SessionClientKind?
-    public let contextTelemetry: SessionContextTelemetry?
-    public let usageLimits: AgentUsageLimits?
     /// The session this one was copied from, when it is a copy — `/bg` and `/fork` continue a
     /// conversation in a new process under a new identifier. Labelled like `sessionID`, so it
     /// can be matched against the row the original already has. On every event, not only the
@@ -116,8 +103,6 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
         agentID: String? = nil,
         agentProcessID: Int32? = nil,
         clientKind: SessionClientKind? = nil,
-        contextTelemetry: SessionContextTelemetry? = nil,
-        usageLimits: AgentUsageLimits? = nil,
         forkedFromSessionID: String? = nil,
         startedAsCopy: Bool = false,
         backgroundWork: [BackgroundWorkKind]? = nil
@@ -137,8 +122,6 @@ public struct EventEnvelope: Codable, Equatable, Sendable {
         self.agentID = agentID
         self.agentProcessID = agentProcessID
         self.clientKind = clientKind
-        self.contextTelemetry = contextTelemetry
-        self.usageLimits = usageLimits
         self.forkedFromSessionID = forkedFromSessionID
         self.startedAsCopy = startedAsCopy
         self.backgroundWork = backgroundWork
@@ -275,8 +258,7 @@ public struct HookIngressRequest: Codable, Equatable, Sendable {
     }
 
     /// Keeps hostile or malformed text from reaching the widget as layout or as an
-    /// unbounded string. Token counts are clamped to something a session could plausibly
-    /// carry rather than trusted.
+    /// unbounded string.
     ///
     /// Public because the socket is no longer the only way in: the app reads the same values
     /// out of a transcript when it catches up after a restart, and a transcript is a file on
@@ -293,10 +275,7 @@ public struct HookIngressRequest: Codable, Equatable, Sendable {
             // so a sender built from another tree could otherwise put a whole path in it.
             projectName: sanitizedText(raw.projectName, limit: maximumShortFieldLength)
                 .flatMap { $0.contains("/") ? nil : $0 },
-            gitBranch: sanitizedText(raw.gitBranch, limit: maximumShortFieldLength),
-            contextInputTokens: raw.contextInputTokens.flatMap {
-                $0 > 0 && $0 <= SessionDescription.maximumContextInputTokens ? $0 : nil
-            }
+            gitBranch: sanitizedText(raw.gitBranch, limit: maximumShortFieldLength)
         )
         return sanitized.isEmpty ? nil : sanitized
     }
@@ -404,8 +383,6 @@ public enum HookEventNormalizer {
             outlivesTurn: Bool = false,
             outlivesItsCall: Bool = false,
             userInputRequestKind: UserInputRequestKind? = nil,
-            contextTelemetry: SessionContextTelemetry? = nil,
-            usageLimits: AgentUsageLimits? = nil,
             startedAsCopy: Bool = false,
             backgroundWork: [BackgroundWorkKind]? = nil
         ) -> EventEnvelope {
@@ -429,8 +406,6 @@ public enum HookEventNormalizer {
                 agentID: declaredAgentID == activityID ? nil : declaredAgentID,
                 agentProcessID: agentProcessID,
                 clientKind: clientKind,
-                contextTelemetry: contextTelemetry,
-                usageLimits: usageLimits,
                 forkedFromSessionID: forkedFromSessionID,
                 startedAsCopy: startedAsCopy,
                 backgroundWork: backgroundWork
@@ -442,15 +417,6 @@ public enum HookEventNormalizer {
         }
 
         switch hook {
-        case .statusLine:
-            guard source == .claude else {
-                throw EventNormalizationError.unsupportedEvent(source: source, name: declaredEvent)
-            }
-            return envelope(
-                .statusUpdated,
-                contextTelemetry: contextTelemetry(in: fields),
-                usageLimits: usageLimits(source: source, fields: fields, observedAt: observedAt)
-            )
         case .sessionStart:
             return envelope(.sessionStarted, startedAsCopy: string("source", in: fields) == "fork")
         case .sessionEnd:
@@ -593,61 +559,5 @@ public enum HookEventNormalizer {
             return nil
         }
         return permissionMode == "plan" ? .plan : .standard
-    }
-
-    private static func contextTelemetry(in fields: [String: JSONValue]) -> SessionContextTelemetry? {
-        guard
-            let totalInputTokens = nonNegativeInteger("context_total_input_tokens", in: fields),
-            let usedPercentage = percentage("context_used_percentage", in: fields)
-        else {
-            return nil
-        }
-        return SessionContextTelemetry(
-            totalInputTokens: totalInputTokens,
-            usedPercentage: usedPercentage
-        )
-    }
-
-    private static func usageLimits(
-        source: AgentSource,
-        fields: [String: JSONValue],
-        observedAt: Date
-    ) -> AgentUsageLimits? {
-        let fiveHour = usageWindow("five_hour", in: fields)
-        let sevenDay = usageWindow("seven_day", in: fields)
-        guard fiveHour != nil || sevenDay != nil else {
-            return nil
-        }
-        return AgentUsageLimits(
-            source: source,
-            fiveHour: fiveHour,
-            sevenDay: sevenDay,
-            observedAt: observedAt
-        )
-    }
-
-    private static func usageWindow(_ window: String, in fields: [String: JSONValue]) -> UsageWindow? {
-        guard let percentage = percentage(window + "_used_percentage", in: fields) else { return nil }
-        let reset: Date? =
-            if case let .number(seconds)? = fields[window + "_resets_at"] {
-                UsageWindow.resetDate(unixSeconds: seconds)
-            } else { nil }
-        return UsageWindow(usedPercentage: percentage, resetsAt: reset)
-    }
-
-    private static func percentage(_ key: String, in fields: [String: JSONValue]) -> Double? {
-        guard case let .number(value)? = fields[key], (0...100).contains(value) else {
-            return nil
-        }
-        return value
-    }
-
-    private static func nonNegativeInteger(_ key: String, in fields: [String: JSONValue]) -> Int? {
-        guard case let .number(value)? = fields[key], value >= 0,
-            value <= Double(SessionDescription.maximumContextInputTokens)
-        else {
-            return nil
-        }
-        return Int(exactly: value)
     }
 }

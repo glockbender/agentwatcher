@@ -59,10 +59,8 @@ final class ToolingModel: ObservableObject {
     var sections: [ToolingReportSection] {
         ToolingReport.sections(
             hookState: reading.hookState,
-            statusLineState: { reading.statusLineState },
             hooksPath: reading.hooksPath,
             folders: { reading.folders[$0] ?? [] },
-            statusLinePath: reading.statusLinePath,
             idePlugins: reading.idePlugins,
             stagedPlugin: reading.stagedPlugin,
             idePluginDirectoryPath: reading.idePluginDirectoryPath
@@ -100,11 +98,7 @@ final class ToolingModel: ObservableObject {
     /// the configuration elsewhere must never be able to take a connection away.
     func connect() {
         guard let source = journey?.source else { return }
-        act(.install(ToolingIntegration(source: source, kind: .hooks)))
-    }
-
-    func connectStatusLine() {
-        act(.install(ToolingIntegration(source: .claude, kind: .statusLine)))
+        act(.installHooks(source))
     }
 
     /// The hooks are written, so trying the agent can tell something.
@@ -141,9 +135,7 @@ final class ToolingModel: ObservableObject {
 @MainActor
 struct ToolingFacts {
     let hookState: (AgentSource) -> ToolingInstallationState
-    let statusLineState: StatusLineState
     let hooksPath: (AgentSource) -> String
-    let statusLinePath: String
     let senderPath: String
     /// The link could not be made, so the entries name this build's own binary. See
     /// `SenderLink`.
@@ -170,9 +162,7 @@ struct ToolingFacts {
     /// longer there.
     static let unavailable = ToolingFacts(
         hookState: { _ in .unreadable },
-        statusLineState: .unreadable,
         hooksPath: { _ in "" },
-        statusLinePath: "",
         senderPath: "",
         senderIsTiedToThisBuild: false,
         idePlugins: [],

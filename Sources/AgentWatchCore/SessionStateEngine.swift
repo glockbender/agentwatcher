@@ -283,9 +283,6 @@ public struct SessionStateEngine: Sendable {
         if let description = event.description {
             snapshot = Self.merged(snapshot, with: description)
         }
-        if let usageLimits = event.usageLimits {
-            mergeUsageLimits(usageLimits)
-        }
 
         // Closed is terminal, as ADR-0002 and the state diagram say: no edge
         // leaves it. Events do arrive out of order — the protocol is asked to survive that —
@@ -302,8 +299,7 @@ public struct SessionStateEngine: Sendable {
         }
 
         let previouslyObservedAt = snapshot.lastObservedAt
-        // Every other kind carries a mode without a place to put it — a status line reports
-        // one, and so does a tool call — so the mode is applied here before the kind is.
+        // Tool calls can carry a mode too, so apply it before handling the event kind.
         //
         // Not for the two kinds that state the mode themselves, and each with a rule of its
         // own: a start without a mode resets it to unknown, because that is a new session
@@ -381,10 +377,6 @@ public struct SessionStateEngine: Sendable {
             snapshot = SessionReducer.reduce(snapshot, event: .failed(at: event.observedAt))
         case .turnInterrupted:
             snapshot = SessionReducer.reduce(snapshot, event: .turnInterrupted(at: event.observedAt))
-        case .statusUpdated:
-            if let contextTelemetry = event.contextTelemetry {
-                snapshot.contextTelemetry = contextTelemetry
-            }
         }
 
         // Never backwards. A late event is still evidence of activity, but the age this
@@ -508,13 +500,9 @@ public struct SessionStateEngine: Sendable {
         snapshots.values.first { $0.source == source && $0.continuedBy?.contains(sessionLabel) == true }
     }
 
-    /// Takes an account's limits unless something newer is already known.
-    ///
-    /// Two sources report Claude's: the status line, as a session works, and Claude Code's own
-    /// snapshot (`ClaudeUsageSnapshot`). They arrive in no particular order, and the snapshot
-    /// is often older than the status line it follows. Only the snapshot knows when a window
-    /// starts again, so a newer report without that keeps the known time while it is still
-    /// ahead of the report, and a window the report leaves out stays until that time.
+    /// Takes an account's limits unless something newer is already known. Partial reports
+    /// from Claude Code can leave out a window or its reset time. Keep what is known while
+    /// that window is still current.
     ///
     /// - Returns: whether what the widget shows changed.
     @discardableResult
@@ -524,8 +512,6 @@ public struct SessionStateEngine: Sendable {
             return false
         }
         func carried(_ window: UsageWindow?, _ knownWindow: UsageWindow?) -> UsageWindow? {
-            // A window the newer report says nothing about stays while it is still the same
-            // window: the status line can carry one window without the other.
             guard let window else {
                 guard let knownWindow, let resetsAt = knownWindow.resetsAt, resetsAt > incoming.observedAt else {
                     return nil
@@ -691,9 +677,7 @@ public struct SessionStateEngine: Sendable {
     /// the next the other way round, and neither should blank the other's finding.
     ///
     /// The context percentage is computed here and only here, out of two numbers the agent
-    /// wrote in one record. That is what makes it honest: the rule kept for Claude — a count
-    /// read from a transcript never wears a percentage measured elsewhere — is about two
-    /// measurements passing for one, which two halves of a single record are not.
+    /// wrote in one record. A Claude response gives only the count.
     @discardableResult
     public mutating func applySignals(
         _ signals: TranscriptSignals,
@@ -762,13 +746,6 @@ public struct SessionStateEngine: Sendable {
         merged.title = description.title ?? merged.title
         merged.projectName = description.projectName ?? merged.projectName
         merged.gitBranch = description.gitBranch ?? merged.gitBranch
-        if let tokens = description.contextInputTokens {
-            // The percentage is dropped, not carried over. It only ever arrives from a
-            // provider that measured it together with its own token count, and printing it
-            // beside a count read later from a transcript would show two different
-            // measurements as though they were one.
-            merged.contextTelemetry = SessionContextTelemetry(totalInputTokens: tokens)
-        }
         return merged
     }
 

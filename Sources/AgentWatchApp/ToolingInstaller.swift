@@ -10,14 +10,8 @@ import Foundation
 final class ToolingInstaller {
     private let home: URL
     private let fileManager = FileManager.default
-    /// Whether this installer was pointed at a home of its own — see `supportDirectory`.
-    private let ownHome: Bool
-
-    /// - Parameter home: a home directory to work in instead of the running person's. Given
-    ///   one, this installer keeps *everything* under it, its own folder included; given
-    ///   none, its own folder is the app's, wherever the app keeps it.
+    /// Use an explicit home when installing into an isolated configuration.
     init(home: URL? = nil) {
-        self.ownHome = home != nil
         self.home = home ?? AgentWatchPaths.homeDirectory()
     }
 
@@ -217,149 +211,6 @@ final class ToolingInstaller {
         try write(changed, to: url)
     }
 
-    // MARK: - The status line, the one slot Claude Code allows only one of
-
-    /// Agent Watch's own folder, where the relay script and the command it wraps are kept.
-    ///
-    /// Asked of `AgentWatchPaths` rather than derived from `home`, because that is where the
-    /// one substitution lives: a debug copy run with `AGENT_WATCH_SUPPORT_DIR` keeps the
-    /// socket, the lock, the settings and the remembered sessions in that folder, and these
-    /// two files belong with them. Derived from `home` when this installer was given a home
-    /// of its own — then the pretence is that the whole home is elsewhere, and its
-    /// Application Support with it.
-    var supportDirectory: URL {
-        guard !ownHome, let own = AgentWatchPaths.supportDirectory() else {
-            return AgentWatchPaths.supportDirectory(
-                inApplicationSupport:
-                    home
-                    .appendingPathComponent("Library", isDirectory: true)
-                    .appendingPathComponent("Application Support", isDirectory: true)
-            )
-        }
-        return own
-    }
-
-    private var relayURL: URL { supportDirectory.appendingPathComponent("statusline-relay.sh") }
-
-    /// A copy of the wrapped command, in plain text beside the script.
-    ///
-    /// So that a person who opens the folder can see what their status line used to be
-    /// without reading a shell script, and without the app running.
-    private var originalCommandURL: URL { supportDirectory.appendingPathComponent("original-command.txt") }
-
-    func statusLineState() -> StatusLineState {
-        let command: String?
-        do {
-            command = try currentStatusLineCommand()
-        } catch {
-            return .unreadable
-        }
-        guard let command else {
-            return .notSet
-        }
-        return command.contains(relayURL.path) ? .connected : .theirs(command: command)
-    }
-
-    /// Puts the relay in front of whatever is there, keeping it.
-    func connectStatusLine(senderPath: String) throws {
-        // Read before writing anything at all. The settings file is checked here rather than
-        // at the write below so that a file this app cannot understand leaves no relay script
-        // and no companion behind — refusing halfway is still refusing, but it litters.
-        let original = try currentStatusLineCommand() ?? ""
-        guard !original.contains(relayURL.path) else {
-            return
-        }
-
-        try fileManager.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
-        try Data(StatusLineRelay.script(senderPath: senderPath, originalCommand: original).utf8)
-            .write(to: relayURL, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: relayURL.path)
-        // Saved first, like the two files that plainly belong to someone else. This one is in
-        // a folder the app owns, which makes it look like the app's to overwrite — but what is
-        // in it is a command a person wrote, and disconnecting reads this file and nothing
-        // else. A stale companion from a connection that was undone by hand would otherwise be
-        // replaced by an empty original, and their command would be gone from its only record.
-        try backUp(originalCommandURL)
-        try Data(original.utf8).write(to: originalCommandURL, options: .atomic)
-
-        try setStatusLineCommand("bash \(ShellWord.quoted(relayURL.path))")
-    }
-
-    /// Gives the slot back exactly as it was found.
-    func disconnectStatusLine() throws {
-        guard case .connected = statusLineState() else {
-            return
-        }
-        // The companion file is the only record of what the slot held, so without it there is
-        // nothing to give back and the promise cannot be kept. Refusing says which file is
-        // missing; the alternative — treating "cannot find it" as "there was nothing" — is
-        // how the one operation meant to restore a person's status line came to remove it.
-        //
-        // The command is also embedded in the relay script, but reading it back from there
-        // would tie undoing to that script's exact wording, and the script is generated.
-        guard fileManager.fileExists(atPath: originalCommandURL.path) else {
-            throw ToolingInstallerError.missingOriginalCommand(originalCommandURL)
-        }
-        let original = try String(contentsOf: originalCommandURL, encoding: .utf8)
-        try setStatusLineCommand(original.isEmpty ? nil : original)
-        try? fileManager.removeItem(at: relayURL)
-        try? fileManager.removeItem(at: originalCommandURL)
-    }
-
-    private func currentStatusLineCommand() throws -> String? {
-        guard
-            case let .object(root)? = try readClaudeSettings(),
-            case let .object(statusLine)? = root["statusLine"],
-            case let .string(command)? = statusLine["command"]
-        else {
-            return nil
-        }
-        return command
-    }
-
-    private func setStatusLineCommand(_ command: String?) throws {
-        let folder = defaultFolder(for: .claude)
-        try fileManager.createDirectory(
-            at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let lock = try AgentProfileLock(folder)
-        defer { withExtendedLifetime(lock) {} }
-        guard case var .object(root) = try readClaudeSettings() ?? .object([:]) else {
-            return
-        }
-        if let command {
-            var statusLine: [String: JSONValue] = [:]
-            if case let .object(existing)? = root["statusLine"] {
-                statusLine = existing
-            }
-            statusLine["type"] = .string("command")
-            statusLine["command"] = .string(command)
-            root["statusLine"] = .object(statusLine)
-        } else {
-            root.removeValue(forKey: "statusLine")
-        }
-        try backUp(claudeSettingsURL)
-        try write(.object(root), to: claudeSettingsURL)
-    }
-
-    // MARK: - The settings file, which this app touches for the status line and nothing else
-
-    /// The file whose status-line slot this app can take over. Named for the window that has
-    /// to say which file it would write.
-    var statusLinePath: URL {
-        claudeSettingsURL
-    }
-
-    /// Only the default folder's: the relay and the command it wraps are kept once, in this
-    /// app's own folder, so one slot is all they can stand in for. A Claude started from a
-    /// listed folder keeps its own status line.
-    private var claudeSettingsURL: URL {
-        defaultFolder(for: .claude).appendingPathComponent("settings.json")
-    }
-
-    private func readClaudeSettings() throws -> JSONValue? {
-        try read(claudeSettingsURL)
-    }
-
     // MARK: - The disk
 
     /// A configuration file, or `nil` when there is none — and a thrown error when there is
@@ -419,8 +270,6 @@ enum ToolingInstallerError: Error {
     /// A configuration file that exists but does not parse. Never written over: what it holds
     /// cannot be read, so what a write would destroy cannot be known either.
     case unreadable(URL)
-    /// The status line cannot be given back because the file holding what it was is gone.
-    case missingOriginalCommand(URL)
     /// A listed folder that is not on disk. Installing would create a folder no agent reads.
     case missingFolder(URL)
 }

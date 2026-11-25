@@ -93,7 +93,7 @@ final class ProjectBrowserModel: ObservableObject {
     private var snapshots: [SessionSnapshot] = []
     @Published private(set) var folders: AgentFolders?
     @Published private(set) var profileSessions: [SessionSnapshot] = []
-    @Published private(set) var claudeUsage: [String: AgentUsageLimits] = [:]
+    @Published private(set) var claudeUsage: AgentUsageLimits?
     private var job: Task<Void, Never>?
     private var generation = 0
     /// Changes only when the window closes. A reread for a new session must not swallow a click
@@ -108,7 +108,7 @@ final class ProjectBrowserModel: ObservableObject {
     /// Live phase/title changes are cheap. Only new identities, a changed host or an explicit
     /// refresh require another disk lookup; no monitor is started for a hidden window.
     func update(
-        _ sessions: [SessionSnapshot], folders: AgentFolders, claudeUsage: [String: AgentUsageLimits],
+        _ sessions: [SessionSnapshot], folders: AgentFolders, claudeUsage: AgentUsageLimits?,
         readsTranscripts: Bool, refresh: Bool = false
     ) {
         profileSessions = sessions.filter { $0.source == .codex && $0.phase != .sessionClosed }
@@ -181,7 +181,7 @@ final class ProjectBrowserModel: ObservableObject {
         snapshots = []
         folders = nil
         profileSessions = []
-        claudeUsage = [:]
+        claudeUsage = nil
         reading = false
         readsTranscripts = false
         message = nil
@@ -269,7 +269,7 @@ private struct ProjectBrowserView: View {
         } detail: {
             if model.scope == .profiles, let folders = model.folders {
                 UsageProfilesView(
-                    folders: folders, claude: model.claudeUsage, sessions: model.profileSessions,
+                    folders: folders, defaultClaudeUsage: model.claudeUsage, sessions: model.profileSessions,
                     readsTranscripts: model.readsTranscripts)
             } else {
                 chats

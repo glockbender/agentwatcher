@@ -227,7 +227,8 @@ private struct Options {
             let values = CommandLineOptions.parse(arguments),
             let sourceValue = values["--source"],
             let source = AgentSource(rawValue: sourceValue),
-            let event = values["--event"]
+            let event = values["--event"],
+            HookEventName.allNames.contains(event)
         else {
             return nil
         }

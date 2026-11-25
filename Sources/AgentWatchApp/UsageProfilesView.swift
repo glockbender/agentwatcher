@@ -6,7 +6,7 @@ import SwiftUI
 /// the signed-in account: two folders can use one account, and one folder can switch accounts.
 struct UsageProfilesView: View {
     let folders: AgentFolders
-    let claude: [String: AgentUsageLimits]
+    let defaultClaudeUsage: AgentUsageLimits?
     let sessions: [SessionSnapshot]
     let readsTranscripts: Bool
     @State private var codex: [URL: CodexProfileUsage] = [:]
@@ -57,15 +57,23 @@ struct UsageProfilesView: View {
                                 Text(folder.path).font(.headline).textSelection(.enabled)
                                 let status = Self.codexStatus(
                                     readsTranscripts: readsTranscripts, usage: codex[folder], loading: loading)
-                                if source == .claude, let limits = claude[AgentFolders.label(of: folder)] {
-                                    reading(limits)
-                                } else if source == .codex && status == .transcriptsOff {
+                                if source == .claude {
+                                    if folder != folders.defaultFolder(for: .claude) {
+                                        Text("Claude quota is available for the default profile.")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    } else if let defaultClaudeUsage {
+                                        reading(defaultClaudeUsage)
+                                    } else {
+                                        Text("No quota recorded for the default profile.")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                } else if status == .transcriptsOff {
                                     Text("Transcript reading is off in General settings.")
                                         .font(.caption).foregroundStyle(.secondary)
-                                } else if source == .codex && status == .reading {
+                                } else if status == .reading {
                                     Text("Reading this profile’s transcripts…")
                                         .font(.caption).foregroundStyle(.secondary)
-                                } else if source == .codex, case .found(let usage) = status {
+                                } else if case .found(let usage) = status {
                                     reading(usage.limits)
                                     if let count = usage.chatTokens,
                                         let session = sessions.first(where: {
@@ -78,12 +86,8 @@ struct UsageProfilesView: View {
                                         .font(.caption)
                                     }
                                 } else {
-                                    Text(
-                                        source == .claude
-                                            ? "No quota reported by this profile’s status line during this launch."
-                                            : "No dated quota found in observed chats in this profile."
-                                    )
-                                    .font(.caption).foregroundStyle(.secondary)
+                                    Text("No dated quota found in observed chats in this profile.")
+                                        .font(.caption).foregroundStyle(.secondary)
                                 }
                             }.padding(.vertical, 4)
                         }

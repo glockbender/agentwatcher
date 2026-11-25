@@ -75,11 +75,9 @@ final class SettingsRenderProbe: XCTestCase {
     }
 
     /// The Tooling page with one of each interesting state on screen at once: an agent that is
-    /// installed and delivering, one whose records have never fired, a status line somebody
-    /// else's command already holds, and three IDEs that stand in three different places. Then
-    /// the same page with the IDE section reading this machine — the one part no fixture can
-    /// check: whether the search finds the IDEs a person has, and whether the plugin's reply is
-    /// read back. Drawn at the window's default width and at its narrowest.
+    /// installed and delivering, one whose records have never fired, and three different IDE
+    /// plugin states. The live variant checks what the page draws with the IDEs on this machine.
+    /// Drawn at the window's default width and at its narrowest.
     func testDrawTheToolingPage() throws {
         let requested = ProcessInfo.processInfo.environment["SETTINGS_RENDER_DIR"]
         try XCTSkipIf(requested == nil, "a drawing probe, not a check: set SETTINGS_RENDER_DIR")
@@ -89,14 +87,12 @@ final class SettingsRenderProbe: XCTestCase {
             facts: { [idePlugins] in
                 ToolingFacts(
                     hookState: { $0 == .claude ? .installed : .unheard },
-                    statusLineState: .theirs(command: "~/bin/my-status-line.sh"),
                     hooksPath: {
                         switch $0 {
                         case .claude: "/Users/someone/.claude/skills/agent-watch/hooks.json"
                         case .codex: "/Users/someone/.codex/hooks.json"
                         }
                     },
-                    statusLinePath: "/Users/someone/.claude/settings.json",
                     senderPath: "/Users/someone/Library/Application Support/AgentWatch/AgentWatchSend",
                     senderIsTiedToThisBuild: true,
                     idePlugins: idePlugins(),
@@ -131,9 +127,7 @@ final class SettingsRenderProbe: XCTestCase {
             facts: {
                 ToolingFacts(
                     hookState: { _ in .installed },
-                    statusLineState: .connected,
                     hooksPath: { _ in "—" },
-                    statusLinePath: "—",
                     senderPath: "—",
                     senderIsTiedToThisBuild: false,
                     idePlugins: readings,

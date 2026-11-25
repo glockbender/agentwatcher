@@ -446,22 +446,20 @@ final class SessionLifecycleTests: XCTestCase {
     }
 
     /// A directory name and a branch name are short by nature, and they get a tighter cap
-    /// than the title. A token count that arrives as zero or negative is not a count.
+    /// than the title.
     func testTheOtherDescribedFieldsAreCappedAndChecked() throws {
         let sanitized = try XCTUnwrap(
             HookIngressRequest.sanitized(
                 SessionDescription(
                     title: "Заголовок",
                     projectName: String(repeating: "п", count: 200),
-                    gitBranch: "feature/\nветка",
-                    contextInputTokens: 0
+                    gitBranch: "feature/\nветка"
                 )
             )
         )
 
         XCTAssertEqual(sanitized.projectName?.count, HookIngressRequest.maximumShortFieldLength)
         XCTAssertEqual(sanitized.gitBranch, "feature/ ветка")
-        XCTAssertNil(sanitized.contextInputTokens)
         XCTAssertNil(HookIngressRequest.sanitized(SessionDescription()), "nothing known is not a description")
     }
 
@@ -481,19 +479,6 @@ final class SessionLifecycleTests: XCTestCase {
         )
     }
 
-    /// The count is what a row's width is measured against, so an unbounded one would stretch
-    /// a row past the widget it was measured for.
-    func testAnImpossibleTokenCountIsRefused() {
-        let cap = SessionDescription.maximumContextInputTokens
-
-        XCTAssertNil(HookIngressRequest.sanitized(SessionDescription(contextInputTokens: .max))?.contextInputTokens)
-        XCTAssertNil(HookIngressRequest.sanitized(SessionDescription(contextInputTokens: cap + 1))?.contextInputTokens)
-        XCTAssertEqual(
-            HookIngressRequest.sanitized(SessionDescription(contextInputTokens: cap))?.contextInputTokens,
-            cap
-        )
-    }
-
     /// A right-to-left override makes a label read backwards, which is the one thing this
     /// sanitiser exists to prevent. The zero-width joiner is a format character too and has
     /// to survive, or a composed emoji falls apart.
@@ -504,32 +489,6 @@ final class SessionLifecycleTests: XCTestCase {
         XCTAssertEqual(HookIngressRequest.sanitizedText(reversed, limit: cap), "gnp.exe")
         XCTAssertEqual(HookIngressRequest.sanitizedText("a\u{2066}b\u{2069}c", limit: cap), "a b c")
         XCTAssertEqual(HookIngressRequest.sanitizedText("👨‍👩‍👧", limit: cap)?.count, 1)
-    }
-
-    /// A percentage arrives from a provider that measured it with its own token count. Shown
-    /// beside a count read later from a transcript, it would read as one measurement.
-    func testATranscriptTokenCountDoesNotInheritAnEarlierPercentage() throws {
-        var engine = SessionStateEngine()
-        try engine.ingest(
-            envelope(
-                id: "alpha",
-                kind: .statusUpdated,
-                at: start,
-                contextTelemetry: SessionContextTelemetry(totalInputTokens: 85_000, usedPercentage: 42.5)
-            )
-        )
-
-        let later = try engine.ingest(
-            envelope(
-                id: "alpha",
-                kind: .activityCompleted,
-                at: start.addingTimeInterval(1),
-                description: .init(contextInputTokens: 30_000)
-            )
-        )
-
-        XCTAssertEqual(later.contextTelemetry?.totalInputTokens, 30_000)
-        XCTAssertNil(later.contextTelemetry?.usedPercentage, "the old percentage measured a different count")
     }
 
     /// The socket decodes `HookIngressRequest` with a synthesized `Decodable`, which never
@@ -723,8 +682,7 @@ final class SessionLifecycleTests: XCTestCase {
         at observedAt: Date,
         clientKind: SessionClientKind? = nil,
         agentProcessID: Int32? = nil,
-        description: SessionDescription? = nil,
-        contextTelemetry: SessionContextTelemetry? = nil
+        description: SessionDescription? = nil
     ) -> EventEnvelope {
         testEvent(
             source: source,
@@ -734,8 +692,7 @@ final class SessionLifecycleTests: XCTestCase {
             mode: .standard,
             agentProcessID: agentProcessID,
             clientKind: clientKind,
-            description: description,
-            contextTelemetry: contextTelemetry
+            description: description
         )
     }
 }

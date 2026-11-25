@@ -14,14 +14,6 @@ public enum SessionThreadKind: String, Codable, Equatable, Sendable {
 
 /// What a session says about itself in its own transcript, beyond the facts that move its
 /// lifecycle.
-///
-/// Deliberately not `SessionDescription`, which the hook sender fills. Two writers on one
-/// struct is how a field ends up holding two different measurements: for Claude the sender
-/// already reports the context count it read together with the percentage the hook stated,
-/// and a second writer putting a transcript count into the same place would print one
-/// number under the other's label. Every field here is one **no other writer touches**, and
-/// the split is kept by the parsers rather than by remembering — a value only reaches this
-/// struct from the agent whose records carry it.
 public struct TranscriptSignals: Equatable, Sendable {
     /// The model the session is running on. The one signal both agents write: Claude names it
     /// on every assistant record, Codex on every turn.
@@ -29,8 +21,7 @@ public struct TranscriptSignals: Equatable, Sendable {
     /// How hard the model was asked to think. Codex states it per turn; Claude has no
     /// equivalent in its transcript.
     public var reasoningEffort: String?
-    /// Codex only, and always with `contextWindowTokens` from the same record — which is what
-    /// makes a percentage honest here where it is not for Claude.
+    /// Input tokens for the latest model request. Only Codex reports the window size.
     public var contextInputTokens: Int?
     public var contextWindowTokens: Int?
     /// Codex only: the branch is in the file's own opening record. Claude's branch reaches
@@ -81,5 +72,5 @@ public struct TranscriptSignals: Equatable, Sendable {
     /// Above any real context window and short of a number that would stretch a row past the
     /// width it was measured for. Anything larger is not a count, and a transcript is a file
     /// on disk that anything can write to.
-    public static let maximumContextTokens = SessionDescription.maximumContextInputTokens
+    public static let maximumContextTokens = 100_000_000
 }

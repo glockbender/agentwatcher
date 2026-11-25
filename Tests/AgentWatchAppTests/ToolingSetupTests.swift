@@ -39,11 +39,10 @@ final class ToolingSetupTests: XCTestCase {
         XCTAssertTrue(presses.isEmpty)
 
         tooling.connect()
-        tooling.connectStatusLine()
 
         XCTAssertEqual(
             presses,
-            [.install(.init(source: .codex, kind: .hooks)), .install(.init(source: .claude, kind: .statusLine))],
+            [.installHooks(.codex)],
             "the guide only ever installs; a remove is a press on the overview")
         reading = facts(hooks: .unheard)
         tooling.reread()
@@ -208,9 +207,9 @@ final class ToolingSetupTests: XCTestCase {
         senderIsTiedToThisBuild: Bool = false
     ) -> ToolingFacts {
         ToolingFacts(
-            hookState: { _ in hooks }, statusLineState: .notSet,
+            hookState: { _ in hooks },
             hooksPath: { $0 == .claude ? "~/.claude/skills/agent-watch/hooks/hooks.json" : "~/.codex/hooks.json" },
-            statusLinePath: "~/.claude/settings.json", senderPath: "AgentWatchSend",
+            senderPath: "AgentWatchSend",
             senderIsTiedToThisBuild: senderIsTiedToThisBuild,
             idePlugins: [], stagedPlugin: nil, idePluginDirectoryPath: "",
             agentPaths: [.claude: "~/.local/bin/claude", .codex: "/opt/homebrew/bin/codex"],

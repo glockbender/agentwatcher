@@ -2,6 +2,7 @@ import AgentWatchCore
 import AgentWatchTestSupport
 import AppKit
 import ImageIO
+import SwiftUI
 import UniformTypeIdentifiers
 import XCTest
 
@@ -32,6 +33,48 @@ final class DocumentationRenderProbe: XCTestCase {
         for style in MenuBarIconStyle.allCases {
             try write(menuBarIcon(afternoon, style: style), "menubar-\(style.rawValue)", in: root)
         }
+    }
+
+    func testDrawToolingFolders() throws {
+        let root = try outputDirectory()
+        let profile = "/Users/someone/.claude-work"
+        let tooling = ToolingModel(
+            facts: {
+                ToolingFacts(
+                    hookState: { $0 == .claude ? .installed : .absent },
+                    hooksPath: { source in
+                        source == .claude
+                            ? "/Users/someone/.claude/skills/agent-watch/hooks/hooks.json"
+                            : "/Users/someone/.codex/hooks.json"
+                    },
+                    senderPath: "",
+                    senderIsTiedToThisBuild: false,
+                    idePlugins: [],
+                    stagedPlugin: nil,
+                    idePluginDirectoryPath: "",
+                    agentPaths: [.claude: "/Users/someone/.local/bin/claude"],
+                    folders: [
+                        .claude: [
+                            ToolingFolderReading(
+                                folder: profile,
+                                isDefault: false,
+                                exists: true,
+                                state: .absent,
+                                hooksPath: "\(profile)/skills/agent-watch/hooks/hooks.json"
+                            )
+                        ]
+                    ]
+                )
+            },
+            act: { _ in }
+        )
+        let size = NSSize(width: 640, height: 392)
+        let view = NSHostingView(rootView: ToolingPane(tooling: tooling).formStyle(.grouped))
+        place(view, size: size)
+        view.window?.appearance = NSAppearance(named: .darkAqua)
+        // SwiftUI populates the form after the hosting view has a window.
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+        try write(view, "tooling-folders", in: root)
     }
 
     func testDrawTheWaitingBeacon() throws {
