@@ -233,30 +233,6 @@ private struct SetupGuide: View {
         } header: {
             Text("Connect \(AgentIcon.name(for: source))")
         }
-        if source == .claude {
-            Section {
-                LabeledContent("Status line") {
-                    switch reading.statusLineState {
-                    case .connected: Text("✓ Connected")
-                    case .unreadable: Text("Settings cannot be read")
-                    case .notSet, .theirs: Button("Connect Status Line") { tooling.connectStatusLine() }
-                    }
-                }
-            } header: {
-                Text("Optional · context and usage")
-            } footer: {
-                Footnote(statusLineNote(reading.statusLineState))
-            }
-        }
-    }
-
-    private func statusLineNote(_ state: StatusLineState) -> String {
-        guard state != .unreadable else {
-            return
-                "Claude’s settings file cannot be read, so the status line is left alone. You can continue without it."
-        }
-        return
-            "Shows context size and account usage. Your existing command is preserved. This adds a process per refresh; the agent’s turn does not wait for it."
     }
 
     @ViewBuilder

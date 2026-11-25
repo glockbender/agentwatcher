@@ -18,7 +18,6 @@ final class SessionSupervisor {
     static let maintenanceInterval: TimeInterval = 15
 
     private var engine = SessionStateEngine()
-    private(set) var claudeUsageByFolder: [String: AgentUsageLimits] = [:]
     private var maintenanceTimer: Timer?
     /// Claude's plan limits from Claude Code's own snapshot and a rare run of it. `nil` in
     /// tests, which must never read the real `.claude.json` or start the real Claude Code.
@@ -495,12 +494,6 @@ final class SessionSupervisor {
         do {
             event = try HookIngressProcessor.normalize(request, observedAt: now())
             let change = try engine.receive(event)
-            if let limits = event.usageLimits, limits.source == .claude,
-                let label = HookIngressRequest.sanitizedFolderLabel(request.agentFolderLabel),
-                agentFolders.folder(labelled: label, for: .claude) != nil
-            {
-                claudeUsageByFolder[label] = limits
-            }
             // Whatever left as this event landed: its watcher goes with it, since the row it
             // watched is gone. The watcher the arriving session gets is installed by
             // `associate` below, keyed on its own identifier.

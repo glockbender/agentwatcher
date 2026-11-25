@@ -1,43 +1,5 @@
 import Foundation
 
-/// One thing Agent Watch installs into one agent.
-///
-/// The word is the plan's: an integration is a single thing put into somebody else's tool,
-/// with a state and two operations. Naming it lets the menu be a projection of a list of
-/// agents rather than a list of agents written out by hand.
-public enum ToolingIntegrationKind: Sendable {
-    case hooks
-    case statusLine
-}
-
-/// One integration in one agent — the pair a menu line switches.
-public struct ToolingIntegration: Hashable, Sendable {
-    public let source: AgentSource
-    public let kind: ToolingIntegrationKind
-
-    public init(source: AgentSource, kind: ToolingIntegrationKind) {
-        self.source = source
-        self.kind = kind
-    }
-}
-
-/// What each agent can have installed into it.
-///
-/// This and `ToolingHooks.hooks(for:)` are the whole table. A third agent is two cases in this
-/// file and nothing anywhere else — which is what the tooling plan asked for and did not get:
-/// the menu named both agents in source, so an agent added here would have been installable
-/// and invisible.
-public enum ToolingIntegrations {
-    public static func kinds(for source: AgentSource) -> [ToolingIntegrationKind] {
-        switch source {
-        // Only Claude Code has a status line to stand in front of. Codex reports the size of
-        // its context window in the transcript, so there is nothing to take over.
-        case .claude: [.hooks, .statusLine]
-        case .codex: [.hooks]
-        }
-    }
-}
-
 /// The hooks Agent Watch registers with each agent, by the agent's own name for each event.
 ///
 /// A hook is nothing but that name: it is written into the agent's configuration verbatim and

@@ -48,15 +48,10 @@ struct ToolingReportAction: Equatable {
 }
 
 /// What a button on the Tooling page does.
-///
-/// An agent's integration is a pair — which agent, which of its integrations — and the IDE
-/// plugin is neither: the IDE installs it, and all Agent Watch can do is open a page or ask a
-/// question. Naming both kinds in one type is what lets one page hold both without the
-/// agent rows learning anything about IDEs.
 enum ToolingPress: Hashable {
-    case integration(ToolingIntegration)
+    case defaultHooks(AgentSource)
     /// Installation-only action: a stale guide button must never remove a connection.
-    case install(ToolingIntegration)
+    case installHooks(AgentSource)
     /// Copy the plugin file's path and open this IDE's Plugins page.
     case idePluginsPage(dataDirectoryName: String)
     /// Ask this IDE whether the plugin is loaded in it, now.
@@ -92,20 +87,11 @@ struct IDEPluginReading: Equatable {
 }
 
 /// The Tooling page as data, so that what it says can be tested without drawing it.
-///
-/// A projection of the agents and the integrations each of them declares, walked rather than
-/// named: a third agent has to be a new entry in `ToolingIntegrations`, never a new branch
-/// here. That property is the one the menu this replaced was written to keep, and it is kept.
 @MainActor
 enum ToolingReport {
-    /// Named because the status-line relay script quotes it, in files the app never rewrites.
-    static let statusLineTitle = "Status line"
-
     /// - Parameters:
     ///   - hookState: read per agent, from disk, because the files belong to other programs.
-    ///   - statusLineState: read once — the slot is Claude Code's and there is only one.
     ///   - hooksPath: where this app writes that agent's hooks.
-    ///   - statusLinePath: the file whose status-line slot is being talked about.
     ///   - idePlugins: every JetBrains IDE found on this machine, and what is known about the
     ///     plugin in each. Empty is an ordinary answer and has its own row.
     ///   - stagedPlugin: the plugin file waiting to be installed, when there is one.
@@ -113,10 +99,8 @@ enum ToolingReport {
     ///     there — it is the one place a person can put one.
     static func sections(
         hookState: (AgentSource) -> ToolingInstallationState,
-        statusLineState: () -> StatusLineState,
         hooksPath: (AgentSource) -> String,
         folders: (AgentSource) -> [ToolingFolderReading] = { _ in [] },
-        statusLinePath: String,
         idePlugins: [IDEPluginReading],
         stagedPlugin: StagedIDEPlugin?,
         idePluginDirectoryPath: String
@@ -124,18 +108,11 @@ enum ToolingReport {
         let agents = AgentSource.allCases.map { source in
             ToolingReportSection(
                 title: AgentIcon.name(for: source),
-                rows: ToolingIntegrations.kinds(for: source).flatMap { kind in
-                    switch kind {
-                    case .hooks:
-                        [hooksRow(source: source, state: hookState(source), path: hooksPath(source))]
-                            + folders(source).filter { !$0.isDefault }.map {
-                                folderHooksRow(source: source, reading: $0)
-                            }
-                            + [otherFoldersRow(source: source)]
-                    case .statusLine:
-                        [statusLineRow(source: source, state: statusLineState(), path: statusLinePath)]
+                rows: [hooksRow(source: source, state: hookState(source), path: hooksPath(source))]
+                    + folders(source).filter { !$0.isDefault }.map {
+                        folderHooksRow(source: source, reading: $0)
                     }
-                }
+                    + [otherFoldersRow(source: source)]
             )
         }
         return agents + [
@@ -177,7 +154,7 @@ enum ToolingReport {
                 [
                     ToolingReportAction(
                         title: $0,
-                        press: .integration(ToolingIntegration(source: source, kind: .hooks))
+                        press: .defaultHooks(source)
                     )
                 ]
             } ?? []
@@ -223,28 +200,6 @@ enum ToolingReport {
             details: [],
             nextStep: nil,
             actions: [ToolingReportAction(title: toolingAddFolderTitle, press: .addFolder(source))]
-        )
-    }
-
-    private static func statusLineRow(
-        source: AgentSource,
-        state: StatusLineState,
-        path: String
-    ) -> ToolingReportRow {
-        ToolingReportRow(
-            title: statusLineTitle,
-            status: nil,
-            state: statusLineStateText(state: state),
-            details: ["Writes \(path)"],
-            nextStep: statusLineNextStep(state: state),
-            actions: statusLineActionTitle(state: state).map {
-                [
-                    ToolingReportAction(
-                        title: $0,
-                        press: .integration(ToolingIntegration(source: source, kind: .statusLine))
-                    )
-                ]
-            } ?? []
         )
     }
 

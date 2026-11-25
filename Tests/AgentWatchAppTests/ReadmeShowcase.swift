@@ -30,7 +30,7 @@ enum ReadmeShowcase {
             SessionActivity(id: "shell", kind: .shell, startedAt: now),
             SessionActivity(id: "agent", kind: .subagent, startedAt: now, outlivesTurn: true),
         ]
-        loginTest.contextTelemetry = .init(totalInputTokens: 82_000, usedPercentage: 41)
+        loginTest.contextTelemetry = .init(totalInputTokens: 82_000)
         loginTest.modelName = "Opus 5.5"
         loginTest.gitBranch = "fix/login-test"
 
@@ -54,7 +54,7 @@ enum ReadmeShowcase {
         return [changelog, dependencies, loginTest, ingress, releaseNotes, searchPlan, billing]
     }
 
-    /// The account usage the Claude status line reports, for the line under the rows.
+    /// Claude account usage for the line under the rows.
     static let usageLimits = [
         AgentUsageLimits(
             source: .claude,

@@ -106,44 +106,6 @@ func toolingHookActionTitle(state: ToolingInstallationState) -> String? {
     }
 }
 
-/// Where the status line stands, and what pressing would do to what is already there.
-func statusLineStateText(state: StatusLineState) -> String {
-    switch state {
-    case .notSet:
-        "Not connected"
-    case .connected:
-        "Connected · your own command still runs"
-    case let .theirs(command):
-        // The promise comes before the press. A person with their own status line needs to
-        // know it survives before they find out.
-        "Not connected · your command is kept when you connect: \(command)"
-    case .unreadable:
-        "! settings.json exists but cannot be read"
-    }
-}
-
-/// What connecting the status line buys and what it costs.
-///
-/// Said on the row rather than after the press, because this is the one integration whose
-/// price is noticeable and the one whose benefit nothing else can deliver.
-func statusLineNextStep(state: StatusLineState) -> String? {
-    switch state {
-    case .notSet, .theirs:
-        "Adds each session's context size and your account usage to the widget. It runs one extra process "
-            + "per refresh; the agent does not wait for it."
-    case .connected, .unreadable:
-        nil
-    }
-}
-
-func statusLineActionTitle(state: StatusLineState) -> String? {
-    switch state {
-    case .notSet, .theirs: "Connect"
-    case .connected: "Disconnect"
-    case .unreadable: nil
-    }
-}
-
 /// What the plugin does, and why it is installed from a file. Said once, at the top of the
 /// section, so no row has to repeat it.
 ///

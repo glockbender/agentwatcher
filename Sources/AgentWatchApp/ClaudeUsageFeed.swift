@@ -2,7 +2,7 @@ import AgentWatchCore
 import AgentWatchLookup
 import Foundation
 
-/// Claude's plan limits without the status line: Claude Code's own snapshot, and a rare run
+/// Claude's plan limits come from Claude Code's own snapshot, and a rare run
 /// of Claude Code when the snapshot is old (ADR-0026).
 ///
 /// Ticked by the supervisor's maintenance sweep, which exists only while some session claims
@@ -64,8 +64,8 @@ final class ClaudeUsageFeed {
     /// after a launch the app knows of no limits at all until it has read one.
     ///
     /// - Parameters:
-    ///   - knownLimitsObservedAt: how old the freshest Claude limits the app holds are, from
-    ///     either source, asked after the read; a recent status line makes a run unnecessary.
+    ///   - knownLimitsObservedAt: when the freshest known Claude limits were observed,
+    ///     checked after reading the snapshot.
     ///   - claudeIsWorking: a person's Claude session claims work — a headless run, the app's
     ///     own included, does not count.
     ///   - deliver: called on the main actor with each set of limits found.

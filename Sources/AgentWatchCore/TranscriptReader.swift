@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 /// Something that happened in a session and that no hook reports.
@@ -400,15 +401,44 @@ public enum TranscriptReader {
         }
     }
 
-    /// Claude names its model on every assistant record, which is the only signal here that
-    /// both agents report. Its token counts are deliberately not read: the hook sender
-    /// already reports them together with the percentage the hook stated, and a second
-    /// reading would put one measurement under another's label.
     private static func claudeSignals(in record: [String: Any]) -> TranscriptSignals {
-        guard let message = record["message"] as? [String: Any] else {
+        guard
+            record["type"] as? String == "assistant",
+            record["isSidechain"] as? Bool != true,
+            let message = record["message"] as? [String: Any],
+            message["model"] as? String != "<synthetic>"
+        else {
             return TranscriptSignals()
         }
-        return TranscriptSignals(modelName: text(message["model"]))
+        return TranscriptSignals(
+            modelName: text(message["model"]),
+            contextInputTokens: claudeInputTokens(in: message["usage"] as? [String: Any])
+        )
+    }
+
+    // Measured on Claude Code 2.1.326: the same response records carry fresh input and both
+    // cache counts. The request's model ID can be identical for 200K and 1M windows (ADR-0027).
+    private static func claudeInputTokens(in usage: [String: Any]?) -> Int? {
+        guard let usage, usage["input_tokens"] != nil else {
+            return nil
+        }
+        var total = 0
+        for key in ["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"] {
+            // Older records may omit the cache counts or use null when there was no cache.
+            if key != "input_tokens", usage[key] == nil || usage[key] is NSNull {
+                continue
+            }
+            guard
+                let number = usage[key] as? NSNumber,
+                CFGetTypeID(number) != CFBooleanGetTypeID(),
+                let count = Int(exactly: number.doubleValue),
+                (0...TranscriptSignals.maximumContextTokens).contains(count)
+            else {
+                return nil
+            }
+            total += count
+        }
+        return (1...TranscriptSignals.maximumContextTokens).contains(total) ? total : nil
     }
 
     /// Codex states the model on every turn and its token counts several times within one.

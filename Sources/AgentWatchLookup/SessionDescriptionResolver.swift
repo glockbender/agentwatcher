@@ -57,8 +57,7 @@ public enum SessionDescriptionResolver {
         let description = SessionDescription(
             title: described?.title,
             projectName: projectName,
-            gitBranch: described?.gitBranch,
-            contextInputTokens: described?.contextInputTokens
+            gitBranch: described?.gitBranch
         )
         return description.isEmpty ? nil : description
     }
@@ -155,8 +154,8 @@ public enum SessionDescriptionResolver {
         return name.isEmpty || name == "/" ? nil : name
     }
 
-    /// Claude writes the session's name, `gitBranch` and per-turn `usage` into the transcript.
-    /// One backward pass reads all three, stopping as soon as each has been answered.
+    /// Claude writes the session's name and `gitBranch` into the transcript.
+    /// The backward pass stops once it finds both.
     static func claudeDescription(payload: JSONValue, fileSystem: TitleFileSystem) -> SessionDescription? {
         guard
             let transcriptPath = string("transcript_path", in: payload),
@@ -171,7 +170,6 @@ public enum SessionDescriptionResolver {
         let lines = linesNewestFirst(in: tail)
         var title = customTitle(inLinesNewestFirst: lines)
         var branch: String?
-        var tokens: Int?
 
         for fields in lines.lazy.compactMap(object(inLine:)) {
             if title == nil, case .string("ai-title")? = fields["type"], case let .string(value)? = fields["aiTitle"] {
@@ -180,14 +178,11 @@ public enum SessionDescriptionResolver {
             if branch == nil, case let .string(value)? = fields["gitBranch"], !value.isEmpty {
                 branch = value
             }
-            if tokens == nil, let usage = contextInputTokens(inMessage: fields["message"]) {
-                tokens = usage
-            }
-            if title != nil, branch != nil, tokens != nil {
+            if title != nil, branch != nil {
                 break
             }
         }
-        return SessionDescription(title: title, gitBranch: branch, contextInputTokens: tokens)
+        return SessionDescription(title: title, gitBranch: branch)
     }
 
     /// The name a person gave the session with `/rename` or `claude --name`. Claude Code puts
@@ -212,36 +207,6 @@ public enum SessionDescriptionResolver {
             return nil
         }
         return name
-    }
-
-    /// Everything the last turn carried into the model: fresh input, what was read from the
-    /// cache, and what was written to it. Output tokens are deliberately left out — they are
-    /// what came back, not what the window is holding.
-    static func contextInputTokens(inMessage message: JSONValue?) -> Int? {
-        guard
-            case let .object(fields)? = message,
-            case let .object(usage)? = fields["usage"]
-        else {
-            return nil
-        }
-        // Every conversion is checked. `Int(1e30)` traps, and so does a sum that overflows —
-        // and a trap here kills the hook process, which is the one thing this whole file is
-        // written to avoid. A transcript is a file on disk that anything can write to.
-        var total = 0
-        for key in ["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"] {
-            guard case let .number(value)? = usage[key] else {
-                continue
-            }
-            guard value >= 0, value <= Double(SessionDescription.maximumContextInputTokens) else {
-                return nil
-            }
-            let (sum, overflowed) = total.addingReportingOverflow(Int(value))
-            guard !overflowed, sum <= SessionDescription.maximumContextInputTokens else {
-                return nil
-            }
-            total = sum
-        }
-        return total > 0 ? total : nil
     }
 
     /// Codex keeps one line per thread in a small index file; later lines supersede earlier

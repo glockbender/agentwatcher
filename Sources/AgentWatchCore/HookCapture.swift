@@ -87,30 +87,7 @@ public enum HookCaptureRedactor {
         guard case .object = payload else {
             throw HookCaptureError.expectedJSONObject
         }
-        let projected = declaredEvent == "StatusLine" ? statusLineTelemetry(in: payload) : payload
-        return (redactEventName(declaredEvent), redact(projected))
-    }
-
-    /// Claude's status line nests these aggregates. Project only the fields the protocol
-    /// understands; the containers and all their other contents still go through redaction.
-    /// Already-projected messages survive the app's second redaction unchanged.
-    private static func statusLineTelemetry(in payload: JSONValue) -> JSONValue {
-        guard case var .object(fields) = payload else {
-            return payload
-        }
-        if case let .object(context)? = fields["context_window"] {
-            fields["context_total_input_tokens"] = context["total_input_tokens"]
-            fields["context_used_percentage"] = context["used_percentage"]
-        }
-        if case let .object(limits)? = fields["rate_limits"] {
-            for window in ["five_hour", "seven_day"] {
-                if case let .object(usage)? = limits[window] {
-                    fields["\(window)_used_percentage"] = usage["used_percentage"]
-                    fields["\(window)_resets_at"] = usage["resets_at"]
-                }
-            }
-        }
-        return .object(fields)
+        return (redactEventName(declaredEvent), redact(payload))
     }
 
     private static func redact(_ value: JSONValue, key: String? = nil) -> JSONValue {
@@ -218,9 +195,6 @@ public enum HookCaptureRedactor {
     }
 
     private static func isSensitiveKey(_ key: String) -> Bool {
-        if telemetryNumberValueKeys.contains(key) {
-            return false
-        }
         if sensitiveKeys.contains(key) {
             return true
         }
@@ -295,7 +269,6 @@ public enum HookCaptureRedactor {
         identifierKeys
         .union(sensitiveKeys)
         .union(safeValueKeys)
-        .union(telemetryNumberValueKeys)
         .union(["duration_ms", "stop_hook_active", "success"])
 
     private static let safeValueKeys: Set<String> = [
@@ -308,15 +281,7 @@ public enum HookCaptureRedactor {
     ]
 
     private static let requiresStringValue = identifierKeys.union(safeValueKeys)
-    private static let telemetryNumberValueKeys: Set<String> = [
-        "context_total_input_tokens",
-        "context_used_percentage",
-        "five_hour_used_percentage",
-        "seven_day_used_percentage",
-        "five_hour_resets_at",
-        "seven_day_resets_at",
-    ]
-    private static let numberValueKeys: Set<String> = Set(["duration_ms"]).union(telemetryNumberValueKeys)
+    private static let numberValueKeys: Set<String> = ["duration_ms"]
     private static let booleanValueKeys: Set<String> = ["stop_hook_active", "success"]
 
     /// Every name `HookEventName` knows, and nothing else — one list instead of a second

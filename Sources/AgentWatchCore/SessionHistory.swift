@@ -68,6 +68,11 @@ public enum SessionHistory {
         // would not, having just had its activities cleared on the line above.
         remembered.backgroundWork = nil
         remembered.monitoringFault = nil
+        // The transcript supplies Claude's per-request count. An older row with a percentage
+        // has the relay's cumulative count instead, so wait for the transcript to refresh it.
+        if snapshot.source == .claude, snapshot.contextTelemetry?.usedPercentage != nil {
+            remembered.contextTelemetry = nil
+        }
 
         if let awaiting {
             remembered.discoveredProcess = nil

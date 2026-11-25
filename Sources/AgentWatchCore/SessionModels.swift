@@ -47,10 +47,8 @@ public struct SessionContextTelemetry: Codable, Equatable, Sendable {
 
 /// How much of an account-level window has been spent, and when it starts again.
 ///
-/// `resetsAt` comes from Claude's own usage snapshot and its `get_usage` reply
-/// (`ClaudeUsageSnapshot`), and from the status line of each Claude folder. The status line's
-/// copy crosses the socket because the snapshot covers only the default folder (ADR-0026), and
-/// the Usage profiles page shows each folder's renewal from it.
+/// For Claude, `resetsAt` comes from its usage snapshot or `get_usage` reply.
+/// For Codex profiles, it comes from the transcript.
 public struct UsageWindow: Codable, Equatable, Sendable {
     public let usedPercentage: Double
     public let resetsAt: Date?

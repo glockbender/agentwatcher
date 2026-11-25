@@ -8,6 +8,30 @@ import XCTest
 final class SessionHistoryTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
+    func testRestoringContextKeepsTranscriptCountsAndDropsOldClaudeRelayFigures() {
+        let tokensOnly = SessionContextTelemetry(totalInputTokens: 5_000)
+        let withPercentage = SessionContextTelemetry(totalInputTokens: 10_000, usedPercentage: 4)
+        var engine = SessionStateEngine()
+
+        let restored = engine.restore([
+            SessionSnapshot(
+                id: "claude:relay", source: .claude, arrivalIndex: 0, phase: .completed, lastObservedAt: now,
+                contextTelemetry: withPercentage),
+            SessionSnapshot(
+                id: "claude:transcript", source: .claude, arrivalIndex: 1, phase: .completed, lastObservedAt: now,
+                contextTelemetry: tokensOnly),
+            SessionSnapshot(
+                id: "codex:transcript", source: .codex, arrivalIndex: 2, phase: .completed, lastObservedAt: now,
+                contextTelemetry: withPercentage),
+        ])
+        let figures = Dictionary(uniqueKeysWithValues: restored.map { ($0.id, $0) })
+
+        XCTAssertEqual(restored.count, 3)
+        XCTAssertNil(figures["claude:relay"]?.contextTelemetry)
+        XCTAssertEqual(figures["claude:transcript"]?.contextTelemetry, tokensOnly)
+        XCTAssertEqual(figures["codex:transcript"]?.contextTelemetry, withPercentage)
+    }
+
     /// The lifecycle is the half that cannot survive, and the reason is stronger than the
     /// invariant it also follows from: a session restored as `executing` has an empty
     /// activity list and an old age, which is exactly the shape `SessionSilence` calls an

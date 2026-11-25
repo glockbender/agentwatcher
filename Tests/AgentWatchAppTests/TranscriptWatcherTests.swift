@@ -292,6 +292,26 @@ final class TranscriptWatcherTests: XCTestCase {
         XCTAssertEqual(updates.first?.signals.threadNickname, "Darwin")
     }
 
+    func testClaudeContextIsReadOnDiscoveryAndAfterTheNextReply() async throws {
+        try write(
+            #"{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":2,"cache_read_input_tokens":4000,"cache_creation_input_tokens":1000}}}"#
+        )
+        let watcher = try makeWatcher()
+        watcher.update(sessions: [working()])
+
+        let initial = try await poll(watcher)
+        XCTAssertEqual(initial.first?.signals.contextInputTokens, 5_002)
+        XCTAssertNil(initial.first?.signals.contextWindowTokens)
+
+        try append(
+            #"{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":1,"cache_read_input_tokens":5000,"cache_creation_input_tokens":700}}}"#
+        )
+        let next = try await poll(watcher)
+
+        XCTAssertEqual(next.first?.signals.contextInputTokens, 5_701)
+        XCTAssertNil(next.first?.signals.contextWindowTokens)
+    }
+
     /// The context size Codex never reports through a hook, arriving in the same increment
     /// the lifecycle facts do and costing no extra reading at all.
     func testACodexTurnBringsItsModelAndTheSizeOfItsContext() async throws {

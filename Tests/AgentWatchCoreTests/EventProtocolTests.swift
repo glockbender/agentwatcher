@@ -218,7 +218,7 @@ final class EventProtocolTests: XCTestCase {
         XCTAssertEqual(answered.activityID, asked.activityID, "the answer ends this question and nothing else")
     }
 
-    /// Codex offers neither hook; a sender claiming otherwise is refused, as `StatusLine` is.
+    /// Codex offers neither hook; a sender claiming otherwise is refused.
     func testOnlyClaudeIsHeardOnAnMCPServersQuestion() {
         for event in ["Elicitation", "ElicitationResult"] {
             XCTAssertThrowsError(
@@ -929,85 +929,15 @@ final class EventProtocolTests: XCTestCase {
         XCTAssertEqual(reopened.agentProcessID, 5_555)
     }
 
-    func testStatusLineUpdatesClaudeContextAndAggregateUsageWithoutChangingPhase() throws {
-        let payload: JSONValue = .object([
-            "session_id": .string("id_session"),
-            "context_total_input_tokens": .number(85_000),
-            "context_used_percentage": .number(42.5),
-            "five_hour_used_percentage": .number(17),
-            "five_hour_resets_at": .number(2_000_000_000),
-            "seven_day_used_percentage": .number(31),
-        ])
-        let event = try HookEventNormalizer.normalize(
-            source: .claude,
-            declaredEvent: "StatusLine",
-            payload: payload,
-            observedAt: start,
-            clientKind: .cli
-        )
+    func testTheIngressRefusesStatusLineRequestsFromOlderSenders() throws {
+        let request = try JSONDecoder().decode(
+            HookIngressRequest.self,
+            from: Data(
+                #"{"schemaVersion":1,"source":"claude","declaredEvent":"StatusLine","payload":{"session_id":"id_session","context_total_input_tokens":85000,"context_used_percentage":42.5}}"#
+                    .utf8))
 
-        XCTAssertEqual(event.kind, .statusUpdated)
-        XCTAssertEqual(event.contextTelemetry, .init(totalInputTokens: 85_000, usedPercentage: 42.5))
-        XCTAssertEqual(event.clientKind, .cli)
-
-        var engine = SessionStateEngine()
-        _ = try engine.ingest(
-            EventEnvelope(
-                source: .claude,
-                sessionID: "id_session",
-                observedAt: start.addingTimeInterval(-1),
-                kind: .turnStarted
-            ))
-        let snapshot = try engine.ingest(event)
-
-        XCTAssertEqual(snapshot.phase, .executing)
-        XCTAssertEqual(snapshot.clientKind, .cli)
-        XCTAssertEqual(snapshot.contextTelemetry, .init(totalInputTokens: 85_000, usedPercentage: 42.5))
-        XCTAssertEqual(snapshot.lastObservedAt, start.addingTimeInterval(-1))
-        XCTAssertEqual(
-            engine.usageLimitsBySource[.claude]?.fiveHour,
-            .init(usedPercentage: 17, resetsAt: Date(timeIntervalSince1970: 2_000_000_000))
-        )
-        XCTAssertEqual(engine.usageLimitsBySource[.claude]?.sevenDay, .init(usedPercentage: 31))
-    }
-
-    func testStatusLineRejectsCodexRatherThanInventingSessionUsage() {
-        XCTAssertThrowsError(
-            try HookEventNormalizer.normalize(
-                source: .codex,
-                declaredEvent: "StatusLine",
-                payload: .object(["session_id": .string("id_session")]),
-                observedAt: start
-            )
-        )
-    }
-
-    func testDecodedStatusLineRejectsUnrepresentableAndImplausibleTokenCounts() throws {
-        for number in ["9223372036854775808", "1e30", "100000001", "-1", "0.5"] {
-            let data = Data(
-                """
-                {"schemaVersion":1,"source":"claude","declaredEvent":"StatusLine",
-                 "payload":{"session_id":"session","context_total_input_tokens":\(number),
-                 "context_used_percentage":50}}
-                """.utf8)
-            let request = try JSONDecoder().decode(HookIngressRequest.self, from: data)
-            let event = try HookIngressProcessor.normalize(request, observedAt: start)
-            XCTAssertNil(event.contextTelemetry, number)
-        }
-        for count in [0, SessionDescription.maximumContextInputTokens] {
-            let event = try HookIngressProcessor.normalize(
-                HookIngressRequest(
-                    source: .claude,
-                    declaredEvent: "StatusLine",
-                    payload: .object([
-                        "session_id": .string("session"),
-                        "context_total_input_tokens": .number(Double(count)),
-                        "context_used_percentage": .number(50),
-                    ])
-                ),
-                observedAt: start
-            )
-            XCTAssertEqual(event.contextTelemetry?.totalInputTokens, count)
+        XCTAssertThrowsError(try HookIngressProcessor.normalize(request, observedAt: start)) {
+            XCTAssertEqual($0 as? HookCaptureError, .unsupportedDeclaredEvent)
         }
     }
 

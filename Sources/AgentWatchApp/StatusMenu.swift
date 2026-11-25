@@ -36,7 +36,6 @@ protocol StatusMenuHost: AnyObject {
 /// for goes to the host.
 @MainActor
 final class StatusMenu: NSObject, NSMenuDelegate {
-    /// Named because the status-line relay script quotes it, in files the app never rewrites.
     static let settingsItemTitle = "Settings…"
 
     let menu = NSMenu()

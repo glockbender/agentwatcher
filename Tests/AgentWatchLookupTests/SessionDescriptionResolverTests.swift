@@ -307,41 +307,16 @@ final class SessionDescriptionResolverTests: XCTestCase {
 
     // MARK: - Everything else a description carries
 
-    func testReadsTheBranchAndTheContextSizeFromTheSameTail() throws {
+    func testReadsTheTitleAndBranchFromTheSameTail() throws {
         let tail = lines([
             #"{"type":"user","cwd":"/Users/x/CommonProjects/agent-watch","gitBranch":"main"}"#,
             #"{"type":"ai-title","aiTitle":"Заголовок"}"#,
-            #"{"type":"assistant","message":{"usage":{"input_tokens":2,"cache_read_input_tokens":332169,"cache_creation_input_tokens":640,"output_tokens":439}}}"#,
         ])
 
         let description = SessionDescriptionResolver.claudeDescription(inTranscriptTail: tail)
 
         XCTAssertEqual(description.title, "Заголовок")
         XCTAssertEqual(description.gitBranch, "main")
-        XCTAssertEqual(description.contextInputTokens, 332_811, "output tokens are not in the window")
-    }
-
-    /// A transcript is a file on disk, and a number in it must never be able to kill the
-    /// hook process. `Int(1e30)` traps, and so does a sum that overflows.
-    func testAnImpossibleTokenCountIsRefusedRatherThanConverted() {
-        let huge = #"{"message":{"usage":{"input_tokens":1e30}}}"#
-        let negative = #"{"message":{"usage":{"input_tokens":-5}}}"#
-        let overflowing =
-            #"{"message":{"usage":{"input_tokens":9e18,"cache_read_input_tokens":9e18}}}"#
-
-        for line in [huge, negative, overflowing] {
-            XCTAssertNil(
-                SessionDescriptionResolver.claudeDescription(inTranscriptTail: lines([line]))
-                    .contextInputTokens,
-                "\(line) must degrade to no answer, not to a crash"
-            )
-        }
-    }
-
-    func testATranscriptWithNoUsageBlockReportsNoContextSize() {
-        let tail = lines([#"{"type":"assistant","message":{"role":"assistant"}}"#])
-
-        XCTAssertNil(SessionDescriptionResolver.claudeDescription(inTranscriptTail: tail).contextInputTokens)
     }
 
     /// Only the directory's own name travels. See ADR-0001.

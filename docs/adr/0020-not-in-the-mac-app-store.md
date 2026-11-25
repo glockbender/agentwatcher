@@ -7,14 +7,13 @@ Store ([distribution.md](../distribution.md)).
 
 ## Почему
 
-Приложение само ставит интеграции и для этого пишет в три чужих места: каталог плагина под
-`~/.claude/skills/`, ключ `statusLine` в `~/.claude/settings.json` и `~/.codex/hooks.json`
+Приложение само ставит интеграции и для этого пишет в каталог плагина под
+`~/.claude/skills/` и в `~/.codex/hooks.json`
 ([agent-integration.md](../agent-integration.md)). Правило 2.4.5 гайдлайнов Apple требует от
 приложения из Store быть «self-contained, single app installation bundle», запрещает «install code
 or resources in shared locations» и «install … additional code, or resources to add functionality»,
-а чужие данные разрешает менять только через API самой Apple. Три места выше — ровно перечисленное;
-[ADR-0019](0019-the-ide-plugin-comes-from-marketplace-and-the-app-plants-the-first-copy.md) добавляет
-четвёртое — каталог плагинов IDE.
+а чужие данные разрешает менять только через API самой Apple. Ещё одно такое место — каталог
+плагинов IDE ([ADR-0019](0019-the-ide-plugin-comes-from-marketplace-and-the-app-plants-the-first-copy.md)).
 
 Закладкой на выбранный человеком каталог это не обходится: песочница и правило ревью — разные слои,
 и запрет здесь во втором.

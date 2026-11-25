@@ -3,6 +3,14 @@
 What changed in each release of Agent Watch, for the person updating it. An installed copy shows
 the versions newer than itself in its update window.
 
+## [Unreleased]
+
+### Removed
+
+- Agent Watch no longer integrates with the Claude status line. If you connected the relay, restore
+  your original command before deleting the relay or the Agent Watch support folder.
+  [Restore the status-line command](TROUBLESHOOTING.md#claude-still-runs-the-agent-watch-status-line-relay).
+
 ## [0.5.0] - 2026-11-22
 
 ### Added

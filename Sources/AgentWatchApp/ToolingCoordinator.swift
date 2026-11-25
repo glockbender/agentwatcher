@@ -2,8 +2,7 @@ import AgentWatchCore
 import AgentWatchLookup
 import AppKit
 
-/// Everything about attaching Agent Watch to the agents it watches: an agent's records, the
-/// status line, the link the two are pointed at, and the plugin a JetBrains IDE loads.
+/// Installs agent hooks, manages their sender link and helps set up the JetBrains plugin.
 ///
 /// Gathered out of `AppDelegate`, which now only puts the menu in front of it. The reason is
 /// the one `SessionSupervisor` gives: that class cannot be built in a test, and a change that
@@ -86,9 +85,7 @@ final class ToolingCoordinator {
             })
         return ToolingFacts(
             hookState: { hookStates[$0] ?? .unreadable },
-            statusLineState: installer.statusLineState(),
             hooksPath: { [installer] in installer.hooksPath(for: $0).path },
-            statusLinePath: installer.statusLinePath.path,
             senderPath: sender.path,
             senderIsTiedToThisBuild: { if case .tiedToThisBuild = sender { true } else { false } }(),
             idePlugins: idePluginReadings(),
@@ -146,12 +143,8 @@ final class ToolingCoordinator {
 
     func press(_ press: ToolingPress) {
         switch press {
-        case .integration(let integration): toggleIntegration(integration)
-        case .install(let integration):
-            switch integration.kind {
-            case .hooks: toggleHooks(for: integration.source, allowRemoval: false)
-            case .statusLine: toggleStatusLine(allowRemoval: false)
-            }
+        case .defaultHooks(let source): toggleHooks(for: source)
+        case .installHooks(let source): toggleHooks(for: source, allowRemoval: false)
         case .idePluginsPage(let dataDirectoryName): openIDEPluginsPage(dataDirectoryName: dataDirectoryName)
         case .idePluginCheck(let dataDirectoryName): checkIDEPlugin(dataDirectoryName: dataDirectoryName)
         case let .folderHooks(source, folder):
@@ -259,13 +252,6 @@ final class ToolingCoordinator {
         JetBrainsIDEs.installed().first { $0.product.dataDirectoryName == dataDirectoryName }
     }
 
-    private func toggleIntegration(_ integration: ToolingIntegration) {
-        switch integration.kind {
-        case .hooks: toggleHooks(for: integration.source)
-        case .statusLine: toggleStatusLine()
-        }
-    }
-
     /// Installs or removes an agent's hooks in one of its folders — the default one unless
     /// another is named.
     private func toggleHooks(for source: AgentSource, in folder: URL? = nil, allowRemoval: Bool = true) {
@@ -346,19 +332,6 @@ final class ToolingCoordinator {
                     AgentFolders.canonicalPath(of: URL(fileURLWithPath: $0, isDirectory: true)) != canonical
                 })
             onLog("\(folder.path) is no longer a \(AgentIcon.name(for: source)) folder")
-        }
-    }
-
-    private func toggleStatusLine(allowRemoval: Bool = true) {
-        perform {
-            if case .connected = installer.statusLineState() {
-                guard allowRemoval else { return }
-                try installer.disconnectStatusLine()
-                onLog("Status line disconnected — your own command is back")
-            } else {
-                try installer.connectStatusLine(senderPath: refreshSenderLink())
-                onLog("Status line connected — your own command still runs")
-            }
         }
     }
 

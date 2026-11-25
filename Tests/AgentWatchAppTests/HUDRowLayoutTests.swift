@@ -288,17 +288,6 @@ final class HUDRowLayoutTests: XCTestCase {
         )
     }
 
-    /// A person's own status-line command is the thing at risk here, so the window says it
-    /// will be kept before they press anything — and now shows the command itself, which is
-    /// what a menu line had no room for.
-    func testTheStatusLineRowPromisesToKeepACommandThatIsAlreadyThere() {
-        let theirs = statusLineStateText(state: .theirs(command: "bash mine.sh"))
-        XCTAssertTrue(theirs.contains("kept"))
-        XCTAssertTrue(theirs.contains("bash mine.sh"), "and names the command it promises to keep")
-        XCTAssertNotEqual(statusLineStateText(state: .notSet), theirs)
-        XCTAssertNotEqual(statusLineStateText(state: .connected), statusLineStateText(state: .notSet))
-    }
-
     /// The number stopped meaning "how often" when reads began following hooks: it is now a
     /// ceiling on the rate, and a menu that still promised a metronome would be wrong.
     func testTheIntervalMenuPromisesACeilingRatherThanACadence() {

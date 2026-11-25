@@ -43,9 +43,9 @@ final class RateLimitTests: XCTestCase {
     func testTelemetryDoesNotClearTheLimitButANewPromptDoes() throws {
         var engine = SessionStateEngine()
         _ = try engine.ingest(hook("UserPromptSubmit"))
-        _ = try engine.ingest(hook("StopFailure", fields: ["error": .string("rate_limit")], seconds: 1))
-        let telemetry = try engine.ingest(hook("StatusLine", seconds: 2))
-        XCTAssertEqual(telemetry.phase, .rateLimited)
+        let limited = try engine.ingest(hook("StopFailure", fields: ["error": .string("rate_limit")], seconds: 1))
+        let updated = engine.applySignals(.init(contextInputTokens: 42_000), toSessionWithID: limited.id)
+        XCTAssertEqual(updated?.phase, .rateLimited)
         let resumed = try engine.ingest(hook("UserPromptSubmit", seconds: 3))
         XCTAssertEqual(resumed.phase, .executing)
         XCTAssertEqual(SessionBlock.of(resumed, now: resumed.lastObservedAt), .active)

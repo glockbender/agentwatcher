@@ -99,7 +99,7 @@ final class ClaudeUsageFeedTests: XCTestCase {
         XCTAssertEqual(asks.value, 0)
     }
 
-    /// A status line a minute old is fresher than anything a run would bring.
+    /// A report from a minute ago is fresh enough to skip a run.
     func testNothingRunsWhileRecentLimitsAreKnown() async {
         let asks = Counter()
         let feed = makeFeed(asks: asks, reply: .limits(limits(at: start)))

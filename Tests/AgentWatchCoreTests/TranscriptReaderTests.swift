@@ -397,6 +397,49 @@ final class TranscriptReaderTests: XCTestCase {
         XCTAssertTrue(increment.facts.isEmpty, "naming a model is not something happening")
     }
 
+    func testClaudeUsesTheLatestMainThreadInputAndBothCacheCounts() throws {
+        let increment = try read([
+            #"{"type":"assistant","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":800000}}}"#,
+            """
+            {"type":"assistant","requestedModel":"claude-sonnet-4-6[1m]","isSidechain":false,
+            "message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":2,
+            "cache_read_input_tokens":332169,"cache_creation_input_tokens":640,"output_tokens":439}}}
+            """.replacingOccurrences(of: "\n", with: ""),
+            #"{"type":"assistant","isSidechain":true,"message":{"model":"child","usage":{"input_tokens":1}}}"#,
+            #"{"type":"assistant","message":{"model":"<synthetic>","usage":{"input_tokens":0}}}"#,
+            #"{"type":"user","message":{"usage":{"input_tokens":200000}}}"#,
+        ])
+
+        XCTAssertEqual(increment.signals.modelName, "claude-sonnet-4-6")
+        XCTAssertEqual(increment.signals.contextInputTokens, 332_811)
+        XCTAssertNil(increment.signals.contextWindowTokens)
+    }
+
+    func testClaudeAcceptsZeroFreshInputWithCachedTokens() throws {
+        let increment = try read([
+            #"{"type":"assistant","message":{"usage":{"input_tokens":0,"cache_read_input_tokens":10}}}"#
+        ])
+
+        XCTAssertEqual(increment.signals.contextInputTokens, 10)
+    }
+
+    func testClaudeRejectsInvalidOrExcessiveTokenCounts() throws {
+        for usage in [
+            #"{"cache_read_input_tokens":100}"#,
+            #"{"input_tokens":true}"#,
+            #"{"input_tokens":-5}"#,
+            #"{"input_tokens":1.5}"#,
+            #"{"input_tokens":1e30}"#,
+            #"{"input_tokens":100,"cache_read_input_tokens":"10"}"#,
+            #"{"input_tokens":100000000,"cache_creation_input_tokens":1}"#,
+        ] {
+            let increment = try read([
+                #"{"type":"assistant","message":{"usage":\#(usage)}}"#
+            ])
+            XCTAssertNil(increment.signals.contextInputTokens, usage)
+        }
+    }
+
     func testCodexNamesItsModelAndEffortOnEveryTurn() throws {
         let increment = try read(
             [

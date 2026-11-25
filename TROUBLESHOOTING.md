@@ -194,10 +194,24 @@ when Claude Code is signed in with an API key, Bedrock or Vertex, which have no 
 when Agent Watch found no Claude Code it could start.
 
 **What to do:** Type `/usage` in any Claude session: the line updates within 15 seconds while a
-session is working. For figures that follow your work as it happens, connect the status line on
-the `Tooling` page.
+session is working.
 
 **Checked on:** Claude Code 2.1.326.
+
+## Claude still runs the Agent Watch status-line relay
+
+**Why:** A previous version of Agent Watch set `statusLine.command` to run `statusline-relay.sh`.
+The relay still runs your original command. Its call to Agent Watch is ignored.
+
+**What to do:** If `statusLine.command` in `~/.claude/settings.json` still points to the relay, find
+`original-command.txt` in the same folder as the relay. The usual folder is
+`~/Library/Application Support/AgentWatch/`. Set `statusLine.command` to the saved command,
+encoded as a JSON string, and keep the other status-line options. If the file is empty, remove the
+`statusLine` entry. If the file is missing, recover the original entry from a
+`settings.json.agentwatch-backup-*` made before you connected the relay. Restart Claude Code to
+apply the edit.
+
+**Checked on:** not recorded.
 
 ## The waiting lamp stays on after Skip in Codex
 

@@ -121,11 +121,9 @@ headless runs** lists them; a click on one offers to end it.
    **Codex:** accept its trust prompt for the hooks. Then send a short request; the session
    appears in the widget.
 
-<img src="docs/images/clip-setup.avif" alt="First start: the empty widget offers Connect Agent, the guide installs the Claude Code connection, a new session in the terminal appears in the widget, and the guide confirms that the agent has reported" width="800">
-
 Nothing is written into an agent's configuration until you press an install button. Connect the
-other agent later in **Settings… → Tooling**. For Claude, **Connect Status Line** adds the
-context size and account usage to the widget; your own status-line command keeps running.
+other agent later in **Settings… → Tooling**. The widget shows input tokens for Claude and can show
+the percentage of the context window used for Codex.
 
 ### More than one agent folder
 
@@ -139,10 +137,10 @@ from `~/.claude` or `~/.codex`. Its sessions do not appear until Agent Watch has
 3. **Claude Code:** start a new session with that folder. **Codex:** start it with that folder and
    accept its prompt to trust the hooks; trust given in one folder does not count for another.
 
-<img src="docs/images/clip-folders.avif" alt="On the Tooling page, Add Folder… opens a folder dialog in the home folder; choosing .claude-work adds a row for it, and Install puts the hooks there. The same follows for .claude-personal, and both rows say that the hooks are installed" width="800">
+<img src="docs/images/tooling-folders.png" alt="Tooling shows the Claude Code hooks, an Install button for ~/.claude-work, and an Add Folder button" width="640">
 
-Agent Watch reads the sessions of every listed folder. The status line connects only in
-`~/.claude`. **Forget Folder** takes the hooks out of a folder and removes it from the list.
+Agent Watch reads the sessions of every listed folder. **Forget Folder** takes the hooks out of
+a folder and removes it from the list.
 Details: [installing into the agents](docs/agent-install.md).
 
 ## Make it yours
@@ -223,7 +221,7 @@ Opening Agent Watch again from Finder or Spotlight opens the same window, even w
 icon hidden.
 Linked Git working folders appear under the same project. Filter by activity, search by branch or
 chat name, and open the matching conversation. Recent shows up to 20 chats. **Usage profiles**
-shows the last observed limits for each configured agent folder and when they were recorded.
+shows the last observed limits and their time for the default Claude profile and configured Codex folders.
 
 In **Settings… → Git Protection**, select the client and profile, then click **Install Git Hook**.
 In Codex desktop, open **Settings → Hooks** and click **Trust**. In the terminal, use `/hooks`.
@@ -249,9 +247,8 @@ Trash. Each proposed action names the folder and explains why it qualifies.
 - For names, branch and context size the app reads the agent's own files on disk, such as the
   Claude transcript and the Codex thread index. **Settings… → General** sets how often.
 - It writes `~/.claude/skills/agent-watch/` for Claude, its own entries in `~/.codex/hooks.json`
-  for Codex, the same in every other folder you add, the `statusLine` key in
-  `~/.claude/settings.json` if you connect the status line, and a `PreToolUse` entry in each profile
-  where you enable Git protection. App state lives in `~/Library/Application Support/AgentWatch/`.
+  for Codex, and the same in every other folder you add. Where you enable Git protection, it writes
+  a `PreToolUse` entry in that profile. App state lives in `~/Library/Application Support/AgentWatch/`.
 - The updater contacts GitHub to check for and download releases. When handling a push, the Git
   tool contacts the project’s configured remote to check its refs and perform an approved change.
 
@@ -261,8 +258,8 @@ Details: [installing into the agents](docs/agent-install.md), [architecture](doc
 
 1. In **Settings… → Git Protection**, use **Remove Git Hook…** for each protected profile.
    In **Settings… → Tooling**, press **Remove** for each agent, **Forget Folder** for every folder
-   you added, and **Disconnect** for the status line. This takes out everything the app wrote into
-   the agents.
+   you added. If you connected the old Claude status-line relay, restore your command before
+   moving the support folder to the Trash. [Restore the status-line command](TROUBLESHOOTING.md#claude-still-runs-the-agent-watch-status-line-relay).
 2. Quit Agent Watch and move it to the Trash. To forget settings and sessions too, move
    `~/Library/Application Support/AgentWatch/` to the Trash.
 3. If you installed the IDE plugin, uninstall it in the IDE: **Settings → Plugins**.

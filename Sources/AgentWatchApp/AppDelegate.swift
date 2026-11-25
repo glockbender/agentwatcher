@@ -799,7 +799,8 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         }
         let folders = AgentFolders(home: AgentWatchPaths.homeDirectory(), extra: settings.extraAgentFolders)
         projectsWindow.model.update(
-            sessions, folders: folders, claudeUsage: supervisor.claudeUsageByFolder,
+            sessions, folders: folders,
+            claudeUsage: supervisor.usageLimits.first { $0.source == .claude },
             readsTranscripts: settings.transcriptPollInterval != nil, refresh: refresh)
     }
 

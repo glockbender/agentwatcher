@@ -1,8 +1,7 @@
 import AgentWatchCore
 import XCTest
 
-/// The status line and Claude Code's own snapshot both report Claude's plan limits, in no
-/// particular order.
+/// Plan limits can arrive from Claude Code's snapshot or a fresh query.
 final class UsageLimitsMergeTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_800_000_000)
     private var resets: Date { start.addingTimeInterval(3 * 60 * 60) }
@@ -13,7 +12,6 @@ final class UsageLimitsMergeTests: XCTestCase {
         XCTAssertEqual(engine.usageLimitsBySource[.claude]?.fiveHour?.usedPercentage, 20)
     }
 
-    /// The snapshot is often older than the status line that already arrived.
     func testAnOlderReportDoesNotReplaceANewerOne() {
         var engine = SessionStateEngine()
         engine.mergeUsageLimits(limits(fiveHour: 30, at: start))
@@ -22,7 +20,6 @@ final class UsageLimitsMergeTests: XCTestCase {
         XCTAssertEqual(engine.usageLimitsBySource[.claude]?.fiveHour?.usedPercentage, 30)
     }
 
-    /// The status line does not carry the reset time across the socket; the snapshot's stays.
     func testANewerReportWithoutAResetTimeKeepsTheKnownOne() {
         var engine = SessionStateEngine()
         engine.mergeUsageLimits(limits(fiveHour: 20, resetsAt: resets, at: start))
@@ -45,7 +42,6 @@ final class UsageLimitsMergeTests: XCTestCase {
         XCTAssertEqual(engine.usageLimitsBySource[.claude]?.fiveHour, UsageWindow(usedPercentage: 2))
     }
 
-    /// The status line can carry one window without the other.
     func testAWindowANewerReportLeavesOutStaysUntilItResets() {
         var engine = SessionStateEngine()
         engine.mergeUsageLimits(
@@ -76,26 +72,6 @@ final class UsageLimitsMergeTests: XCTestCase {
         var engine = SessionStateEngine()
         engine.mergeUsageLimits(limits(fiveHour: 20, resetsAt: resets, at: start))
         XCTAssertFalse(engine.mergeUsageLimits(limits(fiveHour: 20, resetsAt: resets, at: start)))
-    }
-
-    /// The status line goes through the same rule: a late one cannot undo a newer snapshot.
-    func testALateStatusLineDoesNotReplaceANewerSnapshot() throws {
-        var engine = SessionStateEngine()
-        engine.mergeUsageLimits(limits(fiveHour: 40, resetsAt: resets, at: start))
-
-        let late = try HookEventNormalizer.normalize(
-            source: .claude,
-            declaredEvent: "StatusLine",
-            payload: .object([
-                "session_id": .string("id_session"),
-                "five_hour_used_percentage": .number(35),
-            ]),
-            observedAt: start.addingTimeInterval(-30),
-            clientKind: .cli
-        )
-        _ = try engine.ingest(late)
-
-        XCTAssertEqual(engine.usageLimitsBySource[.claude]?.fiveHour?.usedPercentage, 40)
     }
 
     private func limits(fiveHour: Double, resetsAt: Date? = nil, at moment: Date) -> AgentUsageLimits {

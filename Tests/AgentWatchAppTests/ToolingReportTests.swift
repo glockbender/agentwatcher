@@ -3,13 +3,9 @@ import XCTest
 
 @testable import AgentWatchApp
 
-/// The plan for the tooling manager said the set of integrations is given by data, «а не
-/// разветвлениями в коде: добавление должно быть новой записью в таблице, а не новым `if` в
-/// пяти местах». The menu this window replaced did not honour that at first: it named Claude
-/// and Codex in source, so a third agent would have been installable and invisible.
 @MainActor
 final class ToolingReportTests: XCTestCase {
-    func testThePageIsAProjectionOfTheAgentsAndTheirIntegrations() {
+    func testThePageOffersDefaultHooksForEachAgent() {
         let sections = report()
 
         XCTAssertEqual(
@@ -18,22 +14,9 @@ final class ToolingReportTests: XCTestCase {
             "one section per agent, in the order the agents are declared"
         )
         XCTAssertEqual(
-            sections.flatMap { $0.rows.flatMap(\.actions) }.compactMap(\.press.integration),
-            AgentSource.allCases.flatMap { source in
-                ToolingIntegrations.kinds(for: source).map {
-                    ToolingIntegration(source: source, kind: $0)
-                }
-            },
-            "and one press per integration that agent has, in the order it declares them"
+            agentSections(of: sections).flatMap { $0.rows.flatMap(\.actions) }.map(\.press),
+            AgentSource.allCases.flatMap { [.defaultHooks($0), .addFolder($0)] }
         )
-    }
-
-    /// Only Claude Code has a status line to take over: the slot is its own, and Codex reports
-    /// context size in the transcript instead. That difference is data, and this is the line
-    /// that would fail if it were ever written into the window builder again.
-    func testOnlyTheAgentWithAStatusLineOffersOne() {
-        XCTAssertEqual(ToolingIntegrations.kinds(for: .claude), [.hooks, .statusLine])
-        XCTAssertEqual(ToolingIntegrations.kinds(for: .codex), [.hooks])
     }
 
     /// What the menu line could not carry, and half the reason this window exists: which
@@ -47,7 +30,7 @@ final class ToolingReportTests: XCTestCase {
         XCTAssertFalse(rows.isEmpty)
         for row in rows {
             XCTAssertTrue(
-                row.details.contains { $0.contains("hooks.json") || $0.contains("settings.json") },
+                row.details.contains { $0.contains("hooks.json") },
                 "\(row.title) does not say which file it writes: \(row.details)"
             )
         }
@@ -290,17 +273,14 @@ final class ToolingReportTests: XCTestCase {
 
     private func report(
         hookState: ToolingInstallationState = .absent,
-        statusLineState: StatusLineState = .notSet,
         folders: [ToolingFolderReading] = [],
         idePlugins: [IDEPluginReading] = [],
         stagedPlugin: StagedIDEPlugin? = nil
     ) -> [ToolingReportSection] {
         ToolingReport.sections(
             hookState: { _ in hookState },
-            statusLineState: { statusLineState },
             hooksPath: { "/Users/someone/.\($0.rawValue)/hooks.json" },
             folders: { $0 == .codex ? folders : [] },
-            statusLinePath: "/Users/someone/.claude/settings.json",
             idePlugins: idePlugins,
             stagedPlugin: stagedPlugin,
             idePluginDirectoryPath: "/Users/someone/Library/Application Support/AgentWatch/ide-plugin"
@@ -311,14 +291,5 @@ final class ToolingReportTests: XCTestCase {
     /// one plugin in somebody else's program, not an integration an agent declares.
     private func agentSections(of sections: [ToolingReportSection]) -> [ToolingReportSection] {
         Array(sections.prefix(AgentSource.allCases.count))
-    }
-}
-
-extension ToolingPress {
-    fileprivate var integration: ToolingIntegration? {
-        guard case .integration(let integration) = self else {
-            return nil
-        }
-        return integration
     }
 }

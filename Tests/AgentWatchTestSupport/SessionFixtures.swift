@@ -49,8 +49,7 @@ public func testEvent(
     mode: SessionMode? = nil,
     agentProcessID: Int32? = nil,
     clientKind: SessionClientKind? = nil,
-    description: SessionDescription? = nil,
-    contextTelemetry: SessionContextTelemetry? = nil
+    description: SessionDescription? = nil
 ) -> EventEnvelope {
     EventEnvelope(
         source: source,
@@ -62,8 +61,7 @@ public func testEvent(
         mode: mode,
         userInputRequestKind: kind == .userInputRequired ? .approval : nil,
         agentProcessID: agentProcessID,
-        clientKind: clientKind,
-        contextTelemetry: contextTelemetry
+        clientKind: clientKind
     )
 }
 

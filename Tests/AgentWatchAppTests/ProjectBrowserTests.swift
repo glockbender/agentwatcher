@@ -58,10 +58,10 @@ final class ProjectBrowserTests: XCTestCase {
             opened.fulfill()
             return true
         }
-        model.update([chat], folders: folders, claudeUsage: [:], readsTranscripts: false)
+        model.update([chat], folders: folders, claudeUsage: nil, readsTranscripts: false)
 
         model.open(ProjectBrowserEntry(session: chat, copy: nil))
-        model.update([chat, newcomer], folders: folders, claudeUsage: [:], readsTranscripts: false)
+        model.update([chat, newcomer], folders: folders, claudeUsage: nil, readsTranscripts: false)
 
         await fulfillment(of: [opened], timeout: 5)
         XCTAssertEqual(links, [link])
@@ -137,7 +137,7 @@ final class ProjectBrowserTests: XCTestCase {
         let model = ProjectBrowserModel()
         defer { model.stop() }
         func setReading(_ enabled: Bool) async throws {
-            model.update([row], folders: folders, claudeUsage: [:], readsTranscripts: enabled)
+            model.update([row], folders: folders, claudeUsage: nil, readsTranscripts: enabled)
             for _ in 0..<120 where model.reading { try await Task.sleep(for: .milliseconds(25)) }
             XCTAssertFalse(model.reading)
         }
