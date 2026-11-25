@@ -227,6 +227,23 @@ final class WidgetSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.menuSessionAttentions, [.needsPerson, .done])
     }
 
+    func testMenuDetailsStartOffAndAreSavedIndependently() throws {
+        let preferences = try isolatedPreferences()
+        let store = WidgetSettingsStore(preferences: preferences)
+        XCTAssertFalse(store.showsUsageLimitsInMenu)
+        XCTAssertFalse(store.showsMachineResourcesInMenu)
+
+        store.setShowsUsageLimitsInMenu(true)
+        XCTAssertTrue(WidgetSettingsStore(preferences: preferences).showsUsageLimitsInMenu)
+        XCTAssertFalse(WidgetSettingsStore(preferences: preferences).showsMachineResourcesInMenu)
+
+        store.setShowsMachineResourcesInMenu(true)
+        store.setShowsUsageLimitsInMenu(false)
+        let reopened = WidgetSettingsStore(preferences: preferences)
+        XCTAssertFalse(reopened.showsUsageLimitsInMenu)
+        XCTAssertTrue(reopened.showsMachineResourcesInMenu)
+    }
+
     /// Two keys, so switching the list off keeps the states chosen for it.
     func testTurningTheListOffKeepsTheStatesChosenForIt() throws {
         let preferences = try isolatedPreferences()

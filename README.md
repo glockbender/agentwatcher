@@ -44,12 +44,14 @@ shape.
 
 ### The menu
 
-<img src="docs/images/menu.png" alt="The menu: a summary line, seven sessions with their state marks, Show Widget, Settings and Quit" width="282">
+<img src="docs/images/menu.png" alt="Agent Watch menu with sessions, Claude and Codex account limits and Mac memory and CPU" width="505">
 
 If you would rather not have a window on screen, hide the widget: the menu bar icon's menu lists the
 sessions in the widget's order — by default only those that need you and the finished ones — and
 choosing one is the same as clicking its row. **Show Widget** or **Hide Widget** stays at the same
-place in the menu. The picture lists all four groups, as chosen in **Settings… → Menu Bar**.
+place in the menu. In **Settings… → Menu Bar**, choose which sessions to list and which optional
+details to show. Available account limits for the default Claude and Codex profiles share one
+line below the status counts. Agent and Mac memory and CPU use the readings from **Resources**.
 
 <img src="docs/images/clip-menu.avif" alt="The menu shows who needs you; choosing that session opens its terminal tab, and after the answer the menu shows it done" width="800">
 

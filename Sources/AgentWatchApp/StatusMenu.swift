@@ -12,6 +12,8 @@ protocol StatusMenuHost: AnyObject {
     /// What the agents cost together, while watching is on and the menu is to show it and a
     /// reading exists; `nil` otherwise.
     var resourceFigure: ResourceFigure? { get }
+    var resourceReport: ResourceReport? { get }
+    var usageLimits: [AgentUsageLimits] { get }
     var isWidgetVisible: Bool { get }
     /// Every session the widget has, in the widget's order.
     var sessions: [SessionSnapshot] { get }
@@ -40,14 +42,14 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     let menu = NSMenu()
     private let settings: WidgetSettingsStore
+    private let now: () -> Date
     private weak var host: StatusMenuHost?
 
     /// The lines whose title or checkmark depends on something, kept to be refreshed. Visible
     /// to the tests, which read them the way a person reads the menu.
     private(set) var summaryItem: NSMenuItem?
-    /// The one menu line directly under the summary that holds the sessions: their list, or
-    /// the question standing in its place. `nil` while no session is listed. Rebuilt each time
-    /// rather than kept in step, since the sessions change between two openings.
+    /// The item that holds the session list or the question standing in its place.
+    /// Rebuilt on opening, since the sessions can change between openings.
     private(set) var sessionItem: NSMenuItem?
     /// Always in the menu, so the widget is shown and hidden from the same place; its title
     /// says which a click does.
@@ -58,12 +60,15 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// The line clicked in the list, waiting for the menu to close: an ordinary menu line's
     /// action comes after the menu has gone, and a line in the list keeps that order.
     private var chosenLine: MenuSessionLine?
+    private var usageItem: NSMenuItem?
+    private var machineItem: NSMenuItem?
     /// The session lines' marks, which a theme can colour and move.
     let marks = MenuMarkAnimator()
 
-    init(settings: WidgetSettingsStore, host: StatusMenuHost) {
+    init(settings: WidgetSettingsStore, host: StatusMenuHost, now: @escaping () -> Date = Date.init) {
         self.settings = settings
         self.host = host
+        self.now = now
         super.init()
         menu.delegate = self
         build()
@@ -107,6 +112,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         host?.menuWillOpen()
+        if let host {
+            refreshDetails(host: host)
+        }
         refresh()
         marks.start()
     }
@@ -164,6 +172,36 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         summaryItem?.view as? MenuSummaryView
     }
 
+    /// Keep the details in place until the menu reopens so rows never move under the pointer.
+    private func refreshDetails(host: StatusMenuHost) {
+        if let usageItem { menu.removeItem(usageItem) }
+        if let machineItem { menu.removeItem(machineItem) }
+        usageItem = nil
+        machineItem = nil
+
+        if settings.showsUsageLimitsInMenu, let summaryItem {
+            let limits = host.usageLimits.sorted { $0.source.rawValue < $1.source.rawValue }
+            if !limits.isEmpty {
+                let moment = now()
+                let title = limits.map { widgetUsageText(for: $0, compactAt: moment) }.joined(separator: "  |  ")
+                let item = NSMenuItem.sectionHeader(title: title)
+                item.toolTip = limits.map { widgetUsageText(for: $0) }.joined(separator: "\n")
+                menu.insertItem(item, at: menu.index(of: summaryItem) + 1)
+                usageItem = item
+            }
+        }
+        if settings.showsMachineResourcesInMenu, let widgetItem, let machine = host.resourceReport?.machineFigure {
+            var parts = ["Mac", "\(ResourceFormat.memory(machine.used)) RAM"]
+            if let load = machine.load, let cores = machine.cores, cores > 0 {
+                parts.append("\(ResourceFormat.percent(load / Double(cores))) CPU")
+            }
+            let item = NSMenuItem.sectionHeader(title: parts.joined(separator: " · "))
+            item.toolTip = ResourceFormat.memoryInUse(machine)
+            menu.insertItem(item, at: menu.index(of: widgetItem))
+            machineItem = item
+        }
+    }
+
     /// The listed sessions, read again from the setting and the sessions. Called on opening,
     /// and while the menu is open when its lines have to change under the pointer: the
     /// question of a broken session puts itself in their place, and Cancel puts them back.
@@ -173,8 +211,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    /// Under the summary, so the line that counts the sessions reads as the heading of the
-    /// list of them.
+    /// Between the summary rows and the actions below.
     private func showSessionLines(host: StatusMenuHost) {
         if let sessionItem {
             menu.removeItem(sessionItem)
@@ -189,7 +226,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             listing: settings.menuSessionAttentions,
             reach: host.reach(for:)
         )
-        let first = summaryItem.map { menu.index(of: $0) + 1 } ?? 0
+        let first = (usageItem ?? summaryItem).map { menu.index(of: $0) + 1 } ?? 0
         // Asked again on every rebuild, as the widget does.
         if let askingAbout, let session = host.sessions.first(where: { $0.id == askingAbout }),
             EndAgentQuestion.holds(for: session, reach: host.reach(for:))

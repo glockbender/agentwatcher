@@ -188,6 +188,11 @@ final class SessionSupervisor {
         orderedSnapshots()
     }
 
+    /// The newest dated quota read from a default Codex profile transcript during this launch.
+    var defaultCodexUsage: AgentUsageLimits? {
+        settings.transcriptPollInterval == nil ? nil : transcripts.defaultCodexUsage
+    }
+
     /// What each agent's account has left, as the widget shows it under the divider.
     ///
     /// Read directly as well as published, so a redraw that no event asked for — a tooling

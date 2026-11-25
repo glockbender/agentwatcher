@@ -634,6 +634,10 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         return resourceMonitor.report?.agents
     }
 
+    var usageLimits: [AgentUsageLimits] {
+        supervisor.usageLimits + [supervisor.defaultCodexUsage].compactMap { $0 }
+    }
+
     var isWidgetVisible: Bool {
         hudController.window?.isVisible == true
     }

@@ -12,6 +12,18 @@ import XCTest
 enum ReadmeShowcase {
     static let now = Date(timeIntervalSince1970: 100_000)
 
+    static var menuResourceReport: ResourceReport {
+        let memory = MachineMemory(physical: 48 << 30, used: 10 << 30, swapUsed: 0, swapTotal: 0, pressure: .normal)
+        let start = ProcessTable(
+            sampledAt: now, processes: [], machine: memory,
+            processor: ProcessorTicks(busy: 1000, total: 4000, cores: 4))
+        let end = ProcessTable(
+            sampledAt: now.addingTimeInterval(5), processes: [], machine: memory,
+            processor: ProcessorTicks(busy: 2000, total: 8000, cores: 4))
+        let first = ResourceAttribution.report(table: start, sessions: [], previous: nil)
+        return ResourceAttribution.report(table: end, sessions: [], previous: first)
+    }
+
     /// An ordinary afternoon: seven sessions, at least one in each of the menu bar's four
     /// states. Listed in arrival order, which is deliberately not the order of their states,
     /// so the pictures of the other orders show something move.
@@ -62,6 +74,13 @@ enum ReadmeShowcase {
             sevenDay: .init(usedPercentage: 41, resetsAt: now.addingTimeInterval(4 * 24 * 60 * 60)),
             observedAt: now.addingTimeInterval(-8 * 60))
     ]
+
+    static let codexMenuLimit = AgentUsageLimits(
+        source: .codex,
+        fiveHour: .init(usedPercentage: 31, resetsAt: now.addingTimeInterval(30 * 60)),
+        sevenDay: .init(usedPercentage: 12),
+        observedAt: now
+    )
 
     /// One row per lamp, named by what the lamp means.
     static func legend() -> [SessionSnapshot] {

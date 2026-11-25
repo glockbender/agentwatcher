@@ -312,6 +312,52 @@ final class TranscriptWatcherTests: XCTestCase {
         XCTAssertNil(next.first?.signals.contextWindowTokens)
     }
 
+    func testDefaultCodexQuotaComesFromLiveReadsAndClearsWhenReadingStops() async throws {
+        try writeCodex([Self.codexOpening, Self.codexQuota(23, minute: "02")])
+        let settings = try makeSettings()
+        let watcher = makeWatcher(settings: settings)
+        watcher.update(sessions: [workingCodex()])
+
+        _ = try await poll(watcher)
+        XCTAssertEqual(watcher.defaultCodexUsage?.fiveHour?.usedPercentage, 23)
+
+        try appendCodex(Self.codexQuota(41, minute: "03"))
+        try appendCodex(Self.codexQuota(9, minute: "01"))
+        _ = try await poll(watcher)
+        XCTAssertEqual(watcher.defaultCodexUsage?.fiveHour?.usedPercentage, 41)
+
+        settings.setTranscriptPollInterval(nil)
+        watcher.settingsChanged()
+        XCTAssertNil(watcher.defaultCodexUsage)
+    }
+
+    func testRestoringAnObservedCodexChatReadsQuotaBeforeTheMenuIsEnabled() async throws {
+        try writeCodex([Self.codexQuota(23, minute: "02")])
+        let settings = try makeSettings()
+        let watcher = makeWatcher(settings: settings)
+        var row = workingCodex()
+        row.phase = .disconnected
+        watcher.update(sessions: [row])
+
+        _ = try await catchUp(watcher, sessions: [row])
+
+        XCTAssertEqual(watcher.defaultCodexUsage?.fiveHour?.usedPercentage, 23)
+        XCTAssertFalse(watcher.isPolling)
+
+        settings.setTranscriptPollInterval(nil)
+        watcher.settingsChanged()
+        XCTAssertNil(watcher.defaultCodexUsage)
+
+        let reported = expectation(description: "reading resumes for the idle Codex transcript")
+        arrival = reported
+        settings.setTranscriptPollInterval(10)
+        watcher.settingsChanged()
+        await fulfillment(of: [reported], timeout: 2)
+        arrival = nil
+        XCTAssertEqual(watcher.defaultCodexUsage?.fiveHour?.usedPercentage, 23)
+        XCTAssertFalse(watcher.isPolling)
+    }
+
     /// The context size Codex never reports through a hook, arriving in the same increment
     /// the lifecycle facts do and costing no extra reading at all.
     func testACodexTurnBringsItsModelAndTheSizeOfItsContext() async throws {
@@ -881,12 +927,14 @@ final class TranscriptWatcherTests: XCTestCase {
         let work = home.appendingPathComponent(".codex-work", isDirectory: true)
         let day = work.appendingPathComponent("sessions/2026/09/05", isDirectory: true)
         try FileManager.default.createDirectory(at: day, withIntermediateDirectories: true)
-        try Data("\(Self.codexOpening)\n".utf8)
+        try Data("\(Self.codexOpening)\n\(Self.codexQuota(73, minute: "03"))\n".utf8)
             .write(to: day.appendingPathComponent("rollout-2026-09-05T00-00-00-\(codexSessionUUID).jsonl"))
         try Data(#"{"id":"\#(codexSessionUUID)","thread_name":"Work thread"}\#n"#.utf8)
             .write(to: work.appendingPathComponent("session_index.jsonl"))
         try writeCodexThreadIndex(naming: "A thread of the default folder")
-        let watcher = makeWatcher(settings: try makeSettings(), extraAgentFolders: [.codex: [work.path]])
+        let settings = try makeSettings()
+        settings.setShowsUsageLimitsInMenu(true)
+        let watcher = makeWatcher(settings: settings, extraAgentFolders: [.codex: [work.path]])
 
         var restoredCodex = workingCodex()
         restoredCodex.phase = .disconnected
@@ -894,6 +942,7 @@ final class TranscriptWatcherTests: XCTestCase {
         let updates = try await catchUp(watcher, sessions: [restoredCodex])
 
         XCTAssertEqual(updates.first?.description?.title, "Work thread")
+        XCTAssertNil(watcher.defaultCodexUsage)
     }
 
     /// The same session as `working()`, in the state a restart leaves it in.
@@ -1026,6 +1075,10 @@ final class TranscriptWatcherTests: XCTestCase {
         {"type":"turn_context","timestamp":"2026-09-05T00:01:00.000Z","payload":{"turn_id":"t",\
         "model":"gpt-5.6-terra","effort":"high"}}
         """
+
+    private static func codexQuota(_ percent: Int, minute: String) -> String {
+        #"{"timestamp":"2026-09-05T00:\#(minute):00Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":\#(percent),"window_minutes":300}}}}"#
+    }
 
     private static let codexTokenCount = """
         {"type":"event_msg","timestamp":"2026-09-05T00:01:30.000Z","payload":{"type":"token_count",\

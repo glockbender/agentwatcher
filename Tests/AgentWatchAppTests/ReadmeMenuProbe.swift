@@ -38,7 +38,11 @@ final class ReadmeMenuProbe: XCTestCase {
         host.sessions = ordering.order(
             ReadmeShowcase.sessions(), mode: .attention, blocks: SessionBlock.defaultOrder, now: ReadmeShowcase.now)
         host.attentionCounts = SessionAttentionCounts(sessions: host.sessions)
-        let menu = StatusMenu(settings: settings, host: host)
+        settings.setShowsUsageLimitsInMenu(true)
+        settings.setShowsMachineResourcesInMenu(true)
+        host.usageLimits = ReadmeShowcase.usageLimits + [ReadmeShowcase.codexMenuLimit]
+        host.resourceReport = ReadmeShowcase.menuResourceReport
+        let menu = StatusMenu(settings: settings, host: host, now: { ReadmeShowcase.now })
         // The icon installed the way `AppDelegate.applyMenuBarIcon` installs it.
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let icon = MenuBarIconView()
