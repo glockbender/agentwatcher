@@ -72,6 +72,75 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertEqual(menu.summaryItem?.title, "2 working")
     }
 
+    func testMenuDetailsAreOptInAndReadAgainOnlyOnOpening() throws {
+        let (menu, host, settings) = try makeMenu()
+        host.usageLimits = [ReadmeShowcase.codexMenuLimit] + ReadmeShowcase.usageLimits
+        host.resourceReport = ReadmeShowcase.menuResourceReport
+        menu.menuWillOpen(menu.menu)
+        XCTAssertEqual(Array(outline(menu.menu).prefix(2)), ["No active sessions", "Show Widget"])
+
+        settings.setShowsUsageLimitsInMenu(true)
+        settings.setShowsMachineResourcesInMenu(true)
+        host.sessions = [session(0, "Finished the port", .completed)]
+        menu.menuWillOpen(menu.menu)
+        let limits = "Claude 5h 23% · 7d 41%  |  Codex 5h 31% · 7d 12%"
+        let machine = "Mac · 10.0 GB RAM · 25% CPU"
+        let expected = ["No active sessions", limits, "Finished the port", machine, "Show Widget"]
+        XCTAssertEqual(Array(outline(menu.menu).prefix(expected.count)), expected)
+        let limitsItem = try XCTUnwrap(item(titled: limits, in: menu.menu))
+        let fullLimits = (ReadmeShowcase.usageLimits + [ReadmeShowcase.codexMenuLimit])
+            .map { widgetUsageText(for: $0) }.joined(separator: "\n")
+        XCTAssertEqual(limitsItem.toolTip, fullLimits)
+        XCTAssertNil(item(titled: machine, in: menu.menu)?.action)
+
+        host.usageLimits = []
+        host.resourceReport = nil
+        menu.refreshSummary()
+        menu.refreshSessions()
+        XCTAssertEqual(Array(outline(menu.menu).prefix(expected.count)), expected)
+        XCTAssertTrue(item(titled: limits, in: menu.menu) === limitsItem)
+
+        menu.menuWillOpen(menu.menu)
+        XCTAssertEqual(
+            Array(outline(menu.menu).prefix(3)), ["No active sessions", "Finished the port", "Show Widget"])
+    }
+
+    func testExpiredCodexWindowKeepsItsHistoricalPercentageInTheTooltip() throws {
+        let (menu, host, settings) = try makeMenu()
+        let moment = ReadmeShowcase.now
+        let limits = AgentUsageLimits(
+            source: .codex,
+            fiveHour: UsageWindow(usedPercentage: 31, resetsAt: moment - 60),
+            sevenDay: ReadmeShowcase.codexMenuLimit.sevenDay,
+            observedAt: moment - 600
+        )
+        settings.setShowsUsageLimitsInMenu(true)
+        host.usageLimits = [limits]
+
+        menu.menuWillOpen(menu.menu)
+
+        let expired = try XCTUnwrap(item(titled: "Codex 5h expired · 7d 12%", in: menu.menu))
+        XCTAssertTrue(try XCTUnwrap(expired.toolTip).contains("5h 31%"))
+    }
+
+    func testCodexWindowWithoutAResetGoesStaleAfterItsDuration() throws {
+        let (menu, host, settings) = try makeMenu()
+        let observed = ReadmeShowcase.now - 6 * 3_600
+        host.usageLimits = [
+            AgentUsageLimits(
+                source: .codex,
+                fiveHour: UsageWindow(usedPercentage: 31, resetsAt: observed),
+                sevenDay: UsageWindow(usedPercentage: 12),
+                observedAt: observed
+            )
+        ]
+        settings.setShowsUsageLimitsInMenu(true)
+
+        menu.menuWillOpen(menu.menu)
+
+        XCTAssertNotNil(item(titled: "Codex 5h stale · 7d 12%", in: menu.menu))
+    }
+
     /// One line in one place, whether the widget is shown or not: only its title follows.
     func testTheWidgetLineStaysAndSaysWhatItsClickDoes() throws {
         let (menu, host, _) = try makeMenu()
@@ -531,7 +600,7 @@ final class StatusMenuTests: XCTestCase {
     private func makeMenu() throws -> (StatusMenu, FakeAppHost, WidgetSettingsStore) {
         let settings = WidgetSettingsStore(preferences: try isolatedPreferences())
         let host = FakeAppHost()
-        let menu = StatusMenu(settings: settings, host: host)
+        let menu = StatusMenu(settings: settings, host: host, now: { ReadmeShowcase.now })
         // The menu holds its host weakly, as it holds the application, so something has to
         // keep this one alive for the test that does not keep it itself.
         addTeardownBlock { _ = host }
@@ -591,6 +660,7 @@ final class FakeAppHost: StatusMenuHost, SettingsHost {
     var calls: [String] = []
     var attentionCounts = SessionAttentionCounts.empty
     var resourceFigure: ResourceFigure?
+    var usageLimits: [AgentUsageLimits] = []
     var isWidgetVisible = false
     var isEventDebugVisible = false
     var checksForUpdatesOnLaunch = true

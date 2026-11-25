@@ -110,6 +110,26 @@ final class TranscriptWatcher {
         var liveSince: Date?
         /// The wait this session was remembered in, when the file is being asked about one.
         var rememberedWait: SessionHistory.RememberedWait?
+
+        func isDefaultCodexTranscript(_ url: URL) -> Bool {
+            guard source == .codex, let root = roots.first else { return false }
+            let file = AgentFolders.canonicalPath(of: url)
+            let defaultRoot = AgentFolders.canonicalPath(of: root)
+            guard file.hasPrefix(defaultRoot + "/") else { return false }
+            // A nested profile owns the file even if its path also sits under the default root.
+            return !roots.dropFirst().contains { root in
+                let otherRoot = AgentFolders.canonicalPath(of: root)
+                return otherRoot.count > defaultRoot.count && file.hasPrefix(otherRoot + "/")
+            }
+        }
+
+        func codexUsage(from data: Data, at url: URL) -> AgentUsageLimits? {
+            guard source == .codex,
+                let reading = CodexProfileUsage.latest(inTail: data, sessionLabel: sessionLabel),
+                isDefaultCodexTranscript(url)
+            else { return nil }
+            return reading.limits
+        }
     }
 
     private struct ReadResult: Sendable {
@@ -125,12 +145,14 @@ final class TranscriptWatcher {
         var faultDetail: String?
         var newestRecordAt: Date?
         var signals = TranscriptSignals()
+        var codexUsage: AgentUsageLimits?
         /// What the session calls itself, read only when catching up. See `catchUp`.
         var description: SessionDescription?
         /// What the tail says about a remembered wait, read only when one was asked about.
         var waitEvidence: SessionHistory.RememberedWaitEvidence?
     }
 
+    private(set) var defaultCodexUsage: AgentUsageLimits?
     private var watches: [String: Watch] = [:]
     private var sessions: [SessionSnapshot] = []
     private var timer: Timer?
@@ -271,9 +293,17 @@ final class TranscriptWatcher {
     func settingsChanged() {
         rescheduleReads()
         guard settings.transcriptPollInterval == nil else {
+            if defaultCodexUsage == nil {
+                let moment = now()
+                catchUp(
+                    sessions: sessions.filter {
+                        $0.source == .codex && $0.phase != .sessionClosed && !Self.isWatchable($0, now: moment)
+                    })
+            }
             return
         }
         watches.removeAll()
+        defaultCodexUsage = nil
         onUpdates(sessions.map { TranscriptUpdate(sessionID: $0.id, facts: [], fault: nil) })
     }
 
@@ -439,6 +469,11 @@ final class TranscriptWatcher {
                 // new watch would stop it from ever looking.
                 continue
             }
+            if let usage = result.codexUsage,
+                defaultCodexUsage.map({ $0.observedAt < usage.observedAt }) ?? true
+            {
+                defaultCodexUsage = usage
+            }
             watch.url = result.url
             watch.offset = result.offset
             if result.url != nil {
@@ -586,10 +621,11 @@ final class TranscriptWatcher {
                 return result
             }
             result.newestRecordAt = modificationDate(at: url)
-            // Read once and used twice. Claude's name lives in the tail and a remembered
-            // wait is answered by the same bytes, so a second read would be a quarter of a
-            // megabyte for something already in hand.
+            // Use the same tail for the description, a remembered wait, and the quota.
             let tail = tailIfNeeded(at: url, for: job)
+            if let tail {
+                result.codexUsage = job.codexUsage(from: tail, at: url)
+            }
             result.description = currentDescription(tail: tail, at: url, for: job)
             if let wait = job.rememberedWait {
                 let evidence = waitEvidence(inTail: tail, for: wait, source: job.source)
@@ -608,10 +644,13 @@ final class TranscriptWatcher {
         }
     }
 
-    /// The tail, when something is going to ask it a question. Codex keeps its name
-    /// elsewhere, so its tail is read only for a wait.
+    /// Read the last known default Codex quota during catch-up so enabling its menu row later
+    /// can show a reading even when every restored chat is idle.
     private nonisolated static func tailIfNeeded(at url: URL, for job: ReadJob) -> Data? {
-        guard job.source == .claude || job.rememberedWait?.dialogs.isEmpty == false else {
+        guard
+            job.source == .claude || job.rememberedWait?.dialogs.isEmpty == false
+                || job.isDefaultCodexTranscript(url)
+        else {
             return nil
         }
         return TitleFileSystem.live.readTail(url.path, SessionDescriptionResolver.transcriptTailByteCount)
@@ -721,7 +760,8 @@ final class TranscriptWatcher {
                 facts: increment.facts.filter { $0.at > boundary },
                 fault: nil,
                 newestRecordAt: increment.newestRecordAt.flatMap { $0 > boundary ? $0 : nil },
-                signals: result.signals.merging(increment.signals)
+                signals: result.signals.merging(increment.signals),
+                codexUsage: job.codexUsage(from: data.prefix(increment.consumedByteCount), at: url)
             )
         } catch {
             result = ReadResult(
@@ -829,7 +869,8 @@ final class TranscriptWatcher {
                 // the fallback and not the rule.
                 newestRecordAt: increment.consumedByteCount > 0
                     ? (increment.newestRecordAt ?? observedAt) : nil,
-                signals: increment.signals
+                signals: increment.signals,
+                codexUsage: job.codexUsage(from: data.prefix(increment.consumedByteCount), at: url)
             )
         } catch {
             // The file is dropped along with the fault, so the next attempt locates again: a

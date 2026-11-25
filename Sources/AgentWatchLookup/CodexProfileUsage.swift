@@ -32,14 +32,17 @@ public struct CodexProfileUsage: Equatable, Sendable {
         return newest
     }
 
-    static func latest(inTail data: Data, sessionLabel: String) -> Self? {
+    private static let quotaKey = Data("\"rate_limits\"".utf8)
+
+    public static func latest(inTail data: Data, sessionLabel: String) -> Self? {
+        guard data.range(of: quotaKey) != nil else { return nil }
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let plain = ISO8601DateFormatter()
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         var newest: Self?
-        for line in data.split(separator: 10) where line.range(of: Data("\"rate_limits\"".utf8)) != nil {
+        for line in data.split(separator: 10) where line.range(of: quotaKey) != nil {
             guard let record = try? decoder.decode(Record.self, from: line),
                 record.type == "event_msg", record.payload.type == "token_count",
                 let limits = record.payload.rateLimits, limits.limitId == nil || limits.limitId == "codex",

@@ -47,9 +47,39 @@ struct MenuBarPane: View {
                 )
             }
             Section {
+                Toggle("Account limits", isOn: showsUsageLimits)
+                Toggle("Agents’ memory and CPU", isOn: showsAgentResources)
+                    .disabled(!model.watchesResources)
+                Toggle("Mac memory and CPU", isOn: showsMachineResources)
+                    .disabled(!model.watchesResources)
+                if !model.watchesResources {
+                    PageLink(title: "Resources", detail: "Turn on resource monitoring") { model.go(.resources) }
+                }
+            } header: {
+                Text("Menu details")
+            }
+            Section {
                 PageLink(title: "Waiting Beacon", detail: "When and where to show it") { model.go(.waitingBeacon) }
             }
         }
+    }
+
+    private var showsUsageLimits: Binding<Bool> {
+        Binding(
+            get: { model.settings.showsUsageLimitsInMenu },
+            set: { on in model.update { model.settings.setShowsUsageLimitsInMenu(on) } }
+        )
+    }
+
+    private var showsAgentResources: Binding<Bool> {
+        Binding(get: { model.showsResourcesInMenu }, set: { model.showsResourcesInMenu = $0 })
+    }
+
+    private var showsMachineResources: Binding<Bool> {
+        Binding(
+            get: { model.settings.showsMachineResourcesInMenu },
+            set: { on in model.update { model.settings.setShowsMachineResourcesInMenu(on) } }
+        )
     }
 
     private var iconStyle: Binding<MenuBarIconStyle> {

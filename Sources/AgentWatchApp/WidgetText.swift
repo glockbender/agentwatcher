@@ -635,7 +635,8 @@ func compactElapsed(_ interval: TimeInterval) -> String {
 func widgetUsageText(
     for limits: AgentUsageLimits,
     timeZone: TimeZone = .current,
-    locale: Locale = .current
+    locale: Locale = .current,
+    compactAt: Date? = nil
 ) -> String {
     // The account, not the product: these are the limits of a Claude subscription, not of
     // Claude Code. `AgentIcon.name` answers the other question and deliberately differs.
@@ -647,21 +648,30 @@ func widgetUsageText(
         formatter.setLocalizedDateFormatFromTemplate(template)
         return formatter
     }
-    let time = formatter("jmm")
-    let weekday = formatter("EEE")
-    func window(_ name: String, _ window: UsageWindow?) -> String? {
+    func window(_ name: String, _ window: UsageWindow?, hours: Double) -> String? {
         guard let window else {
             return nil
         }
         let used = "\(name) \(Int(window.usedPercentage.rounded()))%"
+        if let compactAt {
+            if let reset = window.resetsAt, reset > limits.observedAt {
+                return reset <= compactAt ? "\(name) expired" : used
+            }
+            return compactAt.timeIntervalSince(limits.observedAt) >= hours * 3_600 ? "\(name) stale" : used
+        }
         guard let resetsAt = window.resetsAt, resetsAt > limits.observedAt else {
             return used
         }
         let isWithinADay = resetsAt.timeIntervalSince(limits.observedAt) < 24 * 60 * 60
-        return "\(used) till \((isWithinADay ? time : weekday).string(from: resetsAt))"
+        return "\(used) till \(formatter(isWithinADay ? "jmm" : "EEE").string(from: resetsAt))"
     }
-    let windows = [window("5h", limits.fiveHour), window("7d", limits.sevenDay)].compactMap { $0 }
-    return ([source] + windows + ["as of \(time.string(from: limits.observedAt))"]).joined(separator: "  ·  ")
+    let windows = [window("5h", limits.fiveHour, hours: 5), window("7d", limits.sevenDay, hours: 7 * 24)]
+        .compactMap { $0 }
+    if compactAt != nil {
+        return windows.isEmpty ? source : "\(source) \(windows.joined(separator: " · "))"
+    }
+    return ([source] + windows + ["as of \(formatter("jmm").string(from: limits.observedAt))"])
+        .joined(separator: "  ·  ")
 }
 
 private func compactTokenCount(_ value: Int) -> String {

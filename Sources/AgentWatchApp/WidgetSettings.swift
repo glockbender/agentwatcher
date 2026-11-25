@@ -126,6 +126,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
         static let listsSessionsInMenu = "listsSessionsInMenu"
         static let menuSessionAttentions = "menuSessionAttentions"
         static let menuSessionsBeforeScrolling = "menuSessionsBeforeScrolling"
+        static let showsUsageLimitsInMenu = "showsUsageLimitsInMenu"
+        static let showsMachineResourcesInMenu = "showsMachineResourcesInMenu"
         static let sessionOrder = "sessionOrder"
         static let sessionBlockOrder = "sessionBlockOrder"
         static let showsWidget = "showsWidget"
@@ -168,6 +170,8 @@ final class WidgetSettingsStore: PreferenceDefaults {
             Key.menuBarIconStyle: .string(MenuBarIconStyle.sphere.rawValue),
             Key.menuBarIconAttentions: .array(Self.stored(Set(SessionAttention.counted)).map(JSONValue.string)),
             Key.listsSessionsInMenu: .bool(true),
+            Key.showsUsageLimitsInMenu: .bool(false),
+            Key.showsMachineResourcesInMenu: .bool(false),
             Key.menuSessionAttentions: .array(Self.stored(Self.defaultMenuSessionAttentions).map(JSONValue.string)),
             Key.menuSessionsBeforeScrolling: .number(Double(Self.defaultMenuSessionsBeforeScrolling)),
             Key.sessionOrder: .string(SessionOrder.arrival.rawValue),
@@ -355,6 +359,23 @@ final class WidgetSettingsStore: PreferenceDefaults {
         }
         preferences.set(Self.stored(shown), forKey: Key.menuBarIconAttentions)
         onChange?(.menuBarIcon)
+    }
+
+    // Menu details are read on opening, so these preferences need no live redraw.
+    var showsUsageLimitsInMenu: Bool {
+        preferences.flag(forKey: Key.showsUsageLimitsInMenu) ?? false
+    }
+
+    func setShowsUsageLimitsInMenu(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsUsageLimitsInMenu)
+    }
+
+    var showsMachineResourcesInMenu: Bool {
+        preferences.flag(forKey: Key.showsMachineResourcesInMenu) ?? false
+    }
+
+    func setShowsMachineResourcesInMenu(_ isShown: Bool) {
+        preferences.set(isShown, forKey: Key.showsMachineResourcesInMenu)
     }
 
     /// Whether the menu opens with a line for each session it is set to list.
