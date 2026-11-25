@@ -90,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         extraAgentFolders: { [weak self] in self?.settings.extraAgentFolders ?? [:] },
         heard: heard,
         history: history,
+        claudeUsage: ClaudeUsageFeed.live(home: AgentWatchPaths.homeDirectory()),
         onChange: { [weak self] sessions, usageLimits in
             // Re-read before the widget is told, not after: the complaint travels with the
             // sessions now, so reading it afterwards would draw this report with the previous

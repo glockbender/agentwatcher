@@ -183,6 +183,22 @@ line "Agents" counts every session together with ChatGPT's `app-server` and its 
 
 **Checked on:** ChatGPT.app 26.1117.31558.
 
+## Claude's limits under the widget are an hour old, or missing
+
+**Why:** Agent Watch reads the limits Claude Code itself saves after asking the server. Claude Code
+asks only when you type `/usage`, about once a day on its own, or when Agent Watch starts it to ask.
+Agent Watch does that at most once every 30 minutes, and only while a Claude session is working:
+each such run counts as a Claude Code session in your organisation's usage metrics. With no session
+working, the figures stay as they were, and "as of" says when they were taken. Limits are missing
+when Claude Code is signed in with an API key, Bedrock or Vertex, which have no plan limits, and
+when Agent Watch found no Claude Code it could start.
+
+**What to do:** Type `/usage` in any Claude session: the line updates within 15 seconds while a
+session is working. For figures that follow your work as it happens, connect the status line on
+the `Tooling` page.
+
+**Checked on:** Claude Code 2.1.326.
+
 ## The waiting lamp stays on after Skip in Codex
 
 **Why:** Codex can keep working while one of its questions is open. In the checked desktop

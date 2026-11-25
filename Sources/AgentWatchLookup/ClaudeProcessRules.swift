@@ -342,9 +342,36 @@ public struct ClaudeProcessRules: AgentProcessRules {
             guard !Self.isHelperCommand(AgentProcessLocator.commandArguments(of: processID) ?? []) else {
                 continue
             }
+            guard !Self.isStartedByThisProcess(processID, parentOf: AgentProcessLocator.parentProcessID(of:)) else {
+                continue
+            }
             found.insert(processID)
         }
         return found
+    }
+
+    /// A Claude Code this app started itself is not a session: `ClaudeUsageProbe` runs one for
+    /// two seconds to ask for the plan's usage, and found here it would become a headless row
+    /// for those two seconds, and be remembered.
+    ///
+    /// The whole chain above is asked, not only the parent: a Volta shim starts Node as a child
+    /// of its own, so the process that is Claude Code can be the app's grandchild.
+    static func isStartedByThisProcess(
+        _ processID: Int32,
+        parentOf: (Int32) -> Int32?,
+        ownProcessID: Int32 = getpid()
+    ) -> Bool {
+        var current = processID
+        for _ in 0..<maximumAncestorDepth {
+            guard let parent = parentOf(current), parent > 1 else {
+                return false
+            }
+            if parent == ownProcessID {
+                return true
+            }
+            current = parent
+        }
+        return false
     }
 
     /// A helper an agent started for itself is not a second session.

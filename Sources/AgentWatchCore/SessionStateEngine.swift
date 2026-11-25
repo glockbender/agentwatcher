@@ -284,7 +284,7 @@ public struct SessionStateEngine: Sendable {
             snapshot = Self.merged(snapshot, with: description)
         }
         if let usageLimits = event.usageLimits {
-            usageLimitsBySource[usageLimits.source] = usageLimits
+            mergeUsageLimits(usageLimits)
         }
 
         // Closed is terminal, as ADR-0002 and the state diagram say: no edge
@@ -506,6 +506,45 @@ public struct SessionStateEngine: Sendable {
 
     private func rowContinued(by sessionLabel: String, source: AgentSource) -> SessionSnapshot? {
         snapshots.values.first { $0.source == source && $0.continuedBy?.contains(sessionLabel) == true }
+    }
+
+    /// Takes an account's limits unless something newer is already known.
+    ///
+    /// Two sources report Claude's: the status line, as a session works, and Claude Code's own
+    /// snapshot (`ClaudeUsageSnapshot`). They arrive in no particular order, and the snapshot
+    /// is often older than the status line it follows. Only the snapshot knows when a window
+    /// starts again, so a newer report without that keeps the known time while it is still
+    /// ahead of the report, and a window the report leaves out stays until that time.
+    ///
+    /// - Returns: whether what the widget shows changed.
+    @discardableResult
+    public mutating func mergeUsageLimits(_ incoming: AgentUsageLimits) -> Bool {
+        let known = usageLimitsBySource[incoming.source]
+        if let known, known.observedAt > incoming.observedAt {
+            return false
+        }
+        func carried(_ window: UsageWindow?, _ knownWindow: UsageWindow?) -> UsageWindow? {
+            // A window the newer report says nothing about stays while it is still the same
+            // window: the status line can carry one window without the other.
+            guard let window else {
+                guard let knownWindow, let resetsAt = knownWindow.resetsAt, resetsAt > incoming.observedAt else {
+                    return nil
+                }
+                return knownWindow
+            }
+            guard window.resetsAt == nil, let resetsAt = knownWindow?.resetsAt, resetsAt > incoming.observedAt else {
+                return window
+            }
+            return UsageWindow(usedPercentage: window.usedPercentage, resetsAt: resetsAt)
+        }
+        let merged = AgentUsageLimits(
+            source: incoming.source,
+            fiveHour: carried(incoming.fiveHour, known?.fiveHour),
+            sevenDay: carried(incoming.sevenDay, known?.sevenDay),
+            observedAt: incoming.observedAt
+        )
+        usageLimitsBySource[incoming.source] = merged
+        return merged != known
     }
 
     /// Marks a terminal session whose terminal was closed while its agent stayed behind, and

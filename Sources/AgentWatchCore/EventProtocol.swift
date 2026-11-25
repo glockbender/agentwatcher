@@ -627,7 +627,7 @@ public enum HookEventNormalizer {
     }
 
     private static func usageWindow(usedPercentageKey: String, in fields: [String: JSONValue]) -> UsageWindow? {
-        percentage(usedPercentageKey, in: fields).map(UsageWindow.init(usedPercentage:))
+        percentage(usedPercentageKey, in: fields).map { UsageWindow(usedPercentage: $0) }
     }
 
     private static func percentage(_ key: String, in fields: [String: JSONValue]) -> Double? {

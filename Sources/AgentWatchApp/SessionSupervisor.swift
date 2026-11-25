@@ -19,6 +19,9 @@ final class SessionSupervisor {
 
     private var engine = SessionStateEngine()
     private var maintenanceTimer: Timer?
+    /// Claude's plan limits from Claude Code's own snapshot and a rare run of it. `nil` in
+    /// tests, which must never read the real `.claude.json` or start the real Claude Code.
+    private let claudeUsage: ClaudeUsageFeed?
     private let settings: WidgetSettingsStore
     private let onChange: ([SessionSnapshot], [AgentUsageLimits]) -> Void
     private let onNotableEvent: (String) -> Void
@@ -155,6 +158,7 @@ final class SessionSupervisor {
         terminate: @escaping (Int32) -> Bool = HeadlessRun.terminate(processID:),
         focusHost: ((SessionSnapshot, [String]) -> SessionHostRegistry.FocusOutcome)? = nil,
         tabIsGoneWithTerminalKept: ((SessionSnapshot, [String]) -> Bool)? = nil,
+        claudeUsage: ClaudeUsageFeed? = nil,
         onChange: @escaping ([SessionSnapshot], [AgentUsageLimits]) -> Void,
         onNotableEvent: @escaping (String) -> Void
     ) {
@@ -175,6 +179,7 @@ final class SessionSupervisor {
         self.terminate = terminate
         self.focusHost = focusHost
         self.tabIsGoneWithTerminalKept = tabIsGoneWithTerminalKept
+        self.claudeUsage = claudeUsage
         self.onChange = onChange
         self.onNotableEvent = onNotableEvent
     }
@@ -1003,6 +1008,7 @@ final class SessionSupervisor {
         // about a millisecond. It is not what makes discovery work — see
         // `discoverAgentProcesses` for the triggers that do.
         discoverAgentProcesses()
+        tickClaudeUsage()
         let disconnected = engine.markUnwatchedSessionsDisconnected(
             now: moment,
             after: SessionFreshnessEvaluator.defaultDisconnectAfter,
@@ -1025,6 +1031,30 @@ final class SessionSupervisor {
             onNotableEvent("\(Self.label(snapshot)) · no signal")
         }
         publish()
+    }
+
+    private func tickClaudeUsage() {
+        claudeUsage?.tick(
+            knownLimitsObservedAt: { [weak self] in self?.engine.usageLimitsBySource[.claude]?.observedAt },
+            claudeIsWorking: Self.claudeIsWorking(engine.snapshots.values),
+            deliver: { [weak self] limits in self?.applyUsageLimits(limits) }
+        )
+    }
+
+    /// A person's Claude session is spending the plan right now. A headless run is left out:
+    /// it is some program's, and the app's own usage run would otherwise justify itself.
+    static func claudeIsWorking(_ sessions: some Collection<SessionSnapshot>) -> Bool {
+        sessions.contains { snapshot in
+            snapshot.source == .claude && snapshot.clientKind != .headless
+                && SessionFreshnessEvaluator.tracksFreshness(for: snapshot.phase)
+        }
+    }
+
+    /// Limits found outside an event — Claude Code's snapshot or the app's own run of it.
+    func applyUsageLimits(_ limits: AgentUsageLimits) {
+        if engine.mergeUsageLimits(limits) {
+            publish()
+        }
     }
 
     /// Whether the sweep has anything it could act on.
