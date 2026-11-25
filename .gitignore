@@ -20,3 +20,7 @@ xcuserdata/
 ide-plugin/build/
 ide-plugin/.gradle/
 ide-plugin/.intellijPlatform/
+
+# Local products of the development tools.
+__pycache__/
+native/*/target/

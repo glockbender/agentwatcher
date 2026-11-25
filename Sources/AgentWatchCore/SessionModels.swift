@@ -47,10 +47,10 @@ public struct SessionContextTelemetry: Codable, Equatable, Sendable {
 
 /// How much of an account-level window has been spent, and when it starts again.
 ///
-/// `resetsAt` comes only from Claude's own usage snapshot and its `get_usage` reply
-/// (`ClaudeUsageSnapshot`). The status line carries one too, and it still does not cross the
-/// socket: the snapshot already brings it, and a second copy on the wire would be surface
-/// with no reader of its own.
+/// `resetsAt` comes from Claude's own usage snapshot and its `get_usage` reply
+/// (`ClaudeUsageSnapshot`), and from the status line of each Claude folder. The status line's
+/// copy crosses the socket because the snapshot covers only the default folder (ADR-0026), and
+/// the Usage profiles page shows each folder's renewal from it.
 public struct UsageWindow: Codable, Equatable, Sendable {
     public let usedPercentage: Double
     public let resetsAt: Date?
@@ -58,6 +58,13 @@ public struct UsageWindow: Codable, Equatable, Sendable {
     public init(usedPercentage: Double, resetsAt: Date? = nil) {
         self.usedPercentage = usedPercentage
         self.resetsAt = resetsAt
+    }
+
+    public static func resetDate(unixSeconds: Double?) -> Date? {
+        guard let unixSeconds, unixSeconds.rounded() == unixSeconds, (1...253_402_300_799).contains(unixSeconds) else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: unixSeconds)
     }
 }
 

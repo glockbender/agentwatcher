@@ -124,6 +124,25 @@ final class HUDOverflowTests: XCTestCase {
     /// the widget three points shorter clipped the last row by three points of its nineteen,
     /// and the counter stood up to announce a session that was in fact almost wholly on
     /// screen. Eight points short is over a third of the row, and then it is right to.
+    /// The widget sizes itself from this height, and its list carries the Projects and Settings
+    /// strip: every row fits only when the height counts the strip.
+    func testTheSelfSizedHeightLeavesRoomForTheNavigationStrip() {
+        let navigation = HUDNavigation(projects: {}, settings: {})
+        let fits = HUDSessionListView.selfSizedHeight(
+            sessionCount: 4, usageLimits: [], background: .graphite, navigation: true)
+
+        let sized = listView(sessionCount: 4, navigation: navigation)
+        place(sized, height: fits)
+        XCTAssertEqual(sized.hiddenSessions, .none)
+
+        let withoutStrip = listView(sessionCount: 4, navigation: navigation)
+        place(
+            withoutStrip,
+            height: HUDSessionListView.selfSizedHeight(
+                sessionCount: 4, usageLimits: [], background: .graphite))
+        XCTAssertEqual(withoutStrip.hiddenSessions.below, 1, "the strip takes a row's worth of the list")
+    }
+
     func testAWidgetShortByAFewPointsDoesNotAnnounceTheRowItClips() {
         let fits = HUDSessionListView.selfSizedHeight(sessionCount: 4, usageLimits: [], background: .graphite)
 
@@ -954,6 +973,7 @@ final class HUDOverflowTests: XCTestCase {
         phases: [Int: SessionPhase] = [:],
         usageLimits: [AgentUsageLimits] = [],
         style: WidgetStyle = .standard,
+        navigation: HUDNavigation? = nil,
         restoredScrollOffset: NSPoint? = nil
     ) -> HUDSessionListView {
         HUDSessionListView(
@@ -970,6 +990,7 @@ final class HUDOverflowTests: XCTestCase {
             lampScheme: LampScheme(),
             backgroundOpacity: 1,
             style: style,
+            navigation: navigation,
             restoredScrollOffset: restoredScrollOffset,
             onScroll: { _ in }
         )

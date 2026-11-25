@@ -12,8 +12,8 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertEqual(
             SettingsPage.sidebar.map(\.title),
             [
-                "General", "Tooling", "Git Protection", "Appearance", "Menu Bar", "Waiting Beacon", "Widget",
-                "Resources", "Diagnostics",
+                "General", "Tooling", "Git Protection", "Working Copies", "Appearance", "Menu Bar", "Waiting Beacon",
+                "Widget", "Resources", "Diagnostics",
             ]
         )
     }

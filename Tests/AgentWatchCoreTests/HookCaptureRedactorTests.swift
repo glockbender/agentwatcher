@@ -250,9 +250,7 @@ final class HookCaptureRedactorTests: XCTestCase {
         XCTAssertEqual(payload["context_total_input_tokens"], .number(85000))
         XCTAssertEqual(payload["context_used_percentage"], .number(42.5))
         XCTAssertEqual(payload["five_hour_used_percentage"], .number(17))
-        // The reset time is not on the allowlist: nothing displays it, so it is dropped with
-        // the unknown fields rather than carried across the socket unread.
-        XCTAssertNil(payload["five_hour_resets_at"])
+        XCTAssertEqual(payload["five_hour_resets_at"], .number(2_000_000_000))
         XCTAssertNil(payload["branch"])
         XCTAssertEqual(payload["cwd"], .string("<redacted>"))
         XCTAssertEqual(payload["last_assistant_message"], .string("<redacted>"))

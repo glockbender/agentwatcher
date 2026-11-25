@@ -315,6 +315,9 @@ struct WidgetStyle {
     var emptyStateIconGap: CGFloat { points(9) }
     var emptyStateLineGap: CGFloat { points(3) }
 
+    /// The footer includes a seven-point inset outside the resize strip.
+    var navigationHeight: CGFloat { max(21, points(20)) + 7 }
+
     /// The smallest the widget may be dragged to, and the size a first launch opens at.
     ///
     /// A function of the style rather than a constant, because it is the room the empty state
@@ -322,7 +325,7 @@ struct WidgetStyle {
     /// stayed put would have clipped the one view whose whole job is to explain an empty
     /// widget.
     var minimumWindowSize: NSSize {
-        NSSize(width: points(200), height: points(56))
+        NSSize(width: points(200), height: points(56) + navigationHeight)
     }
 }
 

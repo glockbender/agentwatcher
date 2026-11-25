@@ -67,7 +67,7 @@ final class HUDFrameStore: PreferenceDefaults {
     ///
     /// The tuned size's floor, and the one a fresh file is written with. What the widget is
     /// actually held to follows the scale — see `minimumSize` below.
-    static let minimumSize = NSSize(width: 200, height: 56)
+    static let minimumSize = NSSize(width: 200, height: 84)
     /// What a widget that has never been resized is. Wide enough for a session name, and as
     /// short as the widget is allowed to be, because the height is about to be recomputed
     /// from the number of sessions anyway.

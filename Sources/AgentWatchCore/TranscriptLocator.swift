@@ -69,27 +69,48 @@ public enum TranscriptLocator {
         root: URL,
         fileManager: FileManager = .default
     ) -> URL? {
+        var match: URL?
+        visit(in: root, source: source, fileManager: fileManager) { label, file in
+            if label == sessionLabel { match = file }
+            return match == nil
+        }
+        return match
+    }
+
+    /// Lists the roots once when one window asks about many known sessions. Duplicate matches
+    /// cannot identify a single profile or worktree, so neither copy is returned.
+    public static func uniqueMatches(sessionLabels: Set<String>, source: AgentSource, roots: [URL]) -> [String: URL] {
+        guard !sessionLabels.isEmpty else { return [:] }
+        var files: [String: URL] = [:]
+        var duplicates = Set<String>()
+        for root in roots {
+            visit(in: root, source: source, fileManager: .default) { label, file in
+                guard !Task.isCancelled else { return false }
+                if sessionLabels.contains(label) {
+                    if files.updateValue(file, forKey: label) != nil { duplicates.insert(label) }
+                }
+                return true
+            }
+            if Task.isCancelled { break }
+        }
+        for label in duplicates { files.removeValue(forKey: label) }
+        return files
+    }
+
+    private static func visit(
+        in root: URL, source: AgentSource, fileManager: FileManager, until visit: (String, URL) -> Bool
+    ) {
         guard
             let enumerator = fileManager.enumerator(
-                at: root,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
-            )
-        else {
-            return nil
-        }
+                at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles, .skipsPackageDescendants])
+        else { return }
         for case let url as URL in enumerator where url.pathExtension == "jsonl" {
             guard
                 let identifier = sessionIdentifier(
                     inFileNamed: url.deletingPathExtension().lastPathComponent, source: source)
-            else {
-                continue
-            }
-            if HookCaptureRedactor.label(forRawIdentifier: identifier) == sessionLabel {
-                return url
-            }
+            else { continue }
+            if !visit(HookCaptureRedactor.label(forRawIdentifier: identifier), url) { break }
         }
-        return nil
     }
 
     /// The transcript for one session in the first of these roots that has it.

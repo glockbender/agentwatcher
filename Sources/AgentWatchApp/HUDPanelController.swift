@@ -6,6 +6,13 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
     /// Everything the widget is currently showing. Replaced whole, by `render`, and by
     /// nothing else — see `WidgetState`.
     var openSetup: () -> Void = {}
+    var openProjects: () -> Void = {}
+    var openSettings: () -> Void = {}
+    private var navigation: HUDNavigation {
+        HUDNavigation(
+            projects: { [weak self] in self?.openProjects() }, settings: { [weak self] in self?.openSettings() })
+    }
+
     private var state = WidgetState()
     private var freshnessTimer: Timer?
     private var dismissalTimer: Timer?
@@ -122,6 +129,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 backgroundOpacity: backgroundOpacity,
                 style: style,
                 complaint: state.complaint,
+                navigation: navigation,
                 openSetup: { [weak self] in self?.openSetup() }
             )
         )
@@ -293,6 +301,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                     backgroundOpacity: backgroundOpacity,
                     style: style,
                     complaint: state.complaint,
+                    navigation: navigation,
                     openSetup: { [weak self] in self?.openSetup() }
                 )
             )
@@ -362,6 +371,7 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
                 lampScheme: lampScheme,
                 backgroundOpacity: backgroundOpacity,
                 style: style,
+                navigation: navigation,
                 restoredScrollOffset: savedScrollOffset,
                 onScroll: { [weak self] offset in
                     self?.savedScrollOffset = offset
@@ -585,7 +595,8 @@ final class HUDPanelController: NSWindowController, NSWindowDelegate {
             sessionCount: min(state.sessions.count, Self.maximumAutoSizedRowCount),
             usageLimits: state.usageLimits,
             background: background,
-            style: style
+            style: style,
+            navigation: true
         )
         // Never shorter than the widget's own minimum, which is the height the empty state
         // needs: a one-row list that came out shorter would leave the widget below the size

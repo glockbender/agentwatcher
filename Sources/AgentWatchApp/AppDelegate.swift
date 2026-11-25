@@ -1,5 +1,6 @@
 import AgentWatchCore
 import AgentWatchIngress
+import AgentWatchLookup
 import AgentWatchSender
 import AppKit
 
@@ -7,6 +8,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var statusMenu: StatusMenu?
+    private var projectsWindow: ProjectBrowserWindow?
     /// The counts drawn into the status item, or `nil` while it shows the plain app glyph.
     private var menuBarIconView: MenuBarIconView?
     /// What the icon is currently showing. Kept so that the drawing follows a change rather
@@ -90,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         extraAgentFolders: { [weak self] in self?.settings.extraAgentFolders ?? [:] },
         heard: heard,
         history: history,
+        liveAgentProcesses: AgentWatchPaths.isDevelopmentBuild ? { [] } : nil,
         claudeUsage: ClaudeUsageFeed.live(home: AgentWatchPaths.homeDirectory()),
         onChange: { [weak self] sessions, usageLimits in
             // Re-read before the widget is told, not after: the complaint travels with the
@@ -101,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.readToolingComplaint()
             }
             self?.renderWidget(sessions: sessions, usageLimits: usageLimits)
+            self?.updateProjects(sessions)
             self?.resourceMonitor.sessionsChanged(sessions)
             self?.resourceHistory.sessionsChanged(sessions)
         },
@@ -130,6 +134,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings: settings,
             rowLayouts: rowLayouts
         )
+        controller.openProjects = { [weak self] in self?.showProjects() }
+        controller.openSettings = { [weak self] in self?.showWidgetSettings() }
         controller.openSetup = { [weak self] in
             self?.showSetupGuide()
         }
@@ -167,6 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settingsWindow.model.go(.waitingBeacon)
             self?.showWidgetSettings()
         })
+    private var pendingDestination: WatchDestination?
+    private var readyForNavigation = false
     private var appearanceObservation: NSKeyValueObservation?
     private lazy var themeChange = CoalescedWork { [weak self] in
         self?.applyTheme()
@@ -261,6 +269,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // and a memory never overwrites it — but it would come in as a brand new session.
         supervisor.start()
         ingress.start()
+        readyForNavigation = true
+        if let pendingDestination {
+            self.pendingDestination = nil
+            navigate(to: pendingDestination)
+        }
         // After the widget is on screen: the shortcut's whole job is to take it away again.
         applyShortcut()
         updater.checkAfterLaunch()
@@ -476,6 +489,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             supervisor.runMaintenance()
         case .transcriptPollInterval:
             supervisor.transcriptSettingsChanged()
+            updateProjects(supervisor.sessions)
             statusMenu?.refresh()
         case .theme:
             // Once per turn of the run loop, however many changes arrive in it (`CoalescedWork`).
@@ -501,6 +515,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             renderWidget()
             statusMenu?.refreshSessions()
         case .agentFolders:
+            updateProjects(supervisor.sessions)
             // The rows of the Tooling page and the widget's complaint both count folders. The
             // sessions read the list where they use it, so nothing else needs a poke.
             refreshToolingComplaint()
@@ -632,6 +647,24 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
         set { updater.checksOnLaunch = newValue }
     }
 
+    func worktreeSessionFolders() async -> WorktreeSessionReading? {
+        guard !AgentWatchPaths.isDevelopmentBuild, ingress.isListening else { return nil }
+        let observed = supervisor.sessions
+        let folders = AgentFolders(home: AgentWatchPaths.homeDirectory(), extra: settings.extraAgentFolders)
+        let readMetadata = supervisor.isReadingTranscripts
+        let paths = await Task.detached(priority: .utility) {
+            ProjectSessionLookup(folders: folders, transcriptFiles: readMetadata ? .live : nil)
+                .openWorkingFolders(of: observed)
+        }.value
+        guard let paths else { return nil }
+        let reading = WorktreeSessionReading(folders: paths) { [weak self] in
+            guard let self else { return false }
+            return self.ingress.isListening && self.supervisor.sessions == observed
+                && self.supervisor.isReadingTranscripts == readMetadata
+        }
+        return reading.isCurrent() ? reading : nil
+    }
+
     var watchesResources: Bool {
         get { resourceSettings.isEnabled }
         set {
@@ -717,6 +750,57 @@ extension AppDelegate: StatusMenuHost, SettingsHost {
             hudController.highlight()
         }
         settingsWindow.refresh()
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let destinations = urls.compactMap {
+            WatchDestination(url: $0, development: AgentWatchPaths.isDevelopmentBuild)
+        }
+        guard let destination = destinations.last else { return }
+        if readyForNavigation { navigate(to: destination) } else { pendingDestination = destination }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if readyForNavigation { showProjects() }
+        return false
+    }
+
+    private func navigate(to destination: WatchDestination) {
+        switch destination {
+        case .projects: showProjects()
+        // The widget's link opens the same list as the beacon: one list of waiting chats.
+        case .waiting: waitingWindow.present()
+        case .settings: showWidgetSettings()
+        }
+    }
+
+    func showProjects() { presentProjects(.recent) }
+
+    private func presentProjects(_ scope: ProjectBrowserScope) {
+        if projectsWindow == nil {
+            projectsWindow = ProjectBrowserWindow(
+                openSession: { [weak self] id in self?.focusSession(id: id) ?? .nothingRaised },
+                settings: { [weak self] in self?.showWidgetSettings() }
+            ) { [weak self] in
+                guard let self else { return }
+                updateProjects(supervisor.sessions, refresh: true)
+            }
+        }
+        projectsWindow?.model.navigate(to: scope)
+        let wasKey = projectsWindow?.window?.isKeyWindow == true
+        projectsWindow?.showWindow(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        if wasKey { updateProjects(supervisor.sessions, refresh: true) }
+    }
+
+    private func updateProjects(_ sessions: [SessionSnapshot], refresh: Bool = false) {
+        guard let projectsWindow, projectsWindow.window?.isVisible == true || projectsWindow.model.folders != nil else {
+            return
+        }
+        let folders = AgentFolders(home: AgentWatchPaths.homeDirectory(), extra: settings.extraAgentFolders)
+        projectsWindow.model.update(
+            sessions, folders: folders, claudeUsage: supervisor.claudeUsageByFolder,
+            readsTranscripts: settings.transcriptPollInterval != nil, refresh: refresh)
     }
 
     func showWidgetSettings() {

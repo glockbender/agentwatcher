@@ -1,0 +1,6 @@
+#!/bin/sh
+# Cargo checks if the development tool needs rebuilding before running it.
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$root/.build/devtool}"
+exec rustup run 1.98.1 cargo run --quiet --locked --manifest-path "$root/native/devtool/Cargo.toml" -- "$@"

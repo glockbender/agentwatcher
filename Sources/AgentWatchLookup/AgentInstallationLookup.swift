@@ -9,7 +9,7 @@ import Foundation
 public enum AgentInstallationLookup {
     public static func executable(
         for source: AgentSource,
-        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        home: URL = AgentWatchPaths.homeDirectory(),
         searchPath: String = ProcessInfo.processInfo.environment["PATH"] ?? "",
         applications: [URL] = [URL(fileURLWithPath: "/Applications")]
     ) -> String? {

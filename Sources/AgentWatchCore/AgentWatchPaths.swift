@@ -9,12 +9,33 @@ import Foundation
 /// widget simply sits empty — which is the one state the app is built to tell apart from
 /// good news.
 public enum AgentWatchPaths {
+    public static let developmentBundleIdentifier = "com.glockbender.agentwatch.dev"
+
+    public static let isDevelopmentBuild = identifiesDevelopmentBuild(
+        bundleIdentifier: Bundle.main.bundleIdentifier,
+        executable: Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0]))
+
+    static func identifiesDevelopmentBuild(bundleIdentifier: String?, executable: URL) -> Bool {
+        if bundleIdentifier == developmentBundleIdentifier { return true }
+        // A hook launches the helper through its stable symlink. The helper has no Info.plist
+        // of its own, so identify the app that physically contains its executable.
+        let binary = executable.resolvingSymlinksInPath()
+        guard binary.lastPathComponent == "AgentWatchSend" else { return false }
+        let macOS = binary.deletingLastPathComponent()
+        let contents = macOS.deletingLastPathComponent()
+        let app = contents.deletingLastPathComponent()
+        return macOS.lastPathComponent == "MacOS" && contents.lastPathComponent == "Contents"
+            && app.pathExtension == "app" && Bundle(url: app)?.bundleIdentifier == developmentBundleIdentifier
+    }
+
     /// Everything the app keeps lives under this one folder.
     ///
     /// - Parameter applicationSupport: the enclosing directory, taken as a parameter so a
     ///   test can put it somewhere that is not the running person's Application Support.
-    public static func supportDirectory(inApplicationSupport applicationSupport: URL) -> URL {
-        applicationSupport.appendingPathComponent("AgentWatch", isDirectory: true)
+    public static func supportDirectory(
+        inApplicationSupport applicationSupport: URL, development: Bool = isDevelopmentBuild
+    ) -> URL {
+        applicationSupport.appendingPathComponent(development ? "AgentWatch Dev" : "AgentWatch", isDirectory: true)
     }
 
     /// The user's own Application Support folder, or `nil` when the system will not name one.
@@ -50,6 +71,14 @@ public enum AgentWatchPaths {
                 return URL(fileURLWithPath: sandbox, isDirectory: true)
             }
         #endif
+        if isDevelopmentBuild {
+            let support =
+                supportDirectory(fileManager: fileManager)
+                ?? supportDirectory(
+                    inApplicationSupport: fileManager.homeDirectoryForCurrentUser.appendingPathComponent(
+                        "Library/Application Support"))
+            return support.appendingPathComponent("Home", isDirectory: true)
+        }
         return fileManager.homeDirectoryForCurrentUser
     }
 

@@ -73,7 +73,7 @@ enum JetBrainsInstallation {
 
     /// Whether the daemon that owns the `jetbrains://` scheme is installed for this person.
     static func isDaemonInstalled(fileManager: FileManager = .default) -> Bool {
-        let bundle = JetBrainsFocus.daemonBundle(userHome: fileManager.homeDirectoryForCurrentUser)
+        let bundle = JetBrainsFocus.daemonBundle(userHome: AgentWatchPaths.homeDirectory(fileManager: fileManager))
         return fileManager.fileExists(atPath: bundle.path)
     }
 

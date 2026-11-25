@@ -60,7 +60,7 @@ let package = Package(
         // command ask these questions; neither of them sends anything to answer one.
         .target(
             name: "AgentWatchLookup",
-            dependencies: ["AgentWatchCore"]
+            dependencies: ["AgentWatchCore", "AgentWatchGit"]
         ),
         // The socket server, and nothing else — one file, and deliberately its own target so
         // that a listening socket never enters AgentWatchCore, where state has to stay
