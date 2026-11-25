@@ -93,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         heard: heard,
         history: history,
         liveAgentProcesses: AgentWatchPaths.isDevelopmentBuild ? { [] } : nil,
+        claudeUsage: ClaudeUsageFeed.live(home: AgentWatchPaths.homeDirectory()),
         onChange: { [weak self] sessions, usageLimits in
             // Re-read before the widget is told, not after: the complaint travels with the
             // sessions now, so reading it afterwards would draw this report with the previous

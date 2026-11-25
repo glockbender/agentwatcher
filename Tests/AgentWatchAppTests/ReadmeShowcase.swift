@@ -56,7 +56,11 @@ enum ReadmeShowcase {
 
     /// The account usage the Claude status line reports, for the line under the rows.
     static let usageLimits = [
-        AgentUsageLimits(source: .claude, fiveHour: .init(usedPercentage: 23), observedAt: now)
+        AgentUsageLimits(
+            source: .claude,
+            fiveHour: .init(usedPercentage: 23, resetsAt: now.addingTimeInterval(2 * 60 * 60)),
+            sevenDay: .init(usedPercentage: 41, resetsAt: now.addingTimeInterval(4 * 24 * 60 * 60)),
+            observedAt: now.addingTimeInterval(-8 * 60))
     ]
 
     /// One row per lamp, named by what the lamp means.

@@ -19,9 +19,12 @@
 
 | Версия | Что замерено | Где |
 | --- | --- | --- |
+| Claude Code 2.1.326 | В транскриптах и реестре сессий лимитов нет; во входных данных хуков их нет ни в документации, ни в коде Claude Code, а `StopFailure` говорит только, что лимит кончился. | [0026-claude-limits-come-from-its-own-snapshot.md, «Почему»](adr/0026-claude-limits-come-from-its-own-snapshot.md#почему) |
+| Claude Code 2.1.326 | Claude's limits under the widget are an hour old, or missing | [TROUBLESHOOTING.md, «Claude's limits under the widget are an hour old, or missing»](../TROUBLESHOOTING.md#claudes-limits-under-the-widget-are-an-hour-old-or-missing) |
 | Claude Code 2.1.326 | `claude -p`, запущенный с чистым окружением, разложился от своего процесса на агента 198 МБ, `plata-mcp` 282 МБ, команды 3 МБ и `mothership-push` 2 МБ. | [agent-processes.md, «Маркер сессии в окружении»](agent-processes.md#маркер-сессии-в-окружении) |
 | Claude Code 2.1.326 | В обоих клиентах целевая ветка осталась на месте, окно закрылось, исполнитель и процесс окна завершились. | [git-protection.md, «Проверка обновления и закрытия чата»](git-protection.md#проверка-обновления-и-закрытия-чата) |
 | Claude Code 2.1.326 | Файлы профилей, решение о доверии Codex и настройки Git совпали побайтно, ссылки учебного сервера сохранились. | [git-protection.md, «Проверка обновления и закрытия чата»](git-protection.md#проверка-обновления-и-закрытия-чата) |
+| Claude Code 2.1.326 | Measured on Claude Code 2.1.326: the reply after 0.85–1.1 s, the exit after 1.8 s. | `Sources/AgentWatchLookup/ClaudeUsageProbe.swift` |
 | Claude Code 2.1.325 | - **Claude Code** кладёт `CLAUDE_CODE_SESSION_ID` каждому дочернему процессу, MCP-серверам тоже, а `CLAUDE_PID` — только командам инструментов. | [agent-processes.md, «Маркер сессии в окружении»](agent-processes.md#маркер-сессии-в-окружении) |
 | Claude Code 2.1.325 | - **Группа процессов к агенту не ведёт, а имя оболочки ведёт.** Инструмент Bash у Claude Code запускает каждую команду как `zsh -c source …/shell-snapshots/…` в собственной группе процессов, и группа сироты указывает на уже завершённую… | [agent-processes.md, «Маркер сессии в окружении»](agent-processes.md#маркер-сессии-в-окружении) |
 | Claude Code 2.1.325 | Его команда — дочерний процесс родительского `claude` с идентификатором родительской сессии; отличалась только переменная `CLAUDE_EFFORT`. | [agent-processes.md, «Маркер сессии в окружении»](agent-processes.md#маркер-сессии-в-окружении) |
