@@ -198,3 +198,30 @@ session is working. For figures that follow your work as it happens, connect the
 the `Tooling` page.
 
 **Checked on:** Claude Code 2.1.326.
+
+## The waiting lamp stays on after Skip in Codex
+
+**Why:** Codex can keep working while one of its questions is open. In the checked desktop
+version, Skip changes the interface without recording an answer or a dismissal in the session
+transcript or updating the question in the local history database. A manual Skip test with
+OpenTelemetry logs, metrics and traces enabled produced no separate Skip or dismissal event.
+The interface has its own analytics event for skipping a question; that analytics stream was
+not intercepted in this test. The installed handler and both outgoing analytics envelope builders
+omit the chat and question identifiers. The analytics session identifier belongs to the app,
+not the chat, so capturing that event alone cannot identify which row to clear.
+The exact chat and question were observed inside the interface handler during a manual Skip,
+using a temporary debugger; this is a diagnostic result, not an implemented integration.
+
+**What to do:** Check the question in Codex before relying on the lamp. If you deliberately
+skipped it, the pending marker can remain until a recorded reply or session interruption clears
+it. You can remove the stale row when Agent Watch offers its × button. Continued work and the
+end of a turn do not prove that a question was closed, so Agent Watch does not clear it on
+those events.
+The [investigation report](docs/research/codex-question-skip.md) records the completed checks
+and links to the [request for a supported event](https://github.com/openai/codex/issues/44648#issuecomment-7149227298).
+
+**Checked on:** Codex Desktop 26.1117.31558 with Codex 0.171.0-alpha.13, and Codex Desktop
+26.1120.41243 with Codex 0.171.0-alpha.13.2. Manual Skip, database and OpenTelemetry export:
+2026-11-21, on the older version. Analytics functions executed offline and a live manual Skip
+captured through a conditional DevTools breakpoint: 2026-11-25, on the newer version.
+Database and OpenTelemetry export were not retested on the newer version.
