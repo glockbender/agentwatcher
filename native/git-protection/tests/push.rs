@@ -1504,3 +1504,204 @@ fn native_window_cancellation_disconnect_and_server_death_never_push() {
         assert!(fixture.remote_refs().is_empty(), "Git ran after {stop}");
     }
 }
+
+impl<C> Fixture<C> {
+    /// Writes the branch types the way the app does, into the home the CLI runs with.
+    fn branch_types(&self, text: &str) {
+        let path = self
+            .home
+            .join("Library/Application Support/AgentWatch/git-branch-types.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+}
+
+const TYPES: &str = r#"{"version":1,"types":[
+    {"name":"Drafts","patterns":["agent/*"],"level":"none"},
+    {"name":"Features","patterns":["feature/*"],"level":"click"},
+    {"name":"Releases","patterns":["release/*"],"level":"name"},
+    {"name":"Locked","patterns":["locked/*"],"level":"forbid"}]}"#;
+
+/// The answers that would carry any operation through, and the number of windows it took.
+fn run_level(fixture: &mut Fixture, branch: &str, delete: bool) -> (Value, usize) {
+    let reference = format!("refs/heads/{branch}");
+    fixture.seed(&reference);
+    fixture.arguments = if delete {
+        json!({"repository":fixture.repo,"destination":reference,"delete":true})
+    } else {
+        fixture.git(&["commit", "-q", "--allow-empty", "-m", branch]);
+        json!({"repository":fixture.repo,"destination":reference,"force":true})
+    };
+    let result = fixture.push_accept();
+    (result, fixture.prompts.len())
+}
+
+#[test]
+fn each_level_asks_for_its_own_windows() {
+    let mut fixture = Fixture::new(true);
+    fixture.branch_types(TYPES);
+    for delete in [false, true] {
+        for (branch, windows) in [("agent/x", 0), ("feature/x", 1), ("release/x", 2)] {
+            let (result, prompts) = run_level(&mut fixture, branch, delete);
+            assert_eq!(result["status"], "completed", "{branch} {delete}: {result}");
+            assert_eq!(prompts, windows, "{branch} delete={delete}");
+        }
+        let (result, prompts) = run_level(&mut fixture, "locked/x", delete);
+        assert_eq!(result["status"], "not_pushed", "{result}");
+        assert_eq!(prompts, 0);
+        let message = result["message"].as_str().unwrap();
+        assert!(message.contains("branch type 'Locked'"), "{message}");
+        assert!(message.contains("no window was shown"), "{message}");
+        assert!(result["manual_command"].is_string());
+    }
+    assert!(!fixture.remote_refs().contains("refs/heads/agent/x"));
+    assert!(fixture.remote_refs().contains("refs/heads/locked/x"));
+}
+
+#[test]
+fn a_click_level_force_push_runs_from_its_only_window() {
+    let mut fixture = Fixture::new(true);
+    fixture.branch_types(TYPES);
+    let (result, prompts) = run_level(&mut fixture, "feature/one-window", false);
+    assert_eq!(result["status"], "completed", "{result}");
+    assert_eq!(prompts, 1);
+    let params = &fixture.prompts[0]["params"];
+    let message = params["message"].as_str().unwrap();
+    assert!(
+        message.starts_with("Шаг 1 из 1: Принудительная отправка"),
+        "{message}"
+    );
+    assert!(message.contains("Тип ветки: Features"), "{message}");
+    assert!(message.contains("Версия кода: HEAD"), "{message}");
+    assert!(message.contains("Кнопка «Перезаписать историю ветки» выполнит операцию"));
+    let decision = &params["requestedSchema"]["properties"]["decision"];
+    assert_eq!(decision["oneOf"][1]["title"], "Перезаписать историю ветки");
+    assert!(params["requestedSchema"]["properties"]["repository_name"].is_null());
+}
+
+#[test]
+fn the_floor_keeps_the_repository_name_whatever_the_type_says() {
+    let mut fixture = Fixture::new(true);
+    fixture.branch_types(
+        r#"{"version":1,"types":[{"name":"Everything","patterns":["*"],"level":"none"}]}"#,
+    );
+    fixture.git(&["config", "--add", "mothership.protectedBranch", "stable"]);
+    let remote = fixture.remote.to_str().unwrap().to_owned();
+    fixture.git(&[
+        "--git-dir",
+        &remote,
+        "symbolic-ref",
+        "HEAD",
+        "refs/heads/trunk",
+    ]);
+    for (destination, delete, windows) in [
+        ("refs/heads/main", true, 2),
+        ("refs/heads/master", true, 2),
+        ("refs/heads/trunk", true, 2),
+        ("refs/heads/trunk", false, 2),
+        ("refs/heads/stable", true, 2),
+        ("refs/tags/v1", true, 2),
+        ("refs/heads/main", false, 3),
+        ("refs/heads/stable", false, 2),
+        ("refs/tags/v2", false, 2),
+    ] {
+        fixture.seed(destination);
+        fixture.git(&["commit", "-q", "--allow-empty", "-m", destination]);
+        fixture.arguments = json!({"repository":fixture.repo,"destination":destination});
+        fixture.arguments[if delete { "delete" } else { "force" }] = json!(true);
+        let result = fixture.push(|prompt, _| {
+            if prompt["params"]["requestedSchema"]["properties"]["decision"].is_object() {
+                Fixture::accept(prompt)
+            } else {
+                json!({"action":"decline"})
+            }
+        });
+        assert_eq!(result["status"], "not_pushed", "{destination}: {result}");
+        assert_eq!(
+            fixture.prompts.len(),
+            windows,
+            "{destination} delete={delete}"
+        );
+        let last = &fixture.prompts[windows - 1]["params"]["requestedSchema"]["properties"];
+        assert!(last["repository_name"].is_object(), "{destination}");
+        assert!(fixture.remote_refs().contains(destination), "{destination}");
+    }
+}
+
+#[test]
+fn the_first_matching_type_decides() {
+    let mut fixture = Fixture::new(true);
+    fixture.branch_types(
+        r#"{"version":1,"types":[
+            {"name":"Drafts","patterns":["agent/*"],"level":"none"},
+            {"name":"Everything","patterns":["*"],"level":"forbid"}]}"#,
+    );
+    let (result, prompts) = run_level(&mut fixture, "agent/first", true);
+    assert_eq!((result["status"].as_str(), prompts), (Some("completed"), 0));
+    let (result, prompts) = run_level(&mut fixture, "other/second", true);
+    assert_eq!(
+        (result["status"].as_str(), prompts),
+        (Some("not_pushed"), 0)
+    );
+    assert!(result["message"].as_str().unwrap().contains("'Everything'"));
+}
+
+#[test]
+fn without_a_readable_table_branches_keep_their_windows() {
+    for table in [None, Some("{"), Some(r#"{"version":1,"types":[]}"#)] {
+        let mut fixture = Fixture::new(true);
+        if let Some(table) = table {
+            fixture.branch_types(table);
+        }
+        let (result, prompts) = run_level(&mut fixture, "agent/x", true);
+        assert_eq!((result["status"].as_str(), prompts), (Some("completed"), 1));
+        assert!(
+            !fixture.prompts[0]["params"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("Тип ветки")
+        );
+        let (result, prompts) = run_level(&mut fixture, "agent/y", false);
+        assert_eq!((result["status"].as_str(), prompts), (Some("completed"), 2));
+    }
+}
+
+#[test]
+fn a_project_rule_only_raises_a_type() {
+    let mut fixture = Fixture::new(true);
+    fixture.branch_types(TYPES);
+    for branch in ["agent/kept", "feature/kept", "locked/kept"] {
+        fixture.git(&["config", "--add", "mothership.protectedBranch", branch]);
+    }
+    for (branch, windows) in [("agent/kept", 2), ("feature/kept", 2)] {
+        let (result, prompts) = run_level(&mut fixture, branch, true);
+        assert_eq!(result["status"], "completed", "{result}");
+        assert_eq!(prompts, windows, "{branch}");
+    }
+    let (result, prompts) = run_level(&mut fixture, "locked/kept", true);
+    assert_eq!(
+        (result["status"].as_str(), prompts),
+        (Some("not_pushed"), 0)
+    );
+}
+
+#[test]
+fn a_level_raised_during_the_window_stops_the_push() {
+    let mut fixture = Fixture::new(true);
+    fixture.branch_types(TYPES);
+    let branch = "refs/heads/feature/raised";
+    fixture.seed(branch);
+    fixture.arguments = json!({"repository":fixture.repo,"destination":branch,"delete":true});
+    let result = fixture.push(|prompt, state| {
+        state.branch_types(&TYPES.replace(r#""click""#, r#""forbid""#));
+        Fixture::accept(prompt)
+    });
+    assert_eq!(result["status"], "not_pushed", "{result}");
+    assert!(
+        result["message"]
+            .as_str()
+            .unwrap()
+            .contains("changed during confirmation")
+    );
+    assert!(fixture.remote_refs().contains(branch));
+}

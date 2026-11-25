@@ -1,0 +1,23 @@
+[
+  {"pattern": "feature/*", "name": "feature/login", "matches": true},
+  {"pattern": "feature/*", "name": "feature/a/b", "matches": true},
+  {"pattern": "feature/*", "name": "feature/", "matches": true},
+  {"pattern": "feature/*", "name": "feature", "matches": false},
+  {"pattern": "feature/*", "name": "my-feature/login", "matches": false},
+  {"pattern": "feature/*", "name": "Feature/login", "matches": false},
+  {"pattern": "*", "name": "main", "matches": true},
+  {"pattern": "*", "name": "", "matches": true},
+  {"pattern": "*-wip", "name": "agent/fix-wip", "matches": true},
+  {"pattern": "*-wip", "name": "agent/fix-wip2", "matches": false},
+  {"pattern": "release/*/hotfix", "name": "release/2026/q1/hotfix", "matches": true},
+  {"pattern": "v?", "name": "v1", "matches": true},
+  {"pattern": "v?", "name": "v10", "matches": false},
+  {"pattern": "tmp/??", "name": "tmp/ab", "matches": true},
+  {"pattern": "main", "name": "main", "matches": true},
+  {"pattern": "main", "name": "maintenance", "matches": false},
+  {"pattern": "a*b*c", "name": "aXbYbZc", "matches": true},
+  {"pattern": "a*b*c", "name": "aXbYcZ", "matches": false},
+  {"pattern": "[ab]", "name": "a", "matches": false},
+  {"pattern": "[ab]", "name": "[ab]", "matches": true},
+  {"pattern": "ветка/*", "name": "ветка/задача", "matches": true}
+]

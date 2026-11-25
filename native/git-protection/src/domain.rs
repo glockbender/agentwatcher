@@ -1,3 +1,4 @@
+use crate::levels::Level;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -150,6 +151,11 @@ pub struct Plan {
     pub old: String,
     pub delete: bool,
     pub risks: Vec<Risk>,
+    /// How many windows the operation needs. `Level::Name` for every operation the branch
+    /// types do not govern, which is what those operations always asked for.
+    pub level: Level,
+    /// The branch type that chose the level, shown to the person and in a refusal.
+    pub branch_type: Option<String>,
     pub reason: Option<String>,
     pub remote_options: Vec<String>,
     pub command: Vec<String>,
@@ -168,8 +174,15 @@ pub fn quote(text: &str) -> String {
 }
 
 impl Plan {
-    pub fn single_click_delete(&self) -> bool {
-        self.risks == [Risk::DeleteBranch]
+    /// Branch types decide the level of a force push or deletion of a branch, nothing else.
+    pub fn governed(&self) -> bool {
+        self.destination.starts_with("refs/heads/")
+            && (self.delete || self.risks.contains(&Risk::ForceUpdate))
+    }
+
+    /// One window whose button runs the operation; there is no step with the repository name.
+    pub fn single_click(&self) -> bool {
+        self.level == Level::Click
     }
 
     pub fn stopped(&self, reason: &str) -> Value {

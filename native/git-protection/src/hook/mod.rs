@@ -55,13 +55,29 @@ fn inspect(
     };
     let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("~"), PathBuf::from);
     let parsed = shell::parse(command, deadline)?;
-    let reason = policy::check(parsed, &cwd, &home, cancel, deadline)?;
-    Ok(reason.map(|reason| {
-        format!(
-            "{reason}. For one intended reference call {} push '<JSON object>' {GUIDANCE}",
+    let verdict = policy::check(
+        parsed,
+        policy::literal(command),
+        &cwd,
+        &home,
+        cancel,
+        deadline,
+    )?;
+    let mut reasons = Vec::new();
+    if !verdict.forbidden.is_empty() {
+        reasons.push(format!(
+            "{}. Agent Watch settings forbid this for agents: do not call AgentWatchGit for it or retry; ask the user to run it in a terminal.",
+            verdict.forbidden.join("; ")
+        ));
+    }
+    if !verdict.risks.is_empty() {
+        reasons.push(format!(
+            "{}. For one intended reference call {} push '<JSON object>' {GUIDANCE}",
+            verdict.risks.join("; "),
             crate::domain::quote(&binary.to_string_lossy())
-        )
-    }))
+        ));
+    }
+    Ok((!reasons.is_empty()).then(|| reasons.join(" ")))
 }
 
 fn read_event(input: impl AsFd, cancel: &Cancellation, deadline: Instant) -> Result<Value, String> {

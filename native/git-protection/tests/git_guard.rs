@@ -366,3 +366,298 @@ fn installation_check_returns_with_stdin_open_and_rejects_missing_cli() {
         ));
     }
 }
+
+impl Bundle {
+    fn branch_types(&self, text: &str) {
+        let path = self
+            .root
+            .path()
+            .join("Library/Application Support/AgentWatch/git-branch-types.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    /// A working copy with a local destination whose default branch is `trunk`, fetched so
+    /// that every remote branch is known locally.
+    fn repo_with_remote(&self) -> PathBuf {
+        let repo = self.repo("typed");
+        let remote = self.root.path().join("destination.git");
+        let remote_path = remote.to_str().unwrap();
+        self.git(&repo, &["init", "--bare", "--template=", remote_path]);
+        self.git(&repo, &["remote", "add", "origin", remote_path]);
+        for branch in [
+            "trunk",
+            "agent/x",
+            "agent/old",
+            "agent/tagged",
+            "agent/kept",
+            "locked/x",
+            "feature/y",
+        ] {
+            self.git(
+                &repo,
+                &["push", "-q", "origin", &format!("HEAD:refs/heads/{branch}")],
+            );
+        }
+        self.git(
+            &repo,
+            &[
+                "--git-dir",
+                remote_path,
+                "symbolic-ref",
+                "HEAD",
+                "refs/heads/trunk",
+            ],
+        );
+        self.git(&repo, &["fetch", "-q", "origin"]);
+        self.git(&repo, &["branch", "trunk"]);
+        self.git(&repo, &["branch", "heads/trunk"]);
+        // A branch named like a tag the remote has, and a remote defined outside the config.
+        self.git(&repo, &["push", "-q", "origin", "HEAD:refs/tags/v1"]);
+        self.git(&repo, &["branch", "v1"]);
+        // A remote whose URL list is cleared, a ref named `@`, and a remote tag whose name
+        // ends like a branch.
+        self.git(&repo, &["config", "remote.empty.url", ""]);
+        self.git(&repo, &["symbolic-ref", "refs/heads/@", "refs/heads/main"]);
+        self.git(
+            &repo,
+            &[
+                "push",
+                "-q",
+                "origin",
+                "HEAD:refs/tags/refs/heads/agent/shadowed",
+            ],
+        );
+        std::fs::create_dir_all(repo.join(".git/branches")).unwrap();
+        std::fs::write(
+            repo.join(".git/branches/legacy"),
+            format!("{remote_path}#main\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            repo.join(".git/branches/empty"),
+            format!("{remote_path}#main\n"),
+        )
+        .unwrap();
+        self.git(&repo, &["branch", "locked/x"]);
+        self.git(&repo, &["switch", "-q", "-c", "agent/x"]);
+        self.git(&repo, &["tag", "agent/tagged"]);
+        self.git(
+            &repo,
+            &[
+                "config",
+                "--add",
+                "mothership.protectedBranch",
+                "agent/kept",
+            ],
+        );
+        repo
+    }
+}
+
+const HOOK_TYPES: &str = r#"{"version":1,"types":[
+    {"name":"Drafts","patterns":["agent/*","heads/*","v*","trunk","main"],"level":"none"},
+    {"name":"Locked","patterns":["locked/*"],"level":"forbid"},
+    {"name":"Features","patterns":["feature/*"],"level":"click"}]}"#;
+
+#[test]
+fn branch_types_decide_force_pushes_and_deletions_in_the_hook() {
+    let bundle = Bundle::new();
+    let repo = bundle.repo_with_remote();
+    bundle.branch_types(HOOK_TYPES);
+    let allowed = [
+        "git push -f origin agent/x",
+        "git push --force-with-lease",
+        "git push -f",
+        "git push origin +agent/x",
+        "git push -f origin HEAD",
+        "git push -f origin HEAD:refs/heads/agent/new",
+        "git push origin --delete refs/heads/agent/old",
+        "git push origin :refs/heads/agent/old",
+        "git push -u --force-with-lease=agent/x origin agent/x",
+    ];
+    let checked = [
+        // The floor: main, the remote's default branch and a project rule keep the window.
+        ("git push -f origin HEAD:refs/heads/main", "force push"),
+        ("git push -f origin HEAD:refs/heads/trunk", "force push"),
+        ("git push -f origin trunk", "force push"),
+        (
+            "git push origin --delete refs/heads/trunk",
+            "deletes branch 'trunk'",
+        ),
+        (
+            "git push origin --delete refs/heads/agent/kept",
+            "deletes branch 'kept'",
+        ),
+        // A short <dst> is matched against the remote's refs, where it can be a tag or another
+        // branch, so only refs/heads/ goes without a window.
+        (
+            "git push origin --delete agent/old",
+            "deletes branch 'agent/old'",
+        ),
+        ("git push origin :agent/old", "deletes branch 'agent/old'"),
+        ("git push -f origin HEAD:agent/old", "force push"),
+        ("git push origin --delete tags/agent/tagged", "deletes"),
+        ("git push -f origin HEAD:heads/trunk", "force push"),
+        // A local name must resolve to its own refs/heads/ ref.
+        ("git push -f origin heads/trunk", "force push"),
+        // What the hook reads must be what the push sees: one plain `git push`, nothing else.
+        ("git push -f origin agent/x 2>&1 | tail -3", "force push"),
+        (
+            "git checkout -b agent/t; git push -f origin HEAD",
+            "force push",
+        ),
+        (
+            "echo 'ref: refs/heads/main' > .git/HEAD; git push -f origin HEAD",
+            "force push",
+        ),
+        ("true && git push -f origin agent/x", "force push"),
+        ("bash -c 'git push -f origin agent/x'", "force push"),
+        ("git push -f origin v1:v1", "force push"),
+        ("git push -f origin agent/x:agent/x", "force push"),
+        (
+            "git push -f origin HEAD <<EOF\n$(git symbolic-ref HEAD refs/heads/main)\nEOF",
+            "force push",
+        ),
+        (
+            "git push -f origin HEAD 2>${x:-$(git symbolic-ref HEAD refs/heads/main)}/dev/null",
+            "force push",
+        ),
+        (
+            "git push -f --force-with-lease=${x#$(git symbolic-ref HEAD refs/heads/main)} origin HEAD",
+            "force push",
+        ),
+        ("git push -f origin 'agent/x'", "force push"),
+        ("git push -f legacy", "force push"),
+        ("git push -f empty", "force push"),
+        ("git push -f origin @", "force push"),
+        (
+            "git push -f origin HEAD:refs/heads/agent/shadowed",
+            "force push",
+        ),
+        ("X=1 git push -f origin agent/x", "force push"),
+        ("git -C . push -f origin agent/x", "force push"),
+        ("git push --mirror origin", "force push"),
+        ("git push -f --tags origin agent/x", "force push"),
+        (
+            "git push -f --recurse-submodules=on-demand origin agent/x",
+            "force push",
+        ),
+        (
+            "git push -f --receive-pack=git-receive-pack origin agent/x",
+            "force push",
+        ),
+        // Other types and other risks keep today's checks.
+        ("git push -f origin HEAD:refs/heads/feature/y", "force push"),
+        (
+            "git push -f origin agent/x HEAD:refs/heads/feature/y",
+            "force push",
+        ),
+        ("git push -f --all origin", "--all"),
+        ("git push -f origin 'agent/*'", "matching branches"),
+        ("git push -f --prune origin agent/x", "--prune"),
+        ("git -c push.default=matching push -f", "push routing"),
+        ("git push -f /elsewhere agent/x", "force push"),
+    ];
+    for host in ["claude", "codex"] {
+        let check = |command: &str| {
+            bundle.invoke(
+                host,
+                &json!({"cwd": repo, "tool_input": {"command": command}}).to_string(),
+            )
+        };
+        for command in allowed {
+            assert_eq!(check(command), "", "{host} should allow {command}");
+        }
+        for (command, risk) in checked {
+            let output = check(command);
+            assert!(!output.is_empty(), "{host} should deny {command}");
+            let reason = denial(&output);
+            assert!(reason.contains(risk), "{host} {command}: {reason}");
+            assert!(reason.contains("push '<JSON object>'"), "{reason}");
+            assert!(!reason.contains("forbidden"), "{reason}");
+        }
+        for (command, refusal) in [
+            (
+                "git push origin --delete refs/heads/locked/x",
+                "deleting branch 'locked/x'",
+            ),
+            (
+                "git push -f origin HEAD:refs/heads/locked/x",
+                "force push to 'locked/x'",
+            ),
+            (
+                "git push -f origin locked/x 2>&1 | tail -3",
+                "force push to 'locked/x'",
+            ),
+        ] {
+            let reason = denial(&check(command));
+            assert!(reason.contains(refusal), "{reason}");
+            assert!(
+                reason.contains("forbidden by branch type 'Locked'"),
+                "{reason}"
+            );
+            assert!(reason.contains("run it in a terminal"), "{reason}");
+            assert!(!reason.contains("push '<JSON object>'"), "{reason}");
+        }
+        // A short name may not be the branch: the executor decides it with the exact ref.
+        assert!(!denial(&check("git push origin --delete locked/x")).contains("forbidden"));
+        let both = denial(&check(
+            "git push -f origin HEAD:refs/heads/locked/x HEAD:refs/heads/feature/y",
+        ));
+        assert!(both.contains("forbidden by branch type 'Locked'"), "{both}");
+        assert!(
+            both.contains("force push. For one intended reference"),
+            "{both}"
+        );
+    }
+}
+
+#[test]
+fn a_push_that_recurses_into_submodules_keeps_its_window() {
+    let bundle = Bundle::new();
+    let repo = bundle.repo_with_remote();
+    bundle.branch_types(HOOK_TYPES);
+    let check = || {
+        bundle.invoke(
+            "claude",
+            &json!({"cwd": repo, "tool_input": {"command": "git push -f origin agent/x"}})
+                .to_string(),
+        )
+    };
+    assert_eq!(check(), "");
+    for key in ["submodule.recurse", "push.recurseSubmodules"] {
+        bundle.git(&repo, &["config", key, "on-demand"]);
+        assert!(denial(&check()).contains("force push"), "{key}");
+        bundle.git(&repo, &["config", "--unset", key]);
+    }
+}
+
+#[test]
+fn without_a_readable_table_the_hook_checks_as_before() {
+    let bundle = Bundle::new();
+    let repo = bundle.repo_with_remote();
+    for table in [
+        None,
+        Some("{"),
+        Some(&HOOK_TYPES.replace("\"none\"", "\"sometimes\"")[..]),
+    ] {
+        if let Some(table) = table {
+            bundle.branch_types(table);
+        }
+        for command in [
+            "git push -f origin agent/x",
+            "git push origin --delete agent/old",
+            "git push origin --delete locked/x",
+        ] {
+            let reason = denial(&bundle.invoke(
+                "claude",
+                &json!({"cwd": repo, "tool_input": {"command": command}}).to_string(),
+            ));
+            assert!(
+                reason.contains("push '<JSON object>'"),
+                "{command}: {reason}"
+            );
+        }
+    }
+}

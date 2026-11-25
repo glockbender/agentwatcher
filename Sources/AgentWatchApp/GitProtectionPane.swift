@@ -13,10 +13,20 @@ struct GitProtectionPane: View {
     @State private var confirmingRemoval = false
     @State private var preview: GitDeletionPreview?
     @State private var errorMessage: String?
+    @State private var table = GitBranchTypes()
+    /// What the file holds, so opening the page does not write it back.
+    @State private var savedTable: GitBranchTypes?
+    @State private var tableError: String?
+
+    /// Where `AgentWatchGit` reads the table: `~/Library/Application Support/AgentWatch`.
+    private var tableURL: URL? {
+        AgentWatchPaths.supportDirectory()?.appendingPathComponent(GitBranchTypes.fileName)
+    }
 
     var body: some View {
         Form {
             GitProtectionProfiles(folders: profiles)
+            GitBranchTypesSection(table: $table, error: tableError)
             Section("Remote branch deletion") {
                 LabeledContent("Repository") {
                     Button(folder?.path ?? "Choose Folder…") { choosingFolder = true }
@@ -33,22 +43,16 @@ struct GitProtectionPane: View {
                 Text(errorMessage).foregroundStyle(.red)
             } else if let preview {
                 Section("Confirmation for this branch") {
+                    Text(summary(of: preview))
                     switch preview {
                     case .builtIn:
-                        Text("Confirm deletion, then enter the repository name. This branch has built-in protection.")
+                        Text("This branch has built-in protection.")
                     case .projectRule:
-                        Text(
-                            "Confirm deletion, then enter the repository name. This repository lists the branch as protected."
-                        )
+                        Text("This repository lists the branch as protected.")
                         Button("Remove Project Rule…") { confirmingRemoval = true }
                     case .includedRule:
-                        Text(
-                            "Confirm deletion, then enter the repository name. This rule comes from an included Git configuration file."
-                        )
+                        Text("This rule comes from an included Git configuration file.")
                     case .dependsOnRemote:
-                        Text(
-                            "Confirm deletion once. If this is the remote’s default branch, also enter the repository name."
-                        )
                         Button("Require Repository Name") {
                             if let folder { load(folder: folder, branch: branch, protected: true) }
                         }
@@ -80,10 +84,48 @@ struct GitProtectionPane: View {
             )
         }
         .onChange(of: branch) { clearResult() }
+        .onAppear(perform: loadTable)
+        .onChange(of: table) { saveTable() }
         .onDisappear {
             previewTask?.cancel()
             previewTask = nil
             reading = false
+        }
+    }
+
+    private func summary(of preview: GitDeletionPreview) -> String {
+        let (level, type) = preview.deletionLevel(in: table, branch: branch)
+        let source = type.map { " (branch type “\($0)”)" } ?? ""
+        let text: String
+        switch level {
+        case .forbid: return "Deletion is refused without a window\(source). Run it from a terminal."
+        case .name: return "Confirm deletion, then enter the repository name\(source)."
+        case .click: text = "Confirm deletion once\(source)."
+        case .none: text = "No window: the agent’s deletion goes through\(source)."
+        }
+        return text + " If this is the remote’s default branch, also confirm and enter the repository name."
+    }
+
+    private func loadTable() {
+        guard savedTable == nil, let url = tableURL else { return }
+        do {
+            table = try GitBranchTypes.load(from: url)
+            savedTable = table
+        } catch {
+            savedTable = GitBranchTypes()
+            tableError =
+                "\(url.path) could not be read (\(error.localizedDescription)). Until it is fixed, branches keep the checks they had without types; editing the table here replaces the file."
+        }
+    }
+
+    private func saveTable() {
+        guard let savedTable, savedTable != table, let url = tableURL else { return }
+        do {
+            try table.save(to: url)
+            self.savedTable = table
+            tableError = nil
+        } catch {
+            tableError = "The branch types could not be saved: \(error.localizedDescription)"
         }
     }
 

@@ -3,6 +3,7 @@
 
 use super::commands::{basename, command_index, git_subcommand};
 use super::shell::Parsed;
+use crate::levels::{BranchTypes, Level};
 use crate::process::{self, Cancellation, Output};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -100,6 +101,74 @@ impl Repository<'_> {
         Ok(risks)
     }
 
+    /// The remote a push without a remote operand goes to, in Git's own order.
+    fn implicit_remote(&self, branch: &str) -> Result<String, String> {
+        for key in [
+            format!("branch.{branch}.pushRemote"),
+            "remote.pushDefault".into(),
+            format!("branch.{branch}.remote"),
+        ] {
+            let output = self.query(&["config", "--get", &key])?;
+            let value = output.stdout.trim();
+            if output.status.success() && !value.is_empty() {
+                return Ok(value.into());
+            }
+        }
+        Ok("origin".into())
+    }
+
+    /// The branch a push of a local name updates. Without `:<dst>` Git updates the source's
+    /// own full ref, so the name must resolve to exactly `refs/heads/<name>`: `heads/trunk`
+    /// resolving to `refs/heads/trunk` is refused, because the floor would be asked about
+    /// another branch than the one pushed.
+    fn local_branch(&self, name: &str) -> Result<Option<String>, String> {
+        // `rev-parse` reads `@` as HEAD, while `git push` first looks for a ref named `@`.
+        if name == "@" || (name != "HEAD" && !plain(name)) {
+            return Ok(None);
+        }
+        if name == "HEAD"
+            && !self
+                .query(&[
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "refs/heads/HEAD",
+                    "refs/tags/HEAD",
+                    "refs/remotes/HEAD",
+                ])?
+                .stdout
+                .trim()
+                .is_empty()
+        {
+            return Ok(None);
+        }
+        let output = self.query(&["rev-parse", "--symbolic-full-name", name])?;
+        let full = output.stdout.trim();
+        let Some(branch) = full.strip_prefix("refs/heads/") else {
+            return Ok(None);
+        };
+        let exact = name == "HEAD" || name == full || name == branch;
+        Ok((output.status.success() && exact && plain(branch)).then(|| branch.to_owned()))
+    }
+
+    /// Whether the floor leaves the branch alone, asked of the remote the way a push asks.
+    /// Any doubt keeps the floor.
+    fn below_floor(&self, remote: &str, branch: &str) -> bool {
+        let Some(path) = self.path.to_str() else {
+            return false;
+        };
+        // A submodule push goes to remotes this check never asks.
+        let recursing = self.query(&[
+            "config",
+            "--get-regexp",
+            r"^(push\.recursesubmodules|submodule\.recurse)$",
+        ]);
+        plain(remote)
+            && recursing.is_ok_and(|output| output.status.code() == Some(1))
+            && crate::git::Git::new(self.cancel.clone(), self.deadline)
+                .and_then(|git| git.protected(path, remote, branch))
+                == Ok(false)
+    }
+
     fn known_branch(&self, name: &str) -> Result<bool, String> {
         for reference in [
             format!("refs/heads/{name}"),
@@ -122,6 +191,77 @@ fn protected(name: &str) -> bool {
     matches!(name, "main" | "master" | "heads/main" | "heads/master")
         || name.ends_with("/heads/main")
         || name.ends_with("/heads/master")
+}
+
+/// Whether the command is plain text the shell runs as written. The parser does not look into
+/// every expansion (a heredoc body, `${x:-$(…)}`), so a push may skip its window only when the
+/// input has no expansion, quote, redirection or second line at all.
+pub(super) fn literal(command: &str) -> bool {
+    command
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || " -_./:+=,@".contains(c))
+}
+
+/// A name with nothing the shell or Git would expand or read as another ref.
+fn plain(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && !name.contains("..")
+        && !name
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || "$`*?[\\~^:@{}".contains(c))
+}
+
+/// A destination Git can only read as a branch: a short `<dst>` is matched against the
+/// remote's refs, where `v1`, `tags/v1` or `heads/main` name something else.
+fn explicit_branch(name: &str) -> Option<String> {
+    name.strip_prefix("refs/heads/")
+        .filter(|branch| plain(branch))
+        .map(str::to_owned)
+}
+
+/// What a branch type says about one force push or deletion.
+enum Outcome {
+    /// The type is `none`, the destination is a branch and the floor leaves it alone.
+    Allowed,
+    Forbidden {
+        branch: String,
+        kind: String,
+    },
+    /// Everything else goes to the confirmation, as before types existed.
+    Checked,
+}
+
+/// Decides one destination. Git is asked only when a type would allow or forbid, so with no
+/// matching type a command is inspected exactly as before types existed.
+fn outcome(
+    types: &BranchTypes,
+    allow: bool,
+    candidate: Option<&str>,
+    resolve: impl FnOnce() -> Result<Option<(String, String)>, String>,
+    repo: &Repository,
+) -> Result<Outcome, String> {
+    let interesting = |name: &str| {
+        types
+            .matching(name)
+            .is_some_and(|kind| matches!(kind.level, Level::None | Level::Forbid))
+    };
+    if !types.has_none_or_forbid() || candidate.is_some_and(|name| !interesting(name)) {
+        return Ok(Outcome::Checked);
+    }
+    let Some((branch, remote)) = resolve()? else {
+        return Ok(Outcome::Checked);
+    };
+    Ok(match types.matching(&branch) {
+        Some(kind) if kind.level == Level::Forbid => Outcome::Forbidden {
+            branch,
+            kind: kind.name.clone(),
+        },
+        Some(kind) if kind.level == Level::None && allow && repo.below_floor(&remote, &branch) => {
+            Outcome::Allowed
+        }
+        _ => Outcome::Checked,
+    })
 }
 
 #[derive(Default)]
@@ -166,6 +306,35 @@ struct Push<'a> {
     prune: bool,
     remote_option: Option<&'a str>,
     operands: Vec<&'a str>,
+    /// Set by any option outside the few a branch type may let through without a window.
+    unusual: bool,
+}
+
+/// Whether an argument of `git push` can do more than force or delete the named refs. Only a
+/// push made of plain options and ref names may skip the window; `--mirror`, `--tags`,
+/// `--all`, `--prune`, `--receive-pack`, submodule pushes and anything unknown may not.
+fn unusual(arg: &str) -> bool {
+    if !arg.starts_with('-') || arg == "--" {
+        return false;
+    }
+    if let Some(letters) = arg.strip_prefix('-').filter(|rest| !rest.starts_with('-')) {
+        return !letters.bytes().all(|letter| b"fduqv".contains(&letter));
+    }
+    let name = arg.split_once('=').map_or(arg, |(option, _)| option);
+    !matches!(
+        name,
+        "--force"
+            | "--force-with-lease"
+            | "--force-if-includes"
+            | "--delete"
+            | "--set-upstream"
+            | "--quiet"
+            | "--verbose"
+            | "--no-verify"
+            | "--progress"
+            | "--no-progress"
+            | "--porcelain"
+    )
 }
 
 fn abbreviated(arg: &str, names: &[&str]) -> bool {
@@ -185,7 +354,10 @@ impl<'a> Push<'a> {
     }
 
     fn parse(arguments: &'a [String]) -> Self {
-        let mut push = Self::default();
+        let mut push = Self {
+            unusual: arguments.iter().any(|arg| unusual(arg)),
+            ..Self::default()
+        };
         let mut args = arguments.iter();
         while let Some(arg) = args.next() {
             let arg = arg.as_str();
@@ -262,16 +434,19 @@ impl<'a> Push<'a> {
         repo: &Repository,
         context: &Context,
         overrides: bool,
-    ) -> Result<Vec<String>, String> {
-        let mut risks = Vec::new();
+        types: &BranchTypes,
+        sole: bool,
+    ) -> Result<Verdict, String> {
+        let mut verdict = Verdict::default();
         if self.dry {
-            return Ok(risks);
+            return Ok(verdict);
         }
+        // What the hook reads (HEAD, refs, configuration, the folder) must be what the push
+        // will see, so only a lone `git push` of plain options may skip the window.
+        let allow = sole && !self.unusual && context.switched.is_empty();
+        let risks = &mut verdict.risks;
         if self.prune {
             risks.push("push --prune may delete remote branches or tags".into());
-        }
-        if self.force {
-            risks.push("force push".into());
         }
         if self.all {
             risks.push("push --all includes main/master".into());
@@ -283,6 +458,9 @@ impl<'a> Push<'a> {
             risks.push("command-local Git configuration may override push routing".into());
         }
         risks.extend(repo.push_config_risks(remote, refspecs, implicit)?);
+        // A force push goes without a window only when every destination it rewrites is a
+        // branch whose type says `none`; anything unproven keeps the check.
+        let mut forced = Vec::new();
         let mut tag = false;
         for &reference in refspecs {
             if reference == "tag" {
@@ -295,37 +473,194 @@ impl<'a> Push<'a> {
                 reference.strip_prefix(':')
             };
             if let Some(name) = delete.filter(|name| !name.is_empty()) {
-                risks.push(deletion(repo, context, name, tag)?);
+                let decided = if tag {
+                    Outcome::Checked
+                } else {
+                    deleted(repo, types, allow, remote, name)?
+                };
+                verdict.delete(decided, || deletion(repo, context, name, tag))?;
             } else if reference == ":" || reference.contains('*') {
-                risks.push("pushes matching branches, main/master included".into());
+                verdict
+                    .risks
+                    .push("pushes matching branches, main/master included".into());
+                forced.push(Outcome::Checked);
             } else {
                 let destination = reference
                     .split_once(':')
                     .map_or(
                         reference,
-                        |(source, dest)| if dest.is_empty() { source } else { dest },
+                        |(source, dest)| {
+                            if dest.is_empty() { source } else { dest }
+                        },
                     );
                 if protected(destination) {
-                    risks.push("push targets main/master".into());
+                    verdict.risks.push("push targets main/master".into());
                 } else if matches!(destination, "HEAD" | "@")
                     || destination.contains("$(")
                     || destination.contains('`')
                 {
                     let branch = repo.branch(context)?;
                     if matches!(branch.as_str(), "main" | "master") {
-                        risks.push(format!("pushes the current branch '{branch}' (protected)"));
+                        verdict
+                            .risks
+                            .push(format!("pushes the current branch '{branch}' (protected)"));
                     }
+                }
+                if self.force && !self.delete {
+                    forced.push(if tag {
+                        Outcome::Checked
+                    } else {
+                        let local = !reference.contains(':');
+                        rewritten(repo, types, allow, remote, local, destination)?
+                    });
                 }
             }
             tag = false;
         }
         if implicit {
-            let branch = repo.branch(context)?;
-            if matches!(branch.as_str(), "main" | "master") {
-                risks.push(format!("current branch is '{branch}' (protected)"));
+            self.current_branch(repo, context, types, allow, &mut verdict, &mut forced)?;
+        }
+        if self.force {
+            verdict.force(forced, usize::from(self.prune));
+        }
+        Ok(verdict)
+    }
+}
+
+impl Push<'_> {
+    /// A push without refspecs, which goes to the current branch.
+    fn current_branch(
+        &self,
+        repo: &Repository,
+        context: &Context,
+        types: &BranchTypes,
+        allow: bool,
+        verdict: &mut Verdict,
+        forced: &mut Vec<Outcome>,
+    ) -> Result<(), String> {
+        let branch = repo.branch(context)?;
+        if matches!(branch.as_str(), "main" | "master") {
+            verdict
+                .risks
+                .push(format!("current branch is '{branch}' (protected)"));
+        }
+        if self.force && !self.delete {
+            let remote = self.operands.first().copied().or(self.remote_option);
+            forced.push(outcome(
+                types,
+                allow,
+                Some(&branch),
+                || {
+                    let Some(branch) = repo.local_branch("HEAD")? else {
+                        return Ok(None);
+                    };
+                    let remote = match remote {
+                        Some(remote) => remote.to_owned(),
+                        None => repo.implicit_remote(&branch)?,
+                    };
+                    Ok(Some((branch, remote)))
+                },
+                repo,
+            )?);
+        }
+        Ok(())
+    }
+}
+
+/// How a deletion of `name` is decided.
+fn deleted(
+    repo: &Repository,
+    types: &BranchTypes,
+    allow: bool,
+    remote: Option<&str>,
+    name: &str,
+) -> Result<Outcome, String> {
+    outcome(
+        types,
+        allow,
+        Some(name.strip_prefix("refs/heads/").unwrap_or(name)),
+        || {
+            Ok(remote
+                .zip(explicit_branch(name))
+                .map(|(remote, branch)| (branch, remote.to_owned())))
+        },
+        repo,
+    )
+}
+
+/// How a force push of `source` to `destination` is decided.
+fn rewritten(
+    repo: &Repository,
+    types: &BranchTypes,
+    allow: bool,
+    remote: Option<&str>,
+    local: bool,
+    destination: &str,
+) -> Result<Outcome, String> {
+    let candidate = (!matches!(destination, "HEAD" | "@")).then(|| {
+        destination
+            .strip_prefix("refs/heads/")
+            .unwrap_or(destination)
+    });
+    outcome(
+        types,
+        allow,
+        candidate,
+        || {
+            let Some(remote) = remote else {
+                return Ok(None);
+            };
+            // `name:name` is not a local push: its `<dst>` is matched on the remote.
+            let branch = if local {
+                repo.local_branch(destination)?
+            } else {
+                explicit_branch(destination)
+            };
+            Ok(branch.map(|branch| (branch, remote.to_owned())))
+        },
+        repo,
+    )
+}
+
+/// Why a command is denied: risks go to the confirmation window, forbidden operations go
+/// nowhere but a person's terminal.
+#[derive(Default)]
+pub(super) struct Verdict {
+    pub risks: Vec<String>,
+    pub forbidden: Vec<String>,
+}
+
+impl Verdict {
+    fn delete(
+        &mut self,
+        decided: Outcome,
+        risk: impl FnOnce() -> Result<String, String>,
+    ) -> Result<(), String> {
+        match decided {
+            Outcome::Allowed => {}
+            Outcome::Forbidden { branch, kind } => self.forbidden.push(format!(
+                "deleting branch '{branch}' is forbidden by branch type '{kind}'"
+            )),
+            Outcome::Checked => self.risks.push(risk()?),
+        }
+        Ok(())
+    }
+
+    /// A force push keeps its risk unless every destination it rewrites was allowed.
+    fn force(&mut self, forced: Vec<Outcome>, position: usize) {
+        let mut checked = forced.is_empty();
+        for decided in forced {
+            match decided {
+                Outcome::Allowed => {}
+                Outcome::Forbidden { branch, kind } => self.forbidden.push(format!(
+                    "force push to '{branch}' is forbidden by branch type '{kind}'"
+                )),
+                Outcome::Checked => checked = true,
             }
         }
-        Ok(risks)
+        if checked {
+            self.risks.insert(position, "force push".into());
+        }
     }
 }
 
@@ -405,16 +740,19 @@ fn repository(here: &Path, home: &Path, prefix: &[String], options: &[String]) -
 
 pub(super) fn check(
     parsed: Parsed,
+    literal: bool,
     cwd: &Path,
     home: &Path,
     cancel: &Cancellation,
     deadline: Instant,
-) -> Result<Option<String>, String> {
+) -> Result<Verdict, String> {
     let mut folders = vec![None; parsed.parents.len()];
     folders[0] = Some(cwd.to_owned());
     let mut context = Context::default();
-    let mut risks = Vec::new();
+    let mut types = None;
+    let mut verdict = Verdict::default();
     let mut seen = HashSet::new();
+    let alone = literal && parsed.total == 1 && parsed.commands.len() == 1;
     for command in parsed.commands {
         if Instant::now() >= deadline {
             return Err(super::TIMEOUT.into());
@@ -463,7 +801,7 @@ pub(super) fn check(
                 }) || prefix.iter().any(|word| {
                     word.starts_with("GIT_CONFIG") || word.starts_with("GIT_NAMESPACE=")
                 });
-                for risk in Push::parse(rest).risks(
+                let found = Push::parse(rest).risks(
                     &Repository {
                         path: &path,
                         cancel,
@@ -471,14 +809,22 @@ pub(super) fn check(
                     },
                     &context,
                     overrides,
-                )? {
+                    types.get_or_insert_with(BranchTypes::load),
+                    alone && i == 0 && pos == 0 && command.words[0] == "git",
+                )?;
+                for risk in found.risks {
                     if seen.insert(risk.clone()) {
-                        risks.push(risk);
+                        verdict.risks.push(risk);
+                    }
+                }
+                for refusal in found.forbidden {
+                    if seen.insert(refusal.clone()) {
+                        verdict.forbidden.push(refusal);
                     }
                 }
             }
             _ => {}
         }
     }
-    Ok((!risks.is_empty()).then(|| risks.join("; ")))
+    Ok(verdict)
 }

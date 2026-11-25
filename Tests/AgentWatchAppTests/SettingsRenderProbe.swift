@@ -1,4 +1,5 @@
 import AgentWatchCore
+import AgentWatchGit
 import AppKit
 import SwiftUI
 import XCTest
@@ -6,7 +7,7 @@ import XCTest
 @testable import AgentWatchApp
 
 /// Draws settings pages into PNG files, for a person to look at: the ones that show a theme,
-/// the two whose switches say beside them why one is greyed, and `General`.
+/// the two whose switches say beside them why one is greyed, `General` and the branch types.
 ///
 /// Skipped unless `SETTINGS_RENDER_DIR` names a directory. Drawn in a window that is never
 /// shown, so nothing appears on screen and nothing takes the focus from whoever is working.
@@ -143,6 +144,22 @@ final class SettingsRenderProbe: XCTestCase {
             act: { _ in }
         )
         try draw(AnyView(ToolingPane(tooling: here)), height: 1700, named: "settings-tooling-here", in: directory)
+    }
+
+    func testDrawTheBranchTypes() throws {
+        let requested = ProcessInfo.processInfo.environment["SETTINGS_RENDER_DIR"]
+        try XCTSkipIf(requested == nil, "a drawing probe, not a check: set SETTINGS_RENDER_DIR")
+        let directory = try XCTUnwrap(requested)
+        // The section alone: the whole pane would read and write the person's real table.
+        let table = GitBranchTypes(types: [
+            GitBranchType(name: "Features", patterns: ["feature/*", "fix/*"], level: .click),
+            GitBranchType(name: "Releases", patterns: ["release/*", "hotfix/*"], level: .name),
+            GitBranchType(name: "Agent drafts", patterns: ["agent/*", "tmp/*"], level: .none),
+            GitBranchType(name: "Archive", patterns: ["archive/*"], level: .forbid),
+        ])
+        try draw(
+            AnyView(Form { GitBranchTypesSection(table: .constant(table), error: nil) }), height: 900,
+            named: "settings-git-branch-types", in: directory)
     }
 
     /// Three IDEs standing in the three places that read differently: one running with an

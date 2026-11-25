@@ -66,3 +66,15 @@ public enum GitDeletionPreview: Equatable, Sendable {
         try GitCommand.run(arguments, in: folder)
     }
 }
+
+extension GitDeletionPreview {
+    /// The level a remote deletion of `branch` gets, as far as the preview can tell without the
+    /// network: the first matching type, or one click without one, raised to the repository name
+    /// by the floor this preview found. `.dependsOnRemote` below `.name` can still be raised by
+    /// the remote's default branch.
+    public func deletionLevel(in table: GitBranchTypes, branch: String) -> (level: GitCheckLevel, type: String?) {
+        let type = table.matching(branch)
+        let chosen = type?.level ?? .click
+        return (self == .dependsOnRemote ? chosen : max(chosen, .name), type?.name)
+    }
+}

@@ -4,6 +4,7 @@ mod confirmation;
 mod domain;
 mod git;
 mod hook;
+mod levels;
 mod process;
 #[cfg(feature = "mcp-fixture")]
 mod protocol;
