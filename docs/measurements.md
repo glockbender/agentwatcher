@@ -228,8 +228,14 @@
 
 | Версия | Что замерено | Где |
 | --- | --- | --- |
+| Codex Desktop 26.1120.41243 | The waiting lamp stays on after Skip in Codex | [TROUBLESHOOTING.md, «The waiting lamp stays on after Skip in Codex»](../TROUBLESHOOTING.md#the-waiting-lamp-stays-on-after-skip-in-codex) |
+| Codex Desktop 26.1120.41243 | Skip не даёт такого ответа: в проверенном журнале пропущенный вопрос остаётся без записи закрытия. | [transcript-reader.md, «Концы работы, которых нет в хуках»](transcript-reader.md#концы-работы-которых-нет-в-хуках) |
+| Codex Desktop 26.1117.31558 | The waiting lamp stays on after Skip in Codex | [TROUBLESHOOTING.md, «The waiting lamp stays on after Skip in Codex»](../TROUBLESHOOTING.md#the-waiting-lamp-stays-on-after-skip-in-codex) |
+| Codex 0.171.0-alpha.13 | The waiting lamp stays on after Skip in Codex | [TROUBLESHOOTING.md, «The waiting lamp stays on after Skip in Codex»](../TROUBLESHOOTING.md#the-waiting-lamp-stays-on-after-skip-in-codex) |
+| Codex 0.171.0-alpha.13.2 | The waiting lamp stays on after Skip in Codex | [TROUBLESHOOTING.md, «The waiting lamp stays on after Skip in Codex»](../TROUBLESHOOTING.md#the-waiting-lamp-stays-on-after-skip-in-codex) |
 | Codex 0.171.0-alpha.13 | В обоих клиентах целевая ветка осталась на месте, окно закрылось, исполнитель и процесс окна завершились. | [git-protection.md, «Проверка обновления и закрытия чата»](git-protection.md#проверка-обновления-и-закрытия-чата) |
 | Codex 0.171.0-alpha.13 | Файлы профилей, решение о доверии Codex и настройки Git совпали побайтно, ссылки учебного сервера сохранились. | [git-protection.md, «Проверка обновления и закрытия чата»](git-protection.md#проверка-обновления-и-закрытия-чата) |
+| Codex 0.171.0-alpha.13.2 | Skip не даёт такого ответа: в проверенном журнале пропущенный вопрос остаётся без записи закрытия. | [transcript-reader.md, «Концы работы, которых нет в хуках»](transcript-reader.md#концы-работы-которых-нет-в-хуках) |
 | Codex 0.169.0-alpha.11.1 | 19 ноября 2026 года в обычном чате Codex `push_once` вернул `completed` после того, как пользователь подтвердил удаление тестовой ветки в окне Agent Watch сборки `6ac27a52`. | [git-protection.md, «Сквозная проверка в Codex»](git-protection.md#сквозная-проверка-в-codex) |
 | Codex 0.169.0-alpha.11.1 | Каждому вопросу соответствует его индекс в списке, в том числе когда вместо вариантов предложен свободный ответ. | [transcript-reader.md, «Концы работы, которых нет в хуках»](transcript-reader.md#концы-работы-которых-нет-в-хуках) |
 | Codex 0.162.0 | Запуск с `--ephemeral` транскрипта не пишет и шлёт `transcript_path: null`, поэтому его отсекает тот же признак, что и служебный сеанс: строки у него нет даже с `Show headless runs`. | [agent-events.md, «Приём сеансов Codex, и открытый вопрос про `/clear`»](agent-events.md#приём-сеансов-codex-и-открытый-вопрос-про-clear) |
