@@ -79,7 +79,7 @@ impl Settings {
         // Build next to the destination so failed compilation or signing preserves the previous copy.
         let stage = scratch(parent)?;
         let staged = stage.join(app.file_name().ok_or("missing bundle name")?);
-        self.assemble(root, &bin, &staged, name)
+        self.assemble(root, &bin, &staged, name, configuration)
             .map_err(|e| format!("{e}\nBuild files: {}", stage.display()))?;
         trash(&app)?;
         io(fs::rename(&staged, &app), &app)?;
@@ -87,7 +87,14 @@ impl Settings {
         Ok(app)
     }
 
-    fn assemble(&self, root: &Path, bin: &Path, app: &Path, name: &str) -> Result {
+    fn assemble(
+        &self,
+        root: &Path,
+        bin: &Path,
+        app: &Path,
+        name: &str,
+        configuration: &str,
+    ) -> Result {
         let contents = app.join("Contents");
         let executables = contents.join("MacOS");
         let resources = contents.join("Resources");
@@ -182,8 +189,17 @@ impl Settings {
             let target = std::env::var_os("CARGO_TARGET_DIR")
                 .filter(|s| !s.is_empty())
                 .map_or_else(|| root.join(".build/devtool"), |p| root.join(p));
+            let support_folder = if self.dev {
+                "AgentWatch Dev"
+            } else {
+                "AgentWatch"
+            };
             run_cmd(
                 cmd("rustup")
+                    .env(
+                        "AGENT_WATCH_GIT_BUNDLE_POLICY",
+                        format!("{support_folder}/{configuration}"),
+                    )
                     .args([
                         "run",
                         "1.98.1",

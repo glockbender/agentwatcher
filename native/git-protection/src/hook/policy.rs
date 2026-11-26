@@ -3,7 +3,7 @@
 
 use super::commands::{basename, command_index, git_subcommand};
 use super::shell::Parsed;
-use crate::levels::{BranchTypes, Level};
+use crate::levels::{self, BranchRules, BranchTypes, Level};
 use crate::process::{self, Cancellation, Output};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -235,31 +235,25 @@ enum Outcome {
 /// Decides one destination. Git is asked only when a type would allow or forbid, so with no
 /// matching type a command is inspected exactly as before types existed.
 fn outcome(
-    types: &BranchTypes,
+    rules: BranchRules<'_>,
     allow: bool,
     candidate: Option<&str>,
     resolve: impl FnOnce() -> Result<Option<(String, String)>, String>,
     repo: &Repository,
 ) -> Result<Outcome, String> {
-    let interesting = |name: &str| {
-        types
-            .matching(name)
-            .is_some_and(|kind| matches!(kind.level, Level::None | Level::Forbid))
-    };
-    if !types.has_none_or_forbid() || candidate.is_some_and(|name| !interesting(name)) {
+    let interesting = |name: &str| matches!(rules.selected(name).0, Level::None | Level::Forbid);
+    if !rules.has_none_or_forbid() || candidate.is_some_and(|name| !interesting(name)) {
         return Ok(Outcome::Checked);
     }
     let Some((branch, remote)) = resolve()? else {
         return Ok(Outcome::Checked);
     };
-    Ok(match types.matching(&branch) {
-        Some(kind) if kind.level == Level::Forbid => Outcome::Forbidden {
+    Ok(match rules.selected(&branch) {
+        (Level::Forbid, Some(rule)) => Outcome::Forbidden {
             branch,
-            kind: kind.name.clone(),
+            kind: rule.name.clone(),
         },
-        Some(kind) if kind.level == Level::None && allow && repo.below_floor(&remote, &branch) => {
-            Outcome::Allowed
-        }
+        (Level::None, _) if allow && repo.below_floor(&remote, &branch) => Outcome::Allowed,
         _ => Outcome::Checked,
     })
 }
@@ -453,6 +447,23 @@ impl<'a> Push<'a> {
         }
         let remote = self.operands.first().copied().or(self.remote_option);
         let refspecs = self.operands.get(1..).unwrap_or_default();
+        let uses_branch_rules = self.force
+            || self.delete
+            || refspecs
+                .iter()
+                .any(|reference| reference.len() > 1 && reference.starts_with(':'));
+        let common = if uses_branch_rules && types.has_repository_rules() {
+            let output = repo.query(levels::COMMON_DIRECTORY_ARGS)?;
+            if !output.status.success() {
+                return Err("Git could not identify the repository for the branch rules.".into());
+            }
+            let directory = output.stdout.strip_suffix('\n').unwrap_or(&output.stdout);
+            Some(levels::canonical_directory(repo.path, directory)?)
+        } else {
+            None
+        };
+        let force_rules = types.rules(false, common.as_deref());
+        let delete_rules = types.rules(true, common.as_deref());
         let implicit = refspecs.is_empty() && !self.tags_only && !self.all;
         if overrides {
             risks.push("command-local Git configuration may override push routing".into());
@@ -476,7 +487,7 @@ impl<'a> Push<'a> {
                 let decided = if tag {
                     Outcome::Checked
                 } else {
-                    deleted(repo, types, allow, remote, name)?
+                    deleted(repo, delete_rules, allow, remote, name)?
                 };
                 verdict.delete(decided, || deletion(repo, context, name, tag))?;
             } else if reference == ":" || reference.contains('*') {
@@ -511,14 +522,14 @@ impl<'a> Push<'a> {
                         Outcome::Checked
                     } else {
                         let local = !reference.contains(':');
-                        rewritten(repo, types, allow, remote, local, destination)?
+                        rewritten(repo, force_rules, allow, remote, local, destination)?
                     });
                 }
             }
             tag = false;
         }
         if implicit {
-            self.current_branch(repo, context, types, allow, &mut verdict, &mut forced)?;
+            self.current_branch(repo, context, force_rules, allow, &mut verdict, &mut forced)?;
         }
         if self.force {
             verdict.force(forced, usize::from(self.prune));
@@ -533,7 +544,7 @@ impl Push<'_> {
         &self,
         repo: &Repository,
         context: &Context,
-        types: &BranchTypes,
+        rules: BranchRules<'_>,
         allow: bool,
         verdict: &mut Verdict,
         forced: &mut Vec<Outcome>,
@@ -547,7 +558,7 @@ impl Push<'_> {
         if self.force && !self.delete {
             let remote = self.operands.first().copied().or(self.remote_option);
             forced.push(outcome(
-                types,
+                rules,
                 allow,
                 Some(&branch),
                 || {
@@ -570,13 +581,13 @@ impl Push<'_> {
 /// How a deletion of `name` is decided.
 fn deleted(
     repo: &Repository,
-    types: &BranchTypes,
+    rules: BranchRules<'_>,
     allow: bool,
     remote: Option<&str>,
     name: &str,
 ) -> Result<Outcome, String> {
     outcome(
-        types,
+        rules,
         allow,
         Some(name.strip_prefix("refs/heads/").unwrap_or(name)),
         || {
@@ -591,7 +602,7 @@ fn deleted(
 /// How a force push of `source` to `destination` is decided.
 fn rewritten(
     repo: &Repository,
-    types: &BranchTypes,
+    rules: BranchRules<'_>,
     allow: bool,
     remote: Option<&str>,
     local: bool,
@@ -603,7 +614,7 @@ fn rewritten(
             .unwrap_or(destination)
     });
     outcome(
-        types,
+        rules,
         allow,
         candidate,
         || {
@@ -639,7 +650,7 @@ impl Verdict {
         match decided {
             Outcome::Allowed => {}
             Outcome::Forbidden { branch, kind } => self.forbidden.push(format!(
-                "deleting branch '{branch}' is forbidden by branch type '{kind}'"
+                "deleting branch '{branch}' is forbidden by branch rule '{kind}'"
             )),
             Outcome::Checked => self.risks.push(risk()?),
         }
@@ -653,7 +664,7 @@ impl Verdict {
             match decided {
                 Outcome::Allowed => {}
                 Outcome::Forbidden { branch, kind } => self.forbidden.push(format!(
-                    "force push to '{branch}' is forbidden by branch type '{kind}'"
+                    "force push to '{branch}' is forbidden by branch rule '{kind}'"
                 )),
                 Outcome::Checked => checked = true,
             }
@@ -743,13 +754,13 @@ pub(super) fn check(
     literal: bool,
     cwd: &Path,
     home: &Path,
+    types: &BranchTypes,
     cancel: &Cancellation,
     deadline: Instant,
 ) -> Result<Verdict, String> {
     let mut folders = vec![None; parsed.parents.len()];
     folders[0] = Some(cwd.to_owned());
     let mut context = Context::default();
-    let mut types = None;
     let mut verdict = Verdict::default();
     let mut seen = HashSet::new();
     let alone = literal && parsed.total == 1 && parsed.commands.len() == 1;
@@ -809,7 +820,7 @@ pub(super) fn check(
                     },
                     &context,
                     overrides,
-                    types.get_or_insert_with(BranchTypes::load),
+                    types,
                     alone && i == 0 && pos == 0 && command.words[0] == "git",
                 )?;
                 for risk in found.risks {

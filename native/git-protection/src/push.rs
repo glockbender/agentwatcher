@@ -20,7 +20,7 @@ pub fn execute(
     }
     let confirmed = || -> Result<(), String> {
         cancel.check(deadline)?;
-        // At `none` the person chose no window for this branch type, so nothing is asked.
+        // At `none` the person chose no window for this branch rule, so nothing is asked.
         let risks = if plan.level == Level::None {
             &[][..]
         } else {
@@ -91,6 +91,6 @@ fn forbidden(plan: &Plan) -> String {
         .unwrap_or(&plan.destination);
     let kind = plan.branch_type.as_deref().unwrap_or_default();
     format!(
-        "Agent Watch settings forbid the {operation} of branch '{branch}' (branch type '{kind}'). Nothing was pushed and no window was shown. Do not call AgentWatchGit for it again."
+        "Agent Watch settings forbid the {operation} of branch '{branch}' (branch rule '{kind}'). Nothing was pushed and no window was shown. Do not call AgentWatchGit for it again."
     )
 }

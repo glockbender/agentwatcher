@@ -225,17 +225,15 @@ Linked Git working folders appear under the same project. Filter by activity, se
 chat name, and open the matching conversation. Recent shows up to 20 chats. **Usage profiles**
 shows the last observed limits and their time for the default Claude profile and configured Codex folders.
 
-In **Settings… → Git Protection**, select the client and profile, then click **Install Git Hook**.
-In Codex desktop, open **Settings → Hooks** and click **Trust**. In the terminal, use `/hooks`.
-Start a new chat in each client. Install the
-hook before updating from a Mothership version that provides Git protection. Keep Agent Watch
-at the same path when updating. Both clients continue using the existing project rules.
+In **Settings… → Git Protection**, check the hook status beside each Claude Code or Codex
+profile. Click **Install…** to connect a profile or **Repair…** to fix an outdated hook.
+In Codex, approve the hook in **Settings → Hooks** or `/hooks`, then open a new chat. Keep
+Agent Watch at the same path when updating.
 
-Choose a Git working folder and enter a branch name. You can
-require the repository name before deleting that branch on the remote, or remove a rule saved
-directly in that repository. The change applies to its linked working folders. The installed
-Git guard enforces the rule. If the outcome depends on the remote’s default branch, the preview
-explains both possibilities.
+**Protect Git commands** turns checks on or off for all connected profiles. Turning them off
+requires confirmation and keeps the hooks and rules. Under **Branch rules**, select **Push**,
+**Force Push**, or **Delete Remote Branch**. A repository can require a stricter check than
+the shared rule. Use **Preview a Branch** to see which check applies.
 
 In **Settings… → Working Copies**, scan a repository to see its working copies, largest first.
 Expand a copy to see local changes, build folders and what Agent Watch can safely move to the
@@ -258,7 +256,7 @@ Details: [installing into the agents](docs/agent-install.md), [architecture](doc
 
 ## Uninstall
 
-1. In **Settings… → Git Protection**, use **Remove Git Hook…** for each protected profile.
+1. In **Settings… → Git Protection**, use **Remove…** beside each installed profile.
    In **Settings… → Tooling**, press **Remove** for each agent, **Forget Folder** for every folder
    you added. If you connected the old Claude status-line relay, restore your command before
    moving the support folder to the Trash. [Restore the status-line command](TROUBLESHOOTING.md#claude-still-runs-the-agent-watch-status-line-relay).

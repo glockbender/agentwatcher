@@ -5,158 +5,384 @@ import UniformTypeIdentifiers
 
 struct GitProtectionPane: View {
     let profiles: AgentFolders
-    @State private var folder: URL?
-    @State private var branch = "release"
-    @State private var choosingFolder = false
-    @State private var reading = false
-    @State private var previewTask: Task<Void, Never>?
-    @State private var confirmingRemoval = false
-    @State private var preview: GitDeletionPreview?
-    @State private var errorMessage: String?
-    @State private var table = GitBranchTypes()
-    /// What the file holds, so opening the page does not write it back.
-    @State private var savedTable: GitBranchTypes?
-    @State private var tableError: String?
+    var rulesURL = AgentWatchPaths.supportDirectory()?.appendingPathComponent(GitProtectionRules.fileName)
 
-    /// Where `AgentWatchGit` reads the table: `~/Library/Application Support/AgentWatch`.
-    private var tableURL: URL? {
-        AgentWatchPaths.supportDirectory()?.appendingPathComponent(GitBranchTypes.fileName)
+    private enum Scope: Hashable { case all, repository }
+    private enum FolderUse { case rules, preview }
+    private struct PreviewRequest: Equatable {
+        let repository: GitProtectionRepository?
+        let branch: String
     }
+    private struct EditorSelection: Identifiable {
+        let id = UUID()
+        let operation: GitBranchOperation
+        let repository: GitProtectionRepository?
+        let rule: GitBranchType?
+        let index: Int?
+        let count: Int
+    }
+
+    @State private var rules: GitProtectionRules?
+    @State private var settingsError: String?
+    @State private var confirmsDisable = false
+    @State private var operation = GitBranchOperation.delete
+    @State private var scope = Scope.all
+    @State private var rulesRepository: GitProtectionRepository?
+    @State private var previewRepository: GitProtectionRepository?
+    @State private var folderError: String?
+    @State private var choosingFolder = false
+    @State private var folderUse = FolderUse.rules
+    @State private var readingFolder = false
+    @State private var branch = ""
+    @State private var preview: GitDeletionPreview?
+    @State private var previewError: String?
+    @State private var readingPreview = false
+    @State private var confirmsLegacyRemoval = false
+    @State private var editor: EditorSelection?
+
+    private var enabled: Bool { rules?.enabled ?? true }
+    private var activeRepository: GitProtectionRepository? { scope == .repository ? rulesRepository : nil }
+    private var currentRules: [GitBranchType] {
+        if scope == .repository {
+            guard let key = activeRepository?.key else { return [] }
+            return rules?.repositories[key]?[operation] ?? []
+        }
+        return rules?.global[operation] ?? []
+    }
+    private var canAddRule: Bool {
+        rules != nil && operation != .push && (scope == .all || activeRepository != nil)
+    }
+
+    private var previewRequest: PreviewRequest { PreviewRequest(repository: previewRepository, branch: branch) }
 
     var body: some View {
-        Form {
-            GitProtectionProfiles(folders: profiles)
-            GitBranchTypesSection(table: $table, error: tableError)
-            Section("Remote branch deletion") {
-                LabeledContent("Repository") {
-                    Button(folder?.path ?? "Choose Folder…") { choosingFolder = true }
-                }
-                TextField("Branch", text: $branch)
-                Button(reading ? "Reading…" : "Preview Confirmation") {
-                    guard let folder else { return }
-                    load(folder: folder, branch: branch)
-                }
-                .disabled(folder == nil || branch.isEmpty)
+        ScrollViewReader { proxy in
+            Form {
+                protectionSwitch
+                GitProtectionProfiles(folders: profiles)
+                branchRules { withAnimation { proxy.scrollTo("branch-preview", anchor: .top) } }
+                branchPreview.id("branch-preview")
             }
-            .disabled(reading)
-            if let errorMessage {
-                Text(errorMessage).foregroundStyle(.red)
-            } else if let preview {
-                Section("Confirmation for this branch") {
-                    Text(summary(of: preview))
-                    switch preview {
-                    case .builtIn:
-                        Text("This branch has built-in protection.")
-                    case .projectRule:
-                        Text("This repository lists the branch as protected.")
-                        Button("Remove Project Rule…") { confirmingRemoval = true }
-                    case .includedRule:
-                        Text("This rule comes from an included Git configuration file.")
-                    case .dependsOnRemote:
-                        Button("Require Repository Name") {
-                            if let folder { load(folder: folder, branch: branch, protected: true) }
-                        }
-                    }
-                }
-                .disabled(reading)
-            }
-            Footnote(
-                "Edits apply to this repository and its linked working folders. The Git protection tool also checks the remote’s default branch when deletion is requested."
+        }
+        .task { loadRules() }
+        .task(id: previewRequest) { await readPreview(previewRequest) }
+        .onChange(of: operation) { if operation == .push { scope = .all } }
+        .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder], onCompletion: acceptFolder)
+        .sheet(item: $editor) { selection in
+            GitProtectionRuleEditor(
+                operation: selection.operation,
+                repository: selection.repository,
+                rule: selection.rule,
+                canMoveEarlier: (selection.index ?? 0) > 0,
+                canMoveLater: selection.index.map { $0 + 1 < selection.count } ?? false,
+                change: { try edit(selection, change: $0) }
             )
         }
-        .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { selection in
-            switch selection {
-            case .success(let url):
-                folder = url
-                clearResult()
-            case .failure(let error):
-                if (error as NSError).code != NSUserCancelledError { errorMessage = error.localizedDescription }
-            }
-        }
-        .confirmationDialog("Remove this project’s rule for “\(branch)”?", isPresented: $confirmingRemoval) {
-            Button("Remove Project Rule", role: .destructive) {
-                if let folder { load(folder: folder, branch: branch, protected: false) }
-            }
-            Button("Cancel", role: .cancel) {}
+        .alert("Turn off Git Protection?", isPresented: $confirmsDisable) {
+            Button("Cancel", role: .cancel) {}.keyboardShortcut(.defaultAction)
+            Button("Turn Off Protection", role: .destructive) { setEnabled(false) }
         } message: {
             Text(
-                "An included rule, built-in protection, or the remote’s default branch can still require the repository name."
+                "Agent Watch will stop checking Git commands in all connected profiles. Agents can push to protected branches, rewrite history, or delete remote branches without an Agent Watch confirmation. Your hooks and rules are saved."
             )
         }
-        .onChange(of: branch) { clearResult() }
-        .onAppear(perform: loadTable)
-        .onChange(of: table) { saveTable() }
-        .onDisappear {
-            previewTask?.cancel()
-            previewTask = nil
-            reading = false
+        .alert("Remove this repository’s existing protection for this branch?", isPresented: $confirmsLegacyRemoval) {
+            Button("Cancel", role: .cancel) {}
+            Button("Remove Rule", role: .destructive) { removeLegacyRule() }
+        } message: {
+            Text("Other rules and the remote’s default branch can still require the repository name.")
         }
     }
 
-    private func summary(of preview: GitDeletionPreview) -> String {
-        let (level, type) = preview.deletionLevel(in: table, branch: branch)
-        let source = type.map { " (branch type “\($0)”)" } ?? ""
-        let text: String
-        switch level {
-        case .forbid: return "Deletion is refused without a window\(source). Run it from a terminal."
-        case .name: return "Confirm deletion, then enter the repository name\(source)."
-        case .click: text = "Confirm deletion once\(source)."
-        case .none: text = "No window: the agent’s deletion goes through\(source)."
-        }
-        return text + " If this is the remote’s default branch, also confirm and enter the repository name."
-    }
-
-    private func loadTable() {
-        guard savedTable == nil, let url = tableURL else { return }
-        do {
-            table = try GitBranchTypes.load(from: url)
-            savedTable = table
-        } catch {
-            savedTable = GitBranchTypes()
-            tableError =
-                "\(url.path) could not be read (\(error.localizedDescription)). Until it is fixed, branches keep the checks they had without types; editing the table here replaces the file."
-        }
-    }
-
-    private func saveTable() {
-        guard let savedTable, savedTable != table, let url = tableURL else { return }
-        do {
-            try table.save(to: url)
-            self.savedTable = table
-            tableError = nil
-        } catch {
-            tableError = "The branch types could not be saved: \(error.localizedDescription)"
+    private var protectionSwitch: some View {
+        Section {
+            Toggle(
+                isOn: Binding(
+                    get: { enabled },
+                    set: { value in
+                        if value { setEnabled(true) } else { confirmsDisable = true }
+                    })
+            ) {
+                Label {
+                    Heading(
+                        title: "Protect Git commands",
+                        hint: enabled
+                            ? "Checks Git commands from connected agent profiles."
+                            : "Protection is off for all profiles. Hooks and rules are saved.")
+                } icon: {
+                    Image(systemName: enabled ? "checkmark.shield" : "shield.slash")
+                        .foregroundStyle(enabled ? Color.accentColor : Color.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+            .disabled(rules == nil)
+            if let settingsError {
+                Text(settingsError).font(.caption).foregroundStyle(.red)
+            }
         }
     }
 
-    private func clearResult() {
+    private func branchRules(openPreview: @escaping () -> Void) -> some View {
+        Section {
+            Picker("Git operation", selection: $operation) {
+                ForEach(GitBranchOperation.allCases) { operation in
+                    Text(operation.title).tag(operation)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if operation != .push {
+                Picker("Rule scope", selection: $scope) {
+                    Text("All repositories").tag(Scope.all)
+                    Text("One repository…").tag(Scope.repository)
+                }
+                if scope == .repository {
+                    LabeledContent("Repository") {
+                        repositoryButton(rulesRepository, use: .rules)
+                    }
+                    if let folderError, folderUse == .rules { errorText(folderError) }
+                }
+            }
+            LabeledContent {
+                Text(operation.defaultLevel.title)
+            } label: {
+                Heading(title: scope == .all ? "Default" : "Inherited default", hint: "Branches with no matching rule")
+            }
+            LabeledContent {
+                Text(GitCheckLevel.name.title)
+            } label: {
+                Heading(
+                    title: "Protected branches",
+                    hint: operation == .push
+                        ? "main and master"
+                        : "main, master, the remote’s default branch, and branches protected in Git")
+            }
+            ForEach(currentRules) { rule in
+                let patterns = rule.patterns.joined(separator: " ")
+                HStack {
+                    Text(patterns)
+                        .font(.system(.body, design: .monospaced))
+                        .lineLimit(2)
+                        .help(patterns)
+                    Spacer()
+                    Text(rule.level.title)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Button("Edit…") { openEditor(for: rule) }
+                        .accessibilityLabel("Edit rule for \(patterns)")
+                        .disabled(rules == nil)
+                }
+            }
+            if operation != .push {
+                Button {
+                    openEditor()
+                } label: {
+                    Label("Add \(operation.ruleTitle)…", systemImage: "plus")
+                }
+                .disabled(!canAddRule)
+            }
+        } header: {
+            HStack {
+                Text("Branch rules")
+                Spacer()
+                Button("Preview a Branch", systemImage: "arrow.down", action: openPreview)
+                    .labelStyle(.titleAndIcon)
+                    .buttonStyle(.borderless)
+            }
+        } footer: {
+            Footnote(
+                operation == .push
+                    ? "These built-in checks apply to ordinary pushes. Git can also require confirmation when it cannot determine the destination from the command."
+                    : scope == .all
+                        ? "The first matching rule applies. Protected branches always require at least the check shown above."
+                        : "The first matching repository rule can make the global check stricter. Linked working copies use the same rules."
+            )
+        }
+    }
+
+    private var branchPreview: some View {
+        Section("Preview a branch") {
+            LabeledContent("Repository") {
+                repositoryButton(previewRepository, use: .preview)
+            }
+            TextField("Branch", text: $branch, prompt: Text("release/2026.11"))
+            if !enabled {
+                Heading(title: "Protection is off", hint: "Agent Watch skips this check while Git Protection is off.")
+            } else if let folderError, folderUse == .preview {
+                errorText(folderError)
+            } else if let previewError {
+                errorText(previewError)
+            } else if readingPreview {
+                ProgressView().controlSize(.small)
+            } else if let preview {
+                let result = previewResult(preview)
+                Heading(title: result.level.title, hint: result.reason)
+                if operation != .push && preview == .projectRule {
+                    Button("Remove Repository’s Existing Rule…", role: .destructive) { confirmsLegacyRemoval = true }
+                }
+            } else {
+                Footnote("Choose a repository and enter a branch name to preview \(operation.title).")
+            }
+        }
+    }
+
+    private func previewResult(_ evidence: GitDeletionPreview) -> (level: GitCheckLevel, reason: String) {
+        let choice = (rules ?? GitProtectionRules()).level(
+            for: operation, branch: branch, repository: previewRepository?.key)
+        let protected = evidence == .builtIn || (operation != .push && evidence != .dependsOnRemote)
+        if protected && choice.level <= .name {
+            switch evidence {
+            case .builtIn: return (.name, "Built-in protection for \(branch).")
+            case .projectRule: return (.name, "This branch is protected in the repository’s Git configuration.")
+            case .includedRule: return (.name, "This branch is protected in an included Git configuration file.")
+            case .dependsOnRemote: break
+            }
+        }
+        var reason = choice.source.map { "Matches rule “\($0)”." } ?? "Uses the default for \(operation.title)."
+        if operation != .push && choice.level < .name {
+            reason += " If this is the remote’s default branch, the repository name is also required."
+        }
+        return (choice.level, reason)
+    }
+
+    private func repositoryButton(_ repository: GitProtectionRepository?, use: FolderUse) -> some View {
+        Button(repository?.folder.lastPathComponent ?? "Choose Folder…") {
+            folderUse = use
+            choosingFolder = true
+        }
+        .help(repository?.folder.path ?? "Choose a folder in a Git repository")
+        .disabled(readingFolder)
+    }
+
+    private func errorText(_ error: String) -> some View {
+        Text(error).font(.caption).foregroundStyle(.red)
+    }
+
+    private func acceptFolder(_ selection: Result<URL, Error>) {
+        switch selection {
+        case .success(let folder):
+            folderError = nil
+            readingFolder = true
+            let purpose = folderUse
+            Task {
+                let result = await Task.detached(priority: .userInitiated) {
+                    Result { try GitProtectionRepository(folder: folder) }
+                }.value
+                readingFolder = false
+                switch result {
+                case .success(let repository):
+                    if purpose == .rules { rulesRepository = repository }
+                    previewRepository = repository
+                case .failure(let error): folderError = error.localizedDescription
+                }
+            }
+        case .failure(let error):
+            if (error as NSError).code != NSUserCancelledError { folderError = error.localizedDescription }
+        }
+    }
+
+    private func readPreview(_ request: PreviewRequest) async {
         preview = nil
-        errorMessage = nil
+        previewError = nil
+        readingPreview = false
+        guard let repository = request.repository, !request.branch.isEmpty else { return }
+        readingPreview = true
+        do {
+            try await Task.sleep(for: .milliseconds(250))
+        } catch { return }
+        let worker = Task.detached(priority: .userInitiated) {
+            try GitDeletionPreview.read(in: repository.folder, branch: request.branch)
+        }
+        let result = await withTaskCancellationHandler {
+            await worker.result
+        } onCancel: {
+            worker.cancel()
+        }
+        guard !Task.isCancelled else { return }
+        readingPreview = false
+        switch result {
+        case .success(let value): preview = value
+        case .failure(let error): previewError = error.localizedDescription
+        }
     }
 
-    private func load(folder: URL, branch: String, protected: Bool? = nil) {
-        clearResult()
-        reading = true
-        let worker = Task.detached(priority: .userInitiated) {
-            if let protected {
-                return try GitDeletionPreview.setProjectRule(in: folder, branch: branch, protected: protected)
-            }
-            return try GitDeletionPreview.read(in: folder, branch: branch)
-        }
-        previewTask = Task {
-            let result = await withTaskCancellationHandler {
-                await worker.result
-            } onCancel: {
-                // A confirmed edit can finish after the settings page closes.
-                if protected == nil { worker.cancel() }
-            }
-            guard !Task.isCancelled else { return }
+    private func removeLegacyRule() {
+        guard let repository = previewRepository else { return }
+        let request = previewRequest
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                Result {
+                    try GitDeletionPreview.setProjectRule(
+                        in: repository.folder, branch: request.branch, protected: false)
+                }
+            }.value
+            guard previewRequest == request else { return }
             switch result {
             case .success(let value): preview = value
-            case .failure(let error): errorMessage = error.localizedDescription
+            case .failure(let error): previewError = error.localizedDescription
             }
-            reading = false
-            previewTask = nil
         }
+    }
+
+    private func loadRules() {
+        do {
+            rules = try GitProtectionRules.load(from: settingsPath())
+            settingsError = nil
+        } catch {
+            settingsError = "Could not read Git protection rules. Built-in checks apply. \(error.localizedDescription)"
+        }
+    }
+
+    private func settingsPath() throws -> URL {
+        guard let rulesURL else { throw SettingsError.missingDirectory }
+        return rulesURL
+    }
+
+    private func save(_ updated: GitProtectionRules) throws {
+        try updated.save(to: settingsPath())
+        rules = updated
+        settingsError = nil
+    }
+
+    private func setEnabled(_ value: Bool) {
+        guard var updated = rules else { return }
+        updated.enabled = value
+        do { try save(updated) } catch {
+            settingsError = "Could not change Git Protection. \(error.localizedDescription)"
+        }
+    }
+
+    private func openEditor(for rule: GitBranchType? = nil) {
+        editor = EditorSelection(
+            operation: operation, repository: activeRepository, rule: rule,
+            index: rule.flatMap { rule in currentRules.firstIndex { $0.id == rule.id } }, count: currentRules.count)
+    }
+
+    private func edit(_ selection: EditorSelection, change: GitProtectionRuleEditor.Change) throws {
+        guard var updated = rules else { throw SettingsError.missingDirectory }
+        let key = selection.repository?.key
+        var scoped = key.map { updated.repositories[$0] ?? GitProtectionRules.Rules() } ?? updated.global
+        var list = scoped[selection.operation]
+        switch change {
+        case .save(let rule):
+            if let index = selection.index { list[index] = rule } else { list.insert(rule, at: 0) }
+        case .move(let offset):
+            if let index = selection.index { list.swapAt(index, index + offset) }
+        case .remove:
+            if let index = selection.index { list.remove(at: index) }
+        }
+        scoped[selection.operation] = list
+        if let key {
+            updated.repositories[key] = scoped.forcePush.isEmpty && scoped.delete.isEmpty ? nil : scoped
+        } else {
+            updated.global = scoped
+        }
+        try save(updated)
+    }
+
+    private enum SettingsError: LocalizedError {
+        case missingDirectory
+        var errorDescription: String? { "Agent Watch could not locate its Application Support folder." }
     }
 }

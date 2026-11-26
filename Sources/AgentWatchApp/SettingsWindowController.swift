@@ -31,14 +31,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             host: host,
             version: version
         )
+        // Keep the form below the title bar so scrolling cannot draw behind the toolbar.
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Agent Watch Settings"
-        window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 680, height: 460)

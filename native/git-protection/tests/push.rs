@@ -1550,7 +1550,7 @@ fn each_level_asks_for_its_own_windows() {
         assert_eq!(result["status"], "not_pushed", "{result}");
         assert_eq!(prompts, 0);
         let message = result["message"].as_str().unwrap();
-        assert!(message.contains("branch type 'Locked'"), "{message}");
+        assert!(message.contains("branch rule 'Locked'"), "{message}");
         assert!(message.contains("no window was shown"), "{message}");
         assert!(result["manual_command"].is_string());
     }
@@ -1704,4 +1704,38 @@ fn a_level_raised_during_the_window_stops_the_push() {
             .contains("changed during confirmation")
     );
     assert!(fixture.remote_refs().contains(branch));
+}
+
+#[test]
+fn the_direct_executor_keeps_repository_rules_when_hooks_are_off() {
+    let fixture = Fixture::new(false);
+    let branch = "agent/kept";
+    let reference = format!("refs/heads/{branch}");
+    fixture.seed(&reference);
+    let before = fixture.remote_refs();
+    let common = fixture.repo.join(".git").canonicalize().unwrap();
+    let mut rules: Value =
+        serde_json::from_str(include_str!("fixtures/branch-rules-v2.json")).unwrap();
+    let entries = rules["repositories"]["/work/agent-watch/.git"].take();
+    rules["repositories"] = json!({common.to_str().unwrap(): entries});
+    rules["enabled"] = json!(false);
+    fixture.branch_types(&rules.to_string());
+    let request = json!({"repository":fixture.repo,"destination":reference,"delete":true});
+    let output = Command::new(env!("CARGO_BIN_EXE_agent-watch-git"))
+        .args(["push", &request.to_string()])
+        .env("HOME", &fixture.home)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let result: Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|error| panic!("{error}: {}", String::from_utf8_lossy(&output.stderr)));
+    assert_eq!(result["status"], "not_pushed", "{result}");
+    assert!(
+        result["message"]
+            .as_str()
+            .unwrap()
+            .contains("branch rule 'Keep draft'"),
+        "{result}"
+    );
+    assert_eq!(fixture.remote_refs(), before);
 }
