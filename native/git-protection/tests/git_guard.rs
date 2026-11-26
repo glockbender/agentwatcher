@@ -594,7 +594,7 @@ fn branch_types_decide_force_pushes_and_deletions_in_the_hook() {
             let reason = denial(&check(command));
             assert!(reason.contains(refusal), "{reason}");
             assert!(
-                reason.contains("forbidden by branch type 'Locked'"),
+                reason.contains("forbidden by branch rule 'Locked'"),
                 "{reason}"
             );
             assert!(reason.contains("run it in a terminal"), "{reason}");
@@ -605,7 +605,7 @@ fn branch_types_decide_force_pushes_and_deletions_in_the_hook() {
         let both = denial(&check(
             "git push -f origin HEAD:refs/heads/locked/x HEAD:refs/heads/feature/y",
         ));
-        assert!(both.contains("forbidden by branch type 'Locked'"), "{both}");
+        assert!(both.contains("forbidden by branch rule 'Locked'"), "{both}");
         assert!(
             both.contains("force push. For one intended reference"),
             "{both}"
@@ -658,6 +658,70 @@ fn without_a_readable_table_the_hook_checks_as_before() {
                 reason.contains("push '<JSON object>'"),
                 "{command}: {reason}"
             );
+        }
+    }
+}
+
+#[test]
+fn disabling_and_enabling_applies_to_both_clients_without_reinstalling() {
+    let bundle = Bundle::new();
+    let repo = bundle.repo("switch");
+    let payload = json!({
+        "cwd": repo,
+        "tool_input": { "command": "git push origin --delete refs/heads/main" },
+    })
+    .to_string();
+    let mut rules: Value =
+        serde_json::from_str(include_str!("fixtures/branch-rules-v2.json")).unwrap();
+    for (enabled, has_denial) in [(true, true), (false, false), (true, true)] {
+        rules["enabled"] = json!(enabled);
+        bundle.branch_types(&rules.to_string());
+        for host in ["claude", "codex"] {
+            assert_eq!(!bundle.invoke(host, &payload).is_empty(), has_denial);
+        }
+    }
+    // An invalid file carrying a false flag cannot silently turn protection off.
+    rules["enabled"] = json!(false);
+    rules["global"]["delete"][0]["level"] = json!("unknown");
+    bundle.branch_types(&rules.to_string());
+    for host in ["claude", "codex"] {
+        denial(&bundle.invoke(host, &payload));
+    }
+}
+
+#[test]
+fn linked_worktrees_share_the_repository_rule_for_the_selected_operation() {
+    let bundle = Bundle::new();
+    let repo = bundle.repo_with_remote();
+    let linked = bundle.root.path().join("linked");
+    bundle.git(
+        &repo,
+        &["worktree", "add", "--detach", linked.to_str().unwrap()],
+    );
+    let common = repo.join(".git").canonicalize().unwrap();
+    let mut rules: Value =
+        serde_json::from_str(include_str!("fixtures/branch-rules-v2.json")).unwrap();
+    let entries = rules["repositories"]["/work/agent-watch/.git"].take();
+    rules["repositories"] = json!({common.to_str().unwrap(): entries});
+    bundle.branch_types(&rules.to_string());
+
+    for host in ["claude", "codex"] {
+        for folder in [&repo, &linked] {
+            let check = |command| {
+                bundle.invoke(
+                    host,
+                    &json!({"cwd": folder, "tool_input": {"command": command}}).to_string(),
+                )
+            };
+            let blocked = denial(&check("git push origin --delete refs/heads/agent/kept"));
+            assert!(
+                blocked.contains("forbidden by branch rule 'Keep draft'"),
+                "{blocked}"
+            );
+            let confirmed = denial(&check("git push -f origin HEAD:refs/heads/agent/kept"));
+            assert!(confirmed.contains("push '<JSON object>'"), "{confirmed}");
+            assert!(!confirmed.contains("forbidden"), "{confirmed}");
+            assert!(check("git push origin --delete refs/heads/agent/x").is_empty());
         }
     }
 }

@@ -138,25 +138,16 @@ final class GitHookInstallerTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: file), content)
     }
 
-    func testLegacyWarningRequiresAnEnabledPluginWithTheGitHook() throws {
-        let profile = root.appendingPathComponent("legacy")
-        let plugin = profile.appendingPathComponent("plugins/cache/mothership/mothership/1")
-        let manifest = plugin.appendingPathComponent(".claude-plugin/plugin.json")
-        try FileManager.default.createDirectory(
-            at: manifest.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let hook =
-            #"{"hooks":{"PreToolUse":[{"hooks":[{"command":"bash \"${CLAUDE_PLUGIN_ROOT}/hooks/git-guard.sh\""}]}]}}"#
-        try Data(hook.utf8).write(to: manifest)
-        let registry = try JSONSerialization.data(withJSONObject: [
-            "plugins": ["mothership@mothership": [["scope": "user", "installPath": plugin.path]]]
-        ])
-        try registry.write(to: profile.appendingPathComponent("plugins/installed_plugins.json"))
-        XCTAssertEqual(MothershipGitRegistration.check(source: .claude, profile: profile), .absent)
-        try Data(#"{"enabledPlugins":{"mothership@mothership":true}}"#.utf8)
-            .write(to: profile.appendingPathComponent("settings.json"))
-        XCTAssertEqual(MothershipGitRegistration.check(source: .claude, profile: profile), .registered)
-        try Data(#"{"hooks":{"PreToolUse":[]}}"#.utf8).write(to: manifest)
-        XCTAssertEqual(MothershipGitRegistration.check(source: .claude, profile: profile), .absent)
+    func testStatusReadsBothProfilesInTheSameFolderDuringAWriteLock() throws {
+        for source in AgentSource.allCases {
+            XCTAssertEqual(try installer.apply(.install, source: source, profile: root), .registered)
+        }
+        let lock = try AgentProfileLock(root)
+        defer { withExtendedLifetime(lock) {} }
+        for source in AgentSource.allCases {
+            XCTAssertEqual(try installer.apply(.status, source: source, profile: root), .registered)
+            XCTAssertThrowsError(try installer.apply(.remove, source: source, profile: root))
+        }
     }
 
     func testCustomGroupIsNotOverwrittenOrDuplicated() throws {

@@ -5,6 +5,7 @@
 //! default branch, branches listed in `mothership.protectedBranch` and tags. See ADR-0025.
 
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// How a force push or a remote deletion of a branch is checked, weakest first.
@@ -21,9 +22,37 @@ pub enum Level {
     Forbid,
 }
 
-/// Where the app keeps the table, relative to the home folder.
-pub const TABLE_PATH: &str = "Library/Application Support/AgentWatch/git-branch-types.json";
-const TABLE_VERSION: u32 = 1;
+const TABLE_FILE: &str = "git-branch-types.json";
+
+fn settings_path() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    if let Some((folder, configuration)) =
+        option_env!("AGENT_WATCH_GIT_BUNDLE_POLICY").and_then(|value| value.split_once('/'))
+    {
+        // A profile can use a different HOME. A packaged helper follows the same account
+        // Application Support folder as the app, even when the app is closed.
+        let support = if let Some(path) = (configuration == "debug")
+            .then(|| std::env::var_os("AGENT_WATCH_SUPPORT_DIR").filter(|value| !value.is_empty()))
+            .flatten()
+        {
+            PathBuf::from(path)
+        } else {
+            nix::unistd::User::from_uid(nix::unistd::getuid())
+                .ok()??
+                .dir
+                .join("Library/Application Support")
+        };
+        return Some(support.join(folder).join(TABLE_FILE));
+    }
+
+    std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(|home| {
+            PathBuf::from(home)
+                .join("Library/Application Support/AgentWatch")
+                .join(TABLE_FILE)
+        })
+}
 const MAX_TABLE_BYTES: u64 = 1024 * 1024;
 
 // Unknown fields are ignored, as the app's decoder ignores them, so both sides read one
@@ -36,22 +65,81 @@ pub struct BranchType {
 }
 
 #[derive(Deserialize)]
-struct Table {
-    version: u32,
+struct LegacyTable {
     types: Vec<BranchType>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct BranchTypes(Vec<BranchType>);
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OperationRules {
+    force_push: Vec<BranchType>,
+    delete: Vec<BranchType>,
+}
+
+impl OperationRules {
+    fn for_operation(&self, delete: bool) -> &[BranchType] {
+        if delete {
+            &self.delete
+        } else {
+            &self.force_push
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct BranchTypes {
+    enabled: bool,
+    global: OperationRules,
+    repositories: HashMap<String, OperationRules>,
+}
+
+impl Default for BranchTypes {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            global: OperationRules::default(),
+            repositories: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BranchRules<'a> {
+    global: &'a [BranchType],
+    local: &'a [BranchType],
+    default: Level,
+}
+
+impl<'a> BranchRules<'a> {
+    pub fn has_none_or_forbid(self) -> bool {
+        self.global
+            .iter()
+            .chain(self.local)
+            .any(|rule| matches!(rule.level, Level::None | Level::Forbid))
+    }
+
+    pub fn selected(self, branch: &str) -> (Level, Option<&'a BranchType>) {
+        let matching = |rules: &'a [BranchType]| {
+            rules.iter().find(|rule| {
+                rule.patterns
+                    .iter()
+                    .any(|pattern| pattern_matches(pattern, branch))
+            })
+        };
+        let global = matching(self.global);
+        let level = global.map_or(self.default, |rule| rule.level);
+        if let Some(local) = matching(self.local)
+            && local.level > level
+        {
+            return (local.level, Some(local));
+        }
+        (level, global)
+    }
+}
 
 impl BranchTypes {
-    /// The table of the home the agent runs with. Agents follow `HOME`, so a scratch home
-    /// gets no types, which is today's behaviour.
     pub fn load() -> Self {
-        std::env::var_os("HOME")
-            .filter(|home| !home.is_empty())
-            .map(|home| Self::load_from(&PathBuf::from(home).join(TABLE_PATH)))
-            .unwrap_or_default()
+        settings_path().map_or_else(Self::default, |path| Self::load_from(&path))
     }
 
     /// A missing or unreadable file means no types. Never a lower level: with no types every
@@ -74,25 +162,43 @@ impl BranchTypes {
     }
 
     pub fn parse(text: &str) -> Option<Self> {
-        let table: Table = serde_json::from_str(text).ok()?;
-        (table.version == TABLE_VERSION).then_some(Self(table.types))
+        #[derive(Deserialize)]
+        struct Version {
+            version: u32,
+        }
+
+        match serde_json::from_str::<Version>(text).ok()?.version {
+            1 => {
+                let old: LegacyTable = serde_json::from_str(text).ok()?;
+                Some(Self {
+                    global: OperationRules {
+                        force_push: old.types.clone(),
+                        delete: old.types,
+                    },
+                    ..Self::default()
+                })
+            }
+            2 => serde_json::from_str(text).ok(),
+            _ => None,
+        }
     }
 
-    /// Whether any type can let a push through or refuse it without a window. Without one,
-    /// the hook has nothing to look up.
-    pub fn has_none_or_forbid(&self) -> bool {
-        self.0
-            .iter()
-            .any(|kind| matches!(kind.level, Level::None | Level::Forbid))
+    pub fn enabled(&self) -> bool {
+        self.enabled
     }
 
-    /// The first type with a pattern that matches the short branch name.
-    pub fn matching(&self, branch: &str) -> Option<&BranchType> {
-        self.0.iter().find(|kind| {
-            kind.patterns
-                .iter()
-                .any(|pattern| pattern_matches(pattern, branch))
-        })
+    pub fn has_repository_rules(&self) -> bool {
+        !self.repositories.is_empty()
+    }
+
+    pub fn rules(&self, delete: bool, repository: Option<&str>) -> BranchRules<'_> {
+        BranchRules {
+            global: self.global.for_operation(delete),
+            local: repository
+                .and_then(|key| self.repositories.get(key))
+                .map_or(&[], |rules| rules.for_operation(delete)),
+            default: if delete { Level::Click } else { Level::Name },
+        }
     }
 }
 
@@ -121,16 +227,31 @@ pub fn pattern_matches(pattern: &str, name: &str) -> bool {
     pattern[p..].iter().all(|&c| c == '*')
 }
 
-/// The level of a force push or deletion of a branch, before the floor.
-///
-/// A branch no type matches keeps the behaviour it had before types existed: one click for a
-/// deletion, a confirmation plus the repository name for a force push.
-pub fn chosen(types: &BranchTypes, branch: &str, delete: bool) -> (Level, Option<String>) {
-    match types.matching(branch) {
-        Some(kind) => (kind.level, Some(kind.name.clone())),
-        None if delete => (Level::Click, None),
-        None => (Level::Name, None),
+/// The level of a force push or deletion, before protected-branch checks.
+pub fn chosen(
+    types: &BranchTypes,
+    branch: &str,
+    delete: bool,
+    repo: Option<&str>,
+) -> (Level, Option<String>) {
+    let (level, rule) = types.rules(delete, repo).selected(branch);
+    (level, rule.map(|rule| rule.name.clone()))
+}
+
+pub const COMMON_DIRECTORY_ARGS: &[&str] = &["rev-parse", "--git-common-dir"];
+
+pub fn canonical_directory(folder: &Path, path: &str) -> Result<String, String> {
+    if path.is_empty() {
+        return Err("Git did not return the repository’s common directory.".into());
     }
+    let resolved = folder
+        .join(path)
+        .canonicalize()
+        .map_err(|_| "Git could not resolve the repository’s common directory.")?;
+    resolved
+        .into_os_string()
+        .into_string()
+        .map_err(|_| "The repository's directory is not valid UTF-8.".into())
 }
 
 /// The floor raises a protected branch to `name`; nothing lowers it.
@@ -174,12 +295,25 @@ mod tests {
         let types =
             BranchTypes::parse(include_str!("../tests/fixtures/branch-types.json")).unwrap();
         assert_eq!(
-            chosen(&types, "fix/typo", true),
+            chosen(&types, "fix/typo", true, None),
             (Level::Click, Some("Features".into()))
         );
-        assert_eq!(chosen(&types, "hotfix/1", false).0, Level::Name);
-        assert_eq!(chosen(&types, "tmp/x", false).0, Level::None);
-        assert_eq!(chosen(&types, "archive/2025", true).0, Level::Forbid);
+        assert_eq!(chosen(&types, "hotfix/1", false, None).0, Level::Name);
+        assert_eq!(chosen(&types, "tmp/x", false, None).0, Level::None);
+        assert_eq!(chosen(&types, "archive/2025", true, None).0, Level::Forbid);
+    }
+
+    #[test]
+    fn operations_are_independent_and_repositories_can_only_strengthen_them() {
+        let types =
+            BranchTypes::parse(include_str!("../tests/fixtures/branch-rules-v2.json")).unwrap();
+        let repo = Some("/work/agent-watch/.git");
+        assert!(types.enabled());
+        assert_eq!(chosen(&types, "release/1", false, repo).0, Level::Forbid);
+        assert_eq!(chosen(&types, "release/1", true, repo).0, Level::Name);
+        assert_eq!(chosen(&types, "agent/kept", false, repo).0, Level::Name);
+        assert_eq!(chosen(&types, "agent/kept", true, repo).0, Level::Forbid);
+        assert_eq!(chosen(&types, "agent/kept", true, None).0, Level::None);
     }
 
     #[test]
@@ -189,10 +323,21 @@ mod tests {
                 {"name":"Everything","patterns":["*"],"level":"forbid"},
                 {"name":"Late","patterns":["agent/x"],"level":"name"}]"#,
         );
-        assert_eq!(types.matching("agent/x").unwrap().name, "Drafts");
-        assert_eq!(types.matching("feature/y").unwrap().name, "Everything");
         assert_eq!(
-            chosen(&types, "agent/x", true),
+            types.rules(true, None).selected("agent/x").1.unwrap().name,
+            "Drafts"
+        );
+        assert_eq!(
+            types
+                .rules(true, None)
+                .selected("feature/y")
+                .1
+                .unwrap()
+                .name,
+            "Everything"
+        );
+        assert_eq!(
+            chosen(&types, "agent/x", true, None),
             (Level::None, Some("Drafts".into()))
         );
     }
@@ -207,7 +352,7 @@ mod tests {
         );
         let levels: Vec<_> = ["a", "b", "c", "d"]
             .iter()
-            .map(|branch| chosen(&types, branch, false).0)
+            .map(|branch| chosen(&types, branch, false, None).0)
             .collect();
         assert_eq!(
             levels,
@@ -220,8 +365,14 @@ mod tests {
     #[test]
     fn a_branch_without_a_type_keeps_todays_behaviour() {
         for types in [BranchTypes::default(), table("[]")] {
-            assert_eq!(chosen(&types, "feature/x", true), (Level::Click, None));
-            assert_eq!(chosen(&types, "feature/x", false), (Level::Name, None));
+            assert_eq!(
+                chosen(&types, "feature/x", true, None),
+                (Level::Click, None)
+            );
+            assert_eq!(
+                chosen(&types, "feature/x", false, None),
+                (Level::Name, None)
+            );
         }
     }
 
@@ -249,8 +400,11 @@ mod tests {
         let newer = BranchTypes::parse(
             r#"{"version":1,"types":[{"name":"A","patterns":["a"],"level":"none","colour":"red"}]}"#,
         );
-        assert_eq!(newer.unwrap().matching("a").unwrap().level, Level::None);
+        assert_eq!(
+            newer.unwrap().rules(true, None).selected("a").0,
+            Level::None
+        );
         let missing = BranchTypes::load_from(Path::new("/nonexistent/agent-watch/types.json"));
-        assert!(missing.matching("anything").is_none());
+        assert!(missing.rules(true, None).selected("anything").1.is_none());
     }
 }

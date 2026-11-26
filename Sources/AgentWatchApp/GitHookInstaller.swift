@@ -85,6 +85,9 @@ struct GitHookInstaller {
             try FileManager.default.createDirectory(
                 at: profile, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
+        // Status is a snapshot of an atomically replaced file. Concurrent status reads
+        // for Claude and Codex can share a profile directory without taking the write lock.
+        if action == .status { return try edit(action, source: source, url: url) }
         let lock = try AgentProfileLock(profile)
         defer { withExtendedLifetime(lock) {} }
         return try edit(action, source: source, url: url)

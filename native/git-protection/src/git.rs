@@ -219,7 +219,16 @@ impl Git {
         let branch = destination
             .strip_prefix("refs/heads/")
             .unwrap_or(destination);
-        let (chosen, kind) = levels::chosen(&BranchTypes::load(), branch, delete);
+        let types = BranchTypes::load();
+        let common = if types.has_repository_rules() {
+            Some(levels::canonical_directory(
+                Path::new(repo),
+                &self.read(repo, levels::COMMON_DIRECTORY_ARGS)?,
+            )?)
+        } else {
+            None
+        };
+        let (chosen, kind) = levels::chosen(&types, branch, delete, common.as_deref());
         let level = if chosen < Level::Name {
             levels::with_floor(chosen, self.protected_branch(repo, url, destination)?)
         } else {

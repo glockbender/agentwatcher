@@ -1,0 +1,25 @@
+{
+  "enabled": true,
+  "global": {
+    "forcePush": [
+      { "name": "Release", "patterns": ["release/*"], "level": "forbid" },
+      { "name": "Draft", "patterns": ["agent/*"], "level": "none" }
+    ],
+    "delete": [
+      { "name": "Release", "patterns": ["release/*"], "level": "name" },
+      { "name": "Draft", "patterns": ["agent/*"], "level": "none" }
+    ]
+  },
+  "repositories": {
+    "/work/agent-watch/.git": {
+      "forcePush": [
+        { "name": "Keep draft", "patterns": ["agent/kept"], "level": "name" }
+      ],
+      "delete": [
+        { "name": "Keep draft", "patterns": ["agent/kept"], "level": "forbid" },
+        { "name": "Weaker release", "patterns": ["release/*"], "level": "click" }
+      ]
+    }
+  },
+  "version": 2
+}

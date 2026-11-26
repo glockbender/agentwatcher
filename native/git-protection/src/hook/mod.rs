@@ -3,6 +3,7 @@ mod commands;
 mod policy;
 mod shell;
 
+use crate::levels::BranchTypes;
 use crate::process::{Cancellation, EXPIRED};
 use nix::errno::Errno;
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
@@ -20,6 +21,7 @@ const GUIDANCE: &str = "with repository (absolute working tree path), destinatio
 fn inspect(
     payload: &Value,
     binary: &Path,
+    rules: &BranchTypes,
     cancel: &Cancellation,
     deadline: Instant,
 ) -> Result<Option<String>, String> {
@@ -60,6 +62,7 @@ fn inspect(
         policy::literal(command),
         &cwd,
         &home,
+        rules,
         cancel,
         deadline,
     )?;
@@ -115,11 +118,15 @@ fn read_event(input: impl AsFd, cancel: &Cancellation, deadline: Instant) -> Res
 
 fn inspect_event() -> Result<Option<String>, String> {
     let deadline = Instant::now() + Duration::from_secs(6);
+    let rules = BranchTypes::load();
+    if !rules.enabled() {
+        return Ok(None);
+    }
     let cancel = Cancellation::for_command()?;
     let event = read_event(std::io::stdin(), &cancel, deadline)?;
     let path =
         std::env::current_exe().map_err(|_| "The Agent Watch Git executable is unavailable.")?;
-    inspect(&event, &path, &cancel, deadline)
+    inspect(&event, &path, &rules, &cancel, deadline)
 }
 
 pub(super) fn run(args: &[String]) -> Result<(), String> {

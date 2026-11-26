@@ -81,6 +81,41 @@ final class GitBranchTypesTests: XCTestCase {
         }
     }
 
+    func testV1RulesCarryOverToBothOperationsAndCanBeEditedIndependently() throws {
+        let url = try scratch().appendingPathComponent(GitProtectionRules.fileName)
+        try fixture("branch-types.json").write(to: url)
+        var config = try GitProtectionRules.load(from: url)
+        XCTAssertTrue(config.enabled)
+        XCTAssertEqual(config.global.forcePush, config.global.delete)
+        XCTAssertEqual(config.level(for: .forcePush, branch: "tmp/x", repository: nil).level, .none)
+        config.enabled = false
+        config.global.delete[2].level = .forbid
+        try config.save(to: url)
+        let reopened = try GitProtectionRules.load(from: url)
+        XCTAssertEqual(reopened, config)
+        XCTAssertEqual(reopened.level(for: .forcePush, branch: "tmp/x", repository: nil).level, .none)
+        XCTAssertEqual(reopened.level(for: .delete, branch: "tmp/x", repository: nil).level, .forbid)
+    }
+
+    func testOperationAndRepositoryChecksAgreeWithTheNativeFixture() throws {
+        let url = try scratch().appendingPathComponent(GitProtectionRules.fileName)
+        XCTAssertEqual(try GitProtectionRules.load(from: url), GitProtectionRules())
+        try fixture("branch-rules-v2.json").write(to: url)
+        let config = try GitProtectionRules.load(from: url)
+        XCTAssertTrue(config.enabled)
+        let repo = "/work/agent-watch/.git"
+        XCTAssertEqual(config.level(for: .forcePush, branch: "release/1", repository: repo).level, .forbid)
+        XCTAssertEqual(config.level(for: .delete, branch: "release/1", repository: repo).level, .name)
+        XCTAssertEqual(config.level(for: .forcePush, branch: "agent/kept", repository: repo).level, .name)
+        XCTAssertEqual(config.level(for: .delete, branch: "agent/kept", repository: repo).level, .forbid)
+        XCTAssertEqual(config.level(for: .delete, branch: "agent/kept", repository: nil).level, .none)
+        XCTAssertEqual(config.level(for: .push, branch: "release/1", repository: repo).level, .none)
+        try config.save(to: url)
+        let written = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? NSDictionary
+        let expected = try JSONSerialization.jsonObject(with: fixture("branch-rules-v2.json")) as? NSDictionary
+        XCTAssertEqual(written, expected)
+    }
+
     func testThePreviewAppliesTheFloorToTheType() {
         let table = GitBranchTypes(types: [
             GitBranchType(name: "Drafts", patterns: ["agent/*", "main"], level: .none),
