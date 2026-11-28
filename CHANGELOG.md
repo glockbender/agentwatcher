@@ -3,13 +3,31 @@
 What changed in each release of Agent Watch, for the person updating it. An installed copy shows
 the versions newer than itself in its update window.
 
-## [Unreleased]
+## [0.6.0] - 2026-11-28
+
+### Added
+
+- **Projects & Recent** groups Claude Code and Codex chats by repository. Search by branch or chat name and reopen a conversation.
+- The Notification Center widget opens **Projects & Recent**. The medium widget also opens the waiting list and Settings.
+- **Settings → Working Copies** shows disk use by Git working copy and lets you move eligible build caches to the Trash.
+- **Usage profiles** shows recorded account limits and available reset times for the default Claude profile and configured Codex profiles.
+- **Settings → Resources** shows memory and CPU use for agents and the Mac. Add **Memory & CPU** to a row for session figures.
+
+### Changed
+
+- After updating, if you connected the Claude status-line relay, restore your original command before deleting the relay or Agent Watch support folder.
+  [Restore the status-line command](https://github.com/glockbender/agentwatcher/blob/v0.6.0/TROUBLESHOOTING.md#claude-still-runs-the-agent-watch-status-line-relay).
+- **Settings → Git Protection** shows hook status by profile. One switch controls all profiles. Turning protection off requires confirmation and keeps the installed hooks.
+- **Force Push** and **Delete Remote Branch** have separate rules. Preview the check for a branch or set a stricter rule for one repository.
+- **Settings → Menu Bar** can show Claude and Codex account limits and memory and CPU use for agents and the Mac.
 
 ### Removed
 
-- Agent Watch no longer integrates with the Claude status line. If you connected the relay, restore
-  your original command before deleting the relay or the Agent Watch support folder.
-  [Restore the status-line command](TROUBLESHOOTING.md#claude-still-runs-the-agent-watch-status-line-relay).
+- Agent Watch’s Claude status-line integration. Claude Code provides the account limits.
+
+### Fixed
+
+- The settings toolbar stays clear of scrolling text.
 
 ## [0.5.0] - 2026-11-22
 
